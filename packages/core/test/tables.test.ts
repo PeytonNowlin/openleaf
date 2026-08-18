@@ -137,3 +137,40 @@ describe('the schema exposes the table roles prosemirror-tables needs', () => {
     expect(schema.nodes['table_header']?.spec['tableRole']).toBe('header_cell')
   })
 })
+
+describe('normalization must not reach inside preserved markup', () => {
+  /*
+   * Regression. The cell pass that unwraps `<td><p>x</p></td>` to `<td>x</td>`
+   * originally ran over the whole serialized output, which meant it also
+   * rewrote tables nested inside PRESERVED markup -- content the editor
+   * undertook to return byte-identical.
+   *
+   * A normalization that is correct for our own tables is a broken promise
+   * inside an unrecognised wrapper, and the difference is invisible unless
+   * something asserts it.
+   */
+
+  it('leaves a table inside an unrecognised wrapper exactly as authored', () => {
+    const html = '<div class="wrapper"><table><tbody><tr><td><p>hi</p></td></tr></tbody></table></div>'
+    expect(roundTrip(html)).toBe(html)
+  })
+
+  it('still normalizes a table that is genuinely ours', () => {
+    expect(roundTrip('<table><tbody><tr><td><p>hi</p></td></tr></tbody></table>')).toBe(
+      '<table><tbody><tr><td>hi</td></tr></tbody></table>',
+    )
+  })
+
+  it('leaves no marker attribute in the output', () => {
+    // The pass tags preserved output so it can be skipped, then strips the tag.
+    // A leak would put an internal attribute into every customer's database.
+    const out = roundTrip('<div class="wrapper"><table><tr><td><p>hi</p></td></tr></table></div>')
+    expect(out).not.toContain('data-ol-preserved')
+  })
+
+  it('is stable across repeated round trips', () => {
+    const html = '<div class="wrapper"><table><tbody><tr><td><p>hi</p></td></tr></tbody></table></div>'
+    const once = roundTrip(html)
+    expect(roundTrip(once)).toBe(once)
+  })
+})

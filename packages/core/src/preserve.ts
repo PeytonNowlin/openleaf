@@ -174,10 +174,20 @@ function ownerDocument(): Document {
  * emitting something slightly odd is always preferable to destroying a user's
  * content, and an unreachable branch that preserves data costs nothing.
  */
+export const PRESERVED_MARKER = 'data-ol-preserved'
+
 function rebuildOrCarry(html: string, fallbackTag: 'div' | 'span'): Element {
   const doc = ownerDocument()
   const rebuilt = elementFromHtml(html, doc)
-  if (rebuilt) return rebuilt
+  if (rebuilt) {
+    // Tagged only for the duration of serialization, and stripped before the
+    // string is returned. Normalization passes that run over the whole output
+    // must be able to tell "markup we own" from "markup we promised not to
+    // touch" -- without it, a table nested inside a preserved wrapper gets
+    // rewritten, which is exactly the guarantee preservation exists to make.
+    rebuilt.setAttribute(PRESERVED_MARKER, '')
+    return rebuilt
+  }
   const carrier = doc.createElement(fallbackTag)
   carrier.setAttribute('data-openleaf-unparsable', html)
   return carrier
