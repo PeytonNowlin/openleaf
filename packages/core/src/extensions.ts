@@ -49,6 +49,7 @@ import {
   type TagParseRule,
 } from 'prosemirror-model'
 import { coreMarks, coreNodes } from './schema.js'
+import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
 
 export interface SchemaExtension {
   /** Stable and unique. Namespace it: `openleaf/footnote`. */
@@ -167,7 +168,13 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
         if (base === false || base === null || base === undefined) return base as false | null
         const carried: Record<string, string> = {}
         for (const attr of Array.from(dom.attributes ?? [])) {
-          if (!modelled.has(attr.name)) carried[attr.name] = attr.value
+          if (modelled.has(attr.name)) continue
+          // Same scrub as the preservation layer: carrying `onclick` or a
+          // `javascript:` URL would reintroduce exactly the executable content
+          // core promises to drop.
+          if (isEventHandlerAttribute(attr.name)) continue
+          if (URL_ATTRIBUTES.has(attr.name.toLowerCase()) && !isSafeUrl(attr.value)) continue
+          carried[attr.name] = attr.value
         }
         return {
           ...(base as Record<string, unknown>),
@@ -251,8 +258,26 @@ function claim(
  * would make the fidelity suite depend on whichever other test file happened to
  * register an extension first.
  */
+/**
+ * Node types whose attributes are already the whole story — wrapping them
+ * would duplicate markup (unknown_*) or add a phantom attr to nodes that
+ * never parse from the DOM (doc, text).
+ */
+const SKIP_CARRY = new Set(['doc', 'text', 'unknown_block', 'unknown_inline'])
+
+function coreNodesWithCarriedAttributes(): OrderedMap<NodeSpec> {
+  // Claimed tags used to drop every attribute they do not model. Extension
+  // nodes already carry the residue; core nodes were the remaining hole, and
+  // it is how `<p class="lead">` became `<p>` on the first save.
+  let nodes = OrderedMap.from<NodeSpec>({})
+  for (const [name, spec] of Object.entries(coreNodes)) {
+    nodes = nodes.addToEnd(name, SKIP_CARRY.has(name) ? spec : withCarriedAttributes(name, spec))
+  }
+  return nodes
+}
+
 export function createSchema(list: readonly SchemaExtension[] = []): Schema {
-  let nodes = OrderedMap.from<NodeSpec>(coreNodes)
+  let nodes = coreNodesWithCarriedAttributes()
   let marks = OrderedMap.from<MarkSpec>(coreMarks)
   const claimed = new Map<string, string>()
 
