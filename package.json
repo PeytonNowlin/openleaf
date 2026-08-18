@@ -8,14 +8,17 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "fidelity": "vitest run test/fidelity",
-    "typecheck": "tsc -b",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:all": "vitest run && playwright test",
     "test:e2e": "playwright test",
+    "test:e2e:quick": "playwright test --project=chromium",
     "test:e2e:ui": "playwright test --ui",
-    "test:all": "vitest run && playwright test"
+    "test:watch": "vitest",
+    "typecheck": "tsc -b",
+    "verify": "node scripts/verify.mjs",
+    "verify:quick": "node scripts/verify.mjs --quick"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

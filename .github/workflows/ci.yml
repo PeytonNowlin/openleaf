@@ -1,8 +1,20 @@
 name: CI
 
+# CI is MANUAL-ONLY while the project is this young.
+#
+# Nothing here is deleted or weakened -- the jobs below are the real gate and
+# still run on demand via `gh workflow run ci.yml` or the Actions tab. They just
+# do not fire on every push, because installing three browser engines with
+# system dependencies took longer than the entire local suite takes to run, and
+# at this stage waiting on a remote runner was costing more than it caught.
+#
+# The local equivalent is `pnpm verify`, which runs the same four checks.
+#
+# TO RE-ENABLE on every push, restore:
+#   push: { branches: [main] }
+#   pull_request:
 on:
-  push: { branches: [main] }
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -61,6 +73,9 @@ jobs:
   dco:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    # Note: only meaningful on pull_request. Under manual dispatch this is
+    # skipped, so sign-off is enforced by discipline (`git commit -s`) until
+    # push-triggered CI is restored.
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }

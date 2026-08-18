@@ -33,14 +33,31 @@ Use your real name and a working email address. CI enforces this.
 
 ```bash
 pnpm install
-pnpm test          # unit + round-trip fidelity (jsdom)
-pnpm test:e2e      # real browsers: selection, IME, clipboard, mobile
-pnpm typecheck
+pnpm exec playwright install   # first time only
+pnpm verify                    # the whole gate: typecheck, unit, browsers, size
 ```
 
-`pnpm test` is fast and you should run it constantly. `pnpm test:e2e` is
-where editor bugs actually live -- jsdom does not model selection,
-composition events, or clipboard behaviour faithfully enough to trust.
+`pnpm verify` is the one command to remember. It takes about thirteen seconds
+and runs exactly what CI runs, so "passes locally" and "passes CI" mean the
+same thing.
+
+Narrower loops:
+
+```bash
+pnpm verify:quick    # same gate, chromium only
+pnpm test            # unit + round-trip fidelity only (~1s)
+pnpm test:e2e:quick  # browsers, chromium only
+pnpm test:e2e:ui     # Playwright's interactive runner
+```
+
+`pnpm test` is fast and you should run it constantly. The browser tests are
+where editor bugs actually live -- jsdom does not model selection, composition
+events, or clipboard behaviour faithfully enough to trust. Run the full
+`pnpm verify` before pushing.
+
+**CI is manual-only** at the moment (`workflow_dispatch`), so the local gate is
+the real gate. Do not push on the assumption that a remote runner will catch
+it. See the note in the README.
 
 ## Commit format
 

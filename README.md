@@ -376,11 +376,40 @@ The most useful contributions at this stage, in order:
 pnpm install
 pnpm exec playwright install   # first time only
 
-pnpm test                 # unit + round-trip fidelity (fast, jsdom)
-pnpm test:e2e             # real browsers: Chromium, Firefox, WebKit
-pnpm -r build             # strict typecheck
+pnpm verify                    # the whole gate. ~13 seconds.
+```
+
+`pnpm verify` runs four checks and is the single command that matters:
+
+| | |
+|---|---|
+| typecheck | strict TypeScript across every package |
+| unit tests | 94 tests including both round-trip fidelity corpora |
+| browser tests | Chromium, Firefox and WebKit against the real bundle |
+| bundle size | fails above 90 KB gzipped |
+
+Narrower loops while working:
+
+```bash
+pnpm verify:quick    # same gate, chromium only
+pnpm test            # unit + fidelity only (~1s)
+pnpm test:e2e:quick  # browsers, chromium only
+pnpm test:e2e:ui     # Playwright's interactive runner
 node demo/build.mjs && open demo/index.html
 ```
+
+### A note on CI
+
+**GitHub Actions is deliberately manual-only right now** (`workflow_dispatch`).
+The workflow is intact and is the same four checks; it simply does not fire on
+push. Installing three browser engines with system dependencies on a remote
+runner took over fifteen minutes, while the identical gate takes thirteen
+seconds locally — at this stage the wait was costing more than it caught.
+
+Run it on demand with `gh workflow run ci.yml`, and see the comment at the top
+of `.github/workflows/ci.yml` for the two lines that restore push triggers.
+Push-triggered CI goes back on before this project accepts outside
+contributions, because at that point the tradeoff inverts.
 
 Commits need a DCO sign-off — `git commit -s`. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
