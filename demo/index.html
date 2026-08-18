@@ -3,61 +3,435 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenLeaf demo</title>
+<title>OpenLeaf — a rich text editor that is actually free</title>
+<meta name="description" content="OpenLeaf is an Apache-2.0 rich text editor for the web. No paid tier, no license keys, no telemetry, and built so it cannot silently destroy your content. A drop-in TinyMCE replacement built on ProseMirror.">
+<link rel="icon" href="assets/openleaf-mark.png" type="image/png">
 <style>
-  :root { color-scheme: light dark; }
-  body { font: 16px/1.6 system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
-  fieldset { border: 1px solid currentColor; border-radius: 6px; padding: 1rem; }
-  textarea#body { width: 100%; min-height: 8rem; font-family: ui-monospace, monospace; font-size: .8rem; }
-  /* Theming is done entirely through the published custom properties -- no
-     OpenLeaf internals are touched here, which is the point of the token API. */
-  .themed { --openleaf-color-accent: #6f42c1; --openleaf-radius: 8px; }
+  :root {
+    color-scheme: light dark;
+    --page-fg: #1f2328;
+    --page-bg: #ffffff;
+    --page-muted: #59636e;
+    --page-border: #d1d9e0;
+    --page-surface: #f6f8fa;
+    --page-accent: #2f7d32;
+    --page-max: 54rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page-fg: #e6edf3;
+      --page-bg: #0d1117;
+      --page-muted: #9198a1;
+      --page-border: #3d444d;
+      --page-surface: #161b22;
+      --page-accent: #7ee787;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0 1rem 5rem;
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--page-fg);
+    background: var(--page-bg);
+  }
+  main, header { max-width: var(--page-max); margin: 0 auto; }
+
+  header { text-align: center; padding: 3rem 0 1rem; }
+  header img { width: min(320px, 70vw); height: auto; }
+  .tagline { font-size: 1.15rem; margin: .5rem 0 0; }
+  .subtitle { color: var(--page-muted); margin: .5rem auto 1.5rem; max-width: 38rem; }
+
+  .badges { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin-bottom: 1.5rem; }
+  .badge {
+    font-size: .8rem; padding: .2rem .6rem; border-radius: 999px;
+    border: 1px solid var(--page-border); color: var(--page-muted);
+  }
+
+  .alert {
+    border: 1px solid var(--page-border);
+    border-inline-start: 4px solid #d1a00a;
+    border-radius: 6px;
+    background: var(--page-surface);
+    padding: 1rem 1.25rem;
+    margin: 0 0 2.5rem;
+  }
+  .alert p { margin: .4rem 0 0; }
+  .alert strong { display: block; }
+
+  h2 { margin: 3rem 0 .25rem; font-size: 1.4rem; }
+  h2 + .lede { margin-top: 0; color: var(--page-muted); }
+  h3 { margin: 2rem 0 .5rem; font-size: 1.05rem; }
+
+  .panel {
+    border: 1px solid var(--page-border);
+    border-radius: 8px;
+    background: var(--page-surface);
+    padding: 1rem;
+  }
+
+  pre, code, .out {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .82rem;
+  }
+  pre, .out {
+    margin: 0;
+    padding: .75rem;
+    border: 1px solid var(--page-border);
+    border-radius: 6px;
+    background: var(--page-bg);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 15rem;
+    overflow-y: auto;
+  }
+  .out:empty::before { content: "(empty)"; color: var(--page-muted); }
+
+  .row { display: grid; gap: 1rem; }
+  @media (min-width: 56rem) { .row.two { grid-template-columns: 1fr 1fr; } }
+
+  button.action {
+    font: inherit; font-size: .9rem;
+    padding: .45rem .9rem;
+    border: 1px solid var(--page-border);
+    border-radius: 6px;
+    background: var(--page-bg);
+    color: inherit;
+    cursor: pointer;
+  }
+  button.action:hover { background: var(--page-surface); }
+  button.action:focus-visible { outline: 2px solid var(--page-accent); outline-offset: 2px; }
+  button.action[aria-pressed="true"] { border-color: var(--page-accent); font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
+
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: start; padding: .4rem .6rem; border-bottom: 1px solid var(--page-border); }
+  kbd {
+    font-family: inherit; font-size: .82em; padding: .1rem .35rem;
+    border: 1px solid var(--page-border); border-bottom-width: 2px; border-radius: 4px;
+    background: var(--page-bg);
+  }
+
+  footer {
+    max-width: var(--page-max); margin: 4rem auto 0; padding-top: 1.5rem;
+    border-top: 1px solid var(--page-border); color: var(--page-muted); font-size: .9rem;
+  }
+  a { color: inherit; }
+
+  /* Theme presets, applied by toggling a class on a wrapper. Every one of these
+     is only custom properties -- no OpenLeaf internals are touched, which is the
+     whole point of the token API. */
+  .theme-violet {
+    --openleaf-color-accent: #7c3aed;
+    --openleaf-color-surface-active: #ede9fe;
+    --openleaf-color-focus: #7c3aed;
+    --openleaf-radius: 10px;
+  }
+  .theme-slate {
+    --openleaf-color-surface: #1e293b;
+    --openleaf-color-surface-hover: #334155;
+    --openleaf-color-surface-active: #0f766e;
+    --openleaf-color-text: #e2e8f0;
+    --openleaf-color-border: #475569;
+    --openleaf-color-accent: #5eead4;
+    --openleaf-color-focus: #5eead4;
+  }
+  .theme-touch {
+    --openleaf-button-size: 44px;
+    --openleaf-icon-size: 20px;
+    --openleaf-gap: 6px;
+  }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
 </style>
 </head>
 <body>
-<h1>OpenLeaf demo</h1>
-<p>A custom element bound to a textarea. Submitting posts HTML in <code>body</code>,
-exactly as a TinyMCE integration would. Try pasting from Word or Google Docs and
-watch the raw HTML.</p>
 
-<form id="f" onsubmit="event.preventDefault(); alert(document.getElementById('body').value)">
-  <fieldset>
-    <legend><label for="body">Post body</label></legend>
-    <openleaf-editor for="body" aria-label="Post body"></openleaf-editor>
-    <textarea id="body" name="body" hidden>
-      <h2>An existing post</h2>
-      <p>Loaded from the textarea as ordinary HTML. Try <strong>bold</strong>,
-      a list, or a link.</p>
-      <div class="callout callout--warning" data-callout-id="7">
-        <p>This div has a load-bearing class, so it is preserved intact rather
-        than unwrapped. Try deleting it, then undo.</p>
-      </div>
-      <p dir="rtl">ونص من اليمين إلى اليسار.</p>
-    </textarea>
-  </fieldset>
-  <p><button type="submit">Submit</button>
-     <button type="button" onclick="document.getElementById('body').hidden = !document.getElementById('body').hidden">
-       Toggle raw HTML
-     </button></p>
-</form>
+<header>
+  <img src="assets/openleaf-logo.png" alt="OpenLeaf">
+  <p class="tagline"><strong>A rich text editor for the web that is actually free.</strong></p>
+  <p class="subtitle">
+    Apache-2.0. No paid tier, no license keys, no telemetry, no cloud dependency —
+    and built so that it cannot quietly destroy your content.
+  </p>
+  <p class="badges">
+    <span class="badge">Apache-2.0</span>
+    <span class="badge">79 KB gzipped</span>
+    <span class="badge">No framework</span>
+    <span class="badge">Built on ProseMirror</span>
+    <span class="badge"><a href="https://github.com/PeytonNowlin/openleaf">Source on GitHub</a></span>
+  </p>
+</header>
 
-<h2>Keyboard and screen reader notes</h2>
-<ul>
-  <li><kbd>Alt</kbd>+<kbd>F10</kbd> moves focus into the toolbar; <kbd>Esc</kbd> returns to the content.</li>
-  <li>Arrow keys move between toolbar buttons — the whole toolbar is one tab stop.</li>
-  <li><kbd>Tab</kbd> is deliberately not captured, so it always leaves the editor.</li>
-  <li>List indentation is <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>[</kbd> and <kbd>]</kbd>.</li>
-</ul>
+<main>
 
-<h2>A restricted toolbar</h2>
-<p>Integrators choose which controls appear, and in what order, with the
-<code>toolbar</code> attribute. This one is themed only through custom properties.</p>
-<div class="themed">
-  <openleaf-editor aria-label="Comment" toolbar="bold italic | link | undo redo">
-    <textarea><p>A comment box with four controls.</p></textarea>
-  </openleaf-editor>
+<div class="alert">
+  <strong>⚠️ Pre-alpha. Not for production.</strong>
+  <p>
+    The editor works and is well tested, but nobody has run it in production and
+    its accessibility has <em>never been driven by a real screen reader</em>.
+    If you use one, trying this page and telling us what you heard is the single
+    most valuable thing anyone can do for this project right now.
+  </p>
 </div>
 
+<h2 id="try">Try it</h2>
+<p class="lede">
+  A custom element bound to a <code>&lt;textarea&gt;</code>, exactly as it would sit in a CMS form.
+  Everything you type comes back out as ordinary HTML.
+</p>
+
+<div id="editor-wrap">
+  <label for="body" class="visually-hidden">Post body</label>
+  <openleaf-editor for="body" aria-label="Post body"></openleaf-editor>
+  <textarea id="body" name="body" hidden>
+    <h2>Try editing this</h2>
+    <p>Ordinary HTML in, ordinary HTML out — <strong>bold</strong>, <em>italic</em>,
+    <a href="https://github.com/PeytonNowlin/openleaf">links</a>, and lists all
+    round-trip without a proprietary format in sight.</p>
+    <div class="callout" data-callout-id="7">
+      <p>This <code>&lt;div class="callout"&gt;</code> is markup OpenLeaf does not
+      recognise. Rather than silently deleting it — which is what a schema-strict
+      editor does by default — it is preserved intact. Select it and press a key
+      to replace it, then undo: it comes back byte-identical.</p>
+    </div>
+    <p dir="rtl">ونص من اليمين إلى اليسار، لأن اتجاه النص ليس تنسيقًا.</p>
+  </textarea>
+</div>
+
+<div class="controls" role="group" aria-label="Theme">
+  <button type="button" class="action" data-theme="" aria-pressed="true">Default</button>
+  <button type="button" class="action" data-theme="theme-violet" aria-pressed="false">Violet</button>
+  <button type="button" class="action" data-theme="theme-slate" aria-pressed="false">Slate</button>
+  <button type="button" class="action" data-theme="theme-touch" aria-pressed="false">Large targets</button>
+</div>
+<p class="subtitle" style="margin:0 0 1.5rem">
+  Each preset sets only CSS custom properties. No OpenLeaf internals are touched
+  and nothing is forked.
+</p>
+
+<h3>What the server would receive</h3>
+<div class="out" id="output" aria-live="off"></div>
+<p class="subtitle" style="margin:.5rem 0 0">
+  Updated on every change. This is the value of the bound
+  <code>&lt;textarea&gt;</code>, so existing server code reading
+  <code>$_POST['body']</code> keeps working untouched.
+</p>
+
+<h2 id="word">Paste from Microsoft Word</h2>
+<p class="lede">
+  This is the reason organisations pay for a rich text editor, and it is free here.
+</p>
+
+<p>
+  Word does not emit lists. It emits a flat run of paragraphs that merely
+  <em>look</em> like a list, with the real structure hidden in a proprietary CSS
+  property and the bullet glyph baked in as literal text. Press the button to push
+  genuine Word clipboard HTML through the editor.
+</p>
+
+<p class="controls">
+  <button type="button" class="action" id="paste-word">Paste a Word document</button>
+  <button type="button" class="action" id="paste-gdocs">Paste from Google Docs</button>
+  <button type="button" class="action" id="reset">Reset the editor</button>
+</p>
+
+<div class="row two">
+  <div>
+    <h3 style="margin-top:0">What Word puts on the clipboard</h3>
+    <pre id="word-in"></pre>
+  </div>
+  <div>
+    <h3 style="margin-top:0">What OpenLeaf stores</h3>
+    <div class="out" id="word-out"></div>
+  </div>
+</div>
+
+<h2 id="keyboard">Keyboard and screen readers</h2>
+<p class="lede">
+  The whole toolbar is a single tab stop, and <kbd>Tab</kbd> always leaves the editor.
+</p>
+
+<table>
+  <caption class="visually-hidden">Keyboard shortcuts</caption>
+  <thead><tr><th scope="col">Keys</th><th scope="col">Action</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>Alt</kbd>+<kbd>F10</kbd></td><td>Move focus into the toolbar</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Return focus and the selection to the content</td></tr>
+    <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Move between toolbar buttons</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>B</kbd> <kbd>I</kbd> <kbd>U</kbd></td><td>Bold, italic, underline</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>6</kbd></td><td>Headings</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>7</kbd> / <kbd>8</kbd></td><td>Numbered / bulleted list</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>[</kbd> <kbd>]</kbd></td><td>Outdent / indent a list item</td></tr>
+    <tr><td><kbd>Tab</kbd></td><td>Leaves the editor. Deliberately never captured.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Formatting changes are announced through a polite live region — but only on a real
+  change, never when the cursor merely moves through already-bold text. Toggling bold
+  with the keyboard says <em>“Bold on”</em>, because otherwise nothing observes it.
+</p>
+
+<h2 id="restricted">A smaller toolbar</h2>
+<p class="lede">
+  Plugins declare capability. Integrators declare layout. Installing a plugin never
+  silently rearranges somebody's toolbar.
+</p>
+
+<pre>&lt;openleaf-editor for="comment" toolbar="bold italic | link | undo redo"&gt;&lt;/openleaf-editor&gt;</pre>
+
+<div style="margin-top:1rem">
+  <label for="comment" class="visually-hidden">Comment</label>
+  <openleaf-editor for="comment" aria-label="Comment" toolbar="bold italic | link | undo redo"></openleaf-editor>
+  <textarea id="comment" hidden><p>A comment box needs four controls, not eighteen.</p></textarea>
+</div>
+
+<h2 id="use">Using it</h2>
+<p class="lede">No build step. A script tag and an element.</p>
+
+<pre>&lt;form method="post"&gt;
+  &lt;label for="body"&gt;Post body&lt;/label&gt;
+  &lt;openleaf-editor for="body" aria-label="Post body"&gt;&lt;/openleaf-editor&gt;
+  &lt;textarea id="body" name="body" hidden&gt;&lt;?= $post-&gt;body ?&gt;&lt;/textarea&gt;
+  &lt;button type="submit"&gt;Save&lt;/button&gt;
+&lt;/form&gt;
+
+&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;</pre>
+
+<p>
+  <strong>Sanitize on the server.</strong> Client-side sanitization is a
+  user-experience feature, not a security control — anything the editor strips can be
+  put back with developer tools. Treating editor output as trusted HTML is a
+  vulnerability in your application, and no configuration of OpenLeaf can fix it.
+</p>
+
+</main>
+
+<footer>
+  <p>
+    <a href="https://github.com/PeytonNowlin/openleaf">Source</a> ·
+    <a href="https://github.com/PeytonNowlin/openleaf/blob/main/GOVERNANCE.md">Governance</a> ·
+    <a href="https://github.com/PeytonNowlin/openleaf/blob/main/docs/toolbar-design-review.md">Design review</a> ·
+    <a href="https://github.com/PeytonNowlin/openleaf/issues">Report a problem</a>
+  </p>
+  <p>
+    Apache-2.0. Built on <a href="https://prosemirror.net">ProseMirror</a>.
+    Not affiliated with TinyMCE, CKEditor, or any other business using a similar name.
+  </p>
+</footer>
+
 <script src="./openleaf.min.js"></script>
+<script>
+(function () {
+  'use strict'
+
+  var main = document.querySelector('openleaf-editor')
+  var output = document.getElementById('output')
+  var bound = document.getElementById('body')
+
+  function renderOutput() {
+    output.textContent = bound.value
+  }
+  renderOutput()
+  main.addEventListener('openleaf:change', renderOutput)
+
+  /* ---- theme presets ------------------------------------------------- */
+  var THEMES = ['theme-violet', 'theme-slate', 'theme-touch']
+  var wrap = document.getElementById('editor-wrap')
+  document.querySelectorAll('[data-theme]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      THEMES.forEach(function (t) { wrap.classList.remove(t) })
+      var chosen = btn.getAttribute('data-theme')
+      if (chosen) wrap.classList.add(chosen)
+      document.querySelectorAll('[data-theme]').forEach(function (other) {
+        other.setAttribute('aria-pressed', String(other === btn))
+      })
+    })
+  })
+
+  /* ---- the paste demonstration --------------------------------------- */
+
+  // Genuine Word clipboard output, including the conditional-comment fencing
+  // around each bullet glyph and the mso-list property carrying the structure.
+  var WORD =
+    '<p class=MsoNormal style="line-height:normal"><span style=\'font-size:11.0pt;' +
+    'font-family:"Calibri",sans-serif\'>Quarterly review<o:p></o:p></span></p>\n' +
+    '<p class=MsoListParagraphCxSpFirst style="text-indent:-.25in;mso-list:l0 level1 lfo1">' +
+    '<!--[if !supportLists]--><span style=\'font-family:Symbol\'>·<span style=\'font:7.0pt "Times New Roman"\'>' +
+    '&nbsp;&nbsp; </span></span><!--[endif]-->Revenue up 12%<o:p></o:p></p>\n' +
+    '<p class=MsoListParagraphCxSpMiddle style="text-indent:-.5in;mso-list:l0 level2 lfo1">' +
+    '<!--[if !supportLists]--><span style=\'font-family:"Courier New"\'>o<span style=\'font:7.0pt\'>' +
+    '&nbsp;&nbsp; </span></span><!--[endif]-->North region led the quarter<o:p></o:p></p>\n' +
+    '<p class=MsoListParagraphCxSpLast style="text-indent:-.25in;mso-list:l0 level1 lfo1">' +
+    '<!--[if !supportLists]--><span style=\'font-family:Symbol\'>·<span style=\'font:7.0pt\'>' +
+    '&nbsp;&nbsp; </span></span><!--[endif]-->Churn down to <b style=\'mso-bidi-font-weight:normal\'>3.1%</b>' +
+    '<o:p></o:p></p>'
+
+  var GDOCS =
+    '<meta charset="utf-8"><b style="font-weight:normal" id="docs-internal-guid-9f8e7d6c">' +
+    '<p dir="ltr" style="line-height:1.38;margin-top:0pt;margin-bottom:0pt">' +
+    '<span style="font-size:11pt;font-family:Arial,sans-serif;color:#000000;font-weight:400;' +
+    'white-space:pre-wrap">Pasted from Google Docs, with </span>' +
+    '<span style="font-size:11pt;font-weight:700;white-space:pre-wrap">a genuinely bold run</span>' +
+    '<span style="font-size:11pt;white-space:pre-wrap"> inside a wrapper that claims to be bold and is not.</span>' +
+    '</p></b>'
+
+  var wordIn = document.getElementById('word-in')
+  var wordOut = document.getElementById('word-out')
+
+  /**
+   * Deliver HTML through the editor's real paste path where the browser allows
+   * a constructed ClipboardEvent, and fall back to the exported normalizer
+   * otherwise. Firefox returns a null clipboardData from the constructor, so
+   * without the fallback this demo would silently do nothing there.
+   */
+  function paste(html) {
+    main.value = '<p></p>'
+    var region = main.querySelector('.ProseMirror')
+    var delivered = false
+    try {
+      var data = new DataTransfer()
+      data.setData('text/html', html)
+      var event = new ClipboardEvent('paste', {
+        clipboardData: data, bubbles: true, cancelable: true
+      })
+      if (event.clipboardData && event.clipboardData.getData('text/html') === html) {
+        region.focus()
+        region.dispatchEvent(event)
+        delivered = true
+      }
+    } catch (error) {
+      delivered = false
+    }
+    if (!delivered && window.OpenLeaf && window.OpenLeaf.normalizePastedHtml) {
+      main.value = window.OpenLeaf.normalizePastedHtml(html)
+    }
+    renderOutput()
+    wordOut.textContent = bound.value
+    document.getElementById('word').scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  document.getElementById('paste-word').addEventListener('click', function () {
+    wordIn.textContent = WORD
+    paste(WORD)
+  })
+
+  document.getElementById('paste-gdocs').addEventListener('click', function () {
+    wordIn.textContent = GDOCS
+    paste(GDOCS)
+  })
+
+  document.getElementById('reset').addEventListener('click', function () {
+    location.reload()
+  })
+
+  wordIn.textContent = WORD
+})()
+</script>
 </body>
 </html>

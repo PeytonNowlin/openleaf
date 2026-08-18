@@ -276,6 +276,13 @@ export class OpenLeafEditor extends HTMLElement {
   }
 }
 
+/**
+ * Re-exported so the single-file bundle can offer paste normalization without a
+ * second script tag. Useful for custom paste handling, and for normalizing
+ * clipboard HTML somewhere other than the editor.
+ */
+export { normalizePastedHtml } from '@openleaf/paste'
+
 /** Idempotent: safe to import twice, or alongside a bundled copy. */
 export function defineOpenLeafEditor(tag = 'openleaf-editor'): void {
   if (typeof customElements === 'undefined') return

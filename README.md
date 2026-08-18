@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <a href="https://peytonnowlin.github.io/openleaf/"><strong>Try the live demo &rarr;</strong></a>
+</p>
+
+<p align="center">
   <a href="#the-toolbar">Toolbar</a> &middot;
   <a href="#round-trip-fidelity">Fidelity</a> &middot;
   <a href="#paste-fidelity">Paste</a> &middot;
@@ -34,7 +38,7 @@
 > - **Paste normalizers for Word and Google Docs** — reconstructs real nested
 >   `<ul>`/`<ol>` from Word's `mso-list` markup, strips the vendor styling, and
 >   parses to **zero** preserved atoms
-> - **A working toolbar** — 18 controls, `role="toolbar"` with a roving tabindex,
+> - **A working toolbar** — 17 controls, `role="toolbar"` with a roving tabindex,
 >   `Alt+F10` in and `Escape` out, live-region announcements, link and image
 >   dialogs, source view, and a CSS-custom-property theme API
 > - `<openleaf-editor>` verified in **real browsers** — 44 tests across Chromium,
@@ -214,7 +218,13 @@ markup on the most ordinary user action there is.
 
 ## The toolbar
 
-Eighteen controls, grouped and separated:
+> [**Try it live**](https://peytonnowlin.github.io/openleaf/) — including a
+> one-click "paste a Word document" demonstration that pushes genuine Word
+> clipboard HTML through the editor so you can see the `mso-list` reconstruction
+> happen.
+
+Seventeen controls — sixteen buttons and a block-type select — grouped and
+separated:
 
 ```
 [ undo redo | Paragraph ▾ | B I U S <> | • 1. " {} | link unlink img — | </> ]
@@ -237,7 +247,7 @@ document.
 | `Tab` | leaves the editor entirely — never captured |
 
 The whole toolbar is **one tab stop**. Without that, Tab from the editable
-region walks a keyboard user through eighteen buttons before they reach their own
+region walks a keyboard user through sixteen buttons before they reach their own
 content.
 
 Two details that took a review to get right, both written up in
@@ -544,11 +554,14 @@ The most useful contributions at this stage, in order:
    CKEditor for a specific reason, that reason should shape the roadmap. Open
    an issue.
 
+The fastest way to try it is [the hosted demo](https://peytonnowlin.github.io/openleaf/) —
+no clone, no install. To work on it:
+
 ```bash
 pnpm install
 pnpm exec playwright install   # first time only
 
-pnpm verify                    # the whole gate. ~13 seconds.
+pnpm verify                    # the whole gate. ~20 seconds.
 ```
 
 `pnpm verify` runs four checks and is the single command that matters:

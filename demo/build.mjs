@@ -1,9 +1,19 @@
 // Produces the single-file drop-in: the artifact that makes the
 // "no build step required" promise true for CMS integrators.
+import { cpSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 
 const src = (rel) => fileURLToPath(new URL(rel, import.meta.url))
+
+// Copy the brand assets in beside index.html. demo/ is deployed verbatim as the
+// site root, so keeping assets adjacent means the local page and the published
+// page are the same file with the same paths -- nothing is rewritten at deploy
+// time and nothing can differ between what was tested and what ships.
+mkdirSync(src('./assets'), { recursive: true })
+for (const asset of ['openleaf-logo.png', 'openleaf-mark.png']) {
+  cpSync(src(`../assets/${asset}`), src(`./assets/${asset}`))
+}
 
 const result = await build({
   entryPoints: [src('../packages/element/src/index.ts')],

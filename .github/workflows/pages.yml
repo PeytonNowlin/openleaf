@@ -1,0 +1,55 @@
+name: Demo site
+
+# NOTE: this workflow DOES run on push, unlike ci.yml which is manual-only.
+#
+# That is deliberate rather than an oversight. CI was made manual because
+# installing three browser engines took over fifteen minutes per push. This job
+# installs no browsers and finishes in well under a minute, and a demo site that
+# silently falls behind main is worse than no demo site -- the whole reason it
+# exists is to be the current thing people can try.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deploy in progress: a half-published site is worse than a
+# slightly stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the bundle and copy assets
+        # demo/ is published verbatim as the site root, so the page that ships
+        # is byte-identical to the one developed against locally.
+        run: node demo/build.mjs
+
+      - name: Fail if the bundle is missing
+        # An empty or partial deploy would replace a working site with a broken
+        # one, and Pages has no automatic rollback.
+        run: test -s demo/openleaf.min.js && test -s demo/assets/openleaf-logo.png
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: demo
+      - id: deployment
+        uses: actions/deploy-pages@v4
