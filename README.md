@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="assets/openleaf-logo.png" alt="OpenLeaf" width="340">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/openleaf-logo-dark.png">
+    <img src="assets/openleaf-logo.png" alt="OpenLeaf" width="420">
+  </picture>
 </p>
 
 <p align="center">
@@ -286,9 +289,47 @@ Disabled controls use `aria-disabled`, never the `disabled` attribute: a disable
 button drops out of the roving tabindex and becomes undiscoverable to a screen
 reader user.
 
-### Theming
+### Skins and theming
 
-Set custom properties. No forking, no `!important`, no internals touched:
+Four skins ship built in — `midnight`, `paper`, `contrast` and `compact` — plus
+a forced colour scheme:
+
+```html
+<openleaf-editor for="body" skin="midnight" theme="dark"></openleaf-editor>
+```
+
+`theme` is `light`, `dark`, or `auto` (the default, following the visitor's
+system). Both attributes apply on change, so a host that lets a person switch
+appearance does not rebuild the editor — **a colour change must not cost the
+author their undo history.**
+
+A skin is **a block of CSS custom properties and nothing else.** That is the
+whole design: a skin cannot reference an internal class, so an internal rename
+cannot break it. TinyMCE skins are compiled stylesheets that know the editor's
+class names, which is exactly why upgrading can break one. The trade is that a
+skin here can restyle the toolbar but not restructure it — a theme that survives
+upgrades is worth more than one that can move a button.
+
+Registering your own is the same shape:
+
+```ts
+import { registerSkin } from '@openleaf/ui'
+
+registerSkin({
+  name: 'acme',
+  label: 'Acme brand',
+  tokens: '--openleaf-color-accent: #c2185b; --openleaf-radius: 12px;',
+})
+```
+
+`compact` changes density only, so it composes with any palette — and it still
+clears the WCAG 2.2 SC 2.5.8 minimum target size, because "compact" is not a
+licence to go under it. `contrast` thickens the focus ring rather than only
+recolouring it, since colour alone is what fails first for someone who needs it.
+
+### Theming directly
+
+Or just set the properties. No forking, no `!important`, no internals touched:
 
 ```css
 .my-cms openleaf-editor {
@@ -308,6 +349,10 @@ The full public token set: `--openleaf-font-ui`, `--openleaf-font-mono`,
 `--openleaf-color-border`, `--openleaf-color-accent`, `--openleaf-color-focus`,
 `--openleaf-focus-width`, `--openleaf-focus-offset`, `--openleaf-button-size`,
 `--openleaf-icon-size`, `--openleaf-gap`, `--openleaf-z-index`.
+
+Plugins contribute their own CSS through `registerStyles()`, which uses the same
+CSP-safe constructable-stylesheet path — the reasoning lives in one place rather
+than being copied into each plugin.
 
 Light and dark are both built in and follow `prefers-color-scheme`;
 `prefers-reduced-motion` and `forced-colors` are respected, with the pressed

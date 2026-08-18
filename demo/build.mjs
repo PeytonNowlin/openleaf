@@ -27,7 +27,7 @@ const src = (rel) => fileURLToPath(new URL(rel, import.meta.url))
 // site root, so keeping assets adjacent means the local page and the published
 // page are the same file with the same paths.
 mkdirSync(src('./assets'), { recursive: true })
-for (const asset of ['openleaf-logo.png', 'openleaf-mark.png']) {
+for (const asset of ['openleaf-logo.png', 'openleaf-logo-dark.png', 'openleaf-mark.png']) {
   cpSync(src(`../assets/${asset}`), src(`./assets/${asset}`))
 }
 

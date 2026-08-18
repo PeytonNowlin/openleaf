@@ -21,6 +21,8 @@
  *
  * Attributes:
  *   for          id of the textarea to bind to
+ *   skin         named appearance: midnight, paper, contrast, compact
+ *   theme        light | dark | auto (default: follow the visitor's system)
  *   toolbar      space-separated item ids, `|` for a separator; `none` to omit
  *   readonly     render but do not allow editing
  *   aria-label   accessible name for the editable region
@@ -39,8 +41,12 @@ import { normalizePastedHtml } from '@openleaf/paste'
 import {
   SOURCE_TOGGLE_EVENT,
   Toolbar,
+  applyColourScheme,
+  applySkin,
+  ensureSkins,
   ensureStyles,
   registerDefaultItems,
+  type ColourScheme,
 } from '@openleaf/ui'
 import { baseKeymap } from 'prosemirror-commands'
 import { history } from 'prosemirror-history'
@@ -63,7 +69,22 @@ export const SOURCE_CLOSE_EVENT = 'openleaf:source-close'
 
 export class OpenLeafEditor extends HTMLElement {
   static get observedAttributes(): string[] {
-    return ['for', 'readonly']
+    return ['for', 'readonly', 'skin', 'theme']
+  }
+
+  /**
+   * Appearance attributes are applied on change as well as at build time, so a
+   * host that lets a person switch theme does not have to rebuild the editor --
+   * which would cost them their undo history for a colour change.
+   */
+  attributeChangedCallback(name: string): void {
+    if (name === 'skin') applySkin(this, this.getAttribute('skin'))
+    if (name === 'theme') applyColourScheme(this, this.#colourScheme())
+  }
+
+  #colourScheme(): ColourScheme {
+    const value = this.getAttribute('theme')
+    return value === 'light' || value === 'dark' ? value : 'auto'
   }
 
   #view: EditorView | null = null
@@ -119,6 +140,9 @@ export class OpenLeafEditor extends HTMLElement {
   #build(): void {
     registerDefaultItems()
     ensureStyles(this.ownerDocument)
+    ensureSkins(this.ownerDocument)
+    applySkin(this, this.getAttribute('skin'))
+    applyColourScheme(this, this.#colourScheme())
 
     this.#textarea = this.#findTextarea()
     const initialHtml = this.#textarea?.value ?? this.innerHTML

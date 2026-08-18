@@ -446,36 +446,40 @@ export function markStylesExternal(): void {
 }
 
 const injected = new WeakSet<Document>()
+const registered = new Map<Document, Set<string>>()
 let warned = false
 
 /**
- * Ensure the stylesheet is present. Safe to call repeatedly.
+ * Attach a stylesheet through the CSP-safe path.
  *
- * Returns how the styles were delivered, which the tests use to confirm the
- * CSP-safe path is the one actually taken.
+ * Public because plugins need it. The highlighting plugin previously
+ * hand-rolled this -- the same constructable-stylesheet dance, the same
+ * fallback, the same warning -- which meant the CSP reasoning lived in two
+ * places and only one of them would get fixed.
  *
- * There is deliberately **no `<style>` injection fallback**. It looks like a
- * safety net and is the opposite: it fails under exactly the strict-CSP
- * configurations it would be needed for, and it fails *silently* -- a blocked
- * injection leaves an unstyled toolbar and no signal an integrator can act on.
- * A console warning pointing at the real stylesheet is more useful than a
- * mechanism that quietly does nothing.
+ * Deduplicated per document by the CSS text itself, so calling it twice from a
+ * bundle loaded twice is harmless.
  */
-export function ensureStyles(doc: Document): 'external' | 'adopted' | 'unavailable' | 'already' {
-  if (externallyProvided) return 'external'
-  if (injected.has(doc)) return 'already'
+export function registerStyles(css: string, target?: Document): 'adopted' | 'unavailable' | 'already' {
+  const doc = target ?? (typeof document !== 'undefined' ? document : undefined)
+  if (!doc) return 'unavailable'
 
-  // CSP gates resources *parsed as style* -- <style> elements, style
-  // attributes, linked stylesheets. A CSSOM object built via replaceSync and
-  // attached through adoptedStyleSheets never passes through that gate, by
-  // design. It also lands after the document's own stylesheets in the cascade,
-  // so OpenLeaf wins specificity ties against host CSS regardless of timing.
+  let seen = registered.get(doc)
+  if (!seen) {
+    seen = new Set()
+    registered.set(doc, seen)
+  }
+  if (seen.has(css)) return 'already'
+
+  // CSP gates resources *parsed as style* -- <style> elements, style attributes,
+  // linked stylesheets. A CSSOM object attached through adoptedStyleSheets never
+  // passes through that gate, by design rather than by loophole.
   if (typeof CSSStyleSheet !== 'undefined' && 'adoptedStyleSheets' in Document.prototype) {
     try {
       const sheet = new CSSStyleSheet()
-      sheet.replaceSync(CSS)
+      sheet.replaceSync(css)
       doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
-      injected.add(doc)
+      seen.add(css)
       return 'adopted'
     } catch {
       /* fall through to the warning */
@@ -492,4 +496,20 @@ export function ensureStyles(doc: Document): 'external' | 'adopted' | 'unavailab
     )
   }
   return 'unavailable'
+}
+
+/**
+ * Ensure the editor's own stylesheet is present. Safe to call repeatedly.
+ *
+ * There is deliberately **no `<style>` injection fallback**. It looks like a
+ * safety net and is the opposite: it fails under exactly the strict-CSP
+ * configurations it would be needed for, and it fails *silently* -- a blocked
+ * injection leaves an unstyled toolbar and no signal an integrator can act on.
+ */
+export function ensureStyles(doc: Document): 'external' | 'adopted' | 'unavailable' | 'already' {
+  if (externallyProvided) return 'external'
+  if (injected.has(doc)) return 'already'
+  const outcome = registerStyles(CSS, doc)
+  if (outcome === 'adopted') injected.add(doc)
+  return outcome
 }

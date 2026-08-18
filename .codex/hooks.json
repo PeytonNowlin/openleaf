@@ -1,0 +1,76 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "_paneflow_managed": true,
+        "hooks": [
+          {
+            "command": "/Users/peytonnowlin/Library/Caches/paneflow/bin/0.8.2/paneflow-ai-hook PermissionRequest",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "_paneflow_managed": true,
+        "hooks": [
+          {
+            "command": "/Users/peytonnowlin/Library/Caches/paneflow/bin/0.8.2/paneflow-ai-hook PostToolUse",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "_paneflow_managed": true,
+        "hooks": [
+          {
+            "command": "/Users/peytonnowlin/Library/Caches/paneflow/bin/0.8.2/paneflow-ai-hook PreToolUse",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "_paneflow_managed": true,
+        "hooks": [
+          {
+            "command": "/Users/peytonnowlin/Library/Caches/paneflow/bin/0.8.2/paneflow-ai-hook SessionStart",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "_paneflow_managed": true,
+        "hooks": [
+          {
+            "command": "/Users/peytonnowlin/Library/Caches/paneflow/bin/0.8.2/paneflow-ai-hook Stop",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "_paneflow_managed": true,
+        "hooks": [
+          {
+            "command": "/Users/peytonnowlin/Library/Caches/paneflow/bin/0.8.2/paneflow-ai-hook UserPromptSubmit",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}

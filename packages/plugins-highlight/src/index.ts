@@ -17,6 +17,7 @@
  */
 
 import { registerEditorPlugin } from '@openleaf/core'
+import { registerStyles } from '@openleaf/ui'
 import { codeBlockHighlighting } from './codeblock.js'
 import { HIGHLIGHT_CSS } from './theme.js'
 import { watchSourceViews } from './source.js'
@@ -50,24 +51,11 @@ export function installSyntaxHighlighting(): void {
   if (installed) return
   installed = true
 
-  // Styles go in through the same CSP-safe path the core bundle uses. A
-  // constructable stylesheet is not an inline style, so `style-src 'self'`
-  // does not block it.
+  // Through @openleaf/ui rather than hand-rolled: the CSP reasoning belongs in
+  // one place, and a copy of it here would be the copy nobody updates.
+  registerStyles(HIGHLIGHT_CSS)
+
   if (typeof document !== 'undefined') {
-    try {
-      if ('adoptedStyleSheets' in Document.prototype) {
-        const sheet = new CSSStyleSheet()
-        sheet.replaceSync(HIGHLIGHT_CSS)
-        document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
-      } else {
-        console.warn(
-          '@openleaf/plugins-highlight: no adoptedStyleSheets support; ' +
-            'link the stylesheet from the package instead.',
-        )
-      }
-    } catch (error) {
-      console.error('@openleaf/plugins-highlight: could not install styles', error)
-    }
     watchSourceViews(document)
   }
 

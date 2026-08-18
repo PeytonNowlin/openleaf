@@ -39,7 +39,7 @@
   main, header { max-width: var(--page-max); margin: 0 auto; }
 
   header { text-align: center; padding: 3rem 0 1rem; }
-  header img { width: min(320px, 70vw); height: auto; }
+  header img { width: min(420px, 82vw); height: auto; }
   .tagline { font-size: 1.15rem; margin: .5rem 0 0; }
   .subtitle { color: var(--page-muted); margin: .5rem auto 1.5rem; max-width: 38rem; }
 
@@ -120,30 +120,7 @@
   }
   a { color: inherit; }
 
-  /* Theme presets, applied by toggling a class on a wrapper. Every one of these
-     is only custom properties -- no OpenLeaf internals are touched, which is the
-     whole point of the token API. */
-  .theme-violet {
-    --openleaf-color-accent: #7c3aed;
-    --openleaf-color-surface-active: #ede9fe;
-    --openleaf-color-focus: #7c3aed;
-    --openleaf-radius: 10px;
-  }
-  .theme-slate {
-    --openleaf-color-surface: #1e293b;
-    --openleaf-color-surface-hover: #334155;
-    --openleaf-color-surface-active: #0f766e;
-    --openleaf-color-text: #e2e8f0;
-    --openleaf-color-border: #475569;
-    --openleaf-color-accent: #5eead4;
-    --openleaf-color-focus: #5eead4;
-  }
-  .theme-touch {
-    --openleaf-button-size: 44px;
-    --openleaf-icon-size: 20px;
-    --openleaf-gap: 6px;
-  }
-  .visually-hidden {
+        .visually-hidden {
     position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
     overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
   }
@@ -152,7 +129,10 @@
 <body>
 
 <header>
-  <img src="assets/openleaf-logo.png" alt="OpenLeaf">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/openleaf-logo-dark.png">
+    <img src="assets/openleaf-logo.png" alt="OpenLeaf">
+  </picture>
   <p class="tagline"><strong>A rich text editor for the web that is actually free.</strong></p>
   <p class="subtitle">
     Apache-2.0. No paid tier, no license keys, no telemetry, no cloud dependency —
@@ -215,15 +195,23 @@ const ratio = width / height   // division, not a regex
   </textarea>
 </div>
 
-<div class="controls" role="group" aria-label="Theme">
-  <button type="button" class="action" data-theme="" aria-pressed="true">Default</button>
-  <button type="button" class="action" data-theme="theme-violet" aria-pressed="false">Violet</button>
-  <button type="button" class="action" data-theme="theme-slate" aria-pressed="false">Slate</button>
-  <button type="button" class="action" data-theme="theme-touch" aria-pressed="false">Large targets</button>
+<div class="controls" role="group" aria-label="Skin">
+  <button type="button" class="action" data-skin="" aria-pressed="true">Default skin</button>
+  <button type="button" class="action" data-skin="midnight" aria-pressed="false">Midnight</button>
+  <button type="button" class="action" data-skin="paper" aria-pressed="false">Paper</button>
+  <button type="button" class="action" data-skin="contrast" aria-pressed="false">High contrast</button>
+  <button type="button" class="action" data-skin="compact" aria-pressed="false">Compact</button>
+  <button type="button" class="action" id="skin-acme" aria-pressed="false">Register one at runtime</button>
+</div>
+<div class="controls" role="group" aria-label="Colour scheme">
+  <button type="button" class="action" data-scheme="auto" aria-pressed="true">Follow system</button>
+  <button type="button" class="action" data-scheme="light" aria-pressed="false">Light</button>
+  <button type="button" class="action" data-scheme="dark" aria-pressed="false">Dark</button>
 </div>
 <p class="subtitle" style="margin:0 0 1.5rem">
-  Each preset sets only CSS custom properties. No OpenLeaf internals are touched
-  and nothing is forked.
+  A skin is a block of CSS custom properties and nothing else — it cannot
+  reference an internal class, so an internal rename cannot break it. Switching
+  one keeps your undo history, because nothing is rebuilt.
 </p>
 
 <p class="subtitle" style="margin:0 0 1rem">
@@ -488,19 +476,49 @@ const ratio = width / height   // division, not a regex
   renderOutput()
   main.addEventListener('openleaf:change', renderOutput)
 
-  /* ---- theme presets ------------------------------------------------- */
-  var THEMES = ['theme-violet', 'theme-slate', 'theme-touch']
-  var wrap = document.getElementById('editor-wrap')
-  document.querySelectorAll('[data-theme]').forEach(function (btn) {
+  /* ---- skins and colour scheme ------------------------------------- */
+
+  function press(group, active) {
+    document.querySelectorAll(group).forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b === active))
+    })
+  }
+
+  document.querySelectorAll('[data-skin]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      THEMES.forEach(function (t) { wrap.classList.remove(t) })
-      var chosen = btn.getAttribute('data-theme')
-      if (chosen) wrap.classList.add(chosen)
-      document.querySelectorAll('[data-theme]').forEach(function (other) {
-        other.setAttribute('aria-pressed', String(other === btn))
-      })
+      const skin = btn.getAttribute('data-skin')
+      if (skin) main.setAttribute('skin', skin)
+      else main.removeAttribute('skin')
+      press('[data-skin], #skin-acme', btn)
     })
   })
+
+  document.querySelectorAll('[data-scheme]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      main.setAttribute('theme', btn.getAttribute('data-scheme'))
+      press('[data-scheme]', btn)
+    })
+  })
+
+  const acmeButton = document.getElementById('skin-acme')
+  if (acmeButton) {
+    acmeButton.addEventListener('click', function () {
+      // Exactly what a site would do to ship its own brand.
+      window.OpenLeaf.__runtime['@openleaf/ui'].registerSkin({
+        name: 'acme',
+        label: 'Acme brand',
+        tokens: [
+          '--openleaf-color-accent: #c2185b',
+          '--openleaf-color-surface-active: #fce4ec',
+          '--openleaf-color-focus: #c2185b',
+          '--openleaf-radius: 12px',
+          '--openleaf-button-size: 36px',
+        ].join(';'),
+      })
+      main.setAttribute('skin', 'acme')
+      press('[data-skin], #skin-acme', acmeButton)
+    })
+  }
 
   /* ---- the paste demonstration --------------------------------------- */
 
