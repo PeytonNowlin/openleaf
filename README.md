@@ -1,15 +1,29 @@
-# Openleaf
+<p align="center">
+  <img src="assets/openleaf-logo.png" alt="Openleaf" width="340">
+</p>
 
-**A rich text editor for the web that is actually free.** Apache-2.0, no paid
-tier, no license key, no phone-home, no cloud dependency — and built so that
-it cannot quietly destroy your content.
+<p align="center">
+  <strong>A rich text editor for the web that is actually free.</strong><br>
+  Apache-2.0 &middot; no paid tier &middot; no license key &middot; no phone-home &middot; no cloud dependency<br>
+  &mdash; and built so that it cannot quietly destroy your content.
+</p>
+
+<p align="center">
+  <a href="#the-toolbar">Toolbar</a> &middot;
+  <a href="#round-trip-fidelity">Fidelity</a> &middot;
+  <a href="#paste-fidelity">Paste</a> &middot;
+  <a href="#the-road-ahead">Roadmap</a> &middot;
+  <a href="#guarantees">Guarantees</a>
+</p>
 
 ---
 
-> ## ⚠️ Status: pre-alpha. Foundations only.
+> ## ⚠️ Status: pre-alpha
 >
-> This repository was started on **2026-08-18**. **Nothing here is usable in
-> production yet, and there is currently no user interface at all.**
+> This repository was started on **2026-08-18**. There is now a working editor
+> with a toolbar, but **it has not been used in production by anybody, and its
+> accessibility has never been driven by a real screen reader.** Treat it
+> accordingly.
 >
 > **What works and is tested today**
 > - The document schema and HTML in / HTML out pipeline
@@ -20,16 +34,21 @@ it cannot quietly destroy your content.
 > - **Paste normalizers for Word and Google Docs** — reconstructs real nested
 >   `<ul>`/`<ol>` from Word's `mso-list` markup, strips the vendor styling, and
 >   parses to **zero** preserved atoms
-> - `<openleaf-editor>` verified in **real browsers** — 15 tests across
->   Chromium, Firefox and WebKit (41 passing runs): loads stored HTML, accepts
->   typing, pastes from Word and Google Docs, writes back to the textarea, posts
->   through a real form submit, and does not alter a document that is opened and
->   saved untouched
-> - A single-file bundle: **67 KB gzipped** including the whole editing engine
+> - **A working toolbar** — 18 controls, `role="toolbar"` with a roving tabindex,
+>   `Alt+F10` in and `Escape` out, live-region announcements, link and image
+>   dialogs, source view, and a CSS-custom-property theme API
+> - `<openleaf-editor>` verified in **real browsers** — 44 tests across Chromium,
+>   Firefox and WebKit (**128 passing runs**): loads stored HTML, accepts typing,
+>   pastes from Word and Google Docs, drives every toolbar control by keyboard,
+>   writes back to the textarea, posts through a real form submit, and does not
+>   alter a document that is opened and saved untouched
+> - A single-file bundle: **79 KB gzipped**, everything included
 >
 > **What does not exist yet**
-> - Any toolbar or visible UI (keyboard shortcuts only)
-> - Tables, images, server-side sanitizer package
+> - Tables, image upload (insert-by-URL only), server-side sanitizer package
+> - **Screen reader testing.** The ARIA is designed and unit-tested; it has not
+>   been driven by NVDA, JAWS, VoiceOver or ChromeVox. Until it has, this project
+>   does not claim WCAG conformance.
 > - Mobile and IME coverage — no touch, Android soft-keyboard or
 >   composition-event tests yet, which is where editors break hardest
 >
@@ -80,10 +99,10 @@ tables, the accessibility.
 The intended shape:
 
 ```
-core/            schema, HTML I/O, preservation. Zero framework deps.  [done]
-paste/           Word / Google Docs normalizers                        [done]
-element/         <openleaf-editor> custom element — the drop-in         [done]
-ui/              toolbar and dialog primitives, themed by CSS custom props
+core/            schema, HTML I/O, preservation, commands, keymap     [done]
+paste/           Word / Google Docs normalizers                       [done]
+ui/              toolbar, icons, dialogs, theme tokens                 [done]
+element/         <openleaf-editor> custom element — the drop-in        [done]
 plugins-*/       one package per feature, tree-shakeable
 sanitize/        one allowlist as data + matching node, php, python impls
 adapters-*/      thin react, vue, svelte, angular wrappers
@@ -193,6 +212,125 @@ markup on the most ordinary user action there is.
 
 ---
 
+## The toolbar
+
+Eighteen controls, grouped and separated:
+
+```
+[ undo redo | Paragraph ▾ | B I U S <> | • 1. " {} | link unlink img — | </> ]
+   history     block type     marks       blocks       insertions      source
+```
+
+History sits leftmost because it is what an author reaches for under stress and
+muscle memory puts it there in every office application. Source view sits
+rightmost and alone, because it changes the editor's *mode* rather than the
+document.
+
+### The keyboard model
+
+| | |
+|---|---|
+| `Alt+F10` | move focus into the toolbar (same as TinyMCE and CKEditor, so muscle memory transfers) |
+| `Escape` | return focus **and the selection** to the content, from anywhere in the toolbar |
+| `←` `→` | move between buttons |
+| `Home` `End` | first / last button |
+| `Tab` | leaves the editor entirely — never captured |
+
+The whole toolbar is **one tab stop**. Without that, Tab from the editable
+region walks a keyboard user through eighteen buttons before they reach their own
+content.
+
+Two details that took a review to get right, both written up in
+[docs/toolbar-design-review.md](docs/toolbar-design-review.md):
+
+- **Arrow-key roving applies only to `<button>` elements.** The block-type
+  control is a native `<select>`, where Left/Right have two competing owners.
+  It is a separate tab stop that keeps its own native key handling.
+- **Formatting changes are announced.** One polite, atomic, visually-hidden live
+  region says "Bold on" / "Bold off" — but only on a real formatting transition,
+  never when the cursor merely moved through already-bold text. `Ctrl+B` typed in
+  the content happens nowhere near the Bold button, so without this nothing
+  observes the change.
+
+Disabled controls use `aria-disabled`, never the `disabled` attribute: a disabled
+button drops out of the roving tabindex and becomes undiscoverable to a screen
+reader user.
+
+### Theming
+
+Set custom properties. No forking, no `!important`, no internals touched:
+
+```css
+.my-cms openleaf-editor {
+  --openleaf-color-accent: #6f42c1;
+  --openleaf-color-surface: #fbfbfd;
+  --openleaf-button-size: 36px;
+  --openleaf-radius: 8px;
+  --openleaf-z-index: 100;       /* above a sticky admin bar */
+  --openleaf-focus-width: 3px;   /* thickness, not just colour */
+}
+```
+
+The full public token set: `--openleaf-font-ui`, `--openleaf-font-mono`,
+`--openleaf-font-size`, `--openleaf-radius`, `--openleaf-color-text`,
+`--openleaf-color-text-muted`, `--openleaf-color-surface`,
+`--openleaf-color-surface-hover`, `--openleaf-color-surface-active`,
+`--openleaf-color-border`, `--openleaf-color-accent`, `--openleaf-color-focus`,
+`--openleaf-focus-width`, `--openleaf-focus-offset`, `--openleaf-button-size`,
+`--openleaf-icon-size`, `--openleaf-gap`, `--openleaf-z-index`.
+
+Light and dark are both built in and follow `prefers-color-scheme`;
+`prefers-reduced-motion` and `forced-colors` are respected, with the pressed
+state re-expressed as a border under forced colours since that mode discards
+backgrounds.
+
+### Choosing the controls
+
+```html
+<!-- a comment box needs four buttons, not eighteen -->
+<openleaf-editor for="comment" toolbar="bold italic | link | undo redo"></openleaf-editor>
+
+<!-- no toolbar at all -->
+<openleaf-editor for="title" toolbar="none"></openleaf-editor>
+```
+
+Plugins declare *capability*, integrators declare *layout*. A plugin registers a
+button; the `toolbar` attribute decides whether and where it appears. So
+installing a plugin never silently rearranges somebody's toolbar:
+
+```js
+import { registerToolbarItem } from '@openleaf/ui'
+
+registerToolbarItem({
+  id: 'insertTable',
+  type: 'button',
+  label: 'Insert table',
+  icon: 'bulletList',
+  command: insertTable,
+  isEnabled: (state) => canInsert(state, 'table'),
+})
+```
+
+For state a predicate cannot derive — an upload in flight, a collaborative lock
+held by someone else — push it instead: `editor.toolbar.setItemState('id',
+{ enabled: false })`.
+
+### Content Security Policy
+
+Styles ship as a **constructable stylesheet** attached via
+`document.adoptedStyleSheets`. CSP gates resources *parsed as style*, and a CSSOM
+object attached this way never passes through that gate — so the toolbar styles
+itself under `style-src 'self'` with no `'unsafe-inline'`, which is what
+government and enterprise integrators actually run. There is deliberately **no
+`<style>` injection fallback**: it is blocked by exactly the policies that would
+need it, and it fails silently. If `adoptedStyleSheets` is unavailable you get a
+console warning naming `@openleaf/ui/openleaf.css` to link instead.
+
+No `innerHTML` anywhere in the UI package either, so Trusted Types
+(`require-trusted-types-for 'script'`) does not block the icon sprite.
+
+---
+
 ## The road ahead
 
 Ordered by dependency, not by date. I would rather ship 100% of fifteen
@@ -226,12 +364,13 @@ Prove the architecture before building on it.
 
 The point at which someone could actually replace TinyMCE with this.
 
-- [ ] **Toolbar and UI primitives** — accessible by construction: real buttons,
-  roving tabindex, `aria-pressed` reflecting mark state, no `div onclick`.
-  The command layer underneath it is done: every button is a ProseMirror
-  command plus a selection predicate, both in `@openleaf/core`, so the toolbar
-  package holds no editing knowledge and a plugin, a keyboard shortcut and a
-  test all drive the editor the same way a button does.
+- [x] **Toolbar and UI primitives** — real buttons, roving tabindex,
+  `aria-pressed` reflecting mark state, no `div onclick`. Every button is a
+  ProseMirror command plus a selection predicate from `@openleaf/core`, so the
+  toolbar package holds no editing knowledge and a plugin, a keyboard shortcut
+  and a test all drive the editor the same way a button does. See
+  [the toolbar section](#the-toolbar) and
+  [docs/toolbar-design-review.md](docs/toolbar-design-review.md).
 - [x] **Paste normalizers** — Word and Google Docs done. The `mso-list` →
   real-nested-list conversion is, commercially, the single most valuable piece
   of code in this project: it is the number one reason organizations pay for
@@ -240,11 +379,12 @@ The point at which someone could actually replace TinyMCE with this.
   reconstructing it is harder than it sounds.
 - [ ] **Tables** — insert, delete row and column, merge, split, header rows.
   Their own package, because a CMS that forbids tables should not ship the code.
-- [ ] **Images** — upload hook, alt-text prompting (not optional, not skippable),
-  resize
+- [ ] **Images** — upload hook and resize. Insert-by-URL with alt-text
+  prompting already works.
 - [ ] **`@openleaf/sanitize`** — the allowlist as *data*, plus matching Node, PHP,
   and Python implementations. Every CMS team hand-rolls this and gets it wrong.
-- [ ] Source view, find and replace, alignment, colors, character count, autosave
+- [x] Source view
+- [ ] Find and replace, alignment, colors, character count, autosave
 - [ ] i18n scaffolding and a first non-English locale
 
 > **Done when** a real site is running Openleaf in production, editors are
@@ -286,11 +426,20 @@ Phase 1 core is *boringly* reliable. Saying so publicly is a feature.
 ### Accessibility, throughout
 
 Target is **WCAG 2.2 AA**, verified with real screen readers and stated per
-release. Openleaf will not claim a conformance level on the strength of
-axe-core passing — automated tooling catches roughly a third of real barriers,
-and the market that most needs a free editor (government, education,
-healthcare, nonprofits) is exactly the market that legally cannot adopt an
-inaccessible one. That alignment is not a coincidence worth wasting.
+release. Openleaf will not claim a conformance level on the strength of axe-core
+passing — automated tooling catches roughly a third of real barriers, and the
+market that most needs a free editor (government, education, healthcare,
+nonprofits) is exactly the market that legally cannot adopt an inaccessible one.
+That alignment is not a coincidence worth wasting.
+
+**Where that stands today, stated plainly:** the toolbar's ARIA is designed
+against the APG toolbar pattern, reviewed before it was written, and covered by
+29 browser tests that drive it entirely by keyboard. It has **not** been driven
+by a real screen reader. Until it has, there is no conformance claim to make.
+The testing matrix and the known open items are in
+[docs/toolbar-design-review.md](docs/toolbar-design-review.md); the priority
+order is NVDA + Firefox, JAWS + Chrome, VoiceOver + Safari, then ChromeVox on
+ChromeOS — which is not optional, because K-12 is majority Chromebook.
 
 ---
 
@@ -316,9 +465,22 @@ Content is stored as **HTML**, not a proprietary JSON document model. A site
 that adopts Openleaf and later abandons it is left with content it can still
 render. Lock-in is not a retention strategy here.
 
-**Current size:** 216 KB minified, **67 KB gzipped** for the complete drop-in,
-including ProseMirror's view, state, history and keymap, plus the Word and
-Google Docs paste normalizers. CI fails above 90 KB gzipped.
+**Current size:** 254 KB minified, **79 KB gzipped** for the complete drop-in —
+editing engine, paste normalizers, toolbar, icons and dialogs. The gate fails
+above 90 KB gzipped, so there is **11 KB of headroom left**, and tables,
+alignment, colours and find-and-replace all have to fit in it.
+
+Openleaf's own code is 45 KB of the 253 KB raw total; the other 82% is the
+ProseMirror engine. `node demo/build.mjs --sizes` prints the per-package
+breakdown, because an aggregate gate tells you the bundle no longer fits but not
+which feature spent the budget — so the blame lands on whatever shipped last:
+
+```
+prosemirror-view      95.8 KB      @openleaf/ui        27.0 KB
+prosemirror-model     43.9 KB      @openleaf/core       8.4 KB
+prosemirror-transform 30.2 KB      @openleaf/paste      6.1 KB
+prosemirror-state     11.6 KB      @openleaf/element    3.7 KB
+```
 
 ## Security
 
@@ -367,12 +529,18 @@ The most useful contributions at this stage, in order:
    paste, 2009 WordPress, Mailchimp templates, CKEditor output. Redact anything
    private, add it to `packages/core/test/fixtures/stored/`, open a PR. If it
    fails, that is a bug found before a user found it.
-2. **Mobile and IME browser coverage.** Touch selection, Android
-   soft-keyboard behaviour, and composition events for Japanese, Korean and
-   Chinese input. The desktop engines are covered; these are not, and they are
-   where editors break hardest.
-3. **Accessibility bug reports** naming the assistive technology and version.
-4. **Tell me your migration blockers.** If you are stuck on TinyMCE or
+2. **Run a screen reader over the toolbar.** NVDA, JAWS, VoiceOver or ChromeVox
+   — say which and which version, and tell us what it actually said. This is the
+   single highest-value contribution available right now: the ARIA is designed
+   and keyboard-tested, and nobody has listened to it.
+3. **Mobile and IME browser coverage.** Touch selection, Android soft-keyboard
+   behaviour, and composition events for Japanese, Korean and Chinese input. The
+   desktop engines are covered; these are not, and they are where editors break
+   hardest. Specifically suspect: the `mousedown` + `preventDefault` trick that
+   keeps focus in the content has a history of interfering with VoiceOver's
+   synthesized touch activation on iOS.
+4. **Accessibility bug reports** naming the assistive technology and version.
+5. **Tell me your migration blockers.** If you are stuck on TinyMCE or
    CKEditor for a specific reason, that reason should shape the roadmap. Open
    an issue.
 
@@ -388,8 +556,8 @@ pnpm verify                    # the whole gate. ~13 seconds.
 | | |
 |---|---|
 | typecheck | strict TypeScript across every package |
-| unit tests | 94 tests including both round-trip fidelity corpora |
-| browser tests | Chromium, Firefox and WebKit against the real bundle |
+| unit tests | 138 tests including both round-trip fidelity corpora |
+| browser tests | 44 tests across Chromium, Firefox and WebKit against the real bundle |
 | bundle size | fails above 90 KB gzipped |
 
 Narrower loops while working:

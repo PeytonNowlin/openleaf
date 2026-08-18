@@ -3,34 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Openleaf drop-in demo</title>
+<title>Openleaf demo</title>
 <style>
   :root { color-scheme: light dark; }
-  body { font: 16px/1.6 system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
+  body { font: 16px/1.6 system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
   fieldset { border: 1px solid currentColor; border-radius: 6px; padding: 1rem; }
-  /* Chrome styles are namespaced; the CONTENT area deliberately inherits the
-     page's own typography, which is what makes this WYSIWYG for a CMS. */
-  .openleaf-content { min-height: 12rem; padding: .75rem; border: 1px solid currentColor;
-                      border-radius: 4px; background: Canvas; }
-  .openleaf-content:focus-within { outline: 2px solid Highlight; outline-offset: 2px; }
-  /* Preserved-but-unrecognised markup, surfaced rather than hidden: the user
-     can see it, move it, and delete it, but cannot corrupt it by typing. */
-  .openleaf-content [data-openleaf-unparsable] { outline: 1px dashed red; }
-  textarea { width: 100%; min-height: 8rem; font-family: ui-monospace, monospace; font-size: .8rem; }
-  /* ProseMirror marks a selected atom with this class. Preserved blocks can be
-     replaced by typing, so the selection must be unmistakable first. */
-  .openleaf-content .ProseMirror-selectednode {
-    outline: 2px solid Highlight;
-    outline-offset: 2px;
-    border-radius: 3px;
-  }
+  textarea#body { width: 100%; min-height: 8rem; font-family: ui-monospace, monospace; font-size: .8rem; }
+  /* Theming is done entirely through the published custom properties -- no
+     Openleaf internals are touched here, which is the point of the token API. */
+  .themed { --openleaf-color-accent: #6f42c1; --openleaf-radius: 8px; }
 </style>
 </head>
 <body>
-<h1>Openleaf drop-in demo</h1>
-<p>The editor below is a custom element bound to a textarea. Submitting the
-form posts HTML in <code>body</code>, exactly as a TinyMCE integration would.
-Paste something in from Word or Google Docs and watch the textarea.</p>
+<h1>Openleaf demo</h1>
+<p>A custom element bound to a textarea. Submitting posts HTML in <code>body</code>,
+exactly as a TinyMCE integration would. Try pasting from Word or Google Docs and
+watch the raw HTML.</p>
 
 <form id="f" onsubmit="event.preventDefault(); alert(document.getElementById('body').value)">
   <fieldset>
@@ -38,10 +26,11 @@ Paste something in from Word or Google Docs and watch the textarea.</p>
     <openleaf-editor for="body" aria-label="Post body"></openleaf-editor>
     <textarea id="body" name="body" hidden>
       <h2>An existing post</h2>
-      <p>Loaded from the textarea as ordinary HTML.</p>
+      <p>Loaded from the textarea as ordinary HTML. Try <strong>bold</strong>,
+      a list, or a link.</p>
       <div class="callout callout--warning" data-callout-id="7">
-        <p>This div has a load-bearing class, so it is preserved intact
-        rather than unwrapped. Try deleting it, then undo.</p>
+        <p>This div has a load-bearing class, so it is preserved intact rather
+        than unwrapped. Try deleting it, then undo.</p>
       </div>
       <p dir="rtl">ونص من اليمين إلى اليسار.</p>
     </textarea>
@@ -51,6 +40,23 @@ Paste something in from Word or Google Docs and watch the textarea.</p>
        Toggle raw HTML
      </button></p>
 </form>
+
+<h2>Keyboard and screen reader notes</h2>
+<ul>
+  <li><kbd>Alt</kbd>+<kbd>F10</kbd> moves focus into the toolbar; <kbd>Esc</kbd> returns to the content.</li>
+  <li>Arrow keys move between toolbar buttons — the whole toolbar is one tab stop.</li>
+  <li><kbd>Tab</kbd> is deliberately not captured, so it always leaves the editor.</li>
+  <li>List indentation is <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>[</kbd> and <kbd>]</kbd>.</li>
+</ul>
+
+<h2>A restricted toolbar</h2>
+<p>Integrators choose which controls appear, and in what order, with the
+<code>toolbar</code> attribute. This one is themed only through custom properties.</p>
+<div class="themed">
+  <openleaf-editor aria-label="Comment" toolbar="bold italic | link | undo redo">
+    <textarea><p>A comment box with four controls.</p></textarea>
+  </openleaf-editor>
+</div>
 
 <script src="./openleaf.min.js"></script>
 </body>

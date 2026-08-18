@@ -4,23 +4,18 @@
 <meta charset="utf-8">
 <title>Openleaf browser test harness</title>
 <style>
-  body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; }
-  .openleaf-content { min-height: 8rem; padding: .5rem; border: 1px solid #666; }
-  /* ProseMirror marks a selected atom with this class. Preserved blocks can be
-     replaced by typing, so the selection must be unmistakable first. */
-  .openleaf-content .ProseMirror-selectednode {
-    outline: 2px solid Highlight;
-    outline-offset: 2px;
-    border-radius: 3px;
-  }
+  /* Page chrome only. All editor styling comes from @openleaf/ui, delivered as
+     a constructable stylesheet, so this page deliberately styles nothing
+     inside the editor -- if it did, the tests would be checking this file. */
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; max-width: 46rem; }
 </style>
 </head>
 <body>
 <!--
   Mirrors the documented CMS integration exactly: a form, a hidden textarea
   carrying the stored HTML, and the element bound to it by id. If this page
-  needs anything the README does not tell integrators to do, the test is
-  lying about what we ship.
+  needs anything the README does not tell integrators to do, the test is lying
+  about what we ship.
 -->
 <form id="post-form" method="post" action="/submitted">
   <label for="body">Post body</label>

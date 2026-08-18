@@ -27,8 +27,48 @@ const result = await build({
     //     test against a dist that is older than the code.
     '@openleaf/core': src('../packages/core/src/index.ts'),
     '@openleaf/paste': src('../packages/paste/src/index.ts'),
+    '@openleaf/ui': src('../packages/ui/src/index.ts'),
   },
 })
 
 const out = Object.entries(result.metafile.outputs).find(([f]) => f.endsWith('openleaf.min.js'))
 console.log(`openleaf.min.js  ${(out[1].bytes / 1024).toFixed(1)} KB minified`)
+
+// Per-package attribution.
+//
+// The aggregate gate only says whether the bundle fits. It cannot say WHICH
+// feature spent the budget, so a regression only surfaces when whatever ships
+// last turns the gate red -- and the blame lands on the wrong change. This
+// breaks the total down by source package so the cost of tables, alignment or
+// colours is visible as it lands.
+if (process.argv.includes('--sizes')) {
+  const byPackage = new Map()
+  for (const [input, meta] of Object.entries(out[1].inputs ?? {})) {
+    // pnpm stores dependencies under node_modules/.pnpm/<name>@<version>/...,
+    // so the plain node_modules pattern collapses every dependency into
+    // ".pnpm". Match the real package name first.
+    const dep =
+      /node_modules\/\.pnpm\/(?:@[^+]+\+)?([^@/]+)@/.exec(input) ??
+      /node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(input)
+    const own = /packages\/([^/]+)\//.exec(input)
+    const key = own ? `@openleaf/${own[1]}` : (dep ? dep[1] : 'other')
+    byPackage.set(key, (byPackage.get(key) ?? 0) + meta.bytesInOutput)
+  }
+
+  const rows = [...byPackage].sort((a, b) => b[1] - a[1])
+  const ours = rows.filter(([name]) => name.startsWith('@openleaf/'))
+  const total = rows.reduce((sum, [, bytes]) => sum + bytes, 0)
+  const oursTotal = ours.reduce((sum, [, bytes]) => sum + bytes, 0)
+
+  const width = Math.max(...rows.map(([name]) => name.length))
+  console.log('\n  source breakdown (bytes in output, before gzip)')
+  console.log('  ' + '-'.repeat(width + 14))
+  for (const [name, bytes] of rows) {
+    console.log(`  ${name.padEnd(width)}  ${(bytes / 1024).toFixed(1).padStart(8)} KB`)
+  }
+  console.log('  ' + '-'.repeat(width + 14))
+  console.log(
+    `  Openleaf code is ${(oursTotal / 1024).toFixed(1)} KB of ${(total / 1024).toFixed(1)} KB` +
+      ` (${Math.round((oursTotal / total) * 100)}%); the rest is the ProseMirror engine.`,
+  )
+}

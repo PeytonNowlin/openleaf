@@ -1,0 +1,20 @@
+{
+  "name": "@openleaf/ui",
+  "version": "0.0.0",
+  "description": "Openleaf toolbar and UI primitives. Plain CSS, no framework, themeable by custom properties.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./openleaf.css": "./dist/openleaf.css"
+  },
+  "files": ["dist"],
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "@openleaf/core": "workspace:*",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-view": "^1.37.0"
+  }
+}

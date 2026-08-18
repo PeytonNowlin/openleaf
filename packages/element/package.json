@@ -21,6 +21,7 @@
   "dependencies": {
     "@openleaf/core": "workspace:*",
     "@openleaf/paste": "workspace:*",
+    "@openleaf/ui": "workspace:*",
     "prosemirror-commands": "^1.6.2",
     "prosemirror-history": "^1.4.1",
     "prosemirror-keymap": "^1.2.2",
