@@ -8,7 +8,7 @@
  *     and Django forms, not Vite projects.
  *
  *  2. HTML IN, HTML OUT. No proprietary document format. A CMS that adopts
- *     Openleaf and later drops it is left with content it can still render.
+ *     OpenLeaf and later drops it is left with content it can still render.
  *
  *  3. NO SHADOW DOM ON THE CONTENT AREA. Deliberate. CMS integrators expect the
  *     site's own typography to apply to the content they are editing -- that is
@@ -42,7 +42,7 @@ import { EditorView } from 'prosemirror-view'
 
 let hintCounter = 0
 
-export class OpenleafEditor extends HTMLElement {
+export class OpenLeafEditor extends HTMLElement {
   static get observedAttributes(): string[] {
     return ['for', 'readonly']
   }
@@ -277,10 +277,10 @@ export class OpenleafEditor extends HTMLElement {
 }
 
 /** Idempotent: safe to import twice, or alongside a bundled copy. */
-export function defineOpenleafEditor(tag = 'openleaf-editor'): void {
+export function defineOpenLeafEditor(tag = 'openleaf-editor'): void {
   if (typeof customElements === 'undefined') return
   if (customElements.get(tag)) return
-  customElements.define(tag, OpenleafEditor)
+  customElements.define(tag, OpenLeafEditor)
 }
 
-defineOpenleafEditor()
+defineOpenLeafEditor()

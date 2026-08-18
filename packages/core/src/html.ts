@@ -1,8 +1,8 @@
 /**
  * HTML in, HTML out.
  *
- * Openleaf's storage format is HTML, not a proprietary JSON document
- * model. A CMS that adopts Openleaf and later drops it should be left
+ * OpenLeaf's storage format is HTML, not a proprietary JSON document
+ * model. A CMS that adopts OpenLeaf and later drops it should be left
  * with content it can still render, which rules out formats that require
  * our code to interpret.
  */
@@ -29,7 +29,7 @@ function resolveDocument(opts?: HtmlIOOptions): Document {
   return doc
 }
 
-/** Parse an HTML string into an Openleaf document. */
+/** Parse an HTML string into an OpenLeaf document. */
 export function parseHtml(html: string, opts?: HtmlIOOptions): PMNode {
   const doc = resolveDocument(opts)
   const tpl = doc.createElement('template')
@@ -37,7 +37,7 @@ export function parseHtml(html: string, opts?: HtmlIOOptions): PMNode {
   return parser.parse(tpl.content, { preserveWhitespace: false })
 }
 
-/** Serialize an Openleaf document back to an HTML string. */
+/** Serialize an OpenLeaf document back to an HTML string. */
 export function serializeHtml(node: PMNode, opts?: HtmlIOOptions): string {
   const doc = resolveDocument(opts)
   const fragment = serializer.serializeFragment(node.content, { document: doc })

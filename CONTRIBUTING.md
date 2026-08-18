@@ -1,8 +1,8 @@
-# Contributing to Openleaf
+# Contributing to OpenLeaf
 
 ## The one thing to read first
 
-Openleaf's core promise is that it will not eat your content. Before
+OpenLeaf's core promise is that it will not eat your content. Before
 adding or changing anything that touches HTML parsing or serialization,
 read `packages/core/test/fidelity.test.ts` and add a fixture that
 demonstrates your case. A feature that improves the editing experience
@@ -11,7 +11,7 @@ rejected.
 
 ## Developer Certificate of Origin
 
-Openleaf uses the DCO rather than a CLA. You keep the copyright in your
+OpenLeaf uses the DCO rather than a CLA. You keep the copyright in your
 contribution; we deliberately have no mechanism to take it. See
 [GOVERNANCE.md](GOVERNANCE.md) section 2 for why this matters.
 

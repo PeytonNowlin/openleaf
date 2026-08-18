@@ -80,7 +80,7 @@ unstyled toolbar and no signal an integrator can act on.
 `@openleaf/ui/openleaf.css` rather than an injection that CSP will eat.
 
 Bonus the review supplied: adopted stylesheets are ordered *after* a document's
-regular stylesheets, so at equal specificity Openleaf wins ties against host CSS
+regular stylesheets, so at equal specificity OpenLeaf wins ties against host CSS
 regardless of injection timing.
 
 ### 5. Trusted Types blocks `innerHTML`, and the icon sprite used it

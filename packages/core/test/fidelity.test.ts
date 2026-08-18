@@ -220,7 +220,7 @@ describe('fidelity report', () => {
   it('prints the rate for both corpora', () => {
     const width = Math.max(...report.map((r) => r.fixture.length), 7)
     const rule = '  ' + '-'.repeat(width + 34)
-    const out: string[] = ['', '  Openleaf round-trip fidelity', rule,
+    const out: string[] = ['', '  OpenLeaf round-trip fidelity', rule,
       `  ${'fixture'.padEnd(width)}  corpus  stable  text  attrs`, rule]
     for (const r of report) {
       out.push(

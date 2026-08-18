@@ -84,7 +84,7 @@ const sizeOk = step(`bundle size budget (${GZIP_BUDGET_KB} KB gzipped)`, () => {
 
 // Summary
 const width = Math.max(...results.map((r) => r.name.length))
-console.log(`\n${bold('  Openleaf verify')}`)
+console.log(`\n${bold('  OpenLeaf verify')}`)
 console.log(`  ${'-'.repeat(width + 26)}`)
 for (const r of results) {
   const mark = r.ok ? green('pass') : red('FAIL')

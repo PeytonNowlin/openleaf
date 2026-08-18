@@ -3,7 +3,7 @@
  *
  * ## Why this is harder than it should be
  *
- * Openleaf deliberately does not use Shadow DOM: the *content* area must
+ * OpenLeaf deliberately does not use Shadow DOM: the *content* area must
  * inherit the host site's typography for editing to be WYSIWYG against their
  * theme. The price is that these rules share a cascade with a stylesheet we
  * have never seen -- Bootstrap, Tailwind preflight, a 2009 WordPress theme, a
@@ -412,7 +412,7 @@ export function ensureStyles(doc: Document): 'external' | 'adopted' | 'unavailab
   // attributes, linked stylesheets. A CSSOM object built via replaceSync and
   // attached through adoptedStyleSheets never passes through that gate, by
   // design. It also lands after the document's own stylesheets in the cascade,
-  // so Openleaf wins specificity ties against host CSS regardless of timing.
+  // so OpenLeaf wins specificity ties against host CSS regardless of timing.
   if (typeof CSSStyleSheet !== 'undefined' && 'adoptedStyleSheets' in Document.prototype) {
     try {
       const sheet = new CSSStyleSheet()

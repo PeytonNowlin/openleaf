@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/openleaf-logo.png" alt="Openleaf" width="340">
+  <img src="assets/openleaf-logo.png" alt="OpenLeaf" width="340">
 </p>
 
 <p align="center">
@@ -79,16 +79,16 @@ source in the way that matters.
 The permissively-licensed editing **engines** already exist — ProseMirror
 (MIT), Lexical (MIT), Quill (BSD). What does not exist is a
 **batteries-included, framework-agnostic, drop-in editor** built on one of
-them, with no commercial tier above it. That is the gap Openleaf is being
+them, with no commercial tier above it. That is the gap OpenLeaf is being
 built to fill.
 
-## What Openleaf is
+## What OpenLeaf is
 
-Openleaf is a **drop-in replacement for TinyMCE**, built on
+OpenLeaf is a **drop-in replacement for TinyMCE**, built on
 [ProseMirror](https://prosemirror.net) (MIT), aimed first at content
 management systems rather than at React dashboards.
 
-**Openleaf does not implement its own editing engine, and never will.**
+**OpenLeaf does not implement its own editing engine, and never will.**
 `contenteditable` normalization — IME composition for Japanese and Korean,
 Android soft-keyboard autocorrect, Safari selection collapse, undo-stack
 coherence — is three to five years of specialist work that no user can see,
@@ -112,7 +112,7 @@ cli/             openleaf-lint — dry-run what this editor does to your content
 
 ## The commitment that defines this project
 
-**Openleaf treats silent content loss as the most serious defect it can
+**OpenLeaf treats silent content loss as the most serious defect it can
 ship**, ranked above crashes.
 
 ProseMirror is schema-strict: anything it does not recognise, it discards.
@@ -123,7 +123,7 @@ is the single most likely way a technically excellent ProseMirror-based
 TinyMCE replacement fails in production, and most attempts do not take it
 seriously enough.
 
-Openleaf's answer is architectural, not aspirational:
+OpenLeaf's answer is architectural, not aspirational:
 
 - **Unrecognised markup is preserved, never dropped.** A
   `<div class="callout">` or a `<drupal-media>` element becomes a selectable,
@@ -192,7 +192,7 @@ bullet glyph baked in as literal text:
 </p>
 ```
 
-Openleaf turns that into real nested `<ul>`/`<ol>`, reading list identity and
+OpenLeaf turns that into real nested `<ul>`/`<ol>`, reading list identity and
 depth from `mso-list`, deciding ordered-versus-unordered from the marker text
 (because Word never says), then deleting the marker since a real `<li>` renders
 its own. Google Docs gets its own normalizer for a different trap: it wraps
@@ -205,7 +205,7 @@ wrong for a paste, where the author would see an inert grey box instead of their
 list.
 
 One deliberate asymmetry worth knowing about: the generic normalizer, which
-handles pastes of unknown origin including content copied from Openleaf itself,
+handles pastes of unknown origin including content copied from OpenLeaf itself,
 strips styles but **never strips classes or `data-` attributes**. An aggressive
 paste cleaner reasonably might — and doing so would silently destroy preserved
 markup on the most ordinary user action there is.
@@ -387,7 +387,7 @@ The point at which someone could actually replace TinyMCE with this.
 - [ ] Find and replace, alignment, colors, character count, autosave
 - [ ] i18n scaffolding and a first non-English locale
 
-> **Done when** a real site is running Openleaf in production, editors are
+> **Done when** a real site is running OpenLeaf in production, editors are
 > filing complaints, and none of those complaints are "it destroyed my post".
 
 ### Phase 2 — Adoption ▸ *the part that decides whether this matters*
@@ -426,7 +426,7 @@ Phase 1 core is *boringly* reliable. Saying so publicly is a feature.
 ### Accessibility, throughout
 
 Target is **WCAG 2.2 AA**, verified with real screen readers and stated per
-release. Openleaf will not claim a conformance level on the strength of axe-core
+release. OpenLeaf will not claim a conformance level on the strength of axe-core
 passing — automated tooling catches roughly a third of real barriers, and the
 market that most needs a free editor (government, education, healthcare,
 nonprofits) is exactly the market that legally cannot adopt an inaccessible one.
@@ -462,7 +462,7 @@ The element keeps the textarea in sync and writes to it before submit, so
 server code that already reads `$_POST['body']` keeps working untouched.
 
 Content is stored as **HTML**, not a proprietary JSON document model. A site
-that adopts Openleaf and later abandons it is left with content it can still
+that adopts OpenLeaf and later abandons it is left with content it can still
 render. Lock-in is not a retention strategy here.
 
 **Current size:** 254 KB minified, **79 KB gzipped** for the complete drop-in —
@@ -470,7 +470,7 @@ editing engine, paste normalizers, toolbar, icons and dialogs. The gate fails
 above 90 KB gzipped, so there is **11 KB of headroom left**, and tables,
 alignment, colours and find-and-replace all have to fit in it.
 
-Openleaf's own code is 45 KB of the 253 KB raw total; the other 82% is the
+OpenLeaf's own code is 45 KB of the 253 KB raw total; the other 82% is the
 ProseMirror engine. `node demo/build.mjs --sizes` prints the per-package
 breakdown, because an aggregate gate tells you the bundle no longer fits but not
 which feature spent the budget — so the blame lands on whatever shipped last:
@@ -491,7 +491,7 @@ because the editor runs entirely under the user's control.
 **You must sanitize on the server.** `@openleaf/sanitize` will ship the
 canonical allowlist as data specifically so your server can enforce the same
 policy in the same terms. Treating editor output as trusted HTML is a
-vulnerability in *your* application, and no configuration of Openleaf can fix
+vulnerability in *your* application, and no configuration of OpenLeaf can fix
 it. See [SECURITY.md](SECURITY.md).
 
 ## Guarantees
@@ -517,7 +517,7 @@ it. See [SECURITY.md](SECURITY.md).
    software — support, hosted infrastructure, sponsorship — never from
    withholding functionality from the free version.
 
-Long-term intent is to donate Openleaf to a neutral foundation once it is
+Long-term intent is to donate OpenLeaf to a neutral foundation once it is
 mature enough to be accepted, which would strengthen these guarantees, never
 weaken them.
 
@@ -591,6 +591,6 @@ Commits need a DCO sign-off — `git commit -s`. See
 [Apache-2.0](LICENSE) — chosen over MIT for its explicit patent grant, which
 is what enterprise legal review actually asks about.
 
-Openleaf is built on ProseMirror (MIT) and is not affiliated with,
+OpenLeaf is built on ProseMirror (MIT) and is not affiliated with,
 endorsed by, or derived from TinyMCE, CKEditor, or any other business using a
 similar name. See [NOTICE](NOTICE).

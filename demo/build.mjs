@@ -9,7 +9,7 @@ const result = await build({
   entryPoints: [src('../packages/element/src/index.ts')],
   bundle: true,
   format: 'iife',
-  globalName: 'Openleaf',
+  globalName: 'OpenLeaf',
   target: ['es2020'],
   minify: true,
   sourcemap: true,
@@ -68,7 +68,7 @@ if (process.argv.includes('--sizes')) {
   }
   console.log('  ' + '-'.repeat(width + 14))
   console.log(
-    `  Openleaf code is ${(oursTotal / 1024).toFixed(1)} KB of ${(total / 1024).toFixed(1)} KB` +
+    `  OpenLeaf code is ${(oursTotal / 1024).toFixed(1)} KB of ${(total / 1024).toFixed(1)} KB` +
       ` (${Math.round((oursTotal / total) * 100)}%); the rest is the ProseMirror engine.`,
   )
 }

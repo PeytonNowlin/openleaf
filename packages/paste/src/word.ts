@@ -135,7 +135,7 @@ function analyze(el: Element): ListInfo | null {
  * Standard stack algorithm over the level numbers. A deeper level nests
  * inside the *last `<li>`* of the current list rather than as a sibling,
  * which is what produces `<li><p>x</p><ul>...</ul></li>` -- the shape the
- * Openleaf schema requires for list items.
+ * OpenLeaf schema requires for list items.
  */
 function buildNested(run: ListInfo[], doc: Document): Element {
   const root = doc.createElement(run[0]!.ordered ? 'ol' : 'ul')

@@ -1,7 +1,7 @@
 {
   "name": "@openleaf/paste",
   "version": "0.0.0",
-  "description": "Paste normalizers for Openleaf: turns Word, Google Docs and Excel debris into clean semantic HTML.",
+  "description": "Paste normalizers for OpenLeaf: turns Word, Google Docs and Excel debris into clean semantic HTML.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",

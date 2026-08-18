@@ -11,7 +11,7 @@ documented mitigation within 30 days for anything rated high or above.
 
 ## Scope and threat model
 
-Openleaf is a client-side editor. Understanding this boundary matters:
+OpenLeaf is a client-side editor. Understanding this boundary matters:
 
 **Client-side sanitization is a user-experience feature, not a security
 control.** Anything the editor strips can be re-added by a user with
@@ -21,7 +21,7 @@ developer tools, because the editor runs entirely under their control.
 ships the canonical allowlist as data (`allowlist.json`) precisely so
 that your server-side sanitizer can enforce the same policy in the same
 terms. Using the editor's output as trusted HTML is a vulnerability in
-your application, and no configuration of Openleaf can fix it.
+your application, and no configuration of OpenLeaf can fix it.
 
 ### In scope
 

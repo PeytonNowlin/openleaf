@@ -41,12 +41,12 @@ export function detectSource(html: string): PasteSource {
 
 /**
  * Conservative normalizer for pastes of unknown origin, including content
- * copied from Openleaf itself.
+ * copied from OpenLeaf itself.
  *
  * Styles are stripped and emphasis is promoted to tags, but **classes,
  * `data-` attributes and unrecognised elements are left alone**. That is
  * deliberate and load-bearing: copying a preserved `<div class="callout">`
- * from one Openleaf document into another must not quietly destroy it. A
+ * from one OpenLeaf document into another must not quietly destroy it. A
  * generic paste handler that strips classes would silently break the
  * preservation guarantee the whole project rests on.
  */

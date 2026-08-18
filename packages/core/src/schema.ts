@@ -1,5 +1,5 @@
 /**
- * The Openleaf document schema.
+ * The OpenLeaf document schema.
  *
  * Scope note: this is the v0.1 core. Tables live in @openleaf/plugins-table
  * because their schema and commands are large enough to be their own

@@ -81,7 +81,7 @@ jobs:
         with: { fetch-depth: 0 }
       - name: Every commit is signed off
         run: |
-          # Openleaf uses the DCO rather than a CLA -- see GOVERNANCE.md s.2.
+          # OpenLeaf uses the DCO rather than a CLA -- see GOVERNANCE.md s.2.
           # Distributed copyright is what makes a future relicense impossible,
           # so this check is load-bearing, not ceremony.
           missing=0

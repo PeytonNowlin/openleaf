@@ -100,11 +100,11 @@ describe('Google Docs paste through the full pipeline', () => {
   })
 })
 
-describe('copying between Openleaf documents', () => {
+describe('copying between OpenLeaf documents', () => {
   /**
    * A generic paste must not strip classes or data attributes.
    *
-   * Copying a preserved `<div class="callout">` out of one Openleaf document
+   * Copying a preserved `<div class="callout">` out of one OpenLeaf document
    * and into another goes through the generic normalizer. If that stripped
    * classes -- as an aggressive paste cleaner reasonably might -- it would
    * silently destroy exactly the markup the preservation layer exists to
