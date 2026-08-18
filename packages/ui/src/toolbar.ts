@@ -531,9 +531,15 @@ export class Toolbar {
 
   /** Move focus into the toolbar. Bound to Alt+F10 by the host. */
   focusToolbar(): void {
-    if (this.#focusables.length === 0) return
-    this.#applyRoving()
-    this.#focusables[this.#rovingIndex]?.focus()
+    if (this.#focusables.length > 0) {
+      this.#applyRoving()
+      this.#focusables[this.#rovingIndex]?.focus()
+      return
+    }
+    // A toolbar that is only the block-type select has no roving buttons.
+    // The shortcut is still documented; swallowing it with nowhere to go
+    // would make a valid `toolbar` attribute a silent no-op.
+    this.#select?.focus()
   }
 
   /** Return focus and the prior selection to the editable region. */
