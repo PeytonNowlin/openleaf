@@ -40,3 +40,9 @@ export {
   redo,
   undo,
 } from './commands.js'
+export {
+  buildKeymap,
+  shortcutFor,
+  shortcuts,
+  type Shortcut,
+} from './keymap.js'

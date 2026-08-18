@@ -20,10 +20,10 @@
  *     already reads `$_POST['body']` keeps working untouched.
  */
 
-import { parseHtml, serializeHtml, schema } from '@openleaf/core'
+import { buildKeymap, parseHtml, serializeHtml } from '@openleaf/core'
 import { normalizePastedHtml } from '@openleaf/paste'
-import { baseKeymap, toggleMark } from 'prosemirror-commands'
-import { history, redo, undo } from 'prosemirror-history'
+import { baseKeymap } from 'prosemirror-commands'
+import { history } from 'prosemirror-history'
 import { keymap } from 'prosemirror-keymap'
 import { EditorState } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
@@ -56,14 +56,10 @@ export class OpenleafEditor extends HTMLElement {
         doc: parseHtml(initialHtml),
         plugins: [
           history(),
-          keymap({
-            'Mod-b': toggleMark(schema.marks['strong']!),
-            'Mod-i': toggleMark(schema.marks['em']!),
-            'Mod-u': toggleMark(schema.marks['underline']!),
-            'Mod-z': undo,
-            'Mod-y': redo,
-            'Shift-Mod-z': redo,
-          }),
+          // The shared shortcut table, so the toolbar tooltips and any help
+          // dialog render the real bindings rather than a duplicate list that
+          // drifts out of sync with what the editor actually does.
+          keymap(buildKeymap()),
           keymap(baseKeymap),
         ],
       }),
