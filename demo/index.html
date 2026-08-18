@@ -188,7 +188,7 @@
 <div id="editor-wrap">
   <label for="body" class="visually-hidden">Post body</label>
   <openleaf-editor for="body" aria-label="Post body"
-    toolbar="undo redo | blockType | bold italic underline strikethrough code | bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | insertTable addRowAfter deleteRow addColumnAfter deleteColumn toggleHeaderRow deleteTable | source"></openleaf-editor>
+    toolbar="undo redo | blockType | bold italic underline strikethrough code | bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | insertTable addRowAfter deleteRow addColumnAfter deleteColumn toggleHeaderRow deleteTable | importFile source"></openleaf-editor>
   <textarea id="body" name="body" hidden>
     <h2>Try editing this</h2>
     <p>Ordinary HTML in, ordinary HTML out — <strong>bold</strong>, <em>italic</em>,
@@ -330,6 +330,54 @@ const ratio = width / height   // division, not a regex
   three languages is 14 KB and 19 dependencies, against 1.9 KB and none.
 </p>
 
+<h2 id="import">Importing a file</h2>
+<p class="lede">
+  A third opt-in bundle, 2.2 KB. A toolbar button and drag-and-drop.
+</p>
+
+<p>
+  HTML and plain text import with no dependency at all — and that covers more
+  than it sounds, because Word's own <strong>Save as Web Page</strong> produces
+  exactly the <code>mso-list</code> markup the paste normalizer was written to
+  reconstruct. Importing an HTML file therefore gets you real nested lists out of
+  a Word document for zero extra bytes.
+</p>
+
+<p class="controls">
+  <button type="button" class="action" id="import-sample">Import a sample Word export</button>
+  <a class="action" href="samples/quarterly-review.html" download>Download the sample to drag in yourself</a>
+</p>
+
+<p class="subtitle" style="margin:0 0 1rem">
+  The button drops the file into the editor above through the real drag-and-drop
+  path — scroll up to see the result. The sample is a genuine Word HTML export,
+  <code>mso-list</code> bullets and all. Its <code>&lt;title&gt;</code> and
+  <code>&lt;style&gt;</code> block are deliberately not imported.
+</p>
+
+<p>
+  Imported content is <strong>inserted at the cursor, never used to replace the
+  document</strong>. Replacing is something you can do by selecting all first;
+  silently discarding what you had written is not recoverable afterwards.
+</p>
+
+<p>
+  <code>.docx</code> arrives through a converter rather than in the bundle.
+  Measured: mammoth is 122 KB gzipped, larger than the entire editor, so forcing
+  it on somebody importing an HTML file would be the wrong trade.
+  <code>registerFileConverter()</code> takes it in five lines.
+</p>
+
+<p>
+  <strong>There is deliberately no PDF import.</strong> PDF is a layout format —
+  positioned glyphs, not paragraphs. There is no heading, list or table in a PDF,
+  only text arranged to look like one, so every converter guesses and the guesses
+  fail the same way: line breaks become paragraph breaks, headings vanish,
+  multi-column layouts interleave, tables arrive as unrelated numbers. A feature
+  called "import" that reliably destroys structure is the failure this project
+  exists to avoid, with your permission attached.
+</p>
+
 <h2 id="keyboard">Keyboard and screen readers</h2>
 <p class="lede">
   The whole toolbar is a single tab stop, and <kbd>Tab</kbd> always leaves the editor.
@@ -408,6 +456,7 @@ const ratio = width / height   // division, not a regex
 <!-- The opt-in bundle. Order matters: it borrows the runtime the first one publishes. -->
 <script src="./openleaf-tables.min.js"></script>
 <script src="./openleaf-highlight.min.js"></script>
+<script src="./openleaf-import.min.js"></script>
 <script>
 (function () {
   'use strict'
@@ -513,6 +562,32 @@ const ratio = width / height   // division, not a regex
   })
 
   wordIn.textContent = WORD
+
+  /* ---- importing a sample file ------------------------------------- */
+
+  const importButton = document.getElementById('import-sample')
+  if (importButton) {
+    importButton.addEventListener('click', async function () {
+      importButton.disabled = true
+      try {
+        const response = await fetch('samples/quarterly-review.html')
+        const text = await response.text()
+        // Dispatched as a real drop rather than calling an API, so the button
+        // exercises exactly the path a person dragging the file would.
+        const data = new DataTransfer()
+        data.items.add(new File([text], 'quarterly-review.html', { type: 'text/html' }))
+        const region = main.querySelector('.ProseMirror')
+        region.focus()
+        region.dispatchEvent(
+          new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }),
+        )
+        setTimeout(renderOutput, 100)
+        document.getElementById('try').scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } finally {
+        importButton.disabled = false
+      }
+    })
+  }
 })()
 </script>
 </body>
