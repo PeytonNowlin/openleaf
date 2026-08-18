@@ -51,19 +51,37 @@ function notify(): void {
   }
 }
 
-/** Build one fresh set of plugin instances for a new editor. */
-export function createRegisteredPlugins(schema: Schema): Plugin[] {
-  return [...factories].flatMap((factory) => {
+/** Build plugin instances for an editor, reusing cached instances when given. */
+export function createRegisteredPlugins(
+  schema: Schema,
+  cache?: Map<EditorPluginFactory, Plugin[]>,
+): Plugin[] {
+  const plugins: Plugin[] = []
+  const seen = new Set<EditorPluginFactory>()
+  for (const factory of factories) {
+    seen.add(factory)
+    const cached = cache?.get(factory)
+    if (cached) {
+      plugins.push(...cached)
+      continue
+    }
     try {
-      return factory(schema)
+      const created = factory(schema)
+      cache?.set(factory, created)
+      plugins.push(...created)
     } catch (error) {
       // A throwing factory used to take EditorState.create with it, so one bad
       // script tag produced a blank editor. Contributing nothing is the right
       // failure: the editor comes up without that plugin.
       console.error('@openleaf/core: a plugin factory threw; skipping it', error)
-      return []
     }
-  })
+  }
+  if (cache) {
+    for (const factory of [...cache.keys()]) {
+      if (!seen.has(factory)) cache.delete(factory)
+    }
+  }
+  return plugins
 }
 
 /**

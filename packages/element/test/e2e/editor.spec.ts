@@ -170,3 +170,22 @@ test.describe('the CMS form contract', () => {
     expect(decoded).toContain('class="callout"')
   })
 })
+
+test.describe('late plugin registration', () => {
+  test('does not wipe undo', async ({ page }) => {
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' scratch')
+    await expect(editor(page)).toContainText('scratch')
+
+    await page.evaluate(() => {
+      const host = globalThis as unknown as {
+        OpenLeaf: { __runtime: Record<string, { registerEditorPlugin: (f: () => []) => void }> }
+      }
+      host.OpenLeaf.__runtime['@openleaf/core']!.registerEditorPlugin(() => [])
+    })
+
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect(editor(page)).not.toContainText('scratch')
+  })
+})
