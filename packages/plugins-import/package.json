@@ -1,0 +1,22 @@
+{
+  "name": "@openleaf/plugins-import",
+  "version": "0.0.0",
+  "description": "Opt-in file import for OpenLeaf: HTML and plain text with no dependency, plus a seam for .docx and other formats.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "@openleaf/core": "workspace:*",
+    "@openleaf/paste": "workspace:*",
+    "@openleaf/ui": "workspace:*",
+    "prosemirror-view": "^1.37.0"
+  },
+  "devDependencies": {
+    "mammoth": "^1.8.0"
+  }
+}

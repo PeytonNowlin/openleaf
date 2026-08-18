@@ -24,6 +24,7 @@ const BUDGETS_KB = {
   'openleaf.min.js': 90,
   'openleaf-tables.min.js': 25,
   'openleaf-highlight.min.js': 15,
+  'openleaf-import.min.js': 12,
 }
 
 const args = new Set(process.argv.slice(2))

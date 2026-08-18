@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OpenLeaf import harness</title>
+<style>body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; max-width: 52rem; }</style>
+</head>
+<body>
+<form id="post-form" method="post" action="/submitted">
+  <label for="body">Post body</label>
+  <openleaf-editor for="body" aria-label="Post body"
+    toolbar="undo redo | bold italic | importFile"></openleaf-editor>
+  <textarea id="body" name="body" hidden><p>Existing content.</p></textarea>
+</form>
+
+<script src="/demo/openleaf.min.js"></script>
+<script src="/demo/openleaf-import.min.js"></script>
+</body>
+</html>

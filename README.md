@@ -55,8 +55,10 @@
 >   source view that is indented and highlighted, in a 5.3 KB opt-in bundle
 > - **Plugins can add node and mark types** — the schema is built from
 >   registered extensions, not a frozen singleton
-> - Bundles: **86 KB gzipped** core, plus **12.5 KB** for table editing and
->   **5.3 KB** for highlighting, each downloaded only if you ask for it
+> - **File import** — drag in an HTML or text file, or Word's own "Save as Web
+>   Page" export, and its lists are reconstructed. 2.2 KB.
+> - Bundles: **86 KB gzipped** core, plus optional **12.5 KB** tables,
+>   **5.3 KB** highlighting and **2.2 KB** import, each downloaded only if asked for
 >
 > **What does not exist yet**
 > - Image upload (insert-by-URL only), find and replace, alignment, colours
@@ -122,6 +124,7 @@ ui/              toolbar, icons, dialogs, theme tokens                 [done]
 element/         <openleaf-editor> custom element — the drop-in        [done]
 plugins-table/   opt-in table editing, second script tag              [done]
 plugins-highlight/ opt-in syntax highlighting + source formatting     [done]
+plugins-import/  opt-in file import: HTML, text, and a converter seam [done]
 plugins-*/       one package per feature, tree-shakeable
 sanitize/        one allowlist as data + matching node, php, python impls
 adapters-*/      thin react, vue, svelte, angular wrappers
@@ -501,6 +504,70 @@ that concatenating every token reproduces the input byte for byte.
 Highlighting is applied as ProseMirror **decorations**, so the document is never
 touched. Nothing here can alter what gets stored; the worst a bug can do is
 colour something oddly.
+
+---
+
+## Importing files
+
+An opt-in bundle, **2.2 KB gzipped**. Adds a toolbar button and drag-and-drop.
+
+```html
+<script src="/js/openleaf.min.js"></script>
+<script src="/js/openleaf-import.min.js"></script>
+```
+
+**HTML and plain text import with no dependency at all** — and that covers more
+than it sounds, because Word's own *Save as Web Page* produces exactly the
+`mso-list` markup the paste normalizer was written to reconstruct. So importing
+an HTML file already gets you real nested lists out of a Word document, for zero
+extra bytes.
+
+Imported content is **inserted at the cursor, never used to replace the
+document**. Replacing is something an author can do by selecting all first;
+silently discarding their work is not recoverable by any amount of care
+afterwards. It also goes through the *same* paste pipeline as everything else,
+rather than a second one — two code paths normalizing the same markup is how one
+of them rots.
+
+### `.docx` is a seam, not a bundled dependency
+
+Measured before deciding: **mammoth is 122 KB gzipped — larger than the entire
+editor.** Forcing that on someone who wants to import an HTML file is the wrong
+trade, and writing a worse OOXML converter to avoid it is a much worse one. So it
+arrives through a converter:
+
+```ts
+import mammoth from 'mammoth/mammoth.browser.js'
+import { registerFileConverter } from '@openleaf/plugins-import'
+
+registerFileConverter(async (file) => {
+  if (!file.name.toLowerCase().endsWith('.docx')) return null
+  const { value, messages } = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() })
+  return { html: value, warnings: messages.filter((m) => m.type === 'warning').map((m) => m.message) }
+})
+```
+
+Tested by actually driving it with mammoth against a real `.docx` fixture, which
+produces `<h1>`, `<ul>` and `<strong>` — because an extension point nobody has
+run is one that does not work.
+
+Conversion warnings are **shown to the author**, not logged. Someone importing a
+document needs to know its images did not come across *now*, while they still
+have the original open.
+
+### There is deliberately no PDF import
+
+PDF is a *layout* format. It stores positioned glyphs, not paragraphs — there is
+no heading, no list and no table in a PDF, only text arranged to look like one.
+Every converter therefore guesses, and the guesses fail the same way: line breaks
+become paragraph breaks, headings become bold paragraphs or nothing, multi-column
+layouts interleave, and tables arrive as a run of unrelated numbers.
+
+A feature called "import" that reliably destroys structure is the failure this
+project exists to avoid, with the user's permission attached. If you need the
+words out of a PDF, register a converter that says *extract text* and makes no
+structural claim — the seam is there, and naming it honestly is the whole
+difference.
 
 ---
 

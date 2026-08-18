@@ -38,6 +38,7 @@ const WORKSPACE_ALIASES = {
   '@openleaf/ui': src('../packages/ui/src/index.ts'),
   '@openleaf/plugins-table': src('../packages/plugins-table/src/index.ts'),
   '@openleaf/plugins-highlight': src('../packages/plugins-highlight/src/index.ts'),
+  '@openleaf/plugins-import': src('../packages/plugins-import/src/index.ts'),
 }
 
 /** Modules the core bundle publishes and plugin bundles borrow. */
@@ -149,10 +150,24 @@ await build({
 })
 const highlightGz = report('openleaf-highlight.min.js', src('./openleaf-highlight.min.js'))
 
+/* ---- opt-in file import bundle ---- */
+await build({
+  entryPoints: [src('./entry-import.ts')],
+  bundle: true,
+  format: 'iife',
+  target: ['es2020'],
+  minify: true,
+  sourcemap: true,
+  outfile: src('./openleaf-import.min.js'),
+  alias: { '@openleaf/plugins-import': WORKSPACE_ALIASES['@openleaf/plugins-import'] },
+  plugins: [shareRuntime('OpenLeaf')],
+})
+const importGz = report('openleaf-import.min.js', src('./openleaf-import.min.js'))
+
 console.log(
   `\ncore is the budgeted bundle (${(coreGz / 1024).toFixed(1)} KB gzip). ` +
-    `Tables add ${(tablesGz / 1024).toFixed(1)} KB and highlighting ` +
-    `${(highlightGz / 1024).toFixed(1)} KB, only for sites that load them.`,
+    `Optional: tables ${(tablesGz / 1024).toFixed(1)} KB, highlighting ` +
+    `${(highlightGz / 1024).toFixed(1)} KB, import ${(importGz / 1024).toFixed(1)} KB.`,
 )
 
 /* ---- per-package attribution for the core bundle ---- */
