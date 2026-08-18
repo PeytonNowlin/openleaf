@@ -49,10 +49,14 @@
 > - **`@openleaf/sanitize`** — one policy as data, generating configuration for
 >   DOMPurify, Python `bleach` and PHP HTMLPurifier so every runtime enforces the
 >   same rules
-> - A single-file bundle: **80 KB gzipped**, everything included
+> - **Tables** — read and written by every deployment; editing is an opt-in
+>   13 KB bundle that shares the core runtime rather than duplicating it
+> - Bundles: **84 KB gzipped** core, plus **13 KB** for optional table editing
 >
 > **What does not exist yet**
-> - Tables, image upload (insert-by-URL only), server-side sanitizer package
+> - Image upload (insert-by-URL only), find and replace, alignment, colours
+> - `<caption>` and `<colgroup>` are dropped from tables — a known bug with a
+>   test pinning it, not a design decision
 > - **Screen reader testing.** The ARIA is designed and unit-tested; it has not
 >   been driven by NVDA, JAWS, VoiceOver or ChromeVox. Until it has, this project
 >   does not claim WCAG conformance.
@@ -111,6 +115,7 @@ paste/           Word / Google Docs normalizers                       [done]
 sanitize/        one policy as data + DOMPurify/bleach/HTMLPurifier   [done]
 ui/              toolbar, icons, dialogs, theme tokens                 [done]
 element/         <openleaf-editor> custom element — the drop-in        [done]
+plugins-table/   opt-in table editing, second script tag              [done]
 plugins-*/       one package per feature, tree-shakeable
 sanitize/        one allowlist as data + matching node, php, python impls
 adapters-*/      thin react, vue, svelte, angular wrappers
@@ -345,6 +350,86 @@ No `innerHTML` anywhere in the UI package either, so Trusted Types
 
 ---
 
+## Tables
+
+<a id="tables"></a>
+
+Tables are the clearest case of a design decision the tests overturned, so it is
+worth writing down.
+
+The plan was to put tables entirely in an opt-in package, so that a CMS
+forbidding tables ships none of the code. Then the fidelity harness answered the
+question that actually mattered: **without table node types in the base schema, a
+`<table>` in stored content is claimed by the preservation layer and becomes a
+single opaque atom.** It round-trips perfectly and it cannot be edited. An author
+opening a decade-old post finds a grey card where their table used to be, and
+"we read your tables but you may not touch them" is not a thing you can tell a
+CMS.
+
+So the split moved:
+
+| | Where | Cost |
+|---|---|---|
+| Table **schema** — parse, serialize, legacy attributes, `scope`, `colspan` | Always in core | ~4 KB |
+| Table **editing** — cell selection, column resizing, row/column commands, toolbar | Opt-in bundle | 13 KB gzipped |
+
+Two script tags, and the order matters:
+
+```html
+<script src="/js/openleaf.min.js"></script>
+<script src="/js/openleaf-tables.min.js"></script>
+```
+
+The second bundle **borrows the first one's ProseMirror runtime** rather than
+carrying its own. That is what keeps it 13 KB instead of ~200 KB, but the real
+reason is correctness: two copies of ProseMirror means two schemas, and a table
+node built by the plugin would be a different node type than the editor accepts —
+a failure that is very hard to read from the symptoms.
+
+Or as modules, where the bundler handles it:
+
+```ts
+import { installTableEditing } from '@openleaf/plugins-table'
+installTableEditing()
+```
+
+The editor picks up plugins registered after it was created, so a deferred or
+code-split bundle still works. Without that, table buttons would appear and do
+nothing.
+
+### What tables keep
+
+Legacy presentational attributes — `border`, `cellpadding`, `cellspacing`,
+`width`, `align` — are preserved, which a clean-slate schema would not do. They
+are how HTML expressed table styling for fifteen years, they are everywhere in
+the content this editor inherits, and dropping them changes how a page renders.
+
+`scope` on header cells is kept for a more important reason: it is what tells a
+screen reader which cells a header governs. Dropping it turns a navigable table
+into a grid of unrelated numbers. Inserting a table gives it a header row by
+default for the same reason — a table without headers is an accessibility problem
+authors rarely go back and fix, and defaults decide what most documents look
+like.
+
+`<td>text</td>` also round-trips exactly, rather than becoming
+`<td><p>text</p></td>`. Cells hold block content because real tables contain
+paragraphs and lists, so a bare-text cell parses to a cell containing a
+paragraph — and writing that back would rewrite every cell of every table in an
+archive the first time each post was opened. A cell holding exactly one
+attribute-free paragraph is unwrapped on the way out.
+
+### Known bug, not a limitation
+
+**`<caption>` and `<colgroup>` are dropped.** Dropping a caption is a real
+accessibility regression — a caption is a table's accessible name. It cannot be
+modelled today because `prosemirror-tables` computes its cell map by treating
+every child of a table as a row, so a leading caption node breaks its indexing.
+There is a test pinning the current behaviour so it cannot quietly get worse, and
+the fix is a caption node plus an upstream change rather than a decision to live
+with.
+
+---
+
 ## The road ahead
 
 Ordered by dependency, not by date. I would rather ship 100% of fifteen
@@ -391,8 +476,10 @@ The point at which someone could actually replace TinyMCE with this.
   TinyMCE. Excel and Apple Notes still to come. See
   [the paste package](packages/paste) for what Word actually emits and why
   reconstructing it is harder than it sounds.
-- [ ] **Tables** — insert, delete row and column, merge, split, header rows.
-  Their own package, because a CMS that forbids tables should not ship the code.
+- [x] **Tables** — insert, delete row and column, merge, split, header rows,
+  column resizing. Opt-in as a second script tag. See
+  [the tables section](#tables) for why the split is not where it looks like it
+  should be.
 - [ ] **Images** — upload hook and resize. Insert-by-URL with alt-text
   prompting already works.
 - [x] **`@openleaf/sanitize`** — the allowlist as *data*, generating config for
@@ -481,10 +568,15 @@ Content is stored as **HTML**, not a proprietary JSON document model. A site
 that adopts OpenLeaf and later abandons it is left with content it can still
 render. Lock-in is not a retention strategy here.
 
-**Current size:** 254 KB minified, **79 KB gzipped** for the complete drop-in —
-editing engine, paste normalizers, toolbar, icons and dialogs. The gate fails
-above 90 KB gzipped, so there is **11 KB of headroom left**, and tables,
-alignment, colours and find-and-replace all have to fit in it.
+**Current size:** 266 KB minified, **84 KB gzipped** for the core bundle —
+editing engine, paste normalizers, toolbar, icons, dialogs and the table schema.
+Optional table *editing* is a further **13 KB**, downloaded only by sites that
+load it.
+
+The gate fails above 90 KB gzipped for the core bundle, so there is **6 KB of
+headroom left**. Alignment, colours and find-and-replace have to fit in that, or
+follow tables out into opt-in bundles. The plugin mechanism now exists, so that
+is a realistic option rather than a refactor.
 
 OpenLeaf's own code is 45 KB of the 253 KB raw total; the other 82% is the
 ProseMirror engine. `node demo/build.mjs --sizes` prints the per-package

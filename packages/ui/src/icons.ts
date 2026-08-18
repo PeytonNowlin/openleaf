@@ -23,7 +23,13 @@
  * deployments this project exists to serve.
  */
 
-/** Symbol id -> path data. Every icon is stroked; none are filled. */
+/**
+ * Symbol id -> path data. Every icon is stroked; none are filled.
+ *
+ * Mutable, because plugins add their own. An opt-in bundle should not force its
+ * icons into the core download -- the eleven table icons would otherwise cost
+ * every deployment that has tables switched off.
+ */
 const PATHS: Record<string, string> = {
   bold: 'M6 4h8a4 4 0 0 1 0 8H6zM6 12h9a4 4 0 0 1 0 8H6z',
   italic: 'M19 4h-9M14 20H5M15 4L9 20',
@@ -43,7 +49,14 @@ const PATHS: Record<string, string> = {
   source: 'M18 16l4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16',
 }
 
-export type IconName = keyof typeof PATHS
+/**
+ * An icon name.
+ *
+ * A plain string rather than a union of the built-ins: plugins register their
+ * own names, and a closed union would make the registry unusable by anything
+ * outside this package.
+ */
+export type IconName = string
 
 /**
  * Icons whose meaning depends on reading direction, and which must therefore be
@@ -61,7 +74,35 @@ const DIRECTIONAL: ReadonlySet<string> = new Set([
   'orderedList',
 ])
 
-export const iconNames = Object.keys(PATHS) as IconName[]
+export function iconNames(): IconName[] {
+  return Object.keys(PATHS)
+}
+
+/**
+ * Add icons, from a plugin.
+ *
+ * If the sprite is already in the document -- which it will be whenever an
+ * editor exists before a deferred bundle finishes loading -- the new symbols are
+ * appended to it. Without that, a plugin's buttons render as empty squares and
+ * the failure looks like a CSS problem.
+ */
+export function registerIcons(paths: Record<string, string>, doc?: Document): void {
+  const added: string[] = []
+  for (const [name, d] of Object.entries(paths)) {
+    if (PATHS[name] === d) continue
+    PATHS[name] = d
+    added.push(name)
+  }
+  if (added.length === 0) return
+
+  const target = doc ?? (typeof document !== 'undefined' ? document : undefined)
+  const sprite = target?.getElementById(SPRITE_ID)
+  if (!target || !sprite) return
+  for (const name of added) {
+    if (target.getElementById(`ol-i-${name}`)) continue
+    sprite.appendChild(makeSymbol(name, PATHS[name] as string, target))
+  }
+}
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const SPRITE_ID = 'ol-icon-sprite'
@@ -77,21 +118,25 @@ export function ensureSprite(doc: Document): void {
   svg.setAttribute('style', 'display:none')
 
   for (const [name, d] of Object.entries(PATHS)) {
-    const symbol = doc.createElementNS(SVG_NS, 'symbol')
-    symbol.setAttribute('id', `ol-i-${name}`)
-    symbol.setAttribute('viewBox', '0 0 24 24')
-    symbol.setAttribute('fill', 'none')
-    symbol.setAttribute('stroke', 'currentColor')
-    symbol.setAttribute('stroke-width', '2')
-    symbol.setAttribute('stroke-linecap', 'round')
-    symbol.setAttribute('stroke-linejoin', 'round')
-    const path = doc.createElementNS(SVG_NS, 'path')
-    path.setAttribute('d', d)
-    symbol.appendChild(path)
-    svg.appendChild(symbol)
+    svg.appendChild(makeSymbol(name, d, doc))
   }
 
   doc.body.appendChild(svg)
+}
+
+function makeSymbol(name: string, d: string, doc: Document): SVGSymbolElement {
+  const symbol = doc.createElementNS(SVG_NS, 'symbol') as SVGSymbolElement
+  symbol.setAttribute('id', `ol-i-${name}`)
+  symbol.setAttribute('viewBox', '0 0 24 24')
+  symbol.setAttribute('fill', 'none')
+  symbol.setAttribute('stroke', 'currentColor')
+  symbol.setAttribute('stroke-width', '2')
+  symbol.setAttribute('stroke-linecap', 'round')
+  symbol.setAttribute('stroke-linejoin', 'round')
+  const path = doc.createElementNS(SVG_NS, 'path')
+  path.setAttribute('d', d)
+  symbol.appendChild(path)
+  return symbol
 }
 
 /**

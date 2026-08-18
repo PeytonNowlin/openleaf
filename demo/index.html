@@ -160,7 +160,7 @@
   </p>
   <p class="badges">
     <span class="badge">Apache-2.0</span>
-    <span class="badge">79 KB gzipped</span>
+    <span class="badge">84 KB gzipped</span>
     <span class="badge">No framework</span>
     <span class="badge">Built on ProseMirror</span>
     <span class="badge"><a href="https://github.com/PeytonNowlin/openleaf">Source on GitHub</a></span>
@@ -187,18 +187,26 @@
 
 <div id="editor-wrap">
   <label for="body" class="visually-hidden">Post body</label>
-  <openleaf-editor for="body" aria-label="Post body"></openleaf-editor>
+  <openleaf-editor for="body" aria-label="Post body"
+    toolbar="undo redo | blockType | bold italic underline strikethrough code | bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | insertTable addRowAfter deleteRow addColumnAfter deleteColumn toggleHeaderRow deleteTable | source"></openleaf-editor>
   <textarea id="body" name="body" hidden>
     <h2>Try editing this</h2>
     <p>Ordinary HTML in, ordinary HTML out — <strong>bold</strong>, <em>italic</em>,
     <a href="https://github.com/PeytonNowlin/openleaf">links</a>, and lists all
     round-trip without a proprietary format in sight.</p>
     <div class="callout" data-callout-id="7">
-      <p>This <code>&lt;div class="callout"&gt;</code> is markup OpenLeaf does not
+      <p>This <code>&amp;lt;div class="callout"&amp;gt;</code> is markup OpenLeaf does not
       recognise. Rather than silently deleting it — which is what a schema-strict
       editor does by default — it is preserved intact. Select it and press a key
       to replace it, then undo: it comes back byte-identical.</p>
     </div>
+    <table border="1" cellpadding="4">
+      <tbody>
+        <tr><th scope="col">Region</th><th scope="col">Total</th></tr>
+        <tr><td>North</td><td>412</td></tr>
+        <tr><td>South</td><td>287</td></tr>
+      </tbody>
+    </table>
     <p dir="rtl">ونص من اليمين إلى اليسار، لأن اتجاه النص ليس تنسيقًا.</p>
   </textarea>
 </div>
@@ -212,6 +220,16 @@
 <p class="subtitle" style="margin:0 0 1.5rem">
   Each preset sets only CSS custom properties. No OpenLeaf internals are touched
   and nothing is forked.
+</p>
+
+<p class="subtitle" style="margin:0 0 1rem">
+  A note for integrators, learned the hard way while building this page: a
+  <code>&amp;lt;textarea&amp;gt;</code>'s contents are <em>escapable raw text</em>, so
+  character references in it are decoded when the browser reads
+  <code>.value</code>. Markup you escaped once becomes live tags again on
+  re-parse. Server templates writing stored HTML into a textarea must escape it
+  for that context — double-escaping <code>&amp;amp;lt;</code> where the content
+  itself contains escaped markup.
 </p>
 
 <h3>What the server would receive</h3>
@@ -250,6 +268,35 @@
     <div class="out" id="word-out"></div>
   </div>
 </div>
+
+<h2 id="tables">Tables, and what "opt-in" actually means</h2>
+<p class="lede">
+  Everyone reads and writes tables. Only sites that want table <em>editing</em>
+  download the code for it.
+</p>
+
+<p>
+  Table node types are in the base schema, which was not the original plan. The
+  fidelity harness is what changed it: without them, a <code>&lt;table&gt;</code>
+  in stored content gets claimed by the preservation layer and becomes an opaque,
+  uneditable card. Faithful, but "we read your tables and you may not touch them"
+  is not something you can tell a CMS.
+</p>
+
+<p>
+  So the split falls at the <em>editing machinery</em> instead — cell selection,
+  column resizing, the row and column commands, the toolbar controls. Two script
+  tags, and the second borrows the first one's ProseMirror runtime rather than
+  shipping a second copy:
+</p>
+
+<pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
+&lt;script src="/js/openleaf-tables.min.js"&gt;&lt;/script&gt;   &lt;!-- 13 KB, optional --&gt;</pre>
+
+<p>
+  The table above is live — click into it and use the table controls in the
+  toolbar. Drag a column border to resize.
+</p>
 
 <h2 id="keyboard">Keyboard and screen readers</h2>
 <p class="lede">
@@ -326,6 +373,8 @@
 </footer>
 
 <script src="./openleaf.min.js"></script>
+<!-- The opt-in bundle. Order matters: it borrows the runtime the first one publishes. -->
+<script src="./openleaf-tables.min.js"></script>
 <script>
 (function () {
   'use strict'

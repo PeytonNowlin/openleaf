@@ -292,6 +292,63 @@ export const CSS = `
   outline-offset: -1px;
 }
 
+/* Tables.
+   These styles live in core, not in the opt-in table plugin, because table
+   NODES live in core: every deployment reads and renders tables even where
+   editing them is switched off. Unstyled tables would render as runs of
+   undelimited text. */
+.ol-editor .ol-content .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0 0 1em;
+  overflow: hidden;
+}
+
+.ol-editor .ol-content .ProseMirror td,
+.ol-editor .ol-content .ProseMirror th {
+  border: 1px solid var(--ol-border);
+  padding: 6px 8px;
+  vertical-align: top;
+  /* A zero-width cell cannot be clicked into, so it cannot be repaired. */
+  min-width: 2em;
+  position: relative;
+}
+
+.ol-editor .ol-content .ProseMirror th {
+  background: var(--ol-surface-hover);
+  font-weight: 600;
+  text-align: start;
+}
+
+/* prosemirror-tables marks cells in a rectangular selection with this class.
+   An ::after overlay rather than a background so it composes with a cell that
+   already has one, and so a header cell still reads as a header. */
+.ol-editor .ol-content .ProseMirror .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ol-surface-active);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* The column resize handle, drawn by prosemirror-tables' columnResizing. */
+.ol-editor .ol-content .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--ol-accent);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.ol-editor .ol-content .ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+
 /* Preserved-but-unrecognised markup, surfaced rather than hidden. */
 .ol-editor .ol-content .ProseMirror-selectednode {
   outline: 2px solid var(--ol-focus);

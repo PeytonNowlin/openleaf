@@ -1,7 +1,7 @@
 {
-  "name": "@openleaf/element",
+  "name": "@openleaf/plugins-table",
   "version": "0.0.0",
-  "description": "The <openleaf-editor> custom element: OpenLeaf's drop-in for CMS forms. HTML in, HTML out, syncs to a textarea.",
+  "description": "Opt-in table editing for OpenLeaf: cell selection, column resizing, row and column commands, and toolbar controls. The table schema itself lives in @openleaf/core so every deployment reads tables faithfully.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,13 +20,11 @@
   },
   "dependencies": {
     "@openleaf/core": "workspace:*",
-    "@openleaf/paste": "workspace:*",
     "@openleaf/ui": "workspace:*",
-    "prosemirror-commands": "^1.6.2",
-    "prosemirror-history": "^1.4.1",
     "prosemirror-keymap": "^1.2.2",
     "prosemirror-model": "^1.24.1",
     "prosemirror-state": "^1.4.3",
+    "prosemirror-tables": "^1.6.4",
     "prosemirror-transform": "^1.10.2",
     "prosemirror-view": "^1.37.0"
   }

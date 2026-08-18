@@ -26,7 +26,14 @@
  *   aria-label   accessible name for the editable region
  */
 
-import { buildKeymap, parseHtml, serializeHtml } from '@openleaf/core'
+import {
+  buildKeymap,
+  createRegisteredPlugins,
+  onEditorPluginsChange,
+  parseHtml,
+  schema,
+  serializeHtml,
+} from '@openleaf/core'
 import { normalizePastedHtml } from '@openleaf/paste'
 import {
   SOURCE_TOGGLE_EVENT,
@@ -54,6 +61,8 @@ export class OpenLeafEditor extends HTMLElement {
   #contentHost: HTMLDivElement | null = null
   #sourceArea: HTMLTextAreaElement | null = null
   #sourceMode = false
+  #basePlugins: import('prosemirror-state').Plugin[] = []
+  #unwatchPlugins: (() => void) | undefined
   #onSubmit = (): void => this.#syncToTextarea()
 
   connectedCallback(): void {
@@ -99,6 +108,18 @@ export class OpenLeafEditor extends HTMLElement {
 
     if (this.#toolbar) this.appendChild(this.#toolbar.liveRegion)
 
+    this.#basePlugins = [
+      history(),
+      keymap({
+        'Alt-F10': () => {
+          this.#toolbar?.focusToolbar()
+          return true
+        },
+      }),
+      keymap(buildKeymap()),
+      keymap(baseKeymap),
+    ]
+
     this.#view = new EditorView(contentHost, {
       state: EditorState.create({
         doc: parseHtml(initialHtml),
@@ -115,6 +136,10 @@ export class OpenLeafEditor extends HTMLElement {
           // render the real bindings rather than a duplicate list that drifts.
           keymap(buildKeymap()),
           keymap(baseKeymap),
+          // Plugins contributed by opt-in bundles, instantiated fresh per
+          // editor: a ProseMirror plugin instance carries per-editor state and
+          // two editors sharing one would fight over it.
+          ...createRegisteredPlugins(schema),
         ],
       }),
       editable: () => !this.hasAttribute('readonly'),
@@ -146,6 +171,21 @@ export class OpenLeafEditor extends HTMLElement {
     this.#toolbar?.mount(this.#view)
     this.addEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
 
+    // An editor already on the page when a deferred bundle finishes loading
+    // would otherwise never receive its plugins, and the author would find
+    // table controls that do nothing. `reconfigure` keeps the document and the
+    // undo history; rebuilding the state from scratch would discard both.
+    this.#unwatchPlugins = onEditorPluginsChange(() => {
+      const view = this.#view
+      if (!view) return
+      view.updateState(
+        view.state.reconfigure({
+          plugins: [...this.#basePlugins, ...createRegisteredPlugins(schema)],
+        }),
+      )
+      this.#toolbar?.update(view.state)
+    })
+
     // Belt and braces: `submit` covers ordinary posts, `formdata` covers
     // fetch-based submissions built from a FormData snapshot.
     this.#form = this.closest('form')
@@ -158,6 +198,7 @@ export class OpenLeafEditor extends HTMLElement {
     this.#form?.removeEventListener('submit', this.#onSubmit)
     this.#form?.removeEventListener('formdata', this.#onSubmit)
     this.removeEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
+    this.#unwatchPlugins?.()
     this.#toolbar?.destroy()
     this.#toolbar = null
     this.#view?.destroy()

@@ -37,12 +37,44 @@ export function parseHtml(html: string, opts?: HtmlIOOptions): PMNode {
   return parser.parse(tpl.content, { preserveWhitespace: false })
 }
 
+/**
+ * Collapse `<td><p>text</p></td>` back to `<td>text</td>`.
+ *
+ * Table cells hold `block+` content, because real tables contain paragraphs and
+ * lists. The consequence is that parsing the overwhelmingly common legacy form
+ * `<td>text</td>` produces a cell containing a paragraph, and serializing it
+ * back would write `<td><p>text</p></td>` -- rewriting every cell of every table
+ * in a CMS the first time each post is opened and saved.
+ *
+ * That is a normalization rather than information loss, but "we changed every
+ * table in your archive" is not a thing this project gets to do quietly. So a
+ * cell holding exactly one attribute-free paragraph is unwrapped on the way out.
+ *
+ * The asymmetry is deliberate and worth stating: a cell that was authored as
+ * `<td><p>text</p></td>` also comes back as `<td>text</td>`. That form is rare
+ * in the content this editor inherits, and the alternative is rewriting the
+ * common case instead of the rare one.
+ */
+function unwrapSoleCellParagraph(host: Element): void {
+  for (const cell of Array.from(host.querySelectorAll('td, th'))) {
+    if (cell.childElementCount !== 1) continue
+    const only = cell.firstElementChild
+    if (!only || only.nodeName !== 'P' || only.attributes.length > 0) continue
+    // Only when the paragraph is the cell's entire content; a stray text node
+    // beside it means the markup is doing something we should not touch.
+    if (cell.childNodes.length !== 1) continue
+    while (only.firstChild) cell.insertBefore(only.firstChild, only)
+    cell.removeChild(only)
+  }
+}
+
 /** Serialize an OpenLeaf document back to an HTML string. */
 export function serializeHtml(node: PMNode, opts?: HtmlIOOptions): string {
   const doc = resolveDocument(opts)
   const fragment = serializer.serializeFragment(node.content, { document: doc })
   const host = doc.createElement('div')
   host.appendChild(fragment)
+  unwrapSoleCellParagraph(host)
   return host.innerHTML
 }
 

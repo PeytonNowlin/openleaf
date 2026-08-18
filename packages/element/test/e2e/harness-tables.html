@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OpenLeaf table editing harness</title>
+<style>body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; max-width: 52rem; }</style>
+</head>
+<body>
+<!--
+  The two-script-tag integration exactly as documented. The order matters and is
+  the point of the test: the second bundle borrows the first one's ProseMirror
+  runtime, so loading it first would find no runtime to borrow.
+-->
+<form id="post-form" method="post" action="/submitted">
+  <label for="body">Post body</label>
+  <openleaf-editor
+    for="body"
+    aria-label="Post body"
+    toolbar="undo redo | bold italic | insertTable addRowAfter deleteRow addColumnAfter deleteColumn mergeCells splitCell toggleHeaderRow deleteTable"></openleaf-editor>
+  <textarea id="body" name="body" hidden><h2>Report</h2>
+<table border="1" cellpadding="4"><tbody><tr><th scope="col">Region</th><th scope="col">Total</th></tr><tr><td>North</td><td>412</td></tr></tbody></table>
+<p>After the table.</p></textarea>
+  <button type="submit" id="save">Save</button>
+</form>
+
+<script src="/demo/openleaf.min.js"></script>
+<script src="/demo/openleaf-tables.min.js"></script>
+</body>
+</html>

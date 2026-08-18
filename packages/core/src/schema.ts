@@ -9,6 +9,7 @@
 
 import { Schema, type MarkSpec, type NodeSpec } from 'prosemirror-model'
 import { unknownBlock, unknownInline } from './preserve.js'
+import { table, table_cell, table_header, table_row } from './tables.js'
 import { isSafeUrl } from './url.js'
 
 const nodes: Record<string, NodeSpec> = {
@@ -158,6 +159,16 @@ const nodes: Record<string, NodeSpec> = {
   },
 
   text: { group: 'inline' },
+
+  // Tables are in the BASE schema deliberately. Without them a <table> in
+  // stored content becomes an opaque preserved atom -- faithful but uneditable,
+  // which is not something you can tell a CMS. The heavy part (cell selection,
+  // column resizing, the row and column commands) is the opt-in
+  // @openleaf/plugins-table.
+  table,
+  table_row,
+  table_cell,
+  table_header,
 
   unknown_block: unknownBlock,
   unknown_inline: unknownInline,

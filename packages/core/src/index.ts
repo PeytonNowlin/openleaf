@@ -52,3 +52,10 @@ export {
   shortcuts,
   type Shortcut,
 } from './keymap.js'
+export {
+  createRegisteredPlugins,
+  onEditorPluginsChange,
+  registerEditorPlugin,
+  type EditorPluginFactory,
+} from './plugins.js'
+export { table, table_cell, table_header, table_row } from './tables.js'
