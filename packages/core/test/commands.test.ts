@@ -141,6 +141,16 @@ describe('list commands', () => {
     expect(html(run(state, toggleOrderedList))).toBe('<ol><li><p>item</p></li></ol>')
   })
 
+  it('converts a bullet list to an ordered list', () => {
+    const state = cursorAt(stateFrom('<ul><li><p>item</p></li></ul>'), 4)
+    expect(html(run(state, toggleOrderedList))).toBe('<ol><li><p>item</p></li></ol>')
+  })
+
+  it('converts an ordered list to a bullet list', () => {
+    const state = cursorAt(stateFrom('<ol><li><p>item</p></li></ol>'), 4)
+    expect(html(run(state, toggleBulletList))).toBe('<ul><li><p>item</p></li></ul>')
+  })
+
   it('reports list membership', () => {
     const inList = cursorAt(stateFrom('<ul><li><p>item</p></li></ul>'), 4)
     expect(isNodeActive(inList, 'bullet_list')).toBe(true)

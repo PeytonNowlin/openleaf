@@ -221,14 +221,41 @@ export const insertHorizontalRule: Command = (state, dispatch) => {
  * Lists
  * ------------------------------------------------------------------ */
 
-export const toggleBulletList: Command = (state, dispatch, view) => {
-  if (isNodeActive(state, 'bullet_list')) return outdentListItem(state, dispatch, view)
-  return nodeCommand('bullet_list', (type) => wrapInList(type))(state, dispatch, view)
+export const toggleBulletList: Command = toggleList('bullet_list')
+export const toggleOrderedList: Command = toggleList('ordered_list')
+
+/**
+ * Innermost list containing the selection, walking from the cursor outward.
+ *
+ * Nested lists must convert the inner one: converting the outer list would
+ * leave the author's current list type unchanged, which looks like the
+ * button did nothing.
+ */
+function enclosingList(
+  state: EditorState,
+): { pos: number; name: 'bullet_list' | 'ordered_list' } | null {
+  const { $from } = state.selection
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const name = $from.node(depth).type.name
+    if (name === 'bullet_list' || name === 'ordered_list') {
+      return { pos: $from.before(depth), name }
+    }
+  }
+  return null
 }
 
-export const toggleOrderedList: Command = (state, dispatch, view) => {
-  if (isNodeActive(state, 'ordered_list')) return outdentListItem(state, dispatch, view)
-  return nodeCommand('ordered_list', (type) => wrapInList(type))(state, dispatch, view)
+function toggleList(target: 'bullet_list' | 'ordered_list'): Command {
+  return (state, dispatch, view) => {
+    const enclosing = enclosingList(state)
+    if (enclosing?.name === target) return outdentListItem(state, dispatch, view)
+    if (enclosing) {
+      const type = nodeIn(state, target)
+      if (!type) return false
+      if (dispatch) dispatch(state.tr.setNodeMarkup(enclosing.pos, type).scrollIntoView())
+      return true
+    }
+    return nodeCommand(target, (type) => wrapInList(type))(state, dispatch, view)
+  }
 }
 
 export const splitListItemCommand: Command = nodeCommand('list_item', (t) => splitListItem(t))
