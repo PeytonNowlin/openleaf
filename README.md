@@ -16,16 +16,20 @@ it cannot quietly destroy your content.
 > - The **content-preservation layer** — the thing that stops a
 >   ProseMirror-based editor from silently eating legacy markup
 > - The round-trip fidelity harness: **7/7 stored fixtures fully lossless**,
->   38 unit tests green, typechecked strict
-> - `<openleaf-editor>` verified in **real browsers** — 11 tests across
->   Chromium, Firefox and WebKit (33 runs): loads stored HTML, accepts typing,
->   writes back to the textarea, posts through a real form submit, and does not
->   alter a document that is opened and saved untouched
-> - A single-file bundle: **65 KB gzipped** including the whole editing engine
+>   **94 unit tests** green, typechecked strict
+> - **Paste normalizers for Word and Google Docs** — reconstructs real nested
+>   `<ul>`/`<ol>` from Word's `mso-list` markup, strips the vendor styling, and
+>   parses to **zero** preserved atoms
+> - `<openleaf-editor>` verified in **real browsers** — 15 tests across
+>   Chromium, Firefox and WebKit (41 passing runs): loads stored HTML, accepts
+>   typing, pastes from Word and Google Docs, writes back to the textarea, posts
+>   through a real form submit, and does not alter a document that is opened and
+>   saved untouched
+> - A single-file bundle: **67 KB gzipped** including the whole editing engine
 >
 > **What does not exist yet**
 > - Any toolbar or visible UI (keyboard shortcuts only)
-> - Tables, paste normalizers, server-side sanitizer package
+> - Tables, images, server-side sanitizer package
 > - Mobile and IME coverage — no touch, Android soft-keyboard or
 >   composition-event tests yet, which is where editors break hardest
 >
@@ -76,11 +80,11 @@ tables, the accessibility.
 The intended shape:
 
 ```
-core/            schema, HTML I/O, preservation. Zero framework deps.
-element/         <openleaf-editor> custom element — the drop-in
+core/            schema, HTML I/O, preservation. Zero framework deps.  [done]
+paste/           Word / Google Docs normalizers                        [done]
+element/         <openleaf-editor> custom element — the drop-in         [done]
 ui/              toolbar and dialog primitives, themed by CSS custom props
 plugins-*/       one package per feature, tree-shakeable
-paste/           Word / Google Docs / Excel normalizers
 sanitize/        one allowlist as data + matching node, php, python impls
 adapters-*/      thin react, vue, svelte, angular wrappers
 compat-tinymce/  a tinymce.init()-shaped façade for migrations
@@ -153,6 +157,40 @@ through the editor.
 valuable contribution you can make.** Open a PR adding it to
 `packages/core/test/fixtures/stored/`.
 
+### Paste fidelity
+
+Word does not emit lists. It emits a flat run of paragraphs that merely *look*
+like a list, with the structure hidden in a proprietary CSS property and the
+bullet glyph baked in as literal text:
+
+```html
+<p class="MsoListParagraphCxSpFirst"
+   style="text-indent:-.25in;mso-list:l0 level1 lfo1">
+  <!--[if !supportLists]-->
+  <span style="font-family:Symbol">·<span style="font:7.0pt">&nbsp; </span></span>
+  <!--[endif]-->
+  Revenue up 12%<o:p></o:p>
+</p>
+```
+
+Openleaf turns that into real nested `<ul>`/`<ol>`, reading list identity and
+depth from `mso-list`, deciding ordered-versus-unordered from the marker text
+(because Word never says), then deleting the marker since a real `<li>` renders
+its own. Google Docs gets its own normalizer for a different trap: it wraps
+every paste in `<b style="font-weight:normal">`, a bold tag that is not bold.
+
+The quality bar these are held to is not "did it strip the junk" but **does the
+result parse to zero preserved atoms** — because unrecognised markup is
+preserved as an opaque card, which is right for a customer's stored document and
+wrong for a paste, where the author would see an inert grey box instead of their
+list.
+
+One deliberate asymmetry worth knowing about: the generic normalizer, which
+handles pastes of unknown origin including content copied from Openleaf itself,
+strips styles but **never strips classes or `data-` attributes**. An aggressive
+paste cleaner reasonably might — and doing so would silently destroy preserved
+markup on the most ordinary user action there is.
+
 ---
 
 ## The road ahead
@@ -161,7 +199,7 @@ Ordered by dependency, not by date. I would rather ship 100% of fifteen
 features than 60% of sixty — that second thing is how this project fails, and
 it is how most editor projects die.
 
-### Phase 0 — Foundations ▸ *mostly done*
+### Phase 0 — Foundations ▸ *done*
 
 Prove the architecture before building on it.
 
@@ -184,24 +222,26 @@ Prove the architecture before building on it.
 > `Home`/`End` do not move the caret in contenteditable on macOS. This is
 > exactly why jsdom is not enough.
 
-### Phase 1 — A usable editor ▸ *next*
+### Phase 1 — A usable editor ▸ *in progress*
 
 The point at which someone could actually replace TinyMCE with this.
 
-- **Toolbar and UI primitives** — accessible by construction: real buttons,
+- [ ] **Toolbar and UI primitives** — accessible by construction: real buttons,
   roving tabindex, `aria-pressed` reflecting mark state, no `div onclick`
-- **Paste normalizers** — Word, Google Docs, Excel, plain text. The
-  `mso-list` → real-nested-list conversion is, commercially, the single most
-  valuable piece of code in this entire project: it is the number one reason
-  organizations pay for TinyMCE.
-- **Tables** — insert, delete row and column, merge, split, header rows.
+- [x] **Paste normalizers** — Word and Google Docs done. The `mso-list` →
+  real-nested-list conversion is, commercially, the single most valuable piece
+  of code in this project: it is the number one reason organizations pay for
+  TinyMCE. Excel and Apple Notes still to come. See
+  [the paste package](packages/paste) for what Word actually emits and why
+  reconstructing it is harder than it sounds.
+- [ ] **Tables** — insert, delete row and column, merge, split, header rows.
   Their own package, because a CMS that forbids tables should not ship the code.
-- **Images** — upload hook, alt-text prompting (not optional, not skippable),
+- [ ] **Images** — upload hook, alt-text prompting (not optional, not skippable),
   resize
-- **`@openleaf/sanitize`** — the allowlist as *data*, plus matching Node, PHP,
+- [ ] **`@openleaf/sanitize`** — the allowlist as *data*, plus matching Node, PHP,
   and Python implementations. Every CMS team hand-rolls this and gets it wrong.
-- Source view, find and replace, alignment, colors, character count, autosave
-- i18n scaffolding and a first non-English locale
+- [ ] Source view, find and replace, alignment, colors, character count, autosave
+- [ ] i18n scaffolding and a first non-English locale
 
 > **Done when** a real site is running Openleaf in production, editors are
 > filing complaints, and none of those complaints are "it destroyed my post".
@@ -272,9 +312,9 @@ Content is stored as **HTML**, not a proprietary JSON document model. A site
 that adopts Openleaf and later abandons it is left with content it can still
 render. Lock-in is not a retention strategy here.
 
-**Current size:** 210 KB minified, **65 KB gzipped** for the complete drop-in,
-including ProseMirror's view, state, history, and keymap. CI fails above 90 KB
-gzipped.
+**Current size:** 216 KB minified, **67 KB gzipped** for the complete drop-in,
+including ProseMirror's view, state, history and keymap, plus the Word and
+Google Docs paste normalizers. CI fails above 90 KB gzipped.
 
 ## Security
 

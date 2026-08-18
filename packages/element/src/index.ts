@@ -21,6 +21,7 @@
  */
 
 import { parseHtml, serializeHtml, schema } from '@openleaf/core'
+import { normalizePastedHtml } from '@openleaf/paste'
 import { baseKeymap, toggleMark } from 'prosemirror-commands'
 import { history, redo, undo } from 'prosemirror-history'
 import { keymap } from 'prosemirror-keymap'
@@ -67,6 +68,11 @@ export class OpenleafEditor extends HTMLElement {
         ],
       }),
       editable: () => !this.hasAttribute('readonly'),
+      // Normalize before ProseMirror parses. Word and Google Docs express
+      // structure as proprietary CSS, so without this a pasted list arrives as
+      // a wall of paragraphs with stray bullet characters in the text -- the
+      // single most common complaint about editors that get this wrong.
+      transformPastedHTML: (html) => normalizePastedHtml(html),
       attributes: {
         // Announce the editable region to assistive technology. Without a
         // role and a name, a screen reader reports an unlabelled text box.

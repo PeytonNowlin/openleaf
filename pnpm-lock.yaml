@@ -44,6 +44,9 @@ importers:
       '@openleaf/core':
         specifier: workspace:*
         version: link:../core
+      '@openleaf/paste':
+        specifier: workspace:*
+        version: link:../paste
       prosemirror-commands:
         specifier: ^1.6.2
         version: 1.7.2
@@ -59,6 +62,12 @@ importers:
       prosemirror-view:
         specifier: ^1.37.0
         version: 1.42.2
+
+  packages/paste:
+    devDependencies:
+      '@openleaf/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

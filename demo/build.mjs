@@ -26,6 +26,7 @@ const result = await build({
     //  2. No stale artifacts. Bundling source makes it impossible to ship or
     //     test against a dist that is older than the code.
     '@openleaf/core': src('../packages/core/src/index.ts'),
+    '@openleaf/paste': src('../packages/paste/src/index.ts'),
   },
 })
 
