@@ -8,7 +8,7 @@
  */
 
 import { DOMParser, DOMSerializer, type Node as PMNode, type Schema } from 'prosemirror-model'
-import { PRESERVED_MARKER } from './preserve.js'
+import { isInsidePreserved } from './preserve.js'
 import { schema as defaultSchema } from './schema.js'
 
 /**
@@ -95,7 +95,7 @@ function unwrapSoleCellParagraph(host: Element): void {
     // Never reach inside preserved markup. A table nested in an unrecognised
     // wrapper is content we undertook to return byte-identical, and a
     // normalization that is right for our own tables is a broken promise there.
-    if (cell.closest(`[${PRESERVED_MARKER}]`)) continue
+    if (isInsidePreserved(cell)) continue
     if (cell.childElementCount !== 1) continue
     const only = cell.firstElementChild
     if (!only || only.nodeName !== 'P' || only.attributes.length > 0) continue
@@ -118,9 +118,6 @@ export function serializeHtml(node: PMNode, opts?: HtmlIOOptions): string {
   const host = doc.createElement('div')
   host.appendChild(fragment)
   unwrapSoleCellParagraph(host)
-  for (const marked of Array.from(host.querySelectorAll(`[${PRESERVED_MARKER}]`))) {
-    marked.removeAttribute(PRESERVED_MARKER)
-  }
   return host.innerHTML
 }
 

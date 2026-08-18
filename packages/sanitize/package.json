@@ -7,10 +7,20 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
     "./allowlist.json": "./dist/allowlist.json"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
-  "scripts": { "build": "tsc -p tsconfig.json && node scripts/emit-json.mjs" }
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/emit-json.mjs"
+  },
+  "devDependencies": {
+    "@openleaf/core": "workspace:*"
+  }
 }

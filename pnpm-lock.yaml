@@ -114,7 +114,11 @@ importers:
         specifier: ^1.37.0
         version: 1.42.2
 
-  packages/sanitize: {}
+  packages/sanitize:
+    devDependencies:
+      '@openleaf/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/ui:
     dependencies:

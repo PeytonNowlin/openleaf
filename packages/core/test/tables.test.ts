@@ -161,16 +161,46 @@ describe('normalization must not reach inside preserved markup', () => {
     )
   })
 
-  it('leaves no marker attribute in the output', () => {
-    // The pass tags preserved output so it can be skipped, then strips the tag.
-    // A leak would put an internal attribute into every customer's database.
+  it('adds no marker of its own to the output', () => {
+    // Preserved elements are identified out of band, so nothing internal can
+    // reach a customer's database -- and nothing in their content can collide
+    // with it. See the WeakSet in preserve.ts.
     const out = roundTrip('<div class="wrapper"><table><tr><td><p>hi</p></td></tr></table></div>')
-    expect(out).not.toContain('data-ol-preserved')
+    expect(out).not.toContain('data-ol')
+    expect(out).not.toContain('openleaf')
   })
 
   it('is stable across repeated round trips', () => {
     const html = '<div class="wrapper"><table><tbody><tr><td><p>hi</p></td></tr></tbody></table></div>'
     const once = roundTrip(html)
     expect(roundTrip(once)).toBe(once)
+  })
+})
+
+describe('the preservation marker must not collide with customer content', () => {
+  /*
+   * The marker that tells normalization passes to keep out of preserved markup
+   * was originally a real DOM attribute, stripped afterwards with a blanket
+   * querySelectorAll. That loop could not distinguish the attribute it had just
+   * added from the same attribute occurring in somebody's document -- so a
+   * customer who happened to use `data-ol-preserved` had it silently deleted.
+   *
+   * Destroying an attribute inside preserved content is exactly the failure the
+   * marker was introduced to prevent, wearing a different costume.
+   */
+
+  it('keeps a customer attribute that happens to match the marker name', () => {
+    const html = '<div class="k" data-ol-preserved="mine"><p>x</p></div>'
+    expect(roundTrip(html)).toBe(html)
+  })
+
+  it('keeps it on a nested element too', () => {
+    const html = '<div class="k"><span data-ol-preserved="v">y</span></div>'
+    expect(roundTrip(html)).toBe(html)
+  })
+
+  it('still keeps preserved tables out of the cell normalization', () => {
+    const html = '<div class="wrapper"><table><tbody><tr><td><p>hi</p></td></tr></tbody></table></div>'
+    expect(roundTrip(html)).toBe(html)
   })
 })

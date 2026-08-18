@@ -96,6 +96,37 @@ export const DEFAULT_POLICY: Policy = {
     s: {},
     a: { attributes: ['href', 'title', 'target', 'rel'] },
     img: { attributes: ['src', 'alt', 'title', 'width', 'height'] },
+
+    /*
+     * Tables. These mirror packages/core/src/tables.ts exactly, including the
+     * legacy presentational attributes the schema deliberately preserves --
+     * a policy narrower than the schema does not protect anybody, it just
+     * destroys content on the way to the database.
+     *
+     * `scope`, `headers` and `abbr` are here for the same reason the schema
+     * keeps them: they are what tells a screen reader which cells a header
+     * governs, and stripping them turns a navigable table into a grid of
+     * unrelated values.
+     */
+    table: {
+      attributes: ['border', 'cellpadding', 'cellspacing', 'width', 'align', 'summary', 'class'],
+    },
+    thead: {},
+    tbody: {},
+    tfoot: {},
+    tr: { attributes: ['class', 'align'] },
+    td: {
+      attributes: [
+        'colspan', 'rowspan', 'data-colwidth',
+        'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr',
+      ],
+    },
+    th: {
+      attributes: [
+        'colspan', 'rowspan', 'data-colwidth',
+        'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr',
+      ],
+    },
   },
 
   // Empty on purpose. `class` and `id` are not globally safe: `class` lets

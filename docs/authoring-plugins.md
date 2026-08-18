@@ -23,30 +23,48 @@ below.
 | Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins |
 | Reach the live view | `element.view` | Works |
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
-| **Add a node or mark type** | — | **Not available out of tree** |
+| **Add a node or mark type** | — | **Not available out of tree.** Commands and HTML I/O are schema-agnostic already; schema assembly is not |
 | Add a dropdown, colour grid or popover control | — | Not implemented; `type: 'select' \| 'custom'` renders as a button |
 | Add CSS for your node | — | No extension point; see [4.7](#47-there-is-no-css-extension-point) |
 
-### The schema is a frozen singleton
+### Where schema extensibility actually stands
 
-`packages/core/src/schema.ts` ends with:
+Half of it has landed, which is worth being precise about because it changes how
+you write your plugin's commands.
+
+**What is already schema-agnostic.** Commands no longer capture the schema at
+module load. They resolve types per call from `state.schema`, and decline rather
+than throw when a type is absent:
+
+```ts
+function nodeIn(state: EditorState, name: string): NodeType | undefined {
+  return state.schema.nodes[name]
+}
+```
+
+`parseHtml` and `serializeHtml` take an optional `schema` in `HtmlIOOptions`,
+and `serializeHtml` defaults to `node.type.schema` — the document's own — so a
+document built on an extended schema serializes with a serializer that knows its
+node types. Before this, `DOMSerializer.fromSchema` was built once at module
+level and threw `this.nodes[node.type.name] is not a function` the first time it
+met a plugin node.
+
+**What has not landed.** Schema *assembly*. `packages/core/src/schema.ts` still
+ends with:
 
 ```ts
 export const schema = new Schema({ nodes, marks })
 ```
 
-That runs once, at module evaluation, from two object literals defined in the
-same file. Nothing in `@openleaf/core`'s public surface accepts a `NodeSpec` or
-a `MarkSpec` — you can confirm the whole exported list in
-`packages/core/test/public-api.test.ts`, which pins it deliberately. So there is
-no supported way for an out-of-tree package to contribute a node or a mark.
+built once from two object literals in that file, and `<openleaf-editor>` still
+calls `parseHtml(initialHtml)` and `createRegisteredPlugins(schema)` against
+that singleton. Nothing in `@openleaf/core`'s public surface accepts a
+`NodeSpec` or a `MarkSpec` — `packages/core/test/public-api.test.ts` pins the
+whole export list and fails on additions on purpose. So there is still no
+supported way for an out-of-tree package to get a node into the schema the
+editor element builds.
 
-This is temporary. That same test file opens with:
-
-> Written immediately before the schema-extensibility refactor, and its whole
-> purpose is to be boring.
-
-Until that lands, **contributing a node type means editing `@openleaf/core` and
+Until that half lands, **contributing a node type means editing `@openleaf/core` and
 shipping it in the core bundle.** That is not a workaround; it is exactly what
 tables did, and `packages/core/src/tables.ts` explains why the split ended up
 there rather than where it looked like it should be:
@@ -236,7 +254,7 @@ purpose — "a new export is a new promise" — so the failure is the design wor
 ### 3.2 The command — `packages/plugins-callout/src/index.ts`
 
 ```ts
-import { isNodeActive, schema } from '@openleaf/core'
+import { isNodeActive } from '@openleaf/core'
 import { registerIcons, registerToolbarItem } from '@openleaf/ui'
 import { lift, wrapIn } from 'prosemirror-commands'
 import type { Command, EditorState } from 'prosemirror-state'
@@ -255,16 +273,30 @@ export function inCallout(state: EditorState): boolean {
  * command gives an author no way back out with the same control.
  */
 export const toggleCallout: Command = (state, dispatch, view) => {
-  const type = schema.nodes['callout']
+  // From the state's schema, never from the imported `schema` singleton.
+  const type = state.schema.nodes['callout']
   if (!type) return false
   if (inCallout(state)) return lift(state, dispatch, view)
   return wrapIn(type)(state, dispatch, view)
 }
 ```
 
-`schema.nodes['callout']` is checked for `undefined` because
-`noUncheckedIndexedAccess` is on in `tsconfig.base.json`. `plugins-table` does
-the same thing in `insertTable`, for the same reason.
+**Two things in those four lines are not stylistic.**
+
+`state.schema`, not the exported `schema`. `plugins-table` was changed to do
+this and says why in a comment: "a plugin that captured one schema would build
+nodes the editor's schema rejects." A node type is identity-compared, so a node
+built from the wrong `Schema` instance is rejected by a document that looks
+like it should accept it, and the symptom does not name the cause. This also
+means your command keeps working the day the schema stops being a singleton.
+
+The `undefined` check is required by `noUncheckedIndexedAccess` in
+`tsconfig.base.json`, and returning `false` rather than throwing is the
+convention core adopted: "a command asked to bold text in a schema with no
+`strong` mark should decline — returning `false` is ProseMirror's way of saying
+'not applicable here', and the toolbar already renders that as a disabled
+button. Throwing would take the editor down because a plugin trimmed the
+schema."
 
 Every command follows the ProseMirror convention that `commands.ts` describes:
 called with `(state)` alone it reports whether it *could* apply without doing
@@ -495,6 +527,37 @@ catch-all declines the rule so ProseMirror unwraps it. Your `div.callout` has a
 class, so it never reaches that branch — but a node keyed on an attribute-free
 element will never see its content as a wrapper at all.
 
+#### If you add a normalization pass, respect `data-ol-preserved`
+
+`serializeHtml` runs `unwrapSoleCellParagraph` over the whole output to collapse
+`<td><p>x</p></td>` back to `<td>x</td>`, so that adopting OpenLeaf does not
+rewrite every cell of every table in an archive on first save. That pass used a
+plain `querySelectorAll('td, th')` and therefore reached *inside* preserved
+markup — rewriting a table nested in an unrecognised wrapper that the editor had
+undertaken to return byte-identical.
+
+The fix is a marker. `rebuildOrCarry` sets `data-ol-preserved` on every rebuilt
+element during serialization, and `serializeHtml` strips the attribute before
+returning the string, so it never reaches a customer's database. Any pass you
+add over serialized output owes the same guard:
+
+```ts
+import { PRESERVED_MARKER } from '@openleaf/core'   // 'data-ol-preserved'
+
+if (el.closest(`[${PRESERVED_MARKER}]`)) continue
+```
+
+Note the shape of the bug, because it is the shape yours will have: every
+preservation test used a wrapper containing a paragraph, and every table test
+used a table at the top level. The defect lived exactly in the intersection and
+no fixture crossed the two features. **Write the fixture that crosses your
+feature with preservation**, not just the one that exercises it alone.
+
+> `PRESERVED_MARKER` is exported from `packages/core/src/preserve.ts` but is not
+> in `@openleaf/core`'s index barrel or in the pinned export list, so it is not
+> importable from the package today. Flagged in
+> [section 6](#6-open-questions-for-the-maintainer).
+
 ### 4.2 Sanitization: a new element that nobody allowed is a new element that dies
 
 `@openleaf/sanitize` ships `DEFAULT_POLICY` as an allowlist. It does not know
@@ -504,19 +567,69 @@ about your node, and default-safe means default-strip. From `SECURITY.md`:
 > the content on the server that the editor worked to save — the same bug
 > wearing a different hat.
 
-**Every plugin that introduces a new element or a new attribute MUST document
-the `policyForPreserved()` addition its users need.** Put it in your README,
-above the fold, next to the install instructions. For the callout:
+There are two different obligations here and they have different answers.
+
+#### Your node is in core's schema, so extend `DEFAULT_POLICY`
+
+Every plugin node ships in core's schema today, which means the editor emits it
+for *everyone*. The policy is supposed to be "exactly what OpenLeaf's own schema
+can emit, and nothing else", so a new node type is a new policy entry:
+
+```ts
+elements: {
+  // …
+  div: { attributes: ['class', 'data-callout-id'] },
+}
+```
+
+Note what that entry costs, because it is an argument about your markup rather
+than about your policy: `DEFAULT_POLICY` keys on **tag name**, so there is no way
+to express "a `div`, but only when it carries `class="callout"`". Allowing the
+callout means allowing `class` on every `div` the sanitizer sees. A node keyed
+on a custom element — `<ol-callout>` — would be allowlistable exactly, at the
+cost of not matching the `div.callout` already sitting in the customer's
+database. That tradeoff is worth making deliberately rather than discovering.
+
+**Extending the policy is not optional and it is not theoretical.** It has
+already gone wrong once, in this repository, in exactly the way that hurts:
+
+> Table nodes were added to the schema and the policy was not updated, so a user
+> following SECURITY.md sanitized a table down to `RegionNorth` — the structure
+> gone, the text run together. Precisely the "content dies on the server"
+> failure this package was written to prevent, shipped by the package that
+> prevents it.
+
+That is from `packages/sanitize/test/agreement.test.ts`, the guard added in
+response. It round-trips a document through `parseHtml`/`serializeHtml` and then
+through `sanitizeHtml`, and asserts the sanitizer is a no-op:
+
+```ts
+const stored = serializeHtml(parseHtml(html))
+expect(sanitizeHtml(stored, { policy: DEFAULT_POLICY })).toBe(stored)
+```
+
+End-to-end on purpose — "comparing two lists of tag names would pass while an
+attribute the schema emits is quietly stripped". **Add a `SCHEMA_NATIVE` entry
+exercising every attribute your `toDOM` can emit.** Include the awkward ones;
+that is what the check is for.
+
+#### Markup only the preservation layer carries, so document `policyForPreserved`
+
+If your plugin also relies on markup that stays *preserved* — an integrator's
+`<drupal-media>`, a shortcode wrapper you read but do not model — that is the
+integrator's decision to make in their own policy, and your README has to tell
+them exactly what to write:
 
 ```ts
 import { DEFAULT_POLICY, policyForPreserved } from '@openleaf/sanitize'
 
-export const policy = policyForPreserved(DEFAULT_POLICY, {
-  div: ['class', 'data-callout-id'],
+const policy = policyForPreserved(DEFAULT_POLICY, {
+  'drupal-media': ['data-entity-type', 'data-entity-uuid', 'data-view-mode'],
 })
 ```
 
-Three things to know before you write that paragraph:
+Put it above the fold, next to the install instructions. Three things to know
+before you write that paragraph:
 
 1. **There is no "allow whatever the editor emitted" mode, and there will not
    be.** `policy.ts` calls that "not a policy, it is a wish" — the editor
@@ -534,12 +647,11 @@ If your plugin ships a server-side integration, generate the config from the
 extended policy rather than hand-writing it, so the Node, PHP and Python sides
 cannot drift.
 
-> **Note for the maintainer, and for anyone reading this as a model.**
-> `DEFAULT_POLICY` currently allows none of `table`, `thead`, `tbody`, `tr`,
-> `td`, `th` — even though those nodes are in core's schema and every deployment
-> reads and writes them. Its doc comment claims it is "exactly what OpenLeaf's
-> own schema can emit, and nothing else", and that is not true today. A user who
-> follows `SECURITY.md` correctly loses every table on save.
+> **The general shape, worth internalising.** The policy is a hand-maintained
+> mirror of the schema, in a different package, in a different language of
+> description. Nothing about adding a node forces you to update it — which is
+> why the agreement test exists, and why "did I extend the policy?" belongs on a
+> checklist rather than in your memory.
 
 ### 4.3 Round-trip fidelity: two corpora, two standards
 
@@ -570,11 +682,12 @@ parseDOM: [{ tag: 'div.callout' }],
 toDOM: () => ['div', { class: 'callout' }, 0],
 ```
 
-Run against the fixture that is already in the tree:
+Run against the fixture already in the tree, `droppedAttributes` returns two
+entries and the `retains every attribute` assertion fails on them:
 
 ```
-div@class=callout callout--warning  (1 of 1 lost)
-div@data-callout-id=7               (1 of 1 lost)
+div@class=callout callout--warning (1 of 1 lost)
+div@data-callout-id=7 (1 of 1 lost)
 ```
 
 Before the change, that fixture was lossless — preservation kept the whole
@@ -590,7 +703,9 @@ deliberately unpleasant to use:
 > Adding an entry here is a deliberate decision to discard part of somebody's
 > document, and has to be argued for in a pull request. Empty is the goal state.
 
-It is empty today. Keep it that way.
+It is empty today. Keep it that way. The stored corpus stands at **8/8 fully
+lossless**, and the eighth fixture — `preserved-table.html` — exists precisely
+because it crosses two features that each had coverage on their own.
 
 Browser coverage is separate and also expected. `packages/element/test/e2e/tables.spec.ts`
 is the model: it tests **both** the core-only harness and the
@@ -749,6 +864,11 @@ not, which is the case the escape hatch was added for.
 - [ ] Your tag is not on the `NEVER_PRESERVE` list in `preserve.ts`.
 - [ ] Any URL-bearing attribute is checked with `isSafeUrl`, and `getAttrs`
       returns `false` when the check fails, the way `image` and `link` do.
+- [ ] Commands resolve node and mark types from `state.schema`, never from the
+      imported `schema` singleton, and decline with `false` when a type is
+      absent rather than throwing.
+- [ ] Any normalization pass you add over serialized output skips
+      `[data-ol-preserved]` subtrees.
 - [ ] The new export and the new node name are both declared in
       `packages/core/test/public-api.test.ts`.
 
@@ -756,6 +876,9 @@ not, which is the case the escape hatch was added for.
 
 - [ ] A fixture in `packages/core/test/fixtures/stored/`, taken from real
       content where possible, carrying the messy attributes real content has.
+- [ ] A second fixture crossing your feature with the preservation layer —
+      your markup nested inside an unrecognised wrapper, and an unrecognised
+      wrapper nested inside your markup.
 - [ ] `pnpm test` reports it stable, text-preserving, and `0` attrs lost.
 - [ ] Nothing was added to `ALLOWED`.
 - [ ] A `nodeTypes()` assertion proving the markup parses to your node and
@@ -766,8 +889,12 @@ not, which is the case the escape hatch was added for.
 
 **Sanitization**
 
-- [ ] Your README documents the exact `policyForPreserved()` call your users
-      need, with every element and attribute your `toDOM` can emit.
+- [ ] `DEFAULT_POLICY` allows every element and attribute your `toDOM` can emit.
+- [ ] `SCHEMA_NATIVE` in `packages/sanitize/test/agreement.test.ts` has an entry
+      exercising your node, including its awkward attributes, and the sanitizer
+      is a no-op over it.
+- [ ] If you also depend on preserved markup, your README documents the exact
+      `policyForPreserved()` call your users need.
 - [ ] You have confirmed none of your elements are on `dropWithContent`.
 - [ ] If you ship a server-side integration, its config is generated from that
       extended policy, not hand-written.
@@ -809,9 +936,10 @@ not, which is the case the escape hatch was added for.
 Flagged rather than guessed at, because the answers change what this document
 should say.
 
-1. **Schema extensibility.** Until it lands, every node type ships in core and
-   the second half of section 1 is the whole story. When it lands, sections 1,
-   2.3 and 3.1 need rewriting, and the CSS gap in 4.7 probably needs solving in
+1. **Schema assembly.** Commands and HTML I/O are decoupled from the singleton
+   as of `8fd04c7`; schema construction and the element's wiring are not. Until
+   that half lands, every node type ships in core. When it lands, sections 1,
+   2.3 and 3.1 need rewriting, and the CSS gap in 4.7 probably wants solving in
    the same pass.
 2. **A supported script-tag plugin path.** `__runtime` is explicitly not public
    API and `shareRuntime()` is not published. Third-party script-tag plugins
@@ -821,3 +949,7 @@ should say.
 4. **Directional icons.** The `DIRECTIONAL` set is private to `icons.ts`, so a
    plugin icon cannot opt into RTL mirroring.
 5. **Plugin bundles are not size-gated.** Only `openleaf.min.js` is checked.
+6. **`PRESERVED_MARKER` is not exported from the package.** It is exported from
+   `preserve.ts` but absent from `packages/core/src/index.ts`, so a plugin
+   cannot import the constant it needs in order to keep out of preserved
+   markup — it would have to hard-code the string `data-ol-preserved`.

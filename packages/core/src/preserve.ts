@@ -174,22 +174,40 @@ function ownerDocument(): Document {
  * emitting something slightly odd is always preferable to destroying a user's
  * content, and an unreachable branch that preserves data costs nothing.
  */
-export const PRESERVED_MARKER = 'data-ol-preserved'
+/**
+ * Elements rendered from preserved markup, identified out of band.
+ *
+ * Normalization passes running over the serialized output need to tell "markup
+ * we own" from "markup we promised not to touch". The first attempt marked
+ * preserved output with a real DOM attribute and stripped it afterwards -- which
+ * could not distinguish the attribute it had just added from the same attribute
+ * occurring in somebody's document, so a customer using `data-ol-preserved` had
+ * it silently deleted. Destroying an attribute inside preserved content is the
+ * exact failure the marker existed to prevent.
+ *
+ * A WeakSet cannot collide with content, needs no cleanup pass, and holds its
+ * entries weakly so a serialization's throwaway DOM is still collectable.
+ */
+const preservedElements = new WeakSet<Element>()
+
+/** True when this element, or an ancestor, was rendered from preserved markup. */
+export function isInsidePreserved(node: Element | null): boolean {
+  for (let current = node; current; current = current.parentElement) {
+    if (preservedElements.has(current)) return true
+  }
+  return false
+}
 
 function rebuildOrCarry(html: string, fallbackTag: 'div' | 'span'): Element {
   const doc = ownerDocument()
   const rebuilt = elementFromHtml(html, doc)
   if (rebuilt) {
-    // Tagged only for the duration of serialization, and stripped before the
-    // string is returned. Normalization passes that run over the whole output
-    // must be able to tell "markup we own" from "markup we promised not to
-    // touch" -- without it, a table nested inside a preserved wrapper gets
-    // rewritten, which is exactly the guarantee preservation exists to make.
-    rebuilt.setAttribute(PRESERVED_MARKER, '')
+    preservedElements.add(rebuilt)
     return rebuilt
   }
   const carrier = doc.createElement(fallbackTag)
   carrier.setAttribute('data-openleaf-unparsable', html)
+  preservedElements.add(carrier)
   return carrier
 }
 
