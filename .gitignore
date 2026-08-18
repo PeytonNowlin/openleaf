@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+test-results/
+playwright-report/
+demo/openleaf.min.js
+demo/openleaf.min.js.map
+
+# Local tooling config (machine-specific paths, not portable)
+.claude/

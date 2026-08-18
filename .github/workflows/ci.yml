@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push: { branches: [main] }
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -r build
+
+      - name: Round-trip fidelity and unit tests
+        run: pnpm test
+
+      - name: Bundle size
+        run: |
+          node demo/build.mjs
+          gzip -c demo/openleaf.min.js | wc -c \
+            | awk '{ printf "gzipped: %.1f KB\n", $1/1024;
+                     if ($1 > 90*1024) { print "FAIL: bundle exceeds 90 KB gzipped budget"; exit 1 } }'
+
+  dco:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Every commit is signed off
+        run: |
+          # Openleaf uses the DCO rather than a CLA -- see GOVERNANCE.md s.2.
+          # Distributed copyright is what makes a future relicense impossible,
+          # so this check is load-bearing, not ceremony.
+          missing=0
+          for sha in $(git rev-list origin/${{ github.base_ref }}..HEAD); do
+            if ! git log -1 --format=%B "$sha" | grep -qi '^Signed-off-by: .\+ <.\+@.\+>'; then
+              echo "::error::commit $sha is missing a Signed-off-by line"
+              missing=1
+            fi
+          done
+          exit $missing

@@ -1,0 +1,18 @@
+{
+  "name": "@openleaf/core",
+  "version": "0.0.0",
+  "description": "Openleaf editing core: ProseMirror schema, HTML I/O, and the content-preservation layer. No UI, no framework dependencies.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "prosemirror-model": "^1.24.1",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-transform": "^1.10.2"
+  }
+}

@@ -1,0 +1,16 @@
+Openleaf
+Copyright 2026 The Openleaf Contributors
+
+This product includes software developed by The Openleaf Contributors,
+licensed under the Apache License, Version 2.0.
+
+Openleaf is built on ProseMirror (https://prosemirror.net), which is
+licensed under the MIT License, Copyright (C) 2015-2024 by Marijn
+Haverbeke and others. ProseMirror is a separate work distributed under
+its own terms; see the licenses of the individual `prosemirror-*`
+packages in the dependency tree.
+
+Openleaf is not affiliated with, endorsed by, or derived from TinyMCE,
+CKEditor, or their respective vendors. Any references to those products
+in this repository are nominative, for the purpose of describing
+compatibility and migration.

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Openleaf drop-in demo</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
+  fieldset { border: 1px solid currentColor; border-radius: 6px; padding: 1rem; }
+  /* Chrome styles are namespaced; the CONTENT area deliberately inherits the
+     page's own typography, which is what makes this WYSIWYG for a CMS. */
+  .openleaf-content { min-height: 12rem; padding: .75rem; border: 1px solid currentColor;
+                      border-radius: 4px; background: Canvas; }
+  .openleaf-content:focus-within { outline: 2px solid Highlight; outline-offset: 2px; }
+  /* Preserved-but-unrecognised markup, surfaced rather than hidden: the user
+     can see it, move it, and delete it, but cannot corrupt it by typing. */
+  .openleaf-content [data-openleaf-unparsable] { outline: 1px dashed red; }
+  textarea { width: 100%; min-height: 8rem; font-family: ui-monospace, monospace; font-size: .8rem; }
+</style>
+</head>
+<body>
+<h1>Openleaf drop-in demo</h1>
+<p>The editor below is a custom element bound to a textarea. Submitting the
+form posts HTML in <code>body</code>, exactly as a TinyMCE integration would.
+Paste something in from Word or Google Docs and watch the textarea.</p>
+
+<form id="f" onsubmit="event.preventDefault(); alert(document.getElementById('body').value)">
+  <fieldset>
+    <legend><label for="body">Post body</label></legend>
+    <openleaf-editor for="body" aria-label="Post body"></openleaf-editor>
+    <textarea id="body" name="body" hidden>
+      <h2>An existing post</h2>
+      <p>Loaded from the textarea as ordinary HTML.</p>
+      <div class="callout callout--warning" data-callout-id="7">
+        <p>This div has a load-bearing class, so it is preserved intact
+        rather than unwrapped. Try deleting it, then undo.</p>
+      </div>
+      <p dir="rtl">ونص من اليمين إلى اليسار.</p>
+    </textarea>
+  </fieldset>
+  <p><button type="submit">Submit</button>
+     <button type="button" onclick="document.getElementById('body').hidden = !document.getElementById('body').hidden">
+       Toggle raw HTML
+     </button></p>
+</form>
+
+<script src="./openleaf.min.js"></script>
+</body>
+</html>

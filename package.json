@@ -1,0 +1,24 @@
+{
+  "name": "openleaf-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.13.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "fidelity": "vitest run test/fidelity",
+    "typecheck": "tsc -b",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.28.2",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
+  }
+}

@@ -1,0 +1,12 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
+allowBuilds:
+  esbuild: true
+
+# esbuild (a Vitest dependency) ships prebuilt binaries and needs its install
+# script to run. Declared here so `pnpm install` never prompts, in CI or for
+# a first-time contributor.
+onlyBuiltDependencies:
+  - esbuild
