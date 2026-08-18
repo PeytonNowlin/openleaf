@@ -217,10 +217,11 @@ test.describe('source view lifecycle', () => {
 
     await page.evaluate(() => {
       const el = document.querySelector('openleaf-editor')
-      if (!el?.parentNode) return
+      const parent = el?.parentNode
+      if (!el || !parent) return
       const next = el.nextSibling
-      el.parentNode.removeChild(el)
-      el.parentNode.insertBefore(el, next)
+      parent.removeChild(el)
+      parent.insertBefore(el, next)
     })
 
     await expect.poll(() => page.evaluate(() => (window as Window & { __olSourceClosed?: boolean }).__olSourceClosed)).toBe(true)
