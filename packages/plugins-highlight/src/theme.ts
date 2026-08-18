@@ -26,6 +26,8 @@ export const HIGHLIGHT_CSS = `
   --ol-t-selector: var(--openleaf-code-selector, #116329);
   --ol-t-property: var(--openleaf-code-property, #0550ae);
   --ol-t-entity: var(--openleaf-code-entity, #953800);
+  --ol-t-surface: var(--openleaf-code-surface, #f6f8fa);
+  --ol-t-code-border: var(--openleaf-code-border, #d1d9e0);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -44,7 +46,33 @@ export const HIGHLIGHT_CSS = `
     --ol-t-selector: var(--openleaf-code-selector, #7ee787);
     --ol-t-property: var(--openleaf-code-property, #79c0ff);
     --ol-t-entity: var(--openleaf-code-entity, #ffa657);
+    --ol-t-surface: var(--openleaf-code-surface, #161b22);
+    --ol-t-code-border: var(--openleaf-code-border, #30363d);
   }
+}
+
+/* The code block's own surface.
+   Owning the background is not a style preference: this plugin sets foreground
+   colours chosen against a known surface, and a host page that styles pre
+   elements -- as this project's own demo did -- can leave those colours on a
+   background they were never picked for. Light-mode syntax colours on a dark
+   host background are unreadable, and they were unreadable on our own demo page
+   before this rule. Without the plugin loaded, pre is left entirely to the host,
+   because then nothing here has an opinion about its foreground either. */
+.ol-editor .ol-content .ProseMirror pre {
+  background: var(--ol-t-surface);
+  color: var(--ol-t-text, inherit);
+  border: 1px solid var(--ol-t-code-border);
+  border-radius: var(--ol-radius, 4px);
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+
+.ol-editor .ol-content .ProseMirror pre code {
+  background: none;
+  padding: 0;
+  border: 0;
+  font-size: inherit;
 }
 
 .ol-editor .ol-t-comment { color: var(--ol-t-comment); font-style: italic; }

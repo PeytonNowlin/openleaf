@@ -71,11 +71,15 @@
     padding: 1rem;
   }
 
-  pre, code, .out {
+  /* Scoped OUT of the editor. Without Shadow DOM a page's own `pre` rules reach
+     into the content area -- which is the point (the editor should look like the
+     site it publishes to) and also a hazard: this page's dark code background was
+     landing under the editor's light-mode syntax colours. */
+  pre:not(.ol-editor pre), code:not(.ol-editor code), .out {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: .82rem;
   }
-  pre, .out {
+  pre:not(.ol-editor pre), .out {
     margin: 0;
     padding: .75rem;
     border: 1px solid var(--page-border);
