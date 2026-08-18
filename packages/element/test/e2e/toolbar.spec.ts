@@ -121,6 +121,24 @@ test.describe('applying formatting', () => {
     await editor(page).getByText('A stored paragraph.').click({ clickCount: 3 })
     await expect(button(page, 'Link')).toHaveAttribute('aria-disabled', 'false')
   })
+
+  test('editing a new-window link keeps target and rel', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<p><a href="https://example.org" target="_blank" rel="noopener noreferrer">linked</a></p>'
+    })
+
+    await editor(page).getByRole('link', { name: 'linked' }).click({ clickCount: 3 })
+    await button(page, 'Link').click()
+
+    const checkbox = page.getByRole('checkbox', { name: 'Open in a new window' })
+    await expect(checkbox).toBeChecked()
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    await expect.poll(() => page.locator('#body').inputValue()).toMatch(
+      /<a href="https:\/\/example\.org" target="_blank" rel="noopener noreferrer">linked<\/a>/,
+    )
+  })
 })
 
 test.describe('the keyboard model', () => {
