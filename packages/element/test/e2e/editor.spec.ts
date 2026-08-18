@@ -169,4 +169,51 @@ test.describe('the CMS form contract', () => {
     expect(decoded).toContain('via form post')
     expect(decoded).toContain('class="callout"')
   })
+
+  test('FormData snapshots include edits made since the last transaction', async ({ page }) => {
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' via formdata')
+    const snapshot = await page.evaluate(() => {
+      const form = document.getElementById('post-form')
+      if (!(form instanceof HTMLFormElement)) return null
+      return new FormData(form).get('body')
+    })
+    expect(String(snapshot)).toContain('via formdata')
+  })
+
+  test('form reset restores the editor from the textarea default', async ({ page }) => {
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' reset-me')
+    await expect(editor(page)).toContainText('reset-me')
+    await page.locator('#post-form').evaluate((form) => {
+      if (form instanceof HTMLFormElement) form.reset()
+    })
+    await expect(editor(page)).not.toContainText('reset-me')
+    await expect.poll(() => submittedValue(page)).not.toContain('reset-me')
+  })
+
+  test('a nested textarea remains a successful form control', async ({ page }) => {
+    await page.evaluate(() => {
+      const form = document.createElement('form')
+      form.id = 'nested-form'
+      const field = document.createElement('openleaf-editor')
+      field.setAttribute('toolbar', 'none')
+      field.setAttribute('aria-label', 'Nested body')
+      const area = document.createElement('textarea')
+      area.name = 'nested'
+      area.value = '<p>seed</p>'
+      field.append(area)
+      form.append(field)
+      document.body.append(form)
+    })
+    await expect(page.getByRole('textbox', { name: 'Nested body' })).toBeVisible()
+    const posted = await page.evaluate(() => {
+      const form = document.getElementById('nested-form')
+      if (!(form instanceof HTMLFormElement)) return null
+      return new FormData(form).get('nested')
+    })
+    expect(String(posted)).toContain('seed')
+  })
 })
