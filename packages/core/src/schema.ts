@@ -61,13 +61,38 @@ const nodes: Record<string, NodeSpec> = {
   },
 
   code_block: {
+    // `language` is content, not decoration. Without it a fenced block loses
+    // `class="language-js"` on the first save -- which is both an attribute-loss
+    // bug and the reason a highlighter has nothing to work from.
+    attrs: { language: { default: null } },
     content: 'text*',
     marks: '',
     group: 'block',
     code: true,
     defining: true,
-    parseDOM: [{ tag: 'pre', preserveWhitespace: 'full' }],
-    toDOM: () => ['pre', ['code', 0]],
+    parseDOM: [
+      {
+        tag: 'pre',
+        preserveWhitespace: 'full',
+        getAttrs(dom) {
+          const pre = dom as Element
+          // The class may sit on either element in the wild. CommonMark, Prism
+          // and highlight.js all put it on <code>; older CMS output often puts
+          // it on <pre>. Read both, write one.
+          const code = pre.querySelector('code')
+          const source = `${pre.getAttribute('class') ?? ''} ${code?.getAttribute('class') ?? ''}`
+          const match = /(?:^|\s)(?:language|lang)-([a-z0-9+#.-]+)/i.exec(source)
+          return { language: match ? (match[1] as string).toLowerCase() : null }
+        },
+      },
+    ],
+    toDOM(node) {
+      const language = node.attrs['language'] as string | null
+      // Normalized onto <code>, which is where every downstream highlighter
+      // looks. A block authored with the class on <pre> moves it; that is a
+      // one-time normalization and it is stable thereafter.
+      return language ? ['pre', ['code', { class: `language-${language}` }, 0]] : ['pre', ['code', 0]]
+    },
   },
 
   horizontal_rule: {

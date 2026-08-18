@@ -51,7 +51,10 @@
 >   same rules
 > - **Tables** — read and written by every deployment; editing is an opt-in
 >   12.5 KB bundle that shares the core runtime rather than duplicating it
-> - Bundles: **84 KB gzipped** core, plus **12.5 KB** for optional table editing
+> - **Syntax highlighting and source formatting** — coloured code blocks, and a
+>   source view that is indented and highlighted, in a 5.3 KB opt-in bundle
+> - Bundles: **85 KB gzipped** core, plus **12.5 KB** for table editing and
+>   **5.3 KB** for highlighting, each downloaded only if you ask for it
 >
 > **What does not exist yet**
 > - Image upload (insert-by-URL only), find and replace, alignment, colours
@@ -116,6 +119,7 @@ sanitize/        one policy as data + DOMPurify/bleach/HTMLPurifier   [done]
 ui/              toolbar, icons, dialogs, theme tokens                 [done]
 element/         <openleaf-editor> custom element — the drop-in        [done]
 plugins-table/   opt-in table editing, second script tag              [done]
+plugins-highlight/ opt-in syntax highlighting + source formatting     [done]
 plugins-*/       one package per feature, tree-shakeable
 sanitize/        one allowlist as data + matching node, php, python impls
 adapters-*/      thin react, vue, svelte, angular wrappers
@@ -430,6 +434,74 @@ with.
 
 ---
 
+## Syntax highlighting and source formatting
+
+A second opt-in bundle, **5.3 KB gzipped**. It colours code blocks and formats
+the HTML source view — and the formatting is arguably the bigger win, because the
+editor serializes to one long line, which is correct output and unreadable
+source.
+
+```html
+<script src="/js/openleaf.min.js"></script>
+<script src="/js/openleaf-highlight.min.js"></script>
+```
+
+### Formatting is verified, not trusted
+
+Reindenting HTML can change what it means. Whitespace inside `<pre>` is content;
+whitespace inside a paragraph's inline content becomes a space. So the
+reformatted text is only ever shown after it has been **proved to parse to the
+same document**, and the original is used when that check fails. A formatter that
+cannot demonstrate it preserved your document does not get to touch it.
+
+The first attempt was a regex scanner and it broke on four of the nine real
+fidelity fixtures, all for one reason: it could not tell schema-native structure
+from preserved markup. `<div class="callout">` is captured verbatim by the
+preservation layer, so reindenting its interior changes the stored document — and
+a tag name alone cannot tell you which kind of `div` you are looking at. The
+formatter walks the element tree instead, and only ever reformats block elements
+the schema itself emits.
+
+### The highlighter is a seam, not a fixture
+
+Measured before deciding:
+
+| | Size | Dependencies | Languages |
+|---|---|---|---|
+| Built-in tokenizer | **1.9 KB** gzip | none | HTML, CSS, JS |
+| refractor + 3 languages | 14.0 KB gzip | 19 | ~300 available |
+
+Neither is obviously right, because the two uses differ. A **source view** shows
+the editor's own HTML — three languages is the complete set, not a compromise. A
+**code block** can contain anything, and shipping three languages while calling
+it syntax highlighting is a poor experience for someone writing Python.
+
+So the default is small and honest about its coverage, and the seam is public:
+
+```ts
+import { setHighlighter } from '@openleaf/plugins-highlight'
+setHighlighter((source, language) => /* Prism, refractor, highlight.js … */)
+```
+
+Same shape as [`@openleaf/sanitize`](packages/sanitize), which ships a policy and
+lets you enforce it with DOMPurify. The valuable thing is the integration point,
+not a reimplementation of somebody else's decade of work. The seam is tested by
+driving it with refractor, because an extension point nobody has run is one that
+does not work.
+
+### What it does not do
+
+JSX, TypeScript type syntax and decorators are not modelled by the built-in
+tokenizer, and regex-versus-division is a heuristic. Every one of those degrades
+to "this run is plain text", never to a wrong document — guaranteed by the test
+that concatenating every token reproduces the input byte for byte.
+
+Highlighting is applied as ProseMirror **decorations**, so the document is never
+touched. Nothing here can alter what gets stored; the worst a bug can do is
+colour something oddly.
+
+---
+
 ## The road ahead
 
 Ordered by dependency, not by date. I would rather ship 100% of fifteen
@@ -486,7 +558,7 @@ The point at which someone could actually replace TinyMCE with this.
   DOMPurify, `bleach` and HTMLPurifier. Every CMS team hand-rolls this in each
   language and discovers the divergence when something gets through the weakest
   one.
-- [x] Source view
+- [x] Source view, with opt-in formatting and syntax highlighting
 - [ ] Find and replace, alignment, colors, character count, autosave
 - [ ] i18n scaffolding and a first non-English locale
 

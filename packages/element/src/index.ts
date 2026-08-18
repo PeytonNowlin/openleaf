@@ -49,6 +49,17 @@ import { EditorView } from 'prosemirror-view'
 
 let hintCounter = 0
 
+/**
+ * Emitted when the HTML source view opens and closes, carrying the textarea.
+ *
+ * The extension point exists so an opt-in bundle can enhance the source box --
+ * formatting, syntax highlighting -- without the element having to know anything
+ * about it. Names are defined here rather than imported so the element keeps no
+ * dependency on any plugin.
+ */
+export const SOURCE_OPEN_EVENT = 'openleaf:source-open'
+export const SOURCE_CLOSE_EVENT = 'openleaf:source-close'
+
 export class OpenLeafEditor extends HTMLElement {
   static get observedAttributes(): string[] {
     return ['for', 'readonly']
@@ -280,12 +291,24 @@ export class OpenLeafEditor extends HTMLElement {
       this.#sourceArea = area
       this.#sourceMode = true
       this.#toolbar?.setItemState('source', { active: true })
+      // Announced before focus so an enhancer can wrap the textarea while it is
+      // still inert; focusing first would move the caret and then move the
+      // element out from under it.
+      this.dispatchEvent(
+        new CustomEvent(SOURCE_OPEN_EVENT, { bubbles: true, detail: { textarea: area } }),
+      )
       area.focus()
       return
     }
 
     const area = this.#sourceArea
     if (area) {
+      // Announced before anything is read or removed, so an enhancer can unwrap
+      // its own DOM first and the value read below is the author's text rather
+      // than something half-detached.
+      this.dispatchEvent(
+        new CustomEvent(SOURCE_CLOSE_EVENT, { bubbles: true, detail: { textarea: area } }),
+      )
       // Parsing is lenient by design: hand-edited HTML is frequently invalid,
       // and refusing to leave source view because of a stray tag would trap the
       // author in it.

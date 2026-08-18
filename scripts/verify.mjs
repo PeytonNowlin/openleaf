@@ -23,6 +23,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const BUDGETS_KB = {
   'openleaf.min.js': 90,
   'openleaf-tables.min.js': 25,
+  'openleaf-highlight.min.js': 15,
 }
 
 const args = new Set(process.argv.slice(2))

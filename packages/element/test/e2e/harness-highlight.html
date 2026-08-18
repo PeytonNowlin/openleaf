@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OpenLeaf highlighting harness</title>
+<style>body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; max-width: 52rem; }</style>
+</head>
+<body>
+<form id="post-form" method="post" action="/submitted">
+  <label for="body">Post body</label>
+  <openleaf-editor for="body" aria-label="Post body"
+    toolbar="undo redo | bold italic | codeBlock | source"></openleaf-editor>
+  <textarea id="body" name="body" hidden><h2>Report</h2>
+<p>Some prose with <strong>bold</strong> in it.</p>
+<pre><code class="language-js">const greeting = "hello";
+// a comment
+function greet(name) { return `${greeting} ${name}` }</code></pre>
+<pre><code class="language-css">.card > p { color: #333; margin: 0 auto }</code></pre>
+<pre><code>plain block with no language</code></pre></textarea>
+  <button type="submit" id="save">Save</button>
+</form>
+
+<script src="/demo/openleaf.min.js"></script>
+<script src="/demo/openleaf-highlight.min.js"></script>
+</body>
+</html>

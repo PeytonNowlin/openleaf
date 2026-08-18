@@ -160,7 +160,7 @@
   </p>
   <p class="badges">
     <span class="badge">Apache-2.0</span>
-    <span class="badge">84 KB gzipped</span>
+    <span class="badge">85 KB gzipped</span>
     <span class="badge">No framework</span>
     <span class="badge">Built on ProseMirror</span>
     <span class="badge"><a href="https://github.com/PeytonNowlin/openleaf">Source on GitHub</a></span>
@@ -207,6 +207,10 @@
         <tr><td>South</td><td>287</td></tr>
       </tbody>
     </table>
+    <pre><code class="language-js">// Code blocks are highlighted by the opt-in bundle.
+const greet = (name) =&gt; `hello ${name}`
+const ratio = width / height   // division, not a regex
+</code></pre>
     <p dir="rtl">ونص من اليمين إلى اليسار، لأن اتجاه النص ليس تنسيقًا.</p>
   </textarea>
 </div>
@@ -298,6 +302,34 @@
   toolbar. Drag a column border to resize.
 </p>
 
+<h2 id="highlighting">Syntax highlighting and source formatting</h2>
+<p class="lede">
+  A second opt-in bundle, 5.3 KB. It colours code blocks and it formats the HTML
+  source view — which is arguably the bigger win.
+</p>
+
+<p>
+  Press <strong>HTML source</strong> in the toolbar. The editor serializes to one
+  long line, which is correct output and unreadable source, so the bundle indents
+  it and highlights it. <strong>The formatting is verified, not trusted</strong>:
+  the reindented text is only shown after it has been proved to parse to exactly
+  the same document. If that check fails you get the original, unformatted. A
+  formatter that cannot demonstrate it preserved your document does not get to
+  touch it.
+</p>
+
+<pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
+&lt;script src="/js/openleaf-highlight.min.js"&gt;&lt;/script&gt;   &lt;!-- 5.3 KB, optional --&gt;</pre>
+
+<p>
+  The built-in tokenizer covers HTML, CSS and JavaScript in 1.9 KB — which is the
+  complete set for a source view of the editor's own output, and honestly not
+  enough for a code block containing Python. So the highlighter is a seam rather
+  than a fixture: <code>setHighlighter()</code> swaps in Prism, refractor or
+  highlight.js in about five lines. Measured, for the record: refractor with
+  three languages is 14 KB and 19 dependencies, against 1.9 KB and none.
+</p>
+
 <h2 id="keyboard">Keyboard and screen readers</h2>
 <p class="lede">
   The whole toolbar is a single tab stop, and <kbd>Tab</kbd> always leaves the editor.
@@ -375,6 +407,7 @@
 <script src="./openleaf.min.js"></script>
 <!-- The opt-in bundle. Order matters: it borrows the runtime the first one publishes. -->
 <script src="./openleaf-tables.min.js"></script>
+<script src="./openleaf-highlight.min.js"></script>
 <script>
 (function () {
   'use strict'
