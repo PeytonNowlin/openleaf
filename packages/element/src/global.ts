@@ -2,7 +2,7 @@
  * The bundle entry point, and the plugin host.
  *
  * Two script tags cannot share module state, so an opt-in bundle loaded after
- * this one would normally bundle its own copy of ProseMirror -- turning a 25 KB
+ * this one would normally bundle its own copy of ProseMirror -- turning a 12.5 KB
  * table plugin into a 200 KB one, and worse, giving it a *second* copy of the
  * schema and the registries. Two schemas means a table node created by the
  * plugin is a different node type than the one the editor understands, which

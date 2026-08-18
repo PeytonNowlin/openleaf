@@ -1,10 +1,11 @@
 /**
  * The OpenLeaf document schema.
  *
- * Scope note: this is the v0.1 core. Tables live in @openleaf/plugins-table
- * because their schema and commands are large enough to be their own
- * concern, and because a CMS that does not allow tables should not ship
- * their code.
+ * Scope note: table NODES are here, in the base schema, so that every
+ * deployment reads and writes tables faithfully. Table EDITING -- cell
+ * selection, column resizing, the row and column commands and toolbar -- is
+ * the opt-in @openleaf/plugins-table. See tables.ts for why the split falls
+ * there rather than at the package boundary.
  */
 
 import { Schema, type MarkSpec, type NodeSpec } from 'prosemirror-model'

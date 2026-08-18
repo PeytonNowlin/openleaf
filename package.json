@@ -9,7 +9,6 @@
   "scripts": {
     "build": "pnpm -r build",
     "fidelity": "vitest run test/fidelity",
-    "lint": "eslint .",
     "test": "vitest run",
     "test:all": "vitest run && playwright test",
     "test:e2e": "playwright test",

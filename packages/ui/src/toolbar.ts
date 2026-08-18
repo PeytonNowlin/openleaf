@@ -196,6 +196,17 @@ export class Toolbar {
         console.warn(`@openleaf/ui: no toolbar item registered for "${token}"`)
         continue
       }
+      // Only `button` is implemented. The `type` discriminant exists so that
+      // adding variants later is not a breaking change to a published config
+      // shape -- but a declared-and-inert variant is worse than an absent one,
+      // because the author sees a plausible button and no signal that the
+      // control they asked for was not built.
+      if (spec.type && spec.type !== 'button') {
+        console.warn(
+          `@openleaf/ui: toolbar item "${spec.id}" declares type "${spec.type}", ` +
+            'which is not implemented yet. It is rendering as a button.',
+        )
+      }
       group.appendChild(this.#buildButton(spec))
     }
 

@@ -12,7 +12,7 @@
  *
  * So everyone gets tables that read and write correctly, for about a kilobyte.
  * What is opt-in is the weight: cell selection, column resizing, the row and
- * column commands, and the toolbar controls -- roughly 25 KB that a site
+ * column commands, and the toolbar controls -- 12.5 KB gzipped that a site
  * forbidding tables has no reason to download.
  *
  * ## Loading it
@@ -25,7 +25,7 @@
  * ```
  *
  * The second bundle shares the first one's ProseMirror runtime rather than
- * carrying its own copy, which is what keeps it 25 KB instead of 200 KB.
+ * carrying its own copy, which is what keeps it 12.5 KB instead of ~200 KB.
  *
  * Or as a module:
  *

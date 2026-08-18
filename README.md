@@ -33,7 +33,7 @@
 > - The document schema and HTML in / HTML out pipeline
 > - The **content-preservation layer** — the thing that stops a
 >   ProseMirror-based editor from silently eating legacy markup
-> - The round-trip fidelity harness: **7/7 stored fixtures fully lossless**,
+> - The round-trip fidelity harness: **9/9 stored fixtures fully lossless**,
 >   **138 unit tests** green, typechecked strict
 > - **Paste normalizers for Word and Google Docs** — reconstructs real nested
 >   `<ul>`/`<ol>` from Word's `mso-list` markup, strips the vendor styling, and
@@ -50,8 +50,8 @@
 >   DOMPurify, Python `bleach` and PHP HTMLPurifier so every runtime enforces the
 >   same rules
 > - **Tables** — read and written by every deployment; editing is an opt-in
->   13 KB bundle that shares the core runtime rather than duplicating it
-> - Bundles: **84 KB gzipped** core, plus **13 KB** for optional table editing
+>   12.5 KB bundle that shares the core runtime rather than duplicating it
+> - Bundles: **84 KB gzipped** core, plus **12.5 KB** for optional table editing
 >
 > **What does not exist yet**
 > - Image upload (insert-by-URL only), find and replace, alignment, colours
@@ -162,7 +162,7 @@ editor ends up either mangling stored documents or importing a wall of
 
 | Corpus | Standard | Today |
 |---|---|---|
-| `stored/` — the customer's database, authoritative | **Lossless.** Every attribute survives, or a maintainer declared the loss in a reviewed PR. | **7/7 fully lossless** |
+| `stored/` — the customer's database, authoritative | **Lossless.** Every attribute survives, or a maintainer declared the loss in a reviewed PR. | **9/9 fully lossless** |
 | `paste/` — Word, Google Docs, Excel | **Stable and text-preserving.** Stripping vendor styling is the goal, not damage. | 2/2 stable; `mso-*` and `docs-internal-guid` stripped |
 
 ```
@@ -177,7 +177,7 @@ $ pnpm test
   semantic-baseline.html  stored    ok     ok       0
   gdocs-paste.html        paste     ok     ok       4
   word-paste.html         paste     ok     ok       5
-  stored corpus: 7/7 fully lossless
+  stored corpus: 9/9 fully lossless
 ```
 
 This harness has already earned its keep. It caught `dir` being silently
@@ -371,7 +371,7 @@ So the split moved:
 | | Where | Cost |
 |---|---|---|
 | Table **schema** — parse, serialize, legacy attributes, `scope`, `colspan` | Always in core | ~4 KB |
-| Table **editing** — cell selection, column resizing, row/column commands, toolbar | Opt-in bundle | 13 KB gzipped |
+| Table **editing** — cell selection, column resizing, row/column commands, toolbar | Opt-in bundle | 12.5 KB gzipped |
 
 Two script tags, and the order matters:
 
@@ -381,7 +381,7 @@ Two script tags, and the order matters:
 ```
 
 The second bundle **borrows the first one's ProseMirror runtime** rather than
-carrying its own. That is what keeps it 13 KB instead of ~200 KB, but the real
+carrying its own. That is what keeps it 12.5 KB instead of ~200 KB, but the real
 reason is correctness: two copies of ProseMirror means two schemas, and a table
 node built by the plugin would be a different node type than the editor accepts —
 a failure that is very hard to read from the symptoms.
@@ -570,7 +570,7 @@ render. Lock-in is not a retention strategy here.
 
 **Current size:** 266 KB minified, **84 KB gzipped** for the core bundle —
 editing engine, paste normalizers, toolbar, icons, dialogs and the table schema.
-Optional table *editing* is a further **13 KB**, downloaded only by sites that
+Optional table *editing* is a further **12.5 KB**, downloaded only by sites that
 load it.
 
 The gate fails above 90 KB gzipped for the core bundle, so there is **6 KB of
@@ -645,6 +645,40 @@ sanitizing on the server.
 Long-term intent is to donate OpenLeaf to a neutral foundation once it is
 mature enough to be accepted, which would strengthen these guarantees, never
 weaken them.
+
+## Writing a plugin
+
+[**docs/authoring-plugins.md**](docs/authoring-plugins.md) is the guide. It covers
+the three delivery models, a worked example that contributes a node type, and —
+the part worth reading even if you skim the rest — the interactions that will
+bite you:
+
+- **The preservation catch-all.** A selector typo, or a `getAttrs` that returns
+  `false`, falls through to the preservation layer. `serializeHtml` then returns
+  *byte-identical HTML* and the fidelity suite passes, while your node is
+  silently uneditable. Only a node-type assertion catches it.
+- **The moment you claim a tag, you own every attribute anyone put on it.**
+  Preserved markup keeps everything; a node spec keeps what it models. Adding a
+  node type therefore *reduces* fidelity for that tag unless you carry the rest.
+- **Sanitization.** A plugin that introduces an element must document the
+  `policyForPreserved()` addition its users need, or their content dies on the
+  server.
+
+### What a plugin can and cannot do today
+
+| | |
+|---|---|
+| ProseMirror plugins, toolbar buttons, icons, commands | Work |
+| Push state a predicate cannot derive | Works, per editor |
+| **Add a node or mark type** | **Not yet out of tree** — in progress |
+| Dropdowns, colour grids, popovers | Not implemented; warns and renders as a button |
+| Contribute CSS | No extension point yet |
+| Shadow a core keyboard binding | Not possible; plugin keymaps are appended last |
+
+A plugin that throws cannot take the editor with it: predicates fall back to
+"unavailable", a failing factory contributes nothing, and persistence runs before
+any chrome renders — so a broken plugin cannot stop the document reaching the
+server.
 
 ## How to help right now
 

@@ -34,11 +34,15 @@ export interface ToolbarItemSpec {
   /**
    * What kind of control this is.
    *
-   * Present from day one even though only `button` and `select` are
-   * implemented. A flat spec models a button and nothing else, and adding this
-   * discriminant *after* the config shape is public is precisely the breaking
-   * change the registry exists to avoid. Colour grids, table-insert popovers
-   * and link editors will all be `custom`.
+   * Present from day one even though **only `button` is implemented** -- the
+   * block-type control is special-cased by id, not by type. A flat spec models
+   * a button and nothing else, and adding this discriminant *after* the config
+   * shape is public is precisely the breaking change the registry exists to
+   * avoid. Colour grids, table-insert popovers and link editors will all be
+   * `custom`.
+   *
+   * Declaring an unimplemented variant logs a warning rather than failing
+   * quietly as a button.
    */
   type?: 'button' | 'select' | 'custom'
   /** Accessible name. Kept constant across states -- the platform announces pressed. */
