@@ -133,7 +133,7 @@ test.describe('applying formatting', () => {
 
     const checkbox = page.getByRole('checkbox', { name: 'Open in a new window' })
     await expect(checkbox).toBeChecked()
-    await page.getByRole('button', { name: 'Save' }).click()
+    await page.getByRole('dialog', { name: 'Edit link' }).getByRole('button', { name: 'Save' }).click()
 
     await expect.poll(() => page.locator('#body').inputValue()).toMatch(
       /<a href="https:\/\/example\.org" target="_blank" rel="noopener noreferrer">linked<\/a>/,
