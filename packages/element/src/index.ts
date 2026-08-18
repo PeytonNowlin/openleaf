@@ -28,10 +28,11 @@
 
 import {
   buildKeymap,
+  coreSchema,
   createRegisteredPlugins,
   onEditorPluginsChange,
+  onSchemaExtensionsChange,
   parseHtml,
-  schema,
   serializeHtml,
 } from '@openleaf/core'
 import { normalizePastedHtml } from '@openleaf/paste'
@@ -72,13 +73,50 @@ export class OpenLeafEditor extends HTMLElement {
   #contentHost: HTMLDivElement | null = null
   #sourceArea: HTMLTextAreaElement | null = null
   #sourceMode = false
+  #deferred = false
+  /** The schema this editor was built with. Fixed for its lifetime. */
+  #schema = coreSchema()
   #basePlugins: import('prosemirror-state').Plugin[] = []
   #unwatchPlugins: (() => void) | undefined
+  #unwatchSchema: (() => void) | undefined
   #onSubmit = (): void => this.#syncToTextarea()
 
+  /**
+   * Build the editor -- but not before the document's scripts have run.
+   *
+   * A custom element upgrades at the microtask checkpoint that ends the script
+   * defining it, so `connectedCallback` fires BEFORE the next `<script>` tag
+   * executes. Every documented integration loads plugin bundles as later script
+   * tags, which means they register after this point.
+   *
+   * ProseMirror plugins survive that, because `state.reconfigure` can swap them
+   * into a live editor. A schema cannot: `reconfigure` keeps the old schema by
+   * construction. So an editor built at upgrade time could never contain a
+   * plugin's node types -- not as an edge case, but in every shipped layout.
+   *
+   * Waiting for `DOMContentLoaded` closes that gap for the whole two-script-tag
+   * model. The editor already appears asynchronously via element upgrade, so
+   * nothing about this is visible to an author.
+   */
   connectedCallback(): void {
-    if (this.#view) return
+    if (this.#view || this.#deferred) return
 
+    if (this.ownerDocument.readyState === 'loading') {
+      this.#deferred = true
+      this.ownerDocument.addEventListener(
+        'DOMContentLoaded',
+        () => {
+          this.#deferred = false
+          if (this.isConnected && !this.#view) this.#build()
+        },
+        { once: true },
+      )
+      return
+    }
+    this.#build()
+  }
+
+  #build(): void {
     registerDefaultItems()
     ensureStyles(this.ownerDocument)
 
@@ -131,9 +169,11 @@ export class OpenLeafEditor extends HTMLElement {
       keymap(baseKeymap),
     ]
 
+    this.#schema = coreSchema()
+
     this.#view = new EditorView(contentHost, {
       state: EditorState.create({
-        doc: parseHtml(initialHtml),
+        doc: parseHtml(initialHtml, { schema: this.#schema }),
         plugins: [
           history(),
           // Alt+F10 is bound before the shared keymap so it cannot be shadowed.
@@ -150,7 +190,7 @@ export class OpenLeafEditor extends HTMLElement {
           // Plugins contributed by opt-in bundles, instantiated fresh per
           // editor: a ProseMirror plugin instance carries per-editor state and
           // two editors sharing one would fight over it.
-          ...createRegisteredPlugins(schema),
+          ...createRegisteredPlugins(this.#schema),
         ],
       }),
       editable: () => !this.hasAttribute('readonly'),
@@ -199,12 +239,23 @@ export class OpenLeafEditor extends HTMLElement {
     // would otherwise never receive its plugins, and the author would find
     // table controls that do nothing. `reconfigure` keeps the document and the
     // undo history; rebuilding the state from scratch would discard both.
+    this.#unwatchSchema = onSchemaExtensionsChange(() => {
+      if (!this.#view) return
+      if (coreSchema() === this.#schema) return
+      console.warn(
+        '@openleaf/element: a schema extension registered after this editor was ' +
+          'built, so its node types are not available here. A document\'s schema is ' +
+          'fixed when its editor is created -- load the plugin script before the ' +
+          'editor, or reload the page. Editors created from now on will have it.',
+      )
+    })
+
     this.#unwatchPlugins = onEditorPluginsChange(() => {
       const view = this.#view
       if (!view) return
       view.updateState(
         view.state.reconfigure({
-          plugins: [...this.#basePlugins, ...createRegisteredPlugins(schema)],
+          plugins: [...this.#basePlugins, ...createRegisteredPlugins(this.#schema)],
         }),
       )
       this.#toolbar?.update(view.state)
@@ -223,6 +274,7 @@ export class OpenLeafEditor extends HTMLElement {
     this.#form?.removeEventListener('formdata', this.#onSubmit)
     this.removeEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
     this.#unwatchPlugins?.()
+    this.#unwatchSchema?.()
     this.#toolbar?.destroy()
     this.#toolbar = null
     this.#view?.destroy()
@@ -242,7 +294,10 @@ export class OpenLeafEditor extends HTMLElement {
       return
     }
     const state = EditorState.create({
-      doc: parseHtml(html),
+      // The view's schema, not the current one: if an extension registered since
+      // this editor was built, parsing against the newer schema would produce
+      // nodes its own state rejects.
+      doc: parseHtml(html, { schema: this.#schema }),
       plugins: this.#view.state.plugins,
     })
     this.#view.updateState(state)
@@ -253,6 +308,11 @@ export class OpenLeafEditor extends HTMLElement {
   /** Escape hatch for plugins and integrations that need the real view. */
   get view(): EditorView | null {
     return this.#view
+  }
+
+  /** The schema this editor was built with. */
+  get schema(): import('prosemirror-model').Schema {
+    return this.#schema
   }
 
   /** The toolbar, for plugins pushing external state via setItemState. */

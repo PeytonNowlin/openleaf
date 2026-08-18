@@ -9,7 +9,7 @@
 
 import { DOMParser, DOMSerializer, type Node as PMNode, type Schema } from 'prosemirror-model'
 import { isInsidePreserved } from './preserve.js'
-import { schema as defaultSchema } from './schema.js'
+import { coreSchema } from './extensions.js'
 
 /**
  * Parsers and serializers are resolved per schema rather than built once.
@@ -67,7 +67,7 @@ export function parseHtml(html: string, opts?: HtmlIOOptions): PMNode {
   const doc = resolveDocument(opts)
   const tpl = doc.createElement('template')
   tpl.innerHTML = html
-  return parserFor(opts?.schema ?? defaultSchema).parse(tpl.content, {
+  return parserFor(opts?.schema ?? coreSchema()).parse(tpl.content, {
     preserveWhitespace: false,
   })
 }

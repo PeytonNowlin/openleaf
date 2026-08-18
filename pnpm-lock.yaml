@@ -29,6 +29,9 @@ importers:
 
   packages/core:
     dependencies:
+      orderedmap:
+        specifier: ^2.1.1
+        version: 2.1.1
       prosemirror-commands:
         specifier: ^1.6.2
         version: 1.7.2

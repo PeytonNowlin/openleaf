@@ -1,4 +1,4 @@
-import { parseHtml, schema, serializeHtml } from '@openleaf/core'
+import { coreSchema, parseHtml, serializeHtml } from '@openleaf/core'
 import { describe, expect, it } from 'vitest'
 import { normalizeGeneric, normalizePastedHtml } from '../src/index.js'
 
@@ -23,7 +23,7 @@ function preservedAtoms(html: string): string[] {
   const doc = parseHtml(html)
   const found: string[] = []
   doc.descendants((node) => {
-    if (node.type === schema.nodes['unknown_block'] || node.type === schema.nodes['unknown_inline']) {
+    if (node.type === coreSchema().nodes['unknown_block'] || node.type === coreSchema().nodes['unknown_inline']) {
       found.push(node.attrs['html'] as string)
     }
     return true

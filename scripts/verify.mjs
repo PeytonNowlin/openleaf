@@ -10,7 +10,7 @@
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { gzipSync } from 'node:zlib'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -102,7 +102,43 @@ const cleanBuildOk = step('bundle build has no dist dependency', () => {
   return 'resolves workspace packages from source'
 })
 
-// 5. Bundle size. The "no build step" promise means integrators load this over
+// 5. Nothing outside core may import a schema instance.
+//
+//    `export const schema` was deleted rather than deprecated, because a
+//    retained const typechecks and then fails in the field: a node built from
+//    one schema instance is rejected by a document built from another. This
+//    guard stops it creeping back in as an import somewhere.
+const schemaGuardOk = step('no schema singleton outside core', () => {
+  const offenders = []
+  const roots = ['packages/element/src', 'packages/ui/src', 'packages/paste/src',
+                 'packages/plugins-table/src', 'packages/plugins-highlight/src']
+  for (const root of roots) {
+    let files
+    try {
+      files = readdirSync(new URL(`../${root}`, import.meta.url), { recursive: true })
+    } catch {
+      continue
+    }
+    for (const file of files) {
+      if (typeof file !== 'string' || !file.endsWith('.ts')) continue
+      const text = readFileSync(new URL(`../${root}/${file}`, import.meta.url), 'utf8')
+      text.split('\n').forEach((line, i) => {
+        if (/^import .*\bschema\b.*from ['"]@openleaf\/core['"]/.test(line)) {
+          offenders.push(`${root}/${file}:${i + 1}`)
+        }
+      })
+    }
+  }
+  if (offenders.length > 0) {
+    throw new Error(
+      'these import a schema instance from core; use state.schema or coreSchema(): ' +
+        offenders.join(', '),
+    )
+  }
+  return 'all resolve from state.schema or coreSchema()'
+})
+
+// 6. Bundle size. The "no build step" promise means integrators load this over
 //    the wire, so the number is a feature and regressions should hurt.
 const sizeOk = step(
   `bundle size budgets (${Object.entries(BUDGETS_KB).map(([n, k]) => `${n} ${k} KB`).join(', ')})`,
@@ -131,7 +167,7 @@ for (const r of results) {
 }
 console.log(`  ${'-'.repeat(width + 26)}`)
 
-const allOk = typecheckOk && unitOk && browserOk && cleanBuildOk && sizeOk
+const allOk = typecheckOk && unitOk && browserOk && cleanBuildOk && schemaGuardOk && sizeOk
 if (quick) {
   console.log(
     `  ${yellow('note')} --quick ran chromium only. Run plain \`pnpm verify\` before pushing.`,

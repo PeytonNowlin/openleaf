@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseHtml, schema, serializeHtml } from '../src/index.js'
+import { coreSchema, parseHtml, serializeHtml } from '../src/index.js'
 
 const roundTrip = (html: string): string => serializeHtml(parseHtml(html))
 
@@ -131,10 +131,10 @@ describe('the schema exposes the table roles prosemirror-tables needs', () => {
   it('tags each node with its tableRole', () => {
     // The opt-in editing plugin finds these nodes by role, not by name, so a
     // missing role silently disables every table command.
-    expect(schema.nodes['table']?.spec['tableRole']).toBe('table')
-    expect(schema.nodes['table_row']?.spec['tableRole']).toBe('row')
-    expect(schema.nodes['table_cell']?.spec['tableRole']).toBe('cell')
-    expect(schema.nodes['table_header']?.spec['tableRole']).toBe('header_cell')
+    expect(coreSchema().nodes['table']?.spec['tableRole']).toBe('table')
+    expect(coreSchema().nodes['table_row']?.spec['tableRole']).toBe('row')
+    expect(coreSchema().nodes['table_cell']?.spec['tableRole']).toBe('cell')
+    expect(coreSchema().nodes['table_header']?.spec['tableRole']).toBe('header_cell')
   })
 })
 

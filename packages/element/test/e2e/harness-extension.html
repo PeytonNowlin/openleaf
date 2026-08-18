@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OpenLeaf schema extension harness</title>
+<style>body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; max-width: 52rem; }
+.ol-callout { border-left: 4px solid #0550ae; padding: .5rem 1rem; }</style>
+</head>
+<body>
+<!--
+  The element is declared BEFORE the scripts, exactly as in every documented
+  integration. Custom-element upgrade runs before the next <script> tag, so the
+  extension below registers after connectedCallback would normally have fired.
+  If the editor did not wait for the capability freeze, the callout node would
+  not exist here.
+-->
+<form id="post-form" method="post" action="/submitted">
+  <label for="body">Post body</label>
+  <openleaf-editor for="body" aria-label="Post body" toolbar="bold italic | source"></openleaf-editor>
+  <textarea id="body" name="body" hidden><p>Before.</p>
+<aside class="ol-callout" data-level="warn" id="keep-me" data-analytics="x"><p>A callout.</p></aside>
+<p>After.</p></textarea>
+</form>
+
+<script src="/demo/openleaf.min.js"></script>
+<script>
+  // What a plugin bundle does, inlined so the test needs no extra build step.
+  const core = window.OpenLeaf.__runtime['@openleaf/core']
+  core.registerSchemaExtension({
+    id: 'test/callout',
+    nodes: {
+      callout: {
+        content: 'block+',
+        group: 'block',
+        defining: true,
+        attrs: { level: { default: 'info' } },
+        parseDOM: [{
+          tag: 'aside.ol-callout',
+          getAttrs: (dom) => ({ level: dom.getAttribute('data-level') || 'info' }),
+        }],
+        toDOM: (node) => ['aside', { class: 'ol-callout', 'data-level': node.attrs.level }, 0],
+      },
+    },
+  })
+</script>
+</body>
+</html>

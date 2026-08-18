@@ -1,4 +1,4 @@
-export { schema } from './schema.js'
+export { baseSchema, coreMarks, coreNodes } from './schema.js'
 export { parseHtml, serializeHtml, roundTrip, type HtmlIOOptions } from './html.js'
 export { isLosslesslyUnwrappable, unknownBlock, unknownInline } from './preserve.js'
 export {
@@ -59,3 +59,13 @@ export {
   type EditorPluginFactory,
 } from './plugins.js'
 export { table, table_cell, table_header, table_row } from './tables.js'
+export {
+  CARRIED_ATTR,
+  clearSchemaExtensions,
+  coreSchema,
+  createSchema,
+  onSchemaExtensionsChange,
+  registerSchemaExtension,
+  registeredSchemaExtensions,
+  type SchemaExtension,
+} from './extensions.js'

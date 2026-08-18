@@ -1,9 +1,9 @@
 import { TextSelection, EditorState } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
-import { buildKeymap, parseHtml, schema, serializeHtml, shortcutFor, shortcuts } from '../src/index.js'
+import { buildKeymap, coreSchema, parseHtml, serializeHtml, shortcutFor, shortcuts } from '../src/index.js'
 
 function stateFrom(html: string, pos = 3): EditorState {
-  const state = EditorState.create({ doc: parseHtml(html), schema })
+  const state = EditorState.create({ doc: parseHtml(html), schema: coreSchema() })
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)))
 }
 

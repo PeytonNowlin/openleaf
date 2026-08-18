@@ -16,8 +16,14 @@ import * as core from '../src/index.js'
  */
 
 const EXPECTED_EXPORTS = [
-  // schema and HTML I/O
-  'schema', 'parseHtml', 'serializeHtml', 'roundTrip',
+  // schema and HTML I/O.
+  // `schema` was DELETED rather than deprecated: a retained const typechecks and
+  // then fails in the field, because a node built from one schema instance is
+  // rejected by a document built from another.
+  'baseSchema', 'coreNodes', 'coreMarks', 'parseHtml', 'serializeHtml', 'roundTrip',
+  // schema extensions
+  'createSchema', 'coreSchema', 'registerSchemaExtension', 'registeredSchemaExtensions',
+  'onSchemaExtensionsChange', 'clearSchemaExtensions', 'CARRIED_ATTR',
   // preservation
   'isLosslesslyUnwrappable', 'unknownBlock', 'unknownInline',
   // url safety
@@ -63,7 +69,7 @@ describe('the public surface', () => {
 
 describe('the schema an integrator sees', () => {
   it('contains the documented node types', () => {
-    const nodes = Object.keys(core.schema.nodes).sort()
+    const nodes = Object.keys(core.coreSchema().nodes).sort()
     expect(nodes).toEqual(
       [
         'blockquote', 'bullet_list', 'code_block', 'doc', 'hard_break', 'heading',
@@ -75,7 +81,7 @@ describe('the schema an integrator sees', () => {
   })
 
   it('contains the documented marks', () => {
-    expect(Object.keys(core.schema.marks).sort()).toEqual(
+    expect(Object.keys(core.coreSchema().marks).sort()).toEqual(
       ['code', 'em', 'link', 'strike', 'strong', 'underline'].sort(),
     )
   })

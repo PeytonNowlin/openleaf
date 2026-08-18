@@ -53,7 +53,9 @@
 >   12.5 KB bundle that shares the core runtime rather than duplicating it
 > - **Syntax highlighting and source formatting** — coloured code blocks, and a
 >   source view that is indented and highlighted, in a 5.3 KB opt-in bundle
-> - Bundles: **85 KB gzipped** core, plus **12.5 KB** for table editing and
+> - **Plugins can add node and mark types** — the schema is built from
+>   registered extensions, not a frozen singleton
+> - Bundles: **86 KB gzipped** core, plus **12.5 KB** for table editing and
 >   **5.3 KB** for highlighting, each downloaded only if you ask for it
 >
 > **What does not exist yet**
@@ -718,6 +720,74 @@ Long-term intent is to donate OpenLeaf to a neutral foundation once it is
 mature enough to be accepted, which would strengthen these guarantees, never
 weaken them.
 
+## Extending the schema
+
+A plugin can contribute node and mark types:
+
+```ts
+import { registerSchemaExtension } from '@openleaf/core'
+
+registerSchemaExtension({
+  id: 'acme/callout',
+  nodes: {
+    callout: {
+      content: 'block+',
+      group: 'block',
+      attrs: { level: { default: 'info' } },
+      parseDOM: [{ tag: 'aside.callout', getAttrs: (dom) => ({ level: dom.dataset.level }) }],
+      toDOM: (node) => ['aside', { class: 'callout', 'data-level': node.attrs.level }, 0],
+    },
+  },
+})
+```
+
+Four decisions in that API are worth the explanation, because each of them
+prevents a specific failure:
+
+**A document's schema is fixed when its editor is built.** `EditorState.reconfigure`
+can swap plugins into a live editor but cannot change its schema — so extensions
+must register before the editor exists. Custom-element upgrade runs *before* the
+next `<script>` tag, which would make that impossible for the documented
+two-script-tag integration, so the element defers building its view until the
+document's scripts have run. Register later and you get a warning naming the
+problem, not a node type that mysteriously never appears.
+
+**Extensions are appended, never prepended, and there is no positioning hint.**
+Measured: a prepended block node becomes the document's `defaultType`, so every
+new document would start with a plugin's widget instead of a paragraph.
+
+**There is no priority field.** The preservation catch-all sits at priority 0 and
+1, so a default-priority rule already wins. A knob would invite an author to set
+`priority: 0` to be polite and thereby tie with the catch-all. `createSchema`
+rejects any rule at priority ≤ 1 and explains why.
+
+**Name collisions throw** — deliberately the opposite of toolbar items, which are
+last-wins because a button is UI and replacing one is a feature. A node type is a
+*storage format*: two definitions of `footnote` mean two serializations of the
+same content chosen by script-tag order, and whichever loses has already written
+documents in its shape. `replaces: ['footnote']` is the explicit opt-in.
+
+### Claiming a tag would otherwise narrow fidelity
+
+Before your node existed, the preservation layer kept that element and **every
+attribute on it**. Afterwards a spec keeps only what it declares — so a callout
+modelling `class` would silently drop the `id` and `data-analytics` that used to
+survive.
+
+So unmodelled attributes are captured on parse and merged back on serialize, by
+default, at schema-build time — which means an author cannot opt out by
+forgetting. Set `carryUnknownAttributes: false` if you genuinely want the strict
+behaviour.
+
+### `schema` was deleted, not deprecated
+
+`@openleaf/core` used to export a `Schema` instance. It no longer does, and that
+was the point of the refactor: a retained const typechecks and then fails in the
+field, because a node built from one schema instance is rejected by a document
+built from another. Use `state.schema` inside a command, or `coreSchema()`
+outside one. `pnpm verify` fails if anything outside core imports a schema
+instance.
+
 ## Writing a plugin
 
 [**docs/authoring-plugins.md**](docs/authoring-plugins.md) is the guide. It covers
@@ -742,7 +812,7 @@ bite you:
 |---|---|
 | ProseMirror plugins, toolbar buttons, icons, commands | Work |
 | Push state a predicate cannot derive | Works, per editor |
-| **Add a node or mark type** | **Not yet out of tree** — in progress |
+| **Add a node or mark type** | Works — `registerSchemaExtension` |
 | Dropdowns, colour grids, popovers | Not implemented; warns and renders as a button |
 | Contribute CSS | No extension point yet |
 | Shadow a core keyboard binding | Not possible; plugin keymaps are appended last |

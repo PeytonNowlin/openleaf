@@ -13,7 +13,8 @@ import { unknownBlock, unknownInline } from './preserve.js'
 import { table, table_cell, table_header, table_row } from './tables.js'
 import { isSafeUrl } from './url.js'
 
-const nodes: Record<string, NodeSpec> = {
+/** The base node specs. Extensions are appended to these. */
+export const coreNodes: Record<string, NodeSpec> = {
   doc: { content: 'block+' },
 
   paragraph: {
@@ -200,7 +201,8 @@ const nodes: Record<string, NodeSpec> = {
   unknown_inline: unknownInline,
 }
 
-const marks: Record<string, MarkSpec> = {
+/** The base mark specs. */
+export const coreMarks: Record<string, MarkSpec> = {
   strong: {
     parseDOM: [
       { tag: 'strong' },
@@ -268,4 +270,11 @@ const marks: Record<string, MarkSpec> = {
   },
 }
 
-export const schema = new Schema({ nodes, marks })
+/**
+ * The base schema, with no extensions.
+ *
+ * Kept for the many places that only ever need the built-in types. Anything that
+ * must honour plugin-contributed node types uses `createSchema` or reads
+ * `state.schema` instead -- see extensions.ts.
+ */
+export const baseSchema = new Schema({ nodes: coreNodes, marks: coreMarks })
