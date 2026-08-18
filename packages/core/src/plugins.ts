@@ -23,15 +23,47 @@ const listeners = new Set<() => void>()
 /** Register plugins to be installed in every editor created from now on. */
 export function registerEditorPlugin(factory: EditorPluginFactory): () => void {
   factories.add(factory)
-  for (const listener of listeners) listener()
+  notify()
   return () => {
-    factories.delete(factory)
+    // Notify on removal too. Without it the disposer deleted the factory and
+    // told nobody, so every editor already on the page kept the plugin running
+    // -- a disposer that is observably a no-op in the common case is worse than
+    // none, because callers believe it worked.
+    if (factories.delete(factory)) notify()
+  }
+}
+
+/**
+ * Notify listeners, isolating each one.
+ *
+ * These listeners are editors. On a page with three of them, an exception from
+ * the second must not stop the third from ever seeing the plugin -- and it must
+ * not propagate back out of `registerEditorPlugin` into the calling plugin,
+ * where a broken editor would look like a broken install.
+ */
+function notify(): void {
+  for (const listener of listeners) {
+    try {
+      listener()
+    } catch (error) {
+      console.error('@openleaf/core: an editor failed to apply a plugin change', error)
+    }
   }
 }
 
 /** Build one fresh set of plugin instances for a new editor. */
 export function createRegisteredPlugins(schema: Schema): Plugin[] {
-  return [...factories].flatMap((factory) => factory(schema))
+  return [...factories].flatMap((factory) => {
+    try {
+      return factory(schema)
+    } catch (error) {
+      // A throwing factory used to take EditorState.create with it, so one bad
+      // script tag produced a blank editor. Contributing nothing is the right
+      // failure: the editor comes up without that plugin.
+      console.error('@openleaf/core: a plugin factory threw; skipping it', error)
+      return []
+    }
+  })
 }
 
 /**
@@ -43,5 +75,7 @@ export function createRegisteredPlugins(schema: Schema): Plugin[] {
  */
 export function onEditorPluginsChange(listener: () => void): () => void {
   listeners.add(listener)
-  return () => listeners.delete(listener)
+  return () => {
+    listeners.delete(listener)
+  }
 }

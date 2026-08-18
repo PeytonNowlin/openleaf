@@ -61,6 +61,40 @@ interface Control {
 
 const BLOCK_TYPE_ID = 'blockType'
 
+/** Item+callback pairs already reported, so a per-keystroke failure logs once. */
+const reported = new Set<string>()
+
+/**
+ * Call a third-party predicate, falling back rather than propagating.
+ *
+ * The fallback for BOTH `isActive` and `isEnabled` is `false`. Defaulting
+ * `isEnabled` to true would invite a click straight into the code path that just
+ * threw; a control whose enablement cannot be computed should read as
+ * unavailable, which is the same reasoning the table plugin already applies to
+ * commands that are meaningless outside a table.
+ *
+ * Logged once per item and callback. A predicate that throws on every
+ * transaction would otherwise emit thousands of identical lines and bury the
+ * first one, which is the only one with a useful stack.
+ */
+function guarded(itemId: string, kind: string, run: () => boolean): boolean {
+  try {
+    return run()
+  } catch (error) {
+    const key = `${itemId}:${kind}`
+    if (!reported.has(key)) {
+      reported.add(key)
+      console.error(
+        `@openleaf/ui: the ${kind} predicate for toolbar item "${itemId}" threw. ` +
+          'The control is shown as unavailable. This is a bug in whatever registered ' +
+          'it, not in the editor.',
+        error,
+      )
+    }
+    return false
+  }
+}
+
 export class Toolbar {
   readonly el: HTMLDivElement
 
@@ -102,7 +136,13 @@ export class Toolbar {
     // Re-render when a plugin registers late. Import-time registration races
     // code-split chunks, and a button that silently never appears is worse than
     // a re-render.
-    this.#unsubscribe = onRegistryChange(() => this.#render())
+    this.#unsubscribe = onRegistryChange(() => {
+      this.#render()
+      // A fresh render leaves every control's state uncomputed, so a control
+      // that should be disabled is briefly clickable. Recompute at once when
+      // there is a view to compute from.
+      if (this.#view) this.update(this.#view.state)
+    })
   }
 
   /** Attach to a view and build the controls. */
@@ -296,13 +336,21 @@ export class Toolbar {
     const control = this.#controls.get(spec.id)
     if (control && control.enabled === false) return
 
-    if (spec.run) {
-      spec.run({ view, host: this.#host })
-      return
-    }
-    if (spec.command) {
-      spec.command(view.state, view.dispatch, view)
-      view.focus()
+    try {
+      if (spec.run) {
+        spec.run({ view, host: this.#host })
+        return
+      }
+      if (spec.command) {
+        spec.command(view.state, view.dispatch, view)
+        view.focus()
+      }
+    } catch (error) {
+      console.error(
+        `@openleaf/ui: toolbar item "${spec.id}" threw when activated. ` +
+          'The editor is unaffected.',
+        error,
+      )
     }
   }
 
@@ -332,7 +380,9 @@ export class Toolbar {
 
       const enabled =
         control.forcedEnabled ??
-        (spec.isEnabled ? spec.isEnabled(state) : spec.command ? spec.command(state) : true)
+        guarded(spec.id, 'isEnabled', () =>
+          spec.isEnabled ? spec.isEnabled(state) : spec.command ? spec.command(state) : true,
+        )
 
       if (enabled !== control.enabled) {
         control.enabled = enabled
@@ -343,7 +393,9 @@ export class Toolbar {
       }
 
       if ((spec.kind ?? 'action') === 'toggle') {
-        const active = control.forcedActive ?? (spec.isActive ? spec.isActive(state) : false)
+        const active =
+          control.forcedActive ??
+          guarded(spec.id, 'isActive', () => (spec.isActive ? spec.isActive(state) : false))
         if (active !== control.active) {
           const previous = control.active
           control.active = active

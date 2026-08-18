@@ -1,0 +1,823 @@
+# Authoring schemas and plugins
+
+How to extend OpenLeaf: what the extension points are today, which ones do not
+exist yet, and the interactions that will cost you a day if nobody tells you
+about them first.
+
+This document describes the code as it is in the tree today, not the code as it
+is planned. Where something is missing, it says so and says what to do instead.
+Every code example here is adapted from `packages/plugins-table`, which is the
+only real plugin in the tree and the reference implementation for everything
+below.
+
+---
+
+## 1. What a plugin can and cannot do today
+
+| You want to | Mechanism | Status |
+|---|---|---|
+| Add ProseMirror plugins (behaviour, decorations, input rules, node views) | `registerEditorPlugin(factory)` | Works |
+| Add a toolbar button with active/enabled state | `registerToolbarItem(spec)` | Works |
+| Add icons | `registerIcons(paths)` | Works |
+| Push state a predicate cannot derive | `element.toolbar?.setItemState(id, …)` | Works, per editor |
+| Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins |
+| Reach the live view | `element.view` | Works |
+| Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
+| **Add a node or mark type** | — | **Not available out of tree** |
+| Add a dropdown, colour grid or popover control | — | Not implemented; `type: 'select' \| 'custom'` renders as a button |
+| Add CSS for your node | — | No extension point; see [4.7](#47-there-is-no-css-extension-point) |
+
+### The schema is a frozen singleton
+
+`packages/core/src/schema.ts` ends with:
+
+```ts
+export const schema = new Schema({ nodes, marks })
+```
+
+That runs once, at module evaluation, from two object literals defined in the
+same file. Nothing in `@openleaf/core`'s public surface accepts a `NodeSpec` or
+a `MarkSpec` — you can confirm the whole exported list in
+`packages/core/test/public-api.test.ts`, which pins it deliberately. So there is
+no supported way for an out-of-tree package to contribute a node or a mark.
+
+This is temporary. That same test file opens with:
+
+> Written immediately before the schema-extensibility refactor, and its whole
+> purpose is to be boring.
+
+Until that lands, **contributing a node type means editing `@openleaf/core` and
+shipping it in the core bundle.** That is not a workaround; it is exactly what
+tables did, and `packages/core/src/tables.ts` explains why the split ended up
+there rather than where it looked like it should be:
+
+> without these node types, a `<table>` in stored content is claimed by the
+> preservation layer and becomes a single opaque atom. It round-trips
+> faithfully — but it is *uneditable*.
+
+The same reasoning applies to any node type that can appear in content a
+customer already has. If stored documents contain your markup, the node spec
+belongs in core so that every deployment reads it correctly, and only the
+*editing machinery* — commands, toolbar, node views, resize handles — is opt-in.
+If your markup can only ever be created by your own plugin, the argument is
+weaker, but the mechanism is the same one either way today.
+
+---
+
+## 2. The three delivery models
+
+| Model | Ships as | Can contribute a node? | Use when |
+|---|---|---|---|
+| Second script tag, shared runtime | An IIFE bundle loaded after `openleaf.min.js` | No | The integrator has no build step — a PHP template, a Django form, a WordPress theme |
+| ESM import | A normal npm package | No | The integrator already runs a bundler |
+| In-repo package | A `packages/*` workspace package plus a core change | Yes | The feature needs schema, or belongs in the project |
+
+### 2.1 Second script tag
+
+```html
+<script src="/js/openleaf.min.js"></script>
+<script src="/js/openleaf-tables.min.js"></script>
+```
+
+Order matters, and the reason is not load timing. `packages/element/src/global.ts`
+publishes the shared runtime on `window.OpenLeaf.__runtime`, and the second
+bundle resolves `@openleaf/core`, `@openleaf/ui` and every `prosemirror-*`
+module from it instead of bundling its own:
+
+> Two schemas means a table node created by the plugin is a different node type
+> than the one the editor understands, which fails in ways that are very hard to
+> read.
+
+Size is the visible benefit — 12.5 KB gzipped instead of roughly 200 KB — but
+correctness is the real one.
+
+**Limitation, stated plainly.** The rewriting is done by `shareRuntime()` in
+`demo/build.mjs`, which is a private build helper in this repository, not a
+published package. And `__runtime` is documented in `global.ts` as *not* a
+public API:
+
+> `__runtime` is named with underscores because it is not a public API. It is a
+> linkage detail between bundles built from this repository at the same version.
+
+So a third party who wants to ship a script-tag plugin today has to copy that
+esbuild plugin and depend on an interface that carries no compatibility promise.
+If you are outside this repository, prefer the ESM model until a supported
+version of this exists. This is an open item for the maintainer, listed in
+[section 6](#6-open-questions-for-the-maintainer).
+
+### 2.2 ESM import
+
+```ts
+import { installTableEditing } from '@openleaf/plugins-table'
+
+installTableEditing()
+```
+
+The bundler deduplicates `@openleaf/core` and the `prosemirror-*` packages, so
+there is one schema and one registry. No runtime shim is involved.
+
+Timing does not matter here either. `registerEditorPlugin` notifies listeners,
+and `<openleaf-editor>` subscribes:
+
+```ts
+this.#unwatchPlugins = onEditorPluginsChange(() => {
+  view.updateState(view.state.reconfigure({ … }))
+})
+```
+
+An editor that already exists when a code-split chunk resolves picks the plugin
+up. `registerToolbarItem` has the matching mechanism via `onRegistryChange`, and
+the toolbar re-renders. Without both of those, a lazily loaded plugin's buttons
+would appear and do nothing, or never appear at all.
+
+### 2.3 In-repo package
+
+This is the only model that can contribute schema today, and it is what
+section 3 works through. The shape, copied from tables:
+
+```
+packages/core/src/<feature>.ts        the NodeSpec — ships in every deployment
+packages/core/src/schema.ts           register it in the nodes map
+packages/core/src/index.ts            export it
+packages/core/test/public-api.test.ts declare the new export and node name
+packages/plugins-<feature>/           commands, icons, toolbar items — opt-in
+demo/entry-<feature>.ts               `install<Feature>()` on load
+demo/build.mjs                        a second `build()` call for the bundle
+```
+
+---
+
+## 3. A worked example: a callout node
+
+A callout is `<div class="callout">` with block content inside it. It is a good
+worked example for three reasons: it is the shape most CMS integrations actually
+ask for; it collides head-on with the preservation layer; and the repository
+already contains a stored fixture for it —
+`packages/core/test/fixtures/stored/callout-div.html` — which today passes
+losslessly *because* preservation claims it.
+
+That fixture is the acceptance test for this whole exercise. Before the change,
+it round-trips byte-identically as an `unknown_block`. After the change, it must
+still round-trip byte-identically, now as an editable `callout`.
+
+### 3.1 The node spec — `packages/core/src/callout.ts`
+
+```ts
+/**
+ * Callout node.
+ *
+ * In core rather than in the opt-in plugin for the same reason the table nodes
+ * are: `<div class="callout">` already exists in stored content, and without a
+ * node type for it the preservation layer claims it and the author gets an atom
+ * they cannot edit.
+ */
+
+import type { NodeSpec } from 'prosemirror-model'
+
+export const callout: NodeSpec = {
+  content: 'block+',
+  group: 'block',
+  // Same reason blockquote and list_item are defining: content pasted into a
+  // callout should stay in the callout rather than replacing it.
+  defining: true,
+  attrs: {
+    // The full class string, not a parsed variant name. `callout--warning`,
+    // `callout is-collapsed` and whatever a 2011 theme invented are all
+    // load-bearing to somebody, and re-emitting a normalised subset is
+    // attribute loss wearing a normalisation costume.
+    class: { default: 'callout' },
+    calloutId: { default: null },
+  },
+  parseDOM: [
+    {
+      tag: 'div.callout',
+      getAttrs(dom) {
+        const el = dom as Element
+        return {
+          class: el.getAttribute('class'),
+          calloutId: el.getAttribute('data-callout-id'),
+        }
+      },
+    },
+  ],
+  toDOM(node) {
+    const attrs: Record<string, string> = { class: node.attrs['class'] as string }
+    const id = node.attrs['calloutId'] as string | null
+    if (id !== null) attrs['data-callout-id'] = id
+    return ['div', attrs, 0]
+  },
+}
+```
+
+No `priority` is set. The default is 50 and the preservation catch-all is at 0,
+so this wins. [Section 4.1](#41-the-preservation-layer-is-a-catch-all-you-have-to-beat)
+explains exactly when you do need to think about priority, and what happens when
+you get it wrong.
+
+Register it in `packages/core/src/schema.ts`, alongside where the table nodes
+are registered:
+
+```ts
+import { callout } from './callout.js'
+
+const nodes: Record<string, NodeSpec> = {
+  // …
+  callout,
+  unknown_block: unknownBlock,
+  unknown_inline: unknownInline,
+}
+```
+
+Then export it from `packages/core/src/index.ts`, and add both `'callout'` (the
+export) and `'callout'` (the node name) to the two lists in
+`packages/core/test/public-api.test.ts`. That test fails on *addition* on
+purpose — "a new export is a new promise" — so the failure is the design working.
+
+### 3.2 The command — `packages/plugins-callout/src/index.ts`
+
+```ts
+import { isNodeActive, schema } from '@openleaf/core'
+import { registerIcons, registerToolbarItem } from '@openleaf/ui'
+import { lift, wrapIn } from 'prosemirror-commands'
+import type { Command, EditorState } from 'prosemirror-state'
+import { CALLOUT_ICON_PATHS } from './icons.js'
+
+/** Is the selection inside a callout? */
+export function inCallout(state: EditorState): boolean {
+  return isNodeActive(state, 'callout')
+}
+
+/**
+ * Wrap the selection in a callout, or lift it out if it is already in one.
+ *
+ * Toggle rather than insert, matching how blockquote behaves in core: a
+ * callout is a state the cursor is either in or not, and an insert-only
+ * command gives an author no way back out with the same control.
+ */
+export const toggleCallout: Command = (state, dispatch, view) => {
+  const type = schema.nodes['callout']
+  if (!type) return false
+  if (inCallout(state)) return lift(state, dispatch, view)
+  return wrapIn(type)(state, dispatch, view)
+}
+```
+
+`schema.nodes['callout']` is checked for `undefined` because
+`noUncheckedIndexedAccess` is on in `tsconfig.base.json`. `plugins-table` does
+the same thing in `insertTable`, for the same reason.
+
+Every command follows the ProseMirror convention that `commands.ts` describes:
+called with `(state)` alone it reports whether it *could* apply without doing
+anything. That is what makes the toolbar's disabled state free — the same
+function answers "can I?" and "do it".
+
+### 3.3 The icon — `packages/plugins-callout/src/icons.ts`
+
+```ts
+/**
+ * Callout icons, registered by the plugin rather than shipped in core.
+ *
+ * Same 24x24 stroked geometry as the built-in set so they sit level with the
+ * rest of the toolbar.
+ */
+
+export const CALLOUT_ICON_PATHS: Record<string, string> = {
+  callout: 'M4 5h16v11H9l-4 4v-4H4zM12 8v4M12 14h.01',
+}
+```
+
+Constraints the built-in set follows and yours should too, from
+`packages/ui/src/icons.ts`:
+
+- A single `path` `d` string in a `0 0 24 24` viewBox, stroked, never filled.
+  The sprite builder emits exactly one `<path>` per symbol.
+- `stroke="currentColor"`, which is why there is no separate dark-mode set.
+- **No letterforms.** "B" for bold bakes English into the interface — bold is
+  *gras* in French and *fett* in German. The comment in `icons.ts` calls a
+  letterform icon "a translation bug wearing a costume".
+- If your icon's meaning depends on reading direction it needs to be in the
+  `DIRECTIONAL` set in `icons.ts` to be mirrored in RTL documents. That set is
+  private to core today, so a plugin icon cannot opt into mirroring — another
+  item for [section 6](#6-open-questions-for-the-maintainer).
+
+### 3.4 The toolbar item
+
+```ts
+registerToolbarItem({
+  id: 'callout',
+  type: 'button',
+  // `toggle` gets aria-pressed and reflects isActive. `action` does not:
+  // marking an insert as "pressed" is meaningless and screen readers say so.
+  kind: 'toggle',
+  label: 'Callout',
+  icon: 'callout',
+  command: toggleCallout,
+  isActive: (state) => inCallout(state),
+  // No isEnabled. It defaults to asking `command` whether it would apply, and
+  // for a wrap-or-lift toggle that is the exact right answer.
+})
+```
+
+Name `isEnabled` explicitly only when the command's own answer is wrong or
+incomplete. Every table command does, because all of them are meaningless
+outside a table:
+
+```ts
+isEnabled: (state) => inTable(state) && command(state),
+```
+
+The comment in `plugins-table` gives the reason that is worth an extra
+predicate: reporting them as disabled rather than letting them silently no-op
+"is the difference between a control that looks broken and one that looks
+unavailable".
+
+The `label` is the accessible name, and the toolbar keeps it constant across
+states. Do not write "Callout on" / "Turn callout off" — `aria-pressed` is what
+the platform announces, and baking the state into the name doubles it up.
+
+`shortcut` is a *label to look up in core's shortcut table*, not a key string.
+`shortcutFor()` searches `shortcuts` in `packages/core/src/keymap.ts` by label,
+so a plugin's own binding will not resolve and the tooltip falls back to the
+plain label. Leave `shortcut` off unless your label is in that table.
+
+### 3.5 Installing
+
+```ts
+let installed = false
+
+/**
+ * Idempotent, because a bundle loaded twice -- which happens in CMS templates
+ * more often than anyone would like -- should not produce two sets of buttons.
+ */
+export function installCalloutEditing(): void {
+  if (installed) return
+  installed = true
+
+  registerIcons(CALLOUT_ICON_PATHS)
+  registerToolbarItem({ /* as above */ })
+}
+```
+
+A plugin that *does* contribute ProseMirror plugins registers a **factory**,
+never a plugin instance. `installTableEditing` does it in one line:
+
+```ts
+registerEditorPlugin(() => tableEditingPlugins())
+```
+
+That indirection is not ceremony. From `packages/core/src/plugins.ts`:
+
+> a ProseMirror plugin instance carries per-editor state and cannot be shared
+> between two editors on the same page. Calling the factory once per editor is
+> the difference between two working editors and two editors fighting over one
+> plugin's state.
+
+The callout needs no ProseMirror plugins, so it does not call
+`registerEditorPlugin` at all. Every registration triggers a `reconfigure` on
+every live editor, so an empty factory is not free.
+
+### 3.6 The bundle
+
+`demo/entry-callout.ts`:
+
+```ts
+import { installCalloutEditing } from '@openleaf/plugins-callout'
+
+installCalloutEditing()
+```
+
+Then add the package to `WORKSPACE_ALIASES` in `demo/build.mjs` and a second
+`build()` call modelled on the table one, with
+`plugins: [shareRuntime('OpenLeaf')]`. Note the constraint `scripts/verify.mjs`
+enforces: **`demo/build.mjs` must not read from any `dist/`.** There is a check
+that greps the file for `/dist` and fails the gate, because that bug shipped
+twice — it passes on a machine that just built and fails on a fresh checkout,
+which is what CI is.
+
+Finally, the integrator opts in by naming the item in the layout. Plugins
+declare capability; integrators declare layout:
+
+```html
+<openleaf-editor for="body"
+  toolbar="undo redo | bold italic | bulletList orderedList | callout | source">
+</openleaf-editor>
+```
+
+An unregistered id in that string produces a `console.warn` rather than being
+silently skipped, so an integrator's typo is visible.
+
+---
+
+## 4. The interactions that will bite you
+
+### 4.1 The preservation layer is a catch-all you have to beat
+
+`packages/core/src/preserve.ts` installs a rule matching **every element**:
+
+```ts
+{
+  tag: '*',
+  // Lowest priority: every real rule in the schema gets first refusal.
+  priority: 0,
+  getAttrs(dom) { … },
+}
+```
+
+That is the mechanism behind the project's headline commitment. It also means
+your node is in a race it can lose. The ladder:
+
+| Priority | Rule | Effect |
+|---|---|---|
+| 100 | `NEVER_PRESERVE` drop rules — `script`, `iframe`, `form`, `input`, `button`, `select`, `textarea`, `link`, `meta`, `template`, and more | Element **and its contents** are discarded |
+| 50 | The default for a rule with no `priority` — every real node in the schema | Your node parses |
+| 1 | `unknown_inline` catch-all, `context: 'paragraph/\|heading/'` | Inline debris becomes an inline atom |
+| 0 | `unknown_block` catch-all | Anything else becomes a block atom |
+
+**The practical rule: do not set `priority` at all.** The default 50 already
+beats both catch-alls. Set one only to disambiguate against another real rule,
+and never set 0 or 1 — at a tie, the winner is decided by the order node types
+appear in the schema's `nodes` map, which is not something to build on.
+
+#### The failure mode that makes this worth a section
+
+When your rule does not match, nothing errors. The catch-all claims the element,
+`toDOM` rebuilds the original markup verbatim, and **the output HTML is
+byte-identical to the input.** Verified against this repository's code:
+
+| What you did | Node produced | Serialized output |
+|---|---|---|
+| Correct `tag: 'div.callout'` | `callout` | `<div class="callout">…` |
+| Typo — `tag: 'div.call-out'` | `unknown_block` | `<div class="callout">…` — identical |
+| `getAttrs` returns `false` | `unknown_block` | `<div class="callout">…` — identical |
+
+There is no visual signal either. Preserved atoms have no distinct styling in
+`packages/ui/src/styles.ts` — the only rule that touches them is
+`.ProseMirror-selectednode`, a focus outline that appears once the atom is
+already selected. So the content renders exactly as it should, and the round-trip
+fidelity test passes. The only symptom is that the author cannot put a caret in
+it. That will be reported to you as "the editor is broken", months later, by
+somebody who cannot reproduce it on demand.
+
+**So the assertion you need is about node types, not about HTML.** Copy the
+pattern from `packages/core/test/tables.test.ts`:
+
+```ts
+function nodeTypes(html: string): string[] {
+  const seen: string[] = []
+  parseHtml(html).descendants((node) => {
+    seen.push(node.type.name)
+    return true
+  })
+  return seen
+}
+
+it('parses into a callout node, not a preserved atom', () => {
+  const types = nodeTypes('<div class="callout"><p>hi</p></div>')
+  expect(types).toContain('callout')
+  // The whole point. Without this assertion the test passes either way.
+  expect(types).not.toContain('unknown_block')
+})
+```
+
+#### Two more things the ladder implies
+
+**You cannot build a node on a `NEVER_PRESERVE` tag.** A node spec with
+`parseDOM: [{ tag: 'form' }]` loses to the priority-100 `ignore` rule, and
+because it is `ignore` rather than `skip`, the children go too — `<form><p>hi</p></form>`
+parses to an empty paragraph. That is deliberate: `preserve.ts` is explicit that
+preserving a `<script>` "is a vulnerability with extra steps". If you need one of
+those tags, that is a conversation with the maintainer about the drop list, not a
+priority you can outbid.
+
+**A bare wrapper still unwraps.** `isLosslesslyUnwrappable` returns true for a
+`div`, `span`, `section` and friends carrying **zero** attributes, and the
+catch-all declines the rule so ProseMirror unwraps it. Your `div.callout` has a
+class, so it never reaches that branch — but a node keyed on an attribute-free
+element will never see its content as a wrapper at all.
+
+### 4.2 Sanitization: a new element that nobody allowed is a new element that dies
+
+`@openleaf/sanitize` ships `DEFAULT_POLICY` as an allowlist. It does not know
+about your node, and default-safe means default-strip. From `SECURITY.md`:
+
+> A default-safe sanitization policy will strip exactly that markup, destroying
+> the content on the server that the editor worked to save — the same bug
+> wearing a different hat.
+
+**Every plugin that introduces a new element or a new attribute MUST document
+the `policyForPreserved()` addition its users need.** Put it in your README,
+above the fold, next to the install instructions. For the callout:
+
+```ts
+import { DEFAULT_POLICY, policyForPreserved } from '@openleaf/sanitize'
+
+export const policy = policyForPreserved(DEFAULT_POLICY, {
+  div: ['class', 'data-callout-id'],
+})
+```
+
+Three things to know before you write that paragraph:
+
+1. **There is no "allow whatever the editor emitted" mode, and there will not
+   be.** `policy.ts` calls that "not a policy, it is a wish" — the editor
+   faithfully preserves whatever an author pasted, so trusting its output
+   defeats the point of having a policy.
+2. **`policyForPreserved` throws for anything on `dropWithContent`.** That list
+   includes `svg` and `math` as well as the obvious executables. If your node
+   emits one of those, your users have to remove it from the list explicitly,
+   and the error message says so — "so the decision is visible in review".
+3. **`globalAttributes` is empty on purpose.** `class` is not globally safe;
+   pasted content can borrow the host site's styling to impersonate UI. Name
+   your attributes per element.
+
+If your plugin ships a server-side integration, generate the config from the
+extended policy rather than hand-writing it, so the Node, PHP and Python sides
+cannot drift.
+
+> **Note for the maintainer, and for anyone reading this as a model.**
+> `DEFAULT_POLICY` currently allows none of `table`, `thead`, `tbody`, `tr`,
+> `td`, `th` — even though those nodes are in core's schema and every deployment
+> reads and writes them. Its doc comment claims it is "exactly what OpenLeaf's
+> own schema can emit, and nothing else", and that is not true today. A user who
+> follows `SECURITY.md` correctly loses every table on save.
+
+### 4.3 Round-trip fidelity: two corpora, two standards
+
+`packages/core/test/fidelity.test.ts` discovers fixtures with `readdirSync`, so
+adding one is dropping a file in a directory. Which directory is the decision
+that matters, because the two have opposite correct defaults.
+
+| Corpus | Represents | Asserted |
+|---|---|---|
+| `packages/core/test/fixtures/stored/` | The customer's database. Their markup is authoritative and we are a guest in it. | Stable, text-preserving, **and zero attributes lost** |
+| `packages/core/test/fixtures/paste/` | Foreign content from Word, Google Docs, Excel. Its styling is noise the user is trying to get rid of. | Stable, text-preserving, and **at least one attribute stripped** |
+
+**A plugin node's fixture goes in `stored/`.** The paste corpus asserts
+`expect(stripped.length).toBeGreaterThan(0)` — a fixture that legitimately
+strips nothing *fails there*. Only add to `paste/` if you are shipping a paste
+normalizer with real vendor junk to remove.
+
+The stored standard is what makes `parseDOM` and `toDOM` a mutually inverse pair
+rather than two functions that happen to be near each other. The harness compares
+a multiset of `tag@name=value` across the whole tree, so anything your `toDOM`
+declines to re-emit is reported by name.
+
+Here is the callout example failing, which is the single most useful thing to
+internalise about this section. A plausible first draft:
+
+```ts
+parseDOM: [{ tag: 'div.callout' }],
+toDOM: () => ['div', { class: 'callout' }, 0],
+```
+
+Run against the fixture that is already in the tree:
+
+```
+div@class=callout callout--warning  (1 of 1 lost)
+div@data-callout-id=7               (1 of 1 lost)
+```
+
+Before the change, that fixture was lossless — preservation kept the whole
+element verbatim. **The moment you claim a tag with a real node, you own every
+attribute anyone ever put on it**, and normalising the class list back to
+`callout` is exactly the silent information loss the preservation layer exists to
+prevent. This is why the spec in section 3.1 stores the full class string rather
+than a parsed variant name.
+
+`ALLOWED` at the top of the fidelity test is the escape hatch, and it is
+deliberately unpleasant to use:
+
+> Adding an entry here is a deliberate decision to discard part of somebody's
+> document, and has to be argued for in a pull request. Empty is the goal state.
+
+It is empty today. Keep it that way.
+
+Browser coverage is separate and also expected. `packages/element/test/e2e/tables.spec.ts`
+is the model: it tests **both** the core-only harness and the
+plugin-loaded harness, because "a regression that only appears when the opt-in
+bundle is absent — or only when it is present — is exactly the kind a
+single-configuration suite misses."
+
+### 4.4 Accessibility obligations
+
+For toolbar items, the toolbar handles most of this if you fill the spec in
+correctly. What you must get right:
+
+- **The accessible name is `label`, and it stays constant.** The toolbar sets
+  `aria-label` from it once and never rewrites it. The platform announces
+  pressed state; a name that also encodes state is announced twice.
+- **`kind: 'toggle'` gets `aria-pressed`; `kind: 'action'` does not.** Marking
+  Undo as "pressed" is meaningless and screen readers say so. Block structure
+  counts as a toggle — core registers blockquote and the lists that way, because
+  "a screen reader user cannot tell whether they are inside a list without moving
+  the caret and inferring it".
+- **Disabled is `aria-disabled`, never the `disabled` attribute.** This is not a
+  style preference. The toolbar is one tab stop with a roving tabindex, and a
+  `disabled` button drops out of that roving set entirely — it becomes
+  unreachable and therefore undiscoverable, so a screen reader user cannot learn
+  the control exists. `Toolbar.update()` sets `aria-disabled` and
+  `Toolbar.#invoke()` refuses to run a control it has marked disabled. If you
+  ever build a custom control, carry both halves of that.
+- **Do not add tab stops.** The whole bar is deliberately one stop. The block-type
+  `<select>` is a second, and getting there took the review written up in
+  `docs/toolbar-design-review.md` §1 — a native `<select>` and a roving tabindex
+  have an unresolvable fight over Left/Right.
+- **Icons are decorative.** `iconElement` sets `aria-hidden="true"` and
+  `focusable="false"`; the button carries the name. Do not label the icon.
+
+For nodes, there is less machinery and more judgement:
+
+- **Whatever `toDOM` returns is the accessibility tree.** Use real semantic
+  elements. A `div` with a role bolted on is worse than the element that already
+  means that thing.
+- **An atom node has no interior caret position.** If your node is `atom: true`,
+  the only ways in are selection and deletion. That is correct for genuinely
+  opaque content and wrong for anything an author needs to write in.
+- **Nothing announces a node type today.** There is no per-node live-region
+  mechanism; the toolbar's live region announces mark and block *transitions*
+  only, gated on `docChanged || storedMarksSet`. If your node needs to announce
+  itself, that is new work, and per `CONTRIBUTING.md` it owes real screen reader
+  testing — "we do not accept axe-core passing as evidence of accessibility".
+- **Learn from the caption bug.** `<caption>` is currently dropped from tables,
+  and `tables.ts` is explicit that this is a defect rather than a decision,
+  because "a caption is a table's accessible name". If your node has an
+  accessible-name-bearing child, model it or say plainly that you did not.
+
+### 4.5 The bundle budget
+
+```
+openleaf.min.js            265.9 KB min     83.9 KB gzip
+openleaf-tables.min.js      37.8 KB min     12.5 KB gzip
+```
+
+The gate in `scripts/verify.mjs` fails above **90 KB gzipped for the core
+bundle**, so there is about 6 KB of headroom, and it is shared with alignment,
+colours and find-and-replace. Assume you have none.
+
+- **Icons go through `registerIcons`, from your own bundle.** Eleven table icons
+  are about a kilobyte, and `icons.ts` keeps `PATHS` mutable specifically so a
+  deployment with tables switched off does not download them. Do not add an icon
+  to core's `PATHS`.
+- **Commands, node views, input rules and toolbar items belong in the plugin
+  bundle.** The split that matters is the tables one: schema in core because
+  content already contains it, machinery in the plugin because that is where the
+  weight is.
+- **`node demo/build.mjs --sizes` attributes bytes per package.** Use it before
+  and after. An aggregate gate tells you the bundle no longer fits but not which
+  feature spent the budget, so the blame lands on whatever shipped last.
+- **Only the core bundle is gated.** Plugin bundles are reported but not
+  budgeted. Treat that as an absence of a check rather than as permission.
+
+### 4.6 Keyboard bindings cannot shadow core bindings
+
+`buildKeymap(custom)` accepts overrides, but `<openleaf-editor>` calls it with no
+arguments, so that parameter is not reachable from a plugin. Your route is a
+`keymap()` plugin via `registerEditorPlugin` — and registered plugins are
+appended **last**:
+
+```ts
+plugins: [
+  history(),
+  keymap({ 'Alt-F10': … }),
+  keymap(buildKeymap()),
+  keymap(baseKeymap),
+  ...createRegisteredPlugins(schema),
+]
+```
+
+ProseMirror consults handlers in plugin order and the first one to return `true`
+wins, so a plugin binding for a key that `buildKeymap()` or `baseKeymap` already
+claims will never fire. Pick a free chord.
+
+**Do not bind Tab.** `keymap.ts` is explicit and the reasoning is not
+negotiable: capturing Tab inside a `contenteditable` removes the only way a
+keyboard user has to leave the editor, which is a WCAG 2.1.2 keyboard-trap
+failure — "for the institutional users who most need a free editor, that is a
+procurement blocker rather than a rough edge". Core uses `Mod-[` and `Mod-]` for
+indentation instead.
+
+### 4.7 There is no CSS extension point
+
+`packages/ui/src/styles.ts` exports `CSS` as a single template literal and
+`ensureStyles(doc)` adopts it once per document via `adoptedStyleSheets`. There
+is no `registerStyles`. And there is deliberately no `<style>` injection
+fallback, because it is blocked by exactly the strict-CSP configurations that
+would need it and it fails silently.
+
+So today, a plugin that needs CSS has two options, and the second is not good:
+
+1. **Put the rules in core's `CSS`.** That is what tables did, and the comment
+   there gives the honest reason: "These styles live in core, not in the opt-in
+   table plugin, because table NODES live in core." It spends the core bundle
+   budget on behalf of deployments that may not load your plugin.
+2. **Ship a separate stylesheet the integrator links.** Workable, but it breaks
+   the no-build-step promise for script-tag integrations and gives you no
+   CSP-safe injection path.
+
+If your node can render acceptably with the host site's own typography, prefer
+adding nothing. The content area has no Shadow DOM precisely so that host styles
+apply — that is the whole reason the editor is WYSIWYG against a real theme.
+
+### 4.8 `setItemState` is per editor, not global
+
+`setItemState` lives on the `Toolbar` instance, and there is one per
+`<openleaf-editor>`. There is no broadcast. To push state a predicate cannot
+derive — an upload in flight, a lock held by another user — you have to reach
+each element:
+
+```ts
+for (const el of document.querySelectorAll('openleaf-editor')) {
+  ;(el as HTMLElement & { toolbar?: { setItemState(id: string, s: object): void } })
+    .toolbar?.setItemState('callout', { enabled: false })
+}
+```
+
+Prefer `isActive` / `isEnabled` wherever the answer is derivable from the
+document and the selection. Reach for `setItemState` only when it genuinely is
+not, which is the case the escape hatch was added for.
+
+---
+
+## 5. Checklist before you submit
+
+**Schema**
+
+- [ ] `parseDOM` and `toDOM` are mutually inverse. Every attribute `parseDOM`
+      reads, `toDOM` writes back, including the ones you did not design for.
+- [ ] No explicit `priority`, or one strictly between 2 and 99 with a comment
+      saying which rule it is disambiguating against.
+- [ ] Your tag is not on the `NEVER_PRESERVE` list in `preserve.ts`.
+- [ ] Any URL-bearing attribute is checked with `isSafeUrl`, and `getAttrs`
+      returns `false` when the check fails, the way `image` and `link` do.
+- [ ] The new export and the new node name are both declared in
+      `packages/core/test/public-api.test.ts`.
+
+**Fidelity**
+
+- [ ] A fixture in `packages/core/test/fixtures/stored/`, taken from real
+      content where possible, carrying the messy attributes real content has.
+- [ ] `pnpm test` reports it stable, text-preserving, and `0` attrs lost.
+- [ ] Nothing was added to `ALLOWED`.
+- [ ] A `nodeTypes()` assertion proving the markup parses to your node and
+      **not** to `unknown_block` or `unknown_inline`. The HTML round-trip test
+      passes either way; only this one catches the silent fallback.
+- [ ] A Playwright spec covering both the core-only harness and the
+      plugin-loaded harness.
+
+**Sanitization**
+
+- [ ] Your README documents the exact `policyForPreserved()` call your users
+      need, with every element and attribute your `toDOM` can emit.
+- [ ] You have confirmed none of your elements are on `dropWithContent`.
+- [ ] If you ship a server-side integration, its config is generated from that
+      extended policy, not hand-written.
+
+**Toolbar and accessibility**
+
+- [ ] `label` is a constant accessible name with no state in it.
+- [ ] `kind` is `toggle` only where `aria-pressed` is meaningful, and `isActive`
+      is supplied when it is.
+- [ ] `isEnabled` is omitted where the command's own no-dispatch answer is
+      correct, and supplied where it is not.
+- [ ] Nothing you added uses the `disabled` attribute.
+- [ ] You added no new tab stops.
+- [ ] Icons are a single stroked path in a 24x24 viewBox, registered via
+      `registerIcons`, and contain no letterforms.
+- [ ] You did not bind Tab.
+- [ ] A screen reader has been run over the new control, and the pull request
+      names which one and which version. `CONTRIBUTING.md` requires this and
+      does not accept axe-core as a substitute.
+
+**Packaging**
+
+- [ ] `install…()` is idempotent behind a module-level flag.
+- [ ] `registerEditorPlugin` is given a factory, and is not called at all if the
+      plugin contributes no ProseMirror plugins.
+- [ ] Icons and machinery are in the plugin bundle; only the node spec is in
+      core.
+- [ ] `node demo/build.mjs --sizes` shows the core bundle still under 90 KB
+      gzipped, and you know how much of the delta is yours.
+- [ ] `demo/build.mjs` reads no `dist/`.
+- [ ] Commits are Conventional and signed off with `git commit -s`.
+- [ ] `pnpm verify` passes — typecheck, unit and fidelity, three browser
+      engines, and the size gate.
+
+---
+
+## 6. Open questions for the maintainer
+
+Flagged rather than guessed at, because the answers change what this document
+should say.
+
+1. **Schema extensibility.** Until it lands, every node type ships in core and
+   the second half of section 1 is the whole story. When it lands, sections 1,
+   2.3 and 3.1 need rewriting, and the CSS gap in 4.7 probably needs solving in
+   the same pass.
+2. **A supported script-tag plugin path.** `__runtime` is explicitly not public
+   API and `shareRuntime()` is not published. Third-party script-tag plugins
+   need either a published build helper or a versioned `__runtime` contract.
+3. **`DEFAULT_POLICY` does not allow tables.** See the note in 4.2. A user
+   following `SECURITY.md` today loses every table on save.
+4. **Directional icons.** The `DIRECTIONAL` set is private to `icons.ts`, so a
+   plugin icon cannot opt into RTL mirroring.
+5. **Plugin bundles are not size-gated.** Only `openleaf.min.js` is checked.

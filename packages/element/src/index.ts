@@ -157,13 +157,26 @@ export class OpenLeafEditor extends HTMLElement {
         const view = this.#view
         if (!view) return
         view.updateState(view.state.apply(tr))
-        // Passing the transaction lets the toolbar tell a formatting change from
-        // a cursor move, which is what keeps its announcements useful instead of
-        // chatty.
-        this.#toolbar?.update(view.state, tr)
+
+        // Persistence comes FIRST, and deliberately so. The document is already
+        // committed by the line above; nothing about writing it out should
+        // depend on chrome rendering succeeding. With this the other way round,
+        // a third-party toolbar predicate that threw on one keystroke threw on
+        // every keystroke after it, and the textarea sync plus this event never
+        // ran again for the rest of the session -- an autosave listening here
+        // would stop silently and the author would lose work.
         if (tr.docChanged) {
           this.#syncToTextarea()
           this.dispatchEvent(new CustomEvent('openleaf:change', { bubbles: true }))
+        }
+
+        // Passing the transaction lets the toolbar tell a formatting change from
+        // a cursor move, which is what keeps its announcements useful instead of
+        // chatty. Guarded because everything it calls may be third-party code.
+        try {
+          this.#toolbar?.update(view.state, tr)
+        } catch (error) {
+          console.error('@openleaf/element: toolbar update failed', error)
         }
       },
     })

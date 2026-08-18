@@ -78,7 +78,15 @@ export function onRegistryChange(listener: () => void): () => void {
 }
 
 function notify(): void {
-  for (const listener of listeners) listener()
+  // Isolated per listener: one toolbar failing to re-render must not stop the
+  // others, and must not propagate into the plugin that registered the item.
+  for (const listener of listeners) {
+    try {
+      listener()
+    } catch (error) {
+      console.error('@openleaf/ui: a toolbar failed to re-render', error)
+    }
+  }
 }
 
 /**
