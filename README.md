@@ -16,7 +16,7 @@ it cannot quietly destroy your content.
 > - The **content-preservation layer** — the thing that stops a
 >   ProseMirror-based editor from silently eating legacy markup
 > - The round-trip fidelity harness: **7/7 stored fixtures fully lossless**,
->   **94 unit tests** green, typechecked strict
+>   **123 unit tests** green, typechecked strict
 > - **Paste normalizers for Word and Google Docs** — reconstructs real nested
 >   `<ul>`/`<ol>` from Word's `mso-list` markup, strips the vendor styling, and
 >   parses to **zero** preserved atoms
@@ -227,7 +227,11 @@ Prove the architecture before building on it.
 The point at which someone could actually replace TinyMCE with this.
 
 - [ ] **Toolbar and UI primitives** — accessible by construction: real buttons,
-  roving tabindex, `aria-pressed` reflecting mark state, no `div onclick`
+  roving tabindex, `aria-pressed` reflecting mark state, no `div onclick`.
+  The command layer underneath it is done: every button is a ProseMirror
+  command plus a selection predicate, both in `@openleaf/core`, so the toolbar
+  package holds no editing knowledge and a plugin, a keyboard shortcut and a
+  test all drive the editor the same way a button does.
 - [x] **Paste normalizers** — Word and Google Docs done. The `mso-list` →
   real-nested-list conversion is, commercially, the single most valuable piece
   of code in this project: it is the number one reason organizations pay for
