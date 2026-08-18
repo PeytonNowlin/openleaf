@@ -13,6 +13,7 @@
  */
 
 import { parseHtml } from '@openleaf/core'
+import { Plugin, TextSelection } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { convertFile, type ConversionResult } from './converters.js'
 
@@ -24,14 +25,61 @@ export interface ImportOutcome {
   error?: string
 }
 
+/**
+ * Map a selection through transactions that happen while conversion is in flight.
+ *
+ * Conversion of a `.docx` can take long enough for the author to keep typing.
+ * Reading `view.state.selection` after `await` would insert at the new caret.
+ */
+function trackSelection(view: EditorView): {
+  release: () => { from: number; to: number }
+} {
+  let from = view.state.selection.from
+  let to = view.state.selection.to
+  let released = false
+
+  const plugin = new Plugin({
+    appendTransaction(transactions) {
+      for (const tr of transactions) {
+        from = tr.mapping.map(from, -1)
+        to = tr.mapping.map(to, 1)
+      }
+      return null
+    },
+  })
+
+  view.updateState(view.state.reconfigure({ plugins: [...view.state.plugins, plugin] }))
+
+  return {
+    release() {
+      if (!released) {
+        released = true
+        view.updateState(
+          view.state.reconfigure({
+            plugins: view.state.plugins.filter((item) => item !== plugin),
+          }),
+        )
+      }
+      const size = view.state.doc.content.size
+      const mappedFrom = Math.max(0, Math.min(from, size))
+      const mappedTo = Math.max(0, Math.min(to, size))
+      return mappedFrom <= mappedTo
+        ? { from: mappedFrom, to: mappedTo }
+        : { from: mappedTo, to: mappedFrom }
+    },
+  }
+}
+
 /** Convert a file and insert it at the current selection. */
 export async function importFileIntoView(view: EditorView, file: File): Promise<ImportOutcome> {
   const doc = view.dom.ownerDocument
+  const bookmark = trackSelection(view)
   let converted: ConversionResult | null
 
   try {
     converted = await convertFile(file, doc)
   } catch (error) {
+    bookmark.release()
     return {
       ok: false,
       warnings: [],
@@ -40,6 +88,7 @@ export async function importFileIntoView(view: EditorView, file: File): Promise<
   }
 
   if (!converted) {
+    bookmark.release()
     return {
       ok: false,
       warnings: [],
@@ -53,14 +102,21 @@ export async function importFileIntoView(view: EditorView, file: File): Promise<
   const warnings = [...(converted.warnings ?? [])]
 
   // Parsed against the view's own schema, so an extension's node types are
-  // available and nothing is built from a schema the state would reject.
+  // available and nothing is built from a schema the editor's state would reject.
   const parsed = parseHtml(converted.html, { schema: view.state.schema, document: doc })
 
   if (parsed.content.size === 0) {
+    bookmark.release()
     return { ok: false, warnings, error: `${file.name} contained no importable content.` }
   }
 
-  const tr = view.state.tr.replaceSelectionWith(parsed, false).scrollIntoView()
+  const { from, to } = bookmark.release()
+  const $from = view.state.doc.resolve(from)
+  const $to = view.state.doc.resolve(to)
+  const tr = view.state.tr
+    .setSelection(TextSelection.between($from, $to))
+    .replaceSelectionWith(parsed, false)
+    .scrollIntoView()
   view.dispatch(tr)
   view.focus()
 
