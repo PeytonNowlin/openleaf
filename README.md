@@ -16,7 +16,7 @@ it cannot quietly destroy your content.
 > - The **content-preservation layer** — the thing that stops a
 >   ProseMirror-based editor from silently eating legacy markup
 > - The round-trip fidelity harness: **7/7 stored fixtures fully lossless**,
->   **123 unit tests** green, typechecked strict
+>   **138 unit tests** green, typechecked strict
 > - **Paste normalizers for Word and Google Docs** — reconstructs real nested
 >   `<ul>`/`<ol>` from Word's `mso-list` markup, strips the vendor styling, and
 >   parses to **zero** preserved atoms
