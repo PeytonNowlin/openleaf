@@ -35,12 +35,7 @@
  * ```
  */
 
-import {
-  canInsert,
-  isNodeActive,
-  registerEditorPlugin,
-  schema,
-} from '@openleaf/core'
+import { canInsert, isNodeActive, registerEditorPlugin } from '@openleaf/core'
 import { registerIcons, registerToolbarItem } from '@openleaf/ui'
 import { TABLE_ICON_PATHS } from './icons.js'
 import type { Command, EditorState } from 'prosemirror-state'
@@ -92,10 +87,12 @@ export function insertTable(rows = 3, cols = 3): Command {
   return (state, dispatch) => {
     if (!canInsert(state, 'table')) return false
     if (dispatch) {
-      const cell = schema.nodes['table_cell']
-      const header = schema.nodes['table_header']
-      const row = schema.nodes['table_row']
-      const tableType = schema.nodes['table']
+      // From the state's schema, not an imported singleton: a plugin that
+      // captured one schema would build nodes the editor's schema rejects.
+      const cell = state.schema.nodes['table_cell']
+      const header = state.schema.nodes['table_header']
+      const row = state.schema.nodes['table_row']
+      const tableType = state.schema.nodes['table']
       if (!cell || !header || !row || !tableType) return false
 
       const headerCells = Array.from({ length: cols }, () =>

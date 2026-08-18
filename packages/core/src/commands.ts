@@ -23,21 +23,46 @@ import {
   wrapInList,
 } from 'prosemirror-schema-list'
 import type { Command, EditorState } from 'prosemirror-state'
-import { schema } from './schema.js'
 
-const marks = schema.marks
-const nodes = schema.nodes
-
-function mark(name: string): MarkType {
-  const type = marks[name]
-  if (!type) throw new Error(`@openleaf/core: unknown mark "${name}"`)
-  return type
+/**
+ * Types are resolved from the state's schema, never from a captured singleton.
+ *
+ * A ProseMirror `Command` already receives the state, and `state.schema` is
+ * right there -- so a command that looks its types up per call works against
+ * ANY schema, including one a plugin extended with new nodes. Capturing
+ * `schema.marks` at module load, as this file used to, is what made the schema
+ * impossible to extend: every command was permanently bound to one instance.
+ *
+ * Resolution returns undefined rather than throwing. A command asked to bold
+ * text in a schema with no `strong` mark should decline -- returning false is
+ * ProseMirror's way of saying "not applicable here", and the toolbar already
+ * renders that as a disabled button. Throwing would take the editor down
+ * because a plugin trimmed the schema.
+ */
+function markIn(state: EditorState, name: string): MarkType | undefined {
+  return state.schema.marks[name]
 }
 
-function node(name: string): NodeType {
-  const type = nodes[name]
-  if (!type) throw new Error(`@openleaf/core: unknown node "${name}"`)
-  return type
+function nodeIn(state: EditorState, name: string): NodeType | undefined {
+  return state.schema.nodes[name]
+}
+
+/** Build a command that needs one mark type, declining when it is absent. */
+function markCommand(name: string, build: (type: MarkType) => Command): Command {
+  return (state, dispatch, view) => {
+    const type = markIn(state, name)
+    if (!type) return false
+    return build(type)(state, dispatch, view)
+  }
+}
+
+/** Build a command that needs one node type, declining when it is absent. */
+function nodeCommand(name: string, build: (type: NodeType) => Command): Command {
+  return (state, dispatch, view) => {
+    const type = nodeIn(state, name)
+    if (!type) return false
+    return build(type)(state, dispatch, view)
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -53,7 +78,8 @@ function node(name: string): NodeType {
  * turned it on -- the single most common toolbar bug there is.
  */
 export function isMarkActive(state: EditorState, markName: string): boolean {
-  const type = mark(markName)
+  const type = markIn(state, markName)
+  if (!type) return false
   const { from, $from, to, empty } = state.selection
   if (empty) {
     return !!type.isInSet(state.storedMarks ?? $from.marks())
@@ -63,7 +89,8 @@ export function isMarkActive(state: EditorState, markName: string): boolean {
 
 /** Is the selection inside a node of this type (with these attributes)? */
 export function isNodeActive(state: EditorState, nodeName: string, attrs?: Attrs): boolean {
-  const type = node(nodeName)
+  const type = nodeIn(state, nodeName)
+  if (!type) return false
   const { $from, to } = state.selection
 
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
@@ -79,7 +106,8 @@ export function isNodeActive(state: EditorState, nodeName: string, attrs?: Attrs
 
 /** Can a node of this type be inserted at the current selection? */
 export function canInsert(state: EditorState, nodeName: string): boolean {
-  const type = node(nodeName)
+  const type = nodeIn(state, nodeName)
+  if (!type) return false
   const { $from } = state.selection
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
     const index = $from.index(depth)
@@ -93,14 +121,15 @@ export function activeHeadingLevel(state: EditorState): number | null {
   const { $from } = state.selection
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
     const parent = $from.node(depth)
-    if (parent.type === node('heading')) return parent.attrs['level'] as number
+    if (parent.type === nodeIn(state, 'heading')) return parent.attrs['level'] as number
   }
   return null
 }
 
 /** Attributes of the link at the cursor, or null when not in a link. */
 export function activeLink(state: EditorState): Attrs | null {
-  const type = mark('link')
+  const type = markIn(state, 'link')
+  if (!type) return null
   const { $from, empty, from, to } = state.selection
 
   if (empty) {
@@ -121,20 +150,20 @@ export function activeLink(state: EditorState): Attrs | null {
  * Mark commands
  * ------------------------------------------------------------------ */
 
-export const toggleBold: Command = toggleMark(mark('strong'))
-export const toggleItalic: Command = toggleMark(mark('em'))
-export const toggleUnderline: Command = toggleMark(mark('underline'))
-export const toggleStrike: Command = toggleMark(mark('strike'))
-export const toggleInlineCode: Command = toggleMark(mark('code'))
+export const toggleBold: Command = markCommand('strong', toggleMark)
+export const toggleItalic: Command = markCommand('em', toggleMark)
+export const toggleUnderline: Command = markCommand('underline', toggleMark)
+export const toggleStrike: Command = markCommand('strike', toggleMark)
+export const toggleInlineCode: Command = markCommand('code', toggleMark)
 
 /* ------------------------------------------------------------------ *
  * Block commands
  * ------------------------------------------------------------------ */
 
-export const setParagraph: Command = setBlockType(node('paragraph'))
+export const setParagraph: Command = nodeCommand('paragraph', (type) => setBlockType(type))
 
 export function setHeading(level: number): Command {
-  return setBlockType(node('heading'), { level })
+  return nodeCommand('heading', (type) => setBlockType(type, { level }))
 }
 
 /**
@@ -151,10 +180,10 @@ export function toggleHeading(level: number): Command {
 
 export const toggleCodeBlock: Command = (state, dispatch, view) => {
   if (isNodeActive(state, 'code_block')) return setParagraph(state, dispatch, view)
-  return setBlockType(node('code_block'))(state, dispatch, view)
+  return nodeCommand('code_block', (type) => setBlockType(type))(state, dispatch, view)
 }
 
-export const wrapInBlockquote: Command = wrapIn(node('blockquote'))
+export const wrapInBlockquote: Command = nodeCommand('blockquote', (type) => wrapIn(type))
 
 export const toggleBlockquote: Command = (state, dispatch, view) => {
   if (!isNodeActive(state, 'blockquote')) return wrapInBlockquote(state, dispatch, view)
@@ -181,7 +210,9 @@ function liftOut(state: EditorState, dispatch?: (tr: import('prosemirror-state')
 export const insertHorizontalRule: Command = (state, dispatch) => {
   if (!canInsert(state, 'horizontal_rule')) return false
   if (dispatch) {
-    dispatch(state.tr.replaceSelectionWith(node('horizontal_rule').create()).scrollIntoView())
+    const type = nodeIn(state, 'horizontal_rule')
+    if (!type) return false
+    dispatch(state.tr.replaceSelectionWith(type.create()).scrollIntoView())
   }
   return true
 }
@@ -191,18 +222,18 @@ export const insertHorizontalRule: Command = (state, dispatch) => {
  * ------------------------------------------------------------------ */
 
 export const toggleBulletList: Command = (state, dispatch, view) => {
-  if (isNodeActive(state, 'bullet_list')) return liftListItem(node('list_item'))(state, dispatch, view)
-  return wrapInList(node('bullet_list'))(state, dispatch, view)
+  if (isNodeActive(state, 'bullet_list')) return outdentListItem(state, dispatch, view)
+  return nodeCommand('bullet_list', (type) => wrapInList(type))(state, dispatch, view)
 }
 
 export const toggleOrderedList: Command = (state, dispatch, view) => {
-  if (isNodeActive(state, 'ordered_list')) return liftListItem(node('list_item'))(state, dispatch, view)
-  return wrapInList(node('ordered_list'))(state, dispatch, view)
+  if (isNodeActive(state, 'ordered_list')) return outdentListItem(state, dispatch, view)
+  return nodeCommand('ordered_list', (type) => wrapInList(type))(state, dispatch, view)
 }
 
-export const splitListItemCommand: Command = splitListItem(node('list_item'))
-export const indentListItem: Command = sinkListItem(node('list_item'))
-export const outdentListItem: Command = liftListItem(node('list_item'))
+export const splitListItemCommand: Command = nodeCommand('list_item', (t) => splitListItem(t))
+export const indentListItem: Command = nodeCommand('list_item', (t) => sinkListItem(t))
+export const outdentListItem: Command = nodeCommand('list_item', (t) => liftListItem(t))
 
 /* ------------------------------------------------------------------ *
  * Links and images
@@ -224,7 +255,8 @@ export interface LinkAttrs {
  */
 export function setLink(attrs: LinkAttrs): Command {
   return (state, dispatch) => {
-    const type = mark('link')
+    const type = markIn(state, 'link')
+    if (!type) return false
     const { from, to, empty } = state.selection
     if (empty) return false
     if (dispatch) {
@@ -238,7 +270,8 @@ export function setLink(attrs: LinkAttrs): Command {
 }
 
 export const unsetLink: Command = (state, dispatch) => {
-  const type = mark('link')
+  const type = markIn(state, 'link')
+  if (!type) return false
   const { from, to, empty } = state.selection
   if (empty || !state.doc.rangeHasMark(from, to, type)) return false
   if (dispatch) dispatch(state.tr.removeMark(from, to, type).scrollIntoView())
@@ -257,7 +290,9 @@ export function insertImage(attrs: ImageAttrs): Command {
   return (state, dispatch) => {
     if (!canInsert(state, 'image')) return false
     if (dispatch) {
-      const image = node('image').create({
+      const imageType = nodeIn(state, 'image')
+      if (!imageType) return false
+      const image = imageType.create({
         src: attrs.src,
         // An absent alt and alt="" mean different things to a screen reader:
         // "undescribed" versus "decorative". Never collapse them.

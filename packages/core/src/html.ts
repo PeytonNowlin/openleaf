@@ -7,15 +7,47 @@
  * our code to interpret.
  */
 
-import { DOMParser, DOMSerializer, type Node as PMNode } from 'prosemirror-model'
-import { schema } from './schema.js'
+import { DOMParser, DOMSerializer, type Node as PMNode, type Schema } from 'prosemirror-model'
+import { schema as defaultSchema } from './schema.js'
 
-const parser = DOMParser.fromSchema(schema)
-const serializer = DOMSerializer.fromSchema(schema)
+/**
+ * Parsers and serializers are resolved per schema rather than built once.
+ *
+ * `DOMSerializer.fromSchema` builds a map keyed by node NAME at construction, so
+ * a serializer built from one schema throws `this.nodes[node.type.name] is not a
+ * function` the moment it meets a node type a plugin added. Module-level
+ * instances were therefore a hard ceiling on extensibility, not just an
+ * optimisation.
+ *
+ * ProseMirror caches these on the schema object itself, so a WeakMap here is
+ * belt-and-braces -- it costs nothing and makes the intent explicit.
+ */
+const parsers = new WeakMap<Schema, DOMParser>()
+const serializers = new WeakMap<Schema, DOMSerializer>()
+
+function parserFor(target: Schema): DOMParser {
+  let found = parsers.get(target)
+  if (!found) {
+    found = DOMParser.fromSchema(target)
+    parsers.set(target, found)
+  }
+  return found
+}
+
+function serializerFor(target: Schema): DOMSerializer {
+  let found = serializers.get(target)
+  if (!found) {
+    found = DOMSerializer.fromSchema(target)
+    serializers.set(target, found)
+  }
+  return found
+}
 
 export interface HtmlIOOptions {
   /** DOM implementation to use. Defaults to the global `document`. */
   document?: Document
+  /** Schema to parse against. Defaults to the built-in one. */
+  schema?: Schema
 }
 
 function resolveDocument(opts?: HtmlIOOptions): Document {
@@ -34,7 +66,9 @@ export function parseHtml(html: string, opts?: HtmlIOOptions): PMNode {
   const doc = resolveDocument(opts)
   const tpl = doc.createElement('template')
   tpl.innerHTML = html
-  return parser.parse(tpl.content, { preserveWhitespace: false })
+  return parserFor(opts?.schema ?? defaultSchema).parse(tpl.content, {
+    preserveWhitespace: false,
+  })
 }
 
 /**
@@ -71,7 +105,11 @@ function unwrapSoleCellParagraph(host: Element): void {
 /** Serialize an OpenLeaf document back to an HTML string. */
 export function serializeHtml(node: PMNode, opts?: HtmlIOOptions): string {
   const doc = resolveDocument(opts)
-  const fragment = serializer.serializeFragment(node.content, { document: doc })
+  // Taken from the document itself, so a document built on an extended schema
+  // serializes with a serializer that knows its node types. Passing the wrong
+  // schema explicitly is still possible, but the default is now correct.
+  const target = opts?.schema ?? node.type.schema
+  const fragment = serializerFor(target).serializeFragment(node.content, { document: doc })
   const host = doc.createElement('div')
   host.appendChild(fragment)
   unwrapSoleCellParagraph(host)

@@ -41,7 +41,6 @@ import {
   toggleStrike,
   toggleUnderline,
 } from './commands.js'
-import { schema } from './schema.js'
 
 /** A shortcut, its command, and a human label for the help surface. */
 export interface Shortcut {
@@ -115,7 +114,7 @@ export function buildKeymap(
   bindings['Shift-Enter'] = chainCommands(
     exitCode,
     (state, dispatch) => {
-      const br = schema.nodes['hard_break']
+      const br = state.schema.nodes['hard_break']
       if (!br) return false
       if (dispatch) dispatch(state.tr.replaceSelectionWith(br.create()).scrollIntoView())
       return true
