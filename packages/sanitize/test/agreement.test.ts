@@ -25,7 +25,7 @@ const SCHEMA_NATIVE = [
   '<p><img src="/a.png" alt="described" title="T" width="10" height="20"></p>',
   '<p>break<br>after</p>',
   '<blockquote><p>quoted</p></blockquote>',
-  '<pre><code>const x = 1</code></pre>',
+  '<pre><code class="language-js">const x = 1</code></pre>',
   '<hr>',
   '<ul><li><p>one</p></li></ul>',
   '<ol start="3"><li><p>three</p></li></ol>',
