@@ -1,0 +1,29 @@
+{
+  "name": "@openleaf/plugins-import-docx",
+  "version": "0.0.0",
+  "description": "Word .docx import for OpenLeaf, using mammoth. A separate bundle because mammoth is larger than the editor.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@openleaf/plugins-import": "workspace:*",
+    "mammoth": "^1.8.0"
+  },
+  "devDependencies": {
+    "@openleaf/core": "workspace:*"
+  }
+}

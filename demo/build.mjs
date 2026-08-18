@@ -39,6 +39,7 @@ const WORKSPACE_ALIASES = {
   '@openleaf/plugins-table': src('../packages/plugins-table/src/index.ts'),
   '@openleaf/plugins-highlight': src('../packages/plugins-highlight/src/index.ts'),
   '@openleaf/plugins-import': src('../packages/plugins-import/src/index.ts'),
+  '@openleaf/plugins-import-docx': src('../packages/plugins-import-docx/src/index.ts'),
 }
 
 /** Modules the core bundle publishes and plugin bundles borrow. */
@@ -53,6 +54,9 @@ const SHARED = [
   'prosemirror-state',
   'prosemirror-transform',
   'prosemirror-view',
+  // Published by the import bundle rather than the core one, so a companion
+  // bundle shares its converter registry instead of creating a second.
+  '@openleaf/plugins-import',
 ]
 
 /**
@@ -70,8 +74,11 @@ const SHARED = [
  * reintroduced from a different direction. Not needing the names is better than
  * remembering to build first.
  */
-function shareRuntime(globalName) {
-  const escaped = SHARED.map((m) => m.replace(/[/@]/g, '\\$&')).join('|')
+function shareRuntime(globalName, { except = [] } = {}) {
+  // A bundle never borrows itself: the package that PUBLISHES an API must
+  // contain it, not resolve it from the runtime it is about to populate.
+  const shared = SHARED.filter((m) => !except.includes(m))
+  const escaped = shared.map((m) => m.replace(/[/@]/g, '\\$&')).join('|')
   const filter = new RegExp(`^(${escaped})$`)
 
   return {
@@ -160,14 +167,33 @@ await build({
   sourcemap: true,
   outfile: src('./openleaf-import.min.js'),
   alias: { '@openleaf/plugins-import': WORKSPACE_ALIASES['@openleaf/plugins-import'] },
-  plugins: [shareRuntime('OpenLeaf')],
+  plugins: [shareRuntime('OpenLeaf', { except: ['@openleaf/plugins-import'] })],
 })
 const importGz = report('openleaf-import.min.js', src('./openleaf-import.min.js'))
+
+/* ---- opt-in Word .docx bundle ----
+   Its own file, and a big one. mammoth is larger than the whole editor, so a
+   site that only imports HTML must not pay for it. */
+await build({
+  entryPoints: [src('./entry-import-docx.ts')],
+  bundle: true,
+  format: 'iife',
+  target: ['es2020'],
+  minify: true,
+  sourcemap: true,
+  outfile: src('./openleaf-import-docx.min.js'),
+  platform: 'browser',
+  define: { 'process.env.NODE_ENV': '"production"' },
+  alias: { '@openleaf/plugins-import-docx': WORKSPACE_ALIASES['@openleaf/plugins-import-docx'] },
+  plugins: [shareRuntime('OpenLeaf')],
+})
+const docxGz = report('openleaf-import-docx.min.js', src('./openleaf-import-docx.min.js'))
 
 console.log(
   `\ncore is the budgeted bundle (${(coreGz / 1024).toFixed(1)} KB gzip). ` +
     `Optional: tables ${(tablesGz / 1024).toFixed(1)} KB, highlighting ` +
-    `${(highlightGz / 1024).toFixed(1)} KB, import ${(importGz / 1024).toFixed(1)} KB.`,
+    `${(highlightGz / 1024).toFixed(1)} KB, import ${(importGz / 1024).toFixed(1)} KB, ` +
+    `Word .docx ${(docxGz / 1024).toFixed(1)} KB.`,
 )
 
 /* ---- per-package attribution for the core bundle ---- */

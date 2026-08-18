@@ -128,6 +128,19 @@ importers:
         specifier: ^1.8.0
         version: 1.12.1
 
+  packages/plugins-import-docx:
+    dependencies:
+      '@openleaf/plugins-import':
+        specifier: workspace:*
+        version: link:../plugins-import
+      mammoth:
+        specifier: ^1.8.0
+        version: 1.12.1
+    devDependencies:
+      '@openleaf/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/plugins-table:
     dependencies:
       '@openleaf/core':

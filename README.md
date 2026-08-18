@@ -55,8 +55,9 @@
 >   source view that is indented and highlighted, in a 5.3 KB opt-in bundle
 > - **Plugins can add node and mark types** — the schema is built from
 >   registered extensions, not a frozen singleton
-> - **File import** — drag in an HTML or text file, or Word's own "Save as Web
->   Page" export, and its lists are reconstructed. 2.2 KB.
+> - **File import** — drag in a Word `.docx`, an HTML or text file, or Word's own
+>   "Save as Web Page" export, and headings, nested lists, quotes and tables all
+>   arrive. 2.5 KB, plus 123 KB only if you want `.docx`.
 > - Bundles: **86 KB gzipped** core, plus optional **12.5 KB** tables,
 >   **5.3 KB** highlighting and **2.2 KB** import, each downloaded only if asked for
 >
@@ -124,7 +125,8 @@ ui/              toolbar, icons, dialogs, theme tokens                 [done]
 element/         <openleaf-editor> custom element — the drop-in        [done]
 plugins-table/   opt-in table editing, second script tag              [done]
 plugins-highlight/ opt-in syntax highlighting + source formatting     [done]
-plugins-import/  opt-in file import: HTML, text, and a converter seam [done]
+plugins-import/  opt-in file import: HTML, text, converter seam       [done]
+plugins-import-docx/ Word .docx import via mammoth, its own bundle    [done]
 plugins-*/       one package per feature, tree-shakeable
 sanitize/        one allowlist as data + matching node, php, python impls
 adapters-*/      thin react, vue, svelte, angular wrappers
@@ -529,27 +531,31 @@ afterwards. It also goes through the *same* paste pipeline as everything else,
 rather than a second one — two code paths normalizing the same markup is how one
 of them rots.
 
-### `.docx` is a seam, not a bundled dependency
+### Word `.docx` works, in its own bundle
 
-Measured before deciding: **mammoth is 122 KB gzipped — larger than the entire
-editor.** Forcing that on someone who wants to import an HTML file is the wrong
-trade, and writing a worse OOXML converter to avoid it is a much worse one. So it
-arrives through a converter:
+Measured before deciding: **mammoth is 123 KB gzipped — larger than the entire
+editor.** That is a good reason not to put it in the *import* bundle. It is not a
+reason to make Word documents somebody else's problem, so it is a third script:
 
-```ts
-import mammoth from 'mammoth/mammoth.browser.js'
-import { registerFileConverter } from '@openleaf/plugins-import'
-
-registerFileConverter(async (file) => {
-  if (!file.name.toLowerCase().endsWith('.docx')) return null
-  const { value, messages } = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() })
-  return { html: value, warnings: messages.filter((m) => m.type === 'warning').map((m) => m.message) }
-})
+```html
+<script src="/js/openleaf.min.js"></script>
+<script src="/js/openleaf-import.min.js"></script>       <!-- 2.5 KB -->
+<script src="/js/openleaf-import-docx.min.js"></script>  <!-- 123 KB, Word only -->
 ```
 
-Tested by actually driving it with mammoth against a real `.docx` fixture, which
-produces `<h1>`, `<ul>` and `<strong>` — because an extension point nobody has
-run is one that does not work.
+Headings, nested lists, bold, italic, block quotes and tables all come across.
+Word's own Title and Quote styles are mapped to real structure, because a
+document whose title arrives as an unstyled paragraph reads as though the import
+lost something — which, to an author, it did.
+
+**Images are the one thing that does not come across.** Word embeds them in the
+file and mammoth inlines them as `data:` URIs, which OpenLeaf blocks on purpose
+— `data:text/html` is a full XSS vector. So they are dropped *and counted*, and
+the count is reported to the author rather than logged. Supply `convertImage` to
+upload them instead.
+
+`registerFileConverter` remains public, so any other format — or a different
+`.docx` converter — plugs in the same way.
 
 Conversion warnings are **shown to the author**, not logged. Someone importing a
 document needs to know its images did not come across *now*, while they still

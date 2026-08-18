@@ -344,8 +344,12 @@ const ratio = width / height   // division, not a regex
 </p>
 
 <p class="controls">
-  <button type="button" class="action" id="import-sample">Import a sample Word export</button>
-  <a class="action" href="samples/quarterly-review.html" download>Download the sample to drag in yourself</a>
+  <button type="button" class="action" id="import-docx">Import a sample Word .docx</button>
+  <button type="button" class="action" id="import-sample">Import a sample Word HTML export</button>
+</p>
+<p class="controls">
+  <a class="action" href="samples/quarterly-review.docx" download>Download the .docx to drag in yourself</a>
+  <a class="action" href="samples/quarterly-review.html" download>Download the HTML export</a>
 </p>
 
 <p class="subtitle" style="margin:0 0 1rem">
@@ -362,10 +366,22 @@ const ratio = width / height   // division, not a regex
 </p>
 
 <p>
-  <code>.docx</code> arrives through a converter rather than in the bundle.
-  Measured: mammoth is 122 KB gzipped, larger than the entire editor, so forcing
-  it on somebody importing an HTML file would be the wrong trade.
-  <code>registerFileConverter()</code> takes it in five lines.
+  <code>.docx</code> works, and it is a <em>separate</em> bundle. Measured:
+  mammoth is 123 KB gzipped, larger than the entire editor, so a site that only
+  imports HTML must not pay for it. Load one more script and Word documents work;
+  do not, and they do not.
+</p>
+
+<pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
+&lt;script src="/js/openleaf-import.min.js"&gt;&lt;/script&gt;        &lt;!-- 2.5 KB --&gt;
+&lt;script src="/js/openleaf-import-docx.min.js"&gt;&lt;/script&gt;   &lt;!-- 123 KB, Word only --&gt;</pre>
+
+<p>
+  Images are the one thing that does not come across. Word embeds them in the
+  file and mammoth inlines them as <code>data:</code> URIs, which OpenLeaf blocks
+  on purpose — <code>data:text/html</code> is a full XSS vector. So they are
+  dropped <em>and counted</em>, and the count is reported to you rather than
+  logged, because you need to know while the original is still open.
 </p>
 
 <p>
@@ -457,6 +473,7 @@ const ratio = width / height   // division, not a regex
 <script src="./openleaf-tables.min.js"></script>
 <script src="./openleaf-highlight.min.js"></script>
 <script src="./openleaf-import.min.js"></script>
+<script src="./openleaf-import-docx.min.js"></script>
 <script>
 (function () {
   'use strict'
@@ -565,28 +582,44 @@ const ratio = width / height   // division, not a regex
 
   /* ---- importing a sample file ------------------------------------- */
 
-  const importButton = document.getElementById('import-sample')
-  if (importButton) {
-    importButton.addEventListener('click', async function () {
-      importButton.disabled = true
-      try {
-        const response = await fetch('samples/quarterly-review.html')
-        const text = await response.text()
-        // Dispatched as a real drop rather than calling an API, so the button
-        // exercises exactly the path a person dragging the file would.
-        const data = new DataTransfer()
-        data.items.add(new File([text], 'quarterly-review.html', { type: 'text/html' }))
-        const region = main.querySelector('.ProseMirror')
-        region.focus()
-        region.dispatchEvent(
-          new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }),
-        )
-        setTimeout(renderOutput, 100)
-        document.getElementById('try').scrollIntoView({ behavior: 'smooth', block: 'start' })
-      } finally {
-        importButton.disabled = false
-      }
-    })
+  // Both buttons dispatch a real drop rather than calling an API, so they
+  // exercise exactly the path a person dragging the file would.
+  async function importSample(url, name, type, button) {
+    button.disabled = true
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const data = new DataTransfer()
+      data.items.add(new File([blob], name, { type }))
+      const region = main.querySelector('.ProseMirror')
+      region.focus()
+      region.dispatchEvent(
+        new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }),
+      )
+      setTimeout(renderOutput, 400)
+      document.getElementById('try').scrollIntoView({ behavior: 'smooth', block: 'start' })
+    } finally {
+      button.disabled = false
+    }
+  }
+
+  const htmlButton = document.getElementById('import-sample')
+  if (htmlButton) {
+    htmlButton.addEventListener('click', () =>
+      importSample('samples/quarterly-review.html', 'quarterly-review.html', 'text/html', htmlButton),
+    )
+  }
+
+  const docxButton = document.getElementById('import-docx')
+  if (docxButton) {
+    docxButton.addEventListener('click', () =>
+      importSample(
+        'samples/quarterly-review.docx',
+        'quarterly-review.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        docxButton,
+      ),
+    )
   }
 })()
 </script>

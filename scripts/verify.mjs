@@ -25,6 +25,8 @@ const BUDGETS_KB = {
   'openleaf-tables.min.js': 25,
   'openleaf-highlight.min.js': 15,
   'openleaf-import.min.js': 12,
+  // Larger than the editor, which is exactly why it is a separate file.
+  'openleaf-import-docx.min.js': 140,
 }
 
 const args = new Set(process.argv.slice(2))
