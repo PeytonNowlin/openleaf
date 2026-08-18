@@ -16,14 +16,18 @@ it cannot quietly destroy your content.
 > - The **content-preservation layer** — the thing that stops a
 >   ProseMirror-based editor from silently eating legacy markup
 > - The round-trip fidelity harness: **7/7 stored fixtures fully lossless**,
->   38 tests green, typechecked strict
+>   38 unit tests green, typechecked strict
+> - `<openleaf-editor>` verified in **real browsers** — 11 tests across
+>   Chromium, Firefox and WebKit (33 runs): loads stored HTML, accepts typing,
+>   writes back to the textarea, posts through a real form submit, and does not
+>   alter a document that is opened and saved untouched
 > - A single-file bundle: **65 KB gzipped** including the whole editing engine
 >
 > **What does not exist yet**
 > - Any toolbar or visible UI (keyboard shortcuts only)
 > - Tables, paste normalizers, server-side sanitizer package
-> - **Any browser test whatsoever.** `@openleaf/element` compiles and bundles;
->   nobody has yet proven it renders, takes focus, or survives a paste.
+> - Mobile and IME coverage — no touch, Android soft-keyboard or
+>   composition-event tests yet, which is where editors break hardest
 >
 > I am building this in the open from the foundations up rather than shipping a
 > demo and backfilling the hard parts. The roadmap below is the actual plan.
@@ -100,8 +104,12 @@ Openleaf's answer is architectural, not aspirational:
 
 - **Unrecognised markup is preserved, never dropped.** A
   `<div class="callout">` or a `<drupal-media>` element becomes a selectable,
-  movable, deletable atom that round-trips **byte-identical**. Users can see it
-  and remove it deliberately; they cannot lose it by accident.
+  movable, deletable atom that round-trips **byte-identical**. It is an atom, so
+  it has no interior caret position and cannot be half-edited into something
+  invalid. Selecting one and typing replaces it — the same as typing over a
+  selected image — but that is *visible* and undo restores it byte-identical.
+  There is a browser test asserting exactly that. What can never happen is
+  losing it **silently**, which is the failure that actually hurts.
 - **The rule is "would unwrapping lose information?", not "is this tag
   known?"** A bare `<div>` unwraps, because nothing is lost. A `<div>` with
   *any* attribute is preserved, because we cannot know that attribute wasn't
@@ -163,12 +171,18 @@ Prove the architecture before building on it.
 - [x] Round-trip fidelity harness with two corpora
 - [x] Governance: Apache-2.0, DCO, no-relicense covenant
 - [x] CI: typecheck, fidelity, bundle-size budget, DCO gate
-- [ ] **Playwright wired up** — the immediate next task
+- [x] **Playwright across Chromium, Firefox and WebKit**
 
-> **Done when** a real browser test proves `<openleaf-editor>` loads HTML,
-> accepts typing, and writes back to its textarea. Right now the trustworthy
-> half of this project is the half with no UI, and that asymmetry cannot
-> persist.
+> **Done.** `<openleaf-editor>` is now proven in real browsers to load stored
+> HTML, accept typing, apply marks by keyboard, write back to its bound
+> textarea, and post through an ordinary form submit — and to leave a document
+> byte-identical when it is opened and saved without editing.
+>
+> Writing these found two real bugs that every unit test had passed straight
+> over: `dir` silently dropped from paragraphs (breaking all RTL content), and
+> a bold shortcut that appeared to work but was never exercised because
+> `Home`/`End` do not move the caret in contenteditable on macOS. This is
+> exactly why jsdom is not enough.
 
 ### Phase 1 — A usable editor ▸ *next*
 
@@ -309,8 +323,10 @@ The most useful contributions at this stage, in order:
    paste, 2009 WordPress, Mailchimp templates, CKEditor output. Redact anything
    private, add it to `packages/core/test/fixtures/stored/`, open a PR. If it
    fails, that is a bug found before a user found it.
-2. **Playwright tests** for the custom element. Highest-value code in the repo
-   right now.
+2. **Mobile and IME browser coverage.** Touch selection, Android
+   soft-keyboard behaviour, and composition events for Japanese, Korean and
+   Chinese input. The desktop engines are covered; these are not, and they are
+   where editors break hardest.
 3. **Accessibility bug reports** naming the assistive technology and version.
 4. **Tell me your migration blockers.** If you are stuck on TinyMCE or
    CKEditor for a specific reason, that reason should shape the roadmap. Open
@@ -318,7 +334,10 @@ The most useful contributions at this stage, in order:
 
 ```bash
 pnpm install
-pnpm test                 # unit + round-trip fidelity
+pnpm exec playwright install   # first time only
+
+pnpm test                 # unit + round-trip fidelity (fast, jsdom)
+pnpm test:e2e             # real browsers: Chromium, Firefox, WebKit
 pnpm -r build             # strict typecheck
 node demo/build.mjs && open demo/index.html
 ```

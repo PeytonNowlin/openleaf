@@ -31,6 +31,33 @@ jobs:
             | awk '{ printf "gzipped: %.1f KB\n", $1/1024;
                      if ($1 > 90*1024) { print "FAIL: bundle exceeds 90 KB gzipped budget"; exit 1 } }'
 
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install browsers
+        # All three engines. WebKit is not optional -- it is Safari and every
+        # iOS browser, and it is historically where selection bugs live.
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+
+      - name: Browser tests
+        run: pnpm test:e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
   dco:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'

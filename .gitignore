@@ -10,3 +10,6 @@ demo/openleaf.min.js.map
 
 # Local tooling config (machine-specific paths, not portable)
 .claude/
+/test-results/
+/playwright-report/
+/blob-report/

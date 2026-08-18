@@ -17,6 +17,13 @@
      can see it, move it, and delete it, but cannot corrupt it by typing. */
   .openleaf-content [data-openleaf-unparsable] { outline: 1px dashed red; }
   textarea { width: 100%; min-height: 8rem; font-family: ui-monospace, monospace; font-size: .8rem; }
+  /* ProseMirror marks a selected atom with this class. Preserved blocks can be
+     replaced by typing, so the selection must be unmistakable first. */
+  .openleaf-content .ProseMirror-selectednode {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
 </style>
 </head>
 <body>
