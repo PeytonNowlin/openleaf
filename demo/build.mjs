@@ -1,34 +1,27 @@
 /**
  * Builds the distributable bundles.
  *
- *   openleaf.min.js         core: editor, paste normalizers, toolbar, dialogs
+ *   openleaf.min.js         core: editor, paste normalizers, toolbar, dialogs,
+ *                           and the table schema
  *   openleaf-tables.min.js  opt-in table editing
  *
  * The second bundle resolves ProseMirror and the OpenLeaf packages from the
  * runtime the first one publishes, rather than carrying its own copies. That is
- * what makes it ~25 KB instead of ~200 KB, and -- more importantly -- it keeps
+ * what makes it ~13 KB instead of ~200 KB, and -- more importantly -- it keeps
  * exactly one schema on the page. Two schemas would mean a table node built by
- * the plugin is a different node type than the one the editor accepts, which
- * fails in ways nobody enjoys debugging.
+ * the plugin is a different node type than the editor accepts, which fails in
+ * ways nobody enjoys debugging.
+ *
+ * Everything here works from a fresh clone with no prior build. That is a
+ * deliberate constraint, learned twice: a build script that quietly depends on
+ * `dist/` existing passes on the machine that just built and fails on CI.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { pathToFileURL } from 'node:url'
+import { cpSync, mkdirSync, readFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 
 const src = (rel) => fileURLToPath(new URL(rel, import.meta.url))
-
-/**
- * Resolve shared modules the way the plugin package sees them.
- *
- * pnpm's strict layout means the repo root cannot reach `prosemirror-state`;
- * only packages that declare it can. Resolving from the plugin's own
- * package.json gets the same copy the bundle will link against, rather than
- * requiring the root to declare dependencies it does not use.
- */
-const requireFromPlugin = createRequire(src('../packages/plugins-table/package.json'))
 
 // Copy the brand assets in beside index.html. demo/ is deployed verbatim as the
 // site root, so keeping assets adjacent means the local page and the published
@@ -63,58 +56,43 @@ const SHARED = [
 /**
  * Rewrite imports of shared modules to read from the host bundle's runtime.
  *
- * Export names are enumerated by importing the real module at build time rather
- * than being maintained by hand, so adding an export upstream cannot silently
- * leave a plugin importing `undefined`.
+ * The shim is emitted as CommonJS -- `module.exports = ns` -- rather than as ESM
+ * with a destructuring export. esbuild's interop then resolves every named
+ * import as a property lookup on that object at runtime, so the export names
+ * never need to be known at build time.
+ *
+ * The first attempt did enumerate them, by importing each package's built
+ * `dist`. It worked locally and broke the deploy, because the Pages workflow
+ * installs and then builds the bundle without running `pnpm -r build` -- the
+ * exact build-order dependency this repo had already been bitten by once,
+ * reintroduced from a different direction. Not needing the names is better than
+ * remembering to build first.
  */
 function shareRuntime(globalName) {
+  const escaped = SHARED.map((m) => m.replace(/[/@]/g, '\\$&')).join('|')
+  const filter = new RegExp(`^(${escaped})$`)
+
   return {
     name: 'share-runtime',
     setup(pluginBuild) {
-      const filter = new RegExp(`^(${SHARED.map((m) => m.replace(/[/@]/g, '\\$&')).join('|')})$`)
-
       pluginBuild.onResolve({ filter }, (args) => ({
         path: args.path,
         namespace: 'shared-runtime',
       }))
 
-      pluginBuild.onLoad({ filter: /.*/, namespace: 'shared-runtime' }, async (args) => {
-        const resolved = WORKSPACE_ALIASES[args.path]
-          ? distFor(args.path)
-          : requireFromPlugin.resolve(args.path)
-        const real = await import(pathToFileURL(resolved).href)
-        // Only valid bare identifiers: a namespace import of a
-        // CommonJS-interop module also exposes keys like `module.exports`,
-        // which cannot appear in a destructuring export.
-        const names = Object.keys(real).filter(
-          (n) => n !== 'default' && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(n),
-        )
-        return {
-          contents:
-            `const ns = globalThis.${globalName}.__runtime[${JSON.stringify(args.path)}];\n` +
-            `if (!ns) throw new Error(${JSON.stringify(
-              `openleaf: ${args.path} is not on the host runtime. Load openleaf.min.js before this bundle.`,
-            )});\n` +
-            `export default ns;\n` +
-            (names.length ? `export const { ${names.join(', ')} } = ns;\n` : ''),
-          loader: 'js',
-        }
-      })
+      pluginBuild.onLoad({ filter: /.*/, namespace: 'shared-runtime' }, (args) => ({
+        contents:
+          `var host = globalThis.${globalName};\n` +
+          `var ns = host && host.__runtime && host.__runtime[${JSON.stringify(args.path)}];\n` +
+          `if (!ns) throw new Error(${JSON.stringify(
+            `openleaf: ${args.path} is not on the host runtime. ` +
+              'Load openleaf.min.js before this bundle.',
+          )});\n` +
+          `module.exports = ns;\n`,
+        loader: 'js',
+      }))
     },
   }
-}
-
-/** Built output for a workspace package, used only to enumerate export names. */
-function distFor(pkg) {
-  const name = pkg.replace('@openleaf/', '')
-  const path = src(`../packages/${name}/dist/index.js`)
-  if (!existsSync(path)) {
-    throw new Error(
-      `demo/build.mjs: ${pkg} has not been built. The plugin bundle reads its ` +
-        'export names from dist. Run `pnpm -r build` first.',
-    )
-  }
-  return path
 }
 
 function report(label, file) {

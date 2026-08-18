@@ -70,7 +70,29 @@ const browserOk = step(
   },
 )
 
-// 4. Bundle size. The "no build step" promise means integrators load this over
+// 4. The bundle build must not depend on anything having been built first.
+//
+//    This guard exists because the same bug shipped twice: `demo/build.mjs`
+//    reading from `packages/*/dist` passes on a machine that just ran a build and
+//    fails on a fresh checkout, which is exactly what CI is. `pnpm verify` cannot
+//    catch it by running the build, because the typecheck step above has already
+//    created dist by then -- so the invariant is asserted directly instead.
+const cleanBuildOk = step('bundle build has no dist dependency', () => {
+  const script = readFileSync(new URL('../demo/build.mjs', import.meta.url), 'utf8')
+  const offenders = script
+    .split('\n')
+    .map((line, i) => [i + 1, line])
+    .filter(([, line]) => /\/dist\b/.test(line) && !line.trimStart().startsWith('*'))
+  if (offenders.length > 0) {
+    throw new Error(
+      'demo/build.mjs reads from a built dist/, which breaks a fresh checkout: ' +
+        offenders.map(([n, l]) => `line ${n}: ${l.trim()}`).join('; '),
+    )
+  }
+  return 'resolves workspace packages from source'
+})
+
+// 5. Bundle size. The "no build step" promise means integrators load this over
 //    the wire, so the number is a feature and regressions should hurt.
 const sizeOk = step(`bundle size budget (${GZIP_BUDGET_KB} KB gzipped)`, () => {
   execFileSync('node', ['demo/build.mjs'], { cwd: ROOT, stdio: 'ignore' })
@@ -92,7 +114,7 @@ for (const r of results) {
 }
 console.log(`  ${'-'.repeat(width + 26)}`)
 
-const allOk = typecheckOk && unitOk && browserOk && sizeOk
+const allOk = typecheckOk && unitOk && browserOk && cleanBuildOk && sizeOk
 if (quick) {
   console.log(
     `  ${yellow('note')} --quick ran chromium only. Run plain \`pnpm verify\` before pushing.`,
