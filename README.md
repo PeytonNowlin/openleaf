@@ -46,7 +46,10 @@
 >   pastes from Word and Google Docs, drives every toolbar control by keyboard,
 >   writes back to the textarea, posts through a real form submit, and does not
 >   alter a document that is opened and saved untouched
-> - A single-file bundle: **79 KB gzipped**, everything included
+> - **`@openleaf/sanitize`** — one policy as data, generating configuration for
+>   DOMPurify, Python `bleach` and PHP HTMLPurifier so every runtime enforces the
+>   same rules
+> - A single-file bundle: **80 KB gzipped**, everything included
 >
 > **What does not exist yet**
 > - Tables, image upload (insert-by-URL only), server-side sanitizer package
@@ -105,6 +108,7 @@ The intended shape:
 ```
 core/            schema, HTML I/O, preservation, commands, keymap     [done]
 paste/           Word / Google Docs normalizers                       [done]
+sanitize/        one policy as data + DOMPurify/bleach/HTMLPurifier   [done]
 ui/              toolbar, icons, dialogs, theme tokens                 [done]
 element/         <openleaf-editor> custom element — the drop-in        [done]
 plugins-*/       one package per feature, tree-shakeable
@@ -391,8 +395,10 @@ The point at which someone could actually replace TinyMCE with this.
   Their own package, because a CMS that forbids tables should not ship the code.
 - [ ] **Images** — upload hook and resize. Insert-by-URL with alt-text
   prompting already works.
-- [ ] **`@openleaf/sanitize`** — the allowlist as *data*, plus matching Node, PHP,
-  and Python implementations. Every CMS team hand-rolls this and gets it wrong.
+- [x] **`@openleaf/sanitize`** — the allowlist as *data*, generating config for
+  DOMPurify, `bleach` and HTMLPurifier. Every CMS team hand-rolls this in each
+  language and discovers the divergence when something gets through the weakest
+  one.
 - [x] Source view
 - [ ] Find and replace, alignment, colors, character count, autosave
 - [ ] i18n scaffolding and a first non-English locale
@@ -498,11 +504,28 @@ Client-side sanitization is a **user-experience feature, not a security
 control** — anything the editor strips can be re-added with developer tools,
 because the editor runs entirely under the user's control.
 
-**You must sanitize on the server.** `@openleaf/sanitize` will ship the
-canonical allowlist as data specifically so your server can enforce the same
-policy in the same terms. Treating editor output as trusted HTML is a
-vulnerability in *your* application, and no configuration of OpenLeaf can fix
-it. See [SECURITY.md](SECURITY.md).
+**You must sanitize on the server.**
+[`@openleaf/sanitize`](packages/sanitize) ships the canonical allowlist as data
+so your server enforces the same policy in the same terms, and generates
+configuration for DOMPurify, Python `bleach` and PHP HTMLPurifier from it.
+Treating editor output as trusted HTML is a vulnerability in *your* application,
+and no configuration of OpenLeaf can fix it.
+
+We deliberately do **not** ship a novel sanitizer. The valuable artifact is
+agreement — one policy four runtimes enforce identically — not another
+hand-rolled parser competing with implementations that have had years of
+adversarial attention.
+
+**The trap worth knowing about:** the preservation layer keeps markup the schema
+does not recognise, and a default-safe policy will strip exactly that markup,
+destroying the content on the server that the editor worked to save. Extend the
+policy with `policyForPreserved()` if you rely on it. See
+[SECURITY.md](SECURITY.md).
+
+The editor itself refuses to preserve executable content — `<script>`,
+`<iframe>`, `<object>`, `<form>`, inline `on*` handlers and `javascript:` URLs
+are dropped in core, with tests. That is defence in depth, not a substitute for
+sanitizing on the server.
 
 ## Guarantees
 

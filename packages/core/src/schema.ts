@@ -9,6 +9,7 @@
 
 import { Schema, type MarkSpec, type NodeSpec } from 'prosemirror-model'
 import { unknownBlock, unknownInline } from './preserve.js'
+import { isSafeUrl } from './url.js'
 
 const nodes: Record<string, NodeSpec> = {
   doc: { content: 'block+' },
@@ -122,6 +123,9 @@ const nodes: Record<string, NodeSpec> = {
         tag: 'img[src]',
         getAttrs(dom) {
           const el = dom as Element
+          // Returning false declines the rule, so an image with a
+          // `javascript:` src is dropped rather than carried through.
+          if (!isSafeUrl(el.getAttribute('src'))) return false
           return {
             src: el.getAttribute('src'),
             // An absent alt and alt="" mean different things to a screen
@@ -203,6 +207,10 @@ const marks: Record<string, MarkSpec> = {
         tag: 'a[href]',
         getAttrs(dom) {
           const el = dom as Element
+          // A `javascript:` href is the cheapest XSS vector there is: no
+          // injected element, no script tag, just a reader who clicks.
+          // Declining the rule keeps the link TEXT and drops the mark.
+          if (!isSafeUrl(el.getAttribute('href'))) return false
           return {
             href: el.getAttribute('href'),
             title: el.getAttribute('title'),

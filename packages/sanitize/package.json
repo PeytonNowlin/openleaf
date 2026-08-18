@@ -1,0 +1,16 @@
+{
+  "name": "@openleaf/sanitize",
+  "version": "0.0.0",
+  "description": "The canonical OpenLeaf sanitization policy as data, plus configuration for DOMPurify, bleach and HTMLPurifier so client and server enforce the same rules.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./allowlist.json": "./dist/allowlist.json"
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": { "build": "tsc -p tsconfig.json && node scripts/emit-json.mjs" }
+}

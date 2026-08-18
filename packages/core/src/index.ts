@@ -2,6 +2,12 @@ export { schema } from './schema.js'
 export { parseHtml, serializeHtml, roundTrip, type HtmlIOOptions } from './html.js'
 export { isLosslesslyUnwrappable, unknownBlock, unknownInline } from './preserve.js'
 export {
+  URL_ATTRIBUTES,
+  isEventHandlerAttribute,
+  isSafeUrl,
+  safeUrlOrNull,
+} from './url.js'
+export {
   // predicates
   activeHeadingLevel,
   activeLink,

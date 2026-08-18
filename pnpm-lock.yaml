@@ -81,6 +81,8 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/sanitize: {}
+
   packages/ui:
     dependencies:
       '@openleaf/core':

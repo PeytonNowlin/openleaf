@@ -28,6 +28,83 @@
  */
 
 import type { NodeSpec } from 'prosemirror-model'
+import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
+
+/**
+ * Elements that are never preserved, and whose contents are discarded with them.
+ *
+ * This is where the project's two strongest instincts collide. The preservation
+ * layer exists because silently deleting a customer's markup is the failure
+ * OpenLeaf was built to prevent -- but "markup the schema does not recognise"
+ * includes `<script>`.
+ *
+ * Preserving an author's `<div class="callout">` is the product working.
+ * Preserving a `<script>` is a vulnerability with extra steps: the editor would
+ * hand it back on save, the server would store it, and the next reader would
+ * execute it. The content-safety promise is about *authorial content*, and a
+ * script tag is not that.
+ *
+ * `ignore` rather than `skip`: the element AND its contents go. Skipping would
+ * unwrap `<script>alert(1)</script>` into the literal text "alert(1)" appearing
+ * in the document, which is a different kind of wrong.
+ */
+const NEVER_PRESERVE: readonly string[] = [
+  'script',
+  'style',
+  'iframe',
+  'frame',
+  'frameset',
+  'object',
+  'embed',
+  'applet',
+  'form',
+  'input',
+  'button',
+  'select',
+  'textarea',
+  'option',
+  'link',
+  'meta',
+  'base',
+  'noscript',
+  'template',
+]
+
+/** Parse rules that drop dangerous elements before any other rule sees them. */
+const dropRules = NEVER_PRESERVE.map((tag) => ({ tag, ignore: true, priority: 100 }))
+
+/**
+ * Scrub markup before it is stored for preservation.
+ *
+ * Preserving an element verbatim means preserving its attributes verbatim, and
+ * `<div class="callout" onclick="steal()">` is not something an author needs
+ * kept. Works on a clone so the live parse tree is untouched.
+ */
+function scrub(el: Element): string {
+  const clone = el.cloneNode(true) as Element
+
+  const visit = (node: Element): void => {
+    for (const child of Array.from(node.children)) {
+      if (NEVER_PRESERVE.includes(child.nodeName.toLowerCase())) {
+        child.remove()
+        continue
+      }
+      visit(child)
+    }
+    for (const attr of Array.from(node.attributes)) {
+      if (isEventHandlerAttribute(attr.name)) {
+        node.removeAttribute(attr.name)
+        continue
+      }
+      if (URL_ATTRIBUTES.has(attr.name.toLowerCase()) && !isSafeUrl(attr.value)) {
+        node.removeAttribute(attr.name)
+      }
+    }
+  }
+
+  visit(clone)
+  return clone.outerHTML
+}
 
 /**
  * Elements that contribute no meaning of their own -- pure structural
@@ -120,6 +197,7 @@ export const unknownBlock: NodeSpec = {
     tag: { default: 'div' },
   },
   parseDOM: [
+    ...dropRules,
     {
       tag: '*',
       // Lowest priority: every real rule in the schema gets first refusal.
@@ -130,7 +208,7 @@ export const unknownBlock: NodeSpec = {
         // Returning false declines the rule, so ProseMirror falls through
         // to its default behaviour -- unwrap, keep the children editable.
         if (isLosslesslyUnwrappable(el)) return false
-        return { html: el.outerHTML, tag: el.nodeName.toLowerCase() }
+        return { html: scrub(el), tag: el.nodeName.toLowerCase() }
       },
     },
   ],
@@ -154,6 +232,7 @@ export const unknownInline: NodeSpec = {
     tag: { default: 'span' },
   },
   parseDOM: [
+    ...dropRules,
     {
       tag: '*',
       // Higher than unknownBlock's catch-all: inline gets first refusal so
@@ -164,7 +243,7 @@ export const unknownInline: NodeSpec = {
       getAttrs(dom) {
         const el = dom as Element
         if (isLosslesslyUnwrappable(el)) return false
-        return { html: el.outerHTML, tag: el.nodeName.toLowerCase() }
+        return { html: scrub(el), tag: el.nodeName.toLowerCase() }
       },
     },
   ],
