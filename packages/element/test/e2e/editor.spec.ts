@@ -148,6 +148,88 @@ test.describe('content preservation in a real browser', () => {
   })
 })
 
+test.describe('source view lifecycle', () => {
+  test('closing source without an edit keeps undo', async ({ page }) => {
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' scratch text')
+    await expect(editor(page)).toContainText('scratch text')
+
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toBeVisible()
+    await page.getByRole('button', { name: 'HTML source' }).click()
+
+    await expect(editor(page)).toContainText('scratch text')
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect(editor(page)).not.toContainText('scratch text')
+  })
+
+  test('a source edit is one undoable change event', async ({ page }) => {
+    await page.evaluate(() => {
+      ;(window as Window & { __olChanges?: number }).__olChanges = 0
+      document.querySelector('openleaf-editor')!.addEventListener('openleaf:change', () => {
+        const w = window as Window & { __olChanges?: number }
+        w.__olChanges = (w.__olChanges ?? 0) + 1
+      })
+    })
+
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    const source = page.getByRole('textbox', { name: 'HTML source' })
+    await source.fill('<p>replaced in source</p>')
+    await page.getByRole('button', { name: 'HTML source' }).click()
+
+    await expect(editor(page)).toContainText('replaced in source')
+    expect(await page.evaluate(() => (window as Window & { __olChanges?: number }).__olChanges)).toBe(1)
+
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect(editor(page)).not.toContainText('replaced in source')
+    await expect(editor(page)).toContainText('A stored paragraph.')
+  })
+
+  test('assigning value while source is open updates the source box', async ({ page }) => {
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toBeVisible()
+
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<p>assigned while source open</p>'
+    })
+
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toHaveValue(
+      '<p>assigned while source open</p>',
+    )
+
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    await expect(editor(page)).toContainText('assigned while source open')
+    await expect.poll(() => submittedValue(page)).toBe('<p>assigned while source open</p>')
+  })
+
+  test('disconnecting while source is open fires close and reconnects cleanly', async ({ page }) => {
+    await page.evaluate(() => {
+      ;(window as Window & { __olSourceClosed?: boolean }).__olSourceClosed = false
+      document.querySelector('openleaf-editor')!.addEventListener('openleaf:source-close', () => {
+        ;(window as Window & { __olSourceClosed?: boolean }).__olSourceClosed = true
+      })
+    })
+
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toBeVisible()
+
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor')
+      if (!el?.parentNode) return
+      const next = el.nextSibling
+      el.parentNode.removeChild(el)
+      el.parentNode.insertBefore(el, next)
+    })
+
+    await expect.poll(() => page.evaluate(() => (window as Window & { __olSourceClosed?: boolean }).__olSourceClosed)).toBe(true)
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toHaveCount(0)
+    await expect(editor(page)).toBeVisible()
+    await expect(editor(page)).toContainText('A stored paragraph.')
+  })
+})
+
 test.describe('the CMS form contract', () => {
   test('posts the edited HTML under the textarea name', async ({ page }) => {
     // The whole point of the drop-in: server code that already reads

@@ -294,6 +294,10 @@ export class OpenLeafEditor extends HTMLElement {
   }
 
   disconnectedCallback(): void {
+    // Persist whatever is in the source box before tearing it down, so a
+    // framework that moves the element does not drop unsaved HTML.
+    this.#syncToTextarea()
+    this.#teardownSource({ apply: false })
     this.#form?.removeEventListener('submit', this.#onSubmit)
     this.#form?.removeEventListener('formdata', this.#onSubmit)
     this.removeEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
@@ -313,20 +317,16 @@ export class OpenLeafEditor extends HTMLElement {
   }
 
   set value(html: string) {
+    if (this.#sourceMode && this.#sourceArea) {
+      this.#sourceArea.value = html
+      this.#syncToTextarea()
+      return
+    }
     if (!this.#view) {
       if (this.#textarea) this.#textarea.value = html
       return
     }
-    const state = EditorState.create({
-      // The view's schema, not the current one: if an extension registered since
-      // this editor was built, parsing against the newer schema would produce
-      // nodes its own state rejects.
-      doc: parseHtml(html, { schema: this.#schema }),
-      plugins: this.#view.state.plugins,
-    })
-    this.#view.updateState(state)
-    this.#toolbar?.update(state)
-    this.#syncToTextarea()
+    this.#replaceDocument(html)
   }
 
   /** Escape hatch for plugins and integrations that need the real view. */
@@ -386,24 +386,45 @@ export class OpenLeafEditor extends HTMLElement {
     }
 
     const area = this.#sourceArea
-    if (area) {
-      // Announced before anything is read or removed, so an enhancer can unwrap
-      // its own DOM first and the value read below is the author's text rather
-      // than something half-detached.
-      this.dispatchEvent(
-        new CustomEvent(SOURCE_CLOSE_EVENT, { bubbles: true, detail: { textarea: area } }),
-      )
-      // Parsing is lenient by design: hand-edited HTML is frequently invalid,
-      // and refusing to leave source view because of a stray tag would trap the
-      // author in it.
-      this.value = area.value
-      area.remove()
-      this.#sourceArea = null
-    }
+    if (area) this.#teardownSource({ apply: true })
     contentHost.hidden = false
-    this.#sourceMode = false
     this.#toolbar?.setItemState('source', { active: false })
     view.focus()
+  }
+
+  /**
+   * Leave source mode.
+   *
+   * `apply: false` is disconnect: fire the close event so enhancers can
+   * tear down, but do not parse the leftover textarea back into a view that
+   * is about to be destroyed.
+   */
+  #teardownSource(options: { apply: boolean }): void {
+    const area = this.#sourceArea
+    const view = this.#view
+    if (!area) {
+      this.#sourceMode = false
+      return
+    }
+    this.dispatchEvent(
+      new CustomEvent(SOURCE_CLOSE_EVENT, { bubbles: true, detail: { textarea: area } }),
+    )
+    const html = area.value
+    area.remove()
+    this.#sourceArea = null
+    this.#sourceMode = false
+    if (options.apply && view) {
+      const current = serializeHtml(view.state.doc)
+      if (html !== current) this.#replaceDocument(html)
+    }
+  }
+
+  /** Replace the document with a transaction so undo and change events survive. */
+  #replaceDocument(html: string): void {
+    const view = this.#view
+    if (!view) return
+    const next = parseHtml(html, { schema: this.#schema })
+    view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, next.content))
   }
 
   /* -------------------------------------------------------------- *
