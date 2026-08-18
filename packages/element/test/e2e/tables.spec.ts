@@ -99,9 +99,16 @@ test.describe('with the table bundle loaded', () => {
     await editor(page).getByText('Region').click()
     await toolbar(page).getByRole('button', { name: 'Toggle header row' }).click()
     await expect.poll(() => value(page)).not.toContain('<th')
+    await expect.poll(() => value(page)).not.toMatch(/<td[^>]*scope/)
 
     await toolbar(page).getByRole('button', { name: 'Toggle header row' }).click()
-    await expect.poll(() => value(page)).toContain('<th')
+    await expect.poll(() => value(page)).toMatch(/<th scope="col">/)
+  })
+
+  test('adds a header cell with scope', async ({ page }) => {
+    await editor(page).getByText('Region').click()
+    await toolbar(page).getByRole('button', { name: 'Insert column after' }).click()
+    await expect.poll(() => value(page)).toMatch(/<th scope="col">Region<\/th><th scope="col">/)
   })
 
   test('deletes the whole table', async ({ page }) => {
