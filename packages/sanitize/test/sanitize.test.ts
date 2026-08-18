@@ -175,6 +175,7 @@ describe('adapters keep the runtimes in agreement', () => {
     expect(config.ALLOWED_TAGS).toContain('img')
     expect(config.ALLOWED_TAGS).not.toContain('script')
     expect(config.FORBID_TAGS).toContain('script')
+    expect(config.FORBID_CONTENTS).toContain('form')
     expect(config.ALLOWED_ATTR).toContain('href')
     expect(config.ALLOW_DATA_ATTR).toBe(false)
   })
@@ -193,7 +194,9 @@ describe('adapters keep the runtimes in agreement', () => {
     expect(python).toContain('"ol": ["start"]')
     expect(python).toContain('"a": ["href", "title", "target", "rel"]')
     expect(python).toContain('ALLOWED_PROTOCOLS = ["http", "https"')
-    expect(python).not.toContain('script')
+    expect(python).toContain('DROP_WITH_CONTENT')
+    expect(python).toContain('def drop_with_content')
+    expect(python).not.toMatch(/ALLOWED_TAGS = \[[^\]]*script/)
   })
 
   it('HTMLPurifier config encodes tag[attr] pairs', () => {
@@ -203,6 +206,9 @@ describe('adapters keep the runtimes in agreement', () => {
     expect(php).toContain('a[href|title|target|rel]')
     expect(php).toContain('"https" => true')
     expect(php).toContain('TargetNoopener')
+    expect(php).toContain("'_self'")
+    expect(php).toContain("'_parent'")
+    expect(php).toContain("'_top'")
   })
 
   it('every adapter reflects a policy extension', () => {

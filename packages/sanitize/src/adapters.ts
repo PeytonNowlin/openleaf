@@ -21,6 +21,7 @@ export interface DOMPurifyConfig {
   ALLOWED_ATTR: string[]
   ALLOWED_URI_REGEXP: RegExp
   FORBID_TAGS: string[]
+  FORBID_CONTENTS: string[]
   FORBID_ATTR: string[]
   ALLOW_DATA_ATTR: boolean
   KEEP_CONTENT: boolean
@@ -57,6 +58,10 @@ export function toDOMPurifyConfig(policy: Policy): DOMPurifyConfig {
     ALLOWED_ATTR: [...attributes],
     ALLOWED_URI_REGEXP: new RegExp(`^(?:(?:${schemes}):${relative})`, 'i'),
     FORBID_TAGS: [...policy.dropWithContent],
+    // KEEP_CONTENT unwraps unknown wrappers (a styling div) so their text
+    // survives. dropWithContent is the exception: those elements and
+    // everything in them must go. FORBID_CONTENTS is that exception.
+    FORBID_CONTENTS: [...policy.dropWithContent],
     // `on*` handlers are removed by DOMPurify unconditionally; naming them here
     // documents the intent and survives a future config change.
     FORBID_ATTR: ['style', 'srcdoc', 'formaction', 'ping'],
@@ -114,9 +119,18 @@ export function toBleachConfig(policy: Policy): string {
     '',
     `ALLOWED_PROTOCOLS = [${policy.urlSchemes.map((s) => JSON.stringify(s)).join(', ')}]`,
     '',
-    '# bleach strips disallowed tags but keeps their text when strip=True, which',
-    '# matches this project\'s stance: an unknown wrapper is usually a styling',
-    '# div, and deleting the paragraph inside it would be its own content-loss bug.',
+    `DROP_WITH_CONTENT = [${policy.dropWithContent.map((t) => JSON.stringify(t)).join(', ')}]`,
+    '',
+    '# bleach.clean(strip=True) unwraps unknown tags and keeps their text, which',
+    '# is right for a styling wrapper. dropWithContent is the exception: the',
+    '# element AND its descendants must go. Run this before bleach.clean.',
+    'def drop_with_content(html, tags=DROP_WITH_CONTENT):',
+    '    import re',
+    '    for tag in tags:',
+    "        html = re.sub(rf'<{re.escape(tag)}\\b[^>]*>.*?</{re.escape(tag)}>', '', html, flags=re.IGNORECASE | re.DOTALL)",
+    "        html = re.sub(rf'<{re.escape(tag)}\\b[^>]*/>', '', html, flags=re.IGNORECASE)",
+    '    return html',
+    '',
     'STRIP_DISALLOWED = True',
     '',
   )
@@ -157,8 +171,10 @@ function openleaf_purifier(): HTMLPurifier {
 ${policy.urlSchemes.map((s) => `        ${JSON.stringify(s)} => true,`).join('\n')}
     ]);
     // Relative URLs are ${policy.allowRelativeUrls ? 'permitted' : 'rejected'}.
-    $config->set('URI.DisableExternalResources', false);
-    $config->set('Attr.AllowedFrameTargets', ['_blank']);
+    $config->set('URI.DisableExternalResources', false);${policy.allowRelativeUrls ? '' : `
+    // HTMLPurifier has no first-class relative-URL switch. A custom URI filter
+    // that rejects scheme-less values must be registered by the integrator.`}
+    $config->set('Attr.AllowedFrameTargets', ['_blank', '_self', '_parent', '_top']);
     // HTMLPurifier adds rel="noreferrer" to target=_blank links itself.
     $config->set('HTML.TargetNoreferrer', true);
     $config->set('HTML.TargetNoopener', true);
