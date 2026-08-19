@@ -325,6 +325,10 @@ export class OpenLeafEditor extends HTMLElement {
   }
 
   disconnectedCallback(): void {
+    // Persist whatever is in the source box before tearing it down, so a
+    // framework that moves the element does not drop unsaved HTML.
+    this.#syncToTextarea()
+    this.#teardownSource({ apply: false })
     this.#form?.removeEventListener('submit', this.#onSubmit)
     this.#form?.removeEventListener('formdata', this.#onFormData)
     this.#form?.removeEventListener('reset', this.#onReset)
@@ -345,20 +349,16 @@ export class OpenLeafEditor extends HTMLElement {
   }
 
   set value(html: string) {
+    if (this.#sourceMode && this.#sourceArea) {
+      this.#sourceArea.value = html
+      this.#syncToTextarea()
+      return
+    }
     if (!this.#view) {
       if (this.#textarea) this.#textarea.value = html
       return
     }
-    const state = EditorState.create({
-      // The view's schema, not the current one: if an extension registered since
-      // this editor was built, parsing against the newer schema would produce
-      // nodes its own state rejects.
-      doc: parseHtml(html, { schema: this.#schema }),
-      plugins: this.#view.state.plugins,
-    })
-    this.#view.updateState(state)
-    this.#toolbar?.update(state)
-    this.#syncToTextarea()
+    this.#replaceDocument(html)
   }
 
   /** Escape hatch for plugins and integrations that need the real view. */
@@ -418,24 +418,58 @@ export class OpenLeafEditor extends HTMLElement {
       return
     }
 
-    const area = this.#sourceArea
-    if (area) {
-      // Announced before anything is read or removed, so an enhancer can unwrap
-      // its own DOM first and the value read below is the author's text rather
-      // than something half-detached.
-      this.dispatchEvent(
-        new CustomEvent(SOURCE_CLOSE_EVENT, { bubbles: true, detail: { textarea: area } }),
-      )
-      if (!this.hasAttribute('readonly')) {
-        this.value = area.value
-      }
-      area.remove()
-      this.#sourceArea = null
-    }
+    // `apply: false` under readonly: the source box is read-only there, so
+    // there is nothing to write back and parsing it would be a no-op that
+    // still lands a transaction.
+    this.#teardownSource({ apply: !this.hasAttribute('readonly') })
     contentHost.hidden = false
-    this.#sourceMode = false
     this.#toolbar?.setItemState('source', { active: false })
     view.focus()
+  }
+
+  /**
+   * Leave source mode.
+   *
+   * `apply: false` is disconnect: fire the close event so enhancers can
+   * tear down, but do not parse the leftover textarea back into a view that
+   * is about to be destroyed.
+   */
+  #teardownSource(options: { apply: boolean }): void {
+    const area = this.#sourceArea
+    const view = this.#view
+    if (!area) {
+      this.#sourceMode = false
+      return
+    }
+    this.dispatchEvent(
+      new CustomEvent(SOURCE_CLOSE_EVENT, { bubbles: true, detail: { textarea: area } }),
+    )
+    const html = area.value
+    area.remove()
+    this.#sourceArea = null
+    this.#sourceMode = false
+    if (options.apply && view) {
+      // Compare documents, not strings. A source-view enhancer is free to
+      // pretty-print the HTML for display, and that indentation parses to the
+      // same document. Comparing the text would call it an edit, so merely
+      // looking at the source would land an undo step and fire
+      // openleaf:change -- the two things leaving source is meant not to do.
+      this.#replaceDocument(html, { onlyIfChanged: true })
+    }
+  }
+
+  /**
+   * Replace the document with a transaction, so undo and change events survive.
+   *
+   * `onlyIfChanged` skips the dispatch when the HTML parses to the document
+   * already on screen.
+   */
+  #replaceDocument(html: string, options?: { onlyIfChanged?: boolean }): void {
+    const view = this.#view
+    if (!view) return
+    const next = parseHtml(html, { schema: this.#schema })
+    if (options?.onlyIfChanged && next.eq(view.state.doc)) return
+    view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, next.content))
   }
 
   /* -------------------------------------------------------------- *
