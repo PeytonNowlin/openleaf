@@ -11,11 +11,51 @@
     aria-label="Post body"
     menubar
     toolbar="undo redo | blockType | bold italic | help fullscreen visualAids"
-    formats="p.lead=Lead"
+    formats="p.lead=Lead|h2=Section|.note=Note"
     selection-toolbar="bold italic | link"
   ></openleaf-editor>
   <textarea id="body" name="body" hidden><p>A stored paragraph.</p></textarea>
 </form>
+
+<!-- A second editor, in another language, to prove the two do not share one. -->
+<form>
+  <openleaf-editor
+    for="body-fr"
+    aria-label="Corps"
+    lang="fr"
+    toolbar="bold italic"
+  ></openleaf-editor>
+  <textarea id="body-fr" name="body-fr" hidden><p>Un paragraphe.</p></textarea>
+</form>
+
+<!-- Narrow, so the toolbar has to overflow and the block-type select moves. -->
+<form>
+  <div style="width: 150px">
+    <openleaf-editor
+      for="body-narrow"
+      aria-label="Narrow body"
+      toolbar-overflow
+      toolbar="undo redo | blockType | bold italic | link image"
+    ></openleaf-editor>
+  </div>
+  <textarea id="body-narrow" name="body-narrow" hidden><p>Narrow paragraph.</p></textarea>
+</form>
+
+<!-- menubar with a named list, which must not render the other menus. -->
+<form>
+  <openleaf-editor
+    for="body-menus"
+    aria-label="Listed menus"
+    menubar="edit help"
+    toolbar="bold"
+  ></openleaf-editor>
+  <textarea id="body-menus" name="body-menus" hidden><p>Listed.</p></textarea>
+</form>
+
 <script src="/demo/openleaf.min.js"></script>
+<script>
+  /* After the bundle: the global does not exist until it has loaded. */
+  OpenLeaf.registerTranslations('fr', { Bold: 'Gras', Italic: 'Italique' })
+</script>
 </body>
 </html>

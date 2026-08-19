@@ -79,8 +79,10 @@ export { isNonEditableNode, nonEditablePlugin } from './noneditable.js'
 export {
   activeBlockClass,
   carriedClass,
+  formatParts,
   parseFormatList,
   setBlockClass,
+  type FormatParts,
   type FormatSpec,
 } from './formats.js'
 export {

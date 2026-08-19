@@ -19,6 +19,41 @@ export interface FormatSpec {
   label: string
 }
 
+/** The element and the class a format token names. Either half may be absent. */
+export interface FormatParts {
+  /** `p`, `h1`..`h6`, or null when the token names only a class. */
+  element: string | null
+  /** Space-separated class names, or null when the token names only an element. */
+  className: string | null
+}
+
+/**
+ * Split a format token into the element it names and the class it names.
+ *
+ * `p.lead` is both, `h2` is an element alone, `.note` is a class alone. The
+ * element half was previously parsed and then thrown away, so `h2=Section` set
+ * `class="h2"` on whichever block held the caret instead of making it a heading,
+ * and `p.lead` applied its class to an h2 without turning it into a paragraph.
+ *
+ * A selector naming several classes -- `p.lead.wide` -- yields both, because
+ * that is what the selector means.
+ */
+export function formatParts(token: string): FormatParts {
+  const trimmed = token.trim()
+  const dot = trimmed.indexOf('.')
+  if (dot === -1) return { element: trimmed === '' ? null : trimmed, className: null }
+  const element = trimmed.slice(0, dot).trim()
+  const classes = trimmed
+    .slice(dot + 1)
+    .split('.')
+    .map((part) => part.trim())
+    .filter((part) => part !== '')
+  return {
+    element: element === '' ? null : element,
+    className: classes.length > 0 ? classes.join(' ') : null,
+  }
+}
+
 /** Parse `p.lead=Lead paragraph|h2=Section|.note=Note`. */
 export function parseFormatList(value: string | null | undefined): FormatSpec[] {
   if (!value) return []

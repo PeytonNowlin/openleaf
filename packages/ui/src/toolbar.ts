@@ -29,11 +29,21 @@
  *    Escape leaves, matching TinyMCE and CKEditor 5 so muscle memory transfers.
  */
 
-import { activeBlockClass, activeHeadingLevel, setBlockClass, setParagraph, shortcutFor, toggleHeading, type FormatSpec } from '@openleaf-editor/core'
+import {
+  activeBlockClass,
+  activeHeadingLevel,
+  formatParts,
+  setBlockClass,
+  setHeading,
+  setParagraph,
+  shortcutFor,
+  toggleHeading,
+  type FormatSpec,
+} from '@openleaf-editor/core'
 import type { EditorState, Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { ensureSprite, iconElement } from './icons.js'
-import { t, onLocaleChange } from './i18n.js'
+import { t, onLocaleChange, withLocale } from './i18n.js'
 import { ToolbarOverflow } from './overflow.js'
 import {
   DEFAULT_LAYOUT,
@@ -56,6 +66,11 @@ export interface ToolbarOptions {
   overflow?: boolean
   /** Extra block formats, typically classes from the host's content CSS. */
   formats?: readonly FormatSpec[]
+  /**
+   * Language for this toolbar's labels, independent of every other editor's.
+   * Absent means the document-wide locale.
+   */
+  locale?: string | null
 }
 
 interface Control {
@@ -125,6 +140,7 @@ export class Toolbar {
   #layout: string
   #label: string
   #formats: readonly FormatSpec[]
+  #locale: string | null
   #wantsOverflow: boolean
   #overflow: ToolbarOverflow | null = null
   #unsubscribe: (() => void) | undefined
@@ -139,6 +155,7 @@ export class Toolbar {
     this.#layout = options.layout ?? DEFAULT_LAYOUT
     this.#label = options.label ?? 'Formatting'
     this.#formats = options.formats ?? []
+    this.#locale = options.locale ?? null
     this.#wantsOverflow = options.overflow === true
 
     ensureStyles(doc)
@@ -167,6 +184,19 @@ export class Toolbar {
     this.#unlocale = onLocaleChange(() => {
       this.#rerenderPreservingState()
     })
+  }
+
+  /**
+   * Change this toolbar's language and rebuild its labels.
+   *
+   * Per toolbar rather than per document, so one editor switching language does
+   * not relabel every other editor on the page.
+   */
+  setLocale(next: string | null): void {
+    const value = next ?? null
+    if (value === this.#locale) return
+    this.#locale = value
+    if (this.#view) this.#rerenderPreservingState()
   }
 
   /** Attach to a view and build the controls. */
@@ -219,7 +249,15 @@ export class Toolbar {
    * Rendering
    * -------------------------------------------------------------- */
 
+  /**
+   * Labels are produced inside this toolbar's own locale scope, so two editors
+   * with different `lang` values on one page do not overwrite each other.
+   */
   #render(): void {
+    withLocale(this.#locale, () => this.#renderScoped())
+  }
+
+  #renderScoped(): void {
     this.#destroyCustoms()
     this.el.replaceChildren()
     this.#controls.clear()
@@ -424,7 +462,7 @@ export class Toolbar {
     }
     for (const format of this.#formats) {
       const option = this.#doc.createElement('option')
-      option.value = `class:${format.token}`
+      option.value = `format:${format.token}`
       option.textContent = t(format.label)
       select.appendChild(option)
     }
@@ -462,9 +500,19 @@ export class Toolbar {
       const view = this.#view
       if (!view) return
       const value = select.value
-      if (value.startsWith('class:')) {
-        const token = value.slice('class:'.length)
-        const className = token.includes('.') ? (token.split('.').pop() ?? token) : token.replace(/^\./, '')
+      if (value.startsWith('format:')) {
+        const { element, className } = formatParts(value.slice('format:'.length))
+        // Element first: changing the block type replaces the node, so a class
+        // written before that would go with the node it was written on.
+        // `setHeading` rather than `toggleHeading` -- picking "Section" twice
+        // must not turn the heading back into a paragraph.
+        if (element === 'p') setParagraph(view.state, view.dispatch, view)
+        else if (element !== null && /^h[1-6]$/.test(element)) {
+          setHeading(Number(element.slice(1)))(view.state, view.dispatch, view)
+        }
+        // Null clears, which is what a token naming only an element means: the
+        // author picked "Section", not "Section, keeping whatever class was on
+        // the paragraph before".
         setBlockClass(className)(view.state, view.dispatch, view)
       } else {
         const command = value === 'p' ? setParagraph : toggleHeading(Number(value))
@@ -528,6 +576,10 @@ export class Toolbar {
    * `tr` is passed so announcements can be gated on a real formatting change.
    */
   update(state: EditorState, tr?: Transaction): void {
+    withLocale(this.#locale, () => this.#updateScoped(state, tr))
+  }
+
+  #updateScoped(state: EditorState, tr?: Transaction): void {
     // Announce only on a discrete formatting transition, never on cursor
     // movement through already-formatted text. That gate is the whole
     // difference between a useful announcement and a chatty one.
@@ -584,19 +636,19 @@ export class Toolbar {
 
     if (this.#select) {
       const formatClass = activeBlockClass(state)
-      const matching = formatClass
-        ? this.#formats.find((format) => {
-            const token = format.token.includes('.')
-              ? (format.token.split('.').pop() ?? format.token)
-              : format.token.replace(/^\./, '')
-            return token === formatClass
-          })
-        : undefined
+      const level = activeHeadingLevel(state)
+      const activeElement = level === null ? 'p' : `h${level}`
+      // Both halves have to agree, or `p.lead` would look active on an
+      // `<h2 class="lead">` and picking it again would appear to do nothing.
+      const matching = this.#formats.find((format) => {
+        const { element, className } = formatParts(format.token)
+        if (className !== formatClass) return false
+        return element === null || element === activeElement
+      })
       if (matching) {
-        const next = `class:${matching.token}`
+        const next = `format:${matching.token}`
         if (this.#select.value !== next) this.#select.value = next
       } else {
-        const level = activeHeadingLevel(state)
         const value = level === null ? 'p' : String(level)
         if (this.#select.value !== value) this.#select.value = value
       }

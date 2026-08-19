@@ -54,7 +54,10 @@ const EXPECTED_EXPORTS = [
   'autolinkPlugin', 'hrefFromTypedUrl',
   'visualAidsPlugin',
   'nonEditablePlugin', 'isNonEditableNode',
-  'parseFormatList', 'setBlockClass', 'activeBlockClass', 'carriedClass',
+  // `formatParts` splits a format token into the element and the class it names.
+  // The element half used to be parsed and discarded, so `h2=Section` set
+  // class="h2" on a paragraph rather than making it a heading.
+  'parseFormatList', 'formatParts', 'setBlockClass', 'activeBlockClass', 'carriedClass',
   // plugin registry
   'registerEditorPlugin', 'createRegisteredPlugins', 'onEditorPluginsChange',
   // table nodes

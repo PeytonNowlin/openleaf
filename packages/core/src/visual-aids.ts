@@ -32,7 +32,11 @@ export function visualAidsPlugin(): Plugin {
             const text = node.text ?? ''
             for (let i = 0; i < text.length; i += 1) {
               if (text.charCodeAt(i) !== 0xa0) continue
-              const at = pos + 1 + i
+              // `pos` already addresses the first character: a text node has no
+              // opening token to step over, unlike a node. Adding one marked the
+              // character after each nbsp, and ran off the end of the node when
+              // the nbsp was last -- where the decoration disappeared entirely.
+              const at = pos + i
               decorations.push(
                 Decoration.inline(at, at + 1, { class: 'ol-nbsp' }),
               )

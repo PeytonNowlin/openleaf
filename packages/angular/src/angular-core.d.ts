@@ -7,6 +7,7 @@ declare module '@angular/core' {
   export function Component(config: Record<string, unknown>): ClassDecorator
   export function Input(): PropertyDecorator
   export function Output(): PropertyDecorator
+  export function ViewChild(selector: string, options?: Record<string, unknown>): PropertyDecorator
   export class EventEmitter<T> {
     emit(_value: T): void
   }
@@ -15,6 +16,12 @@ declare module '@angular/core' {
   }
   export interface OnDestroy {
     ngOnDestroy(): void
+  }
+  export interface SimpleChanges {
+    [key: string]: unknown
+  }
+  export interface OnChanges {
+    ngOnChanges(changes: SimpleChanges): void
   }
   export class ElementRef<T> {
     nativeElement: T

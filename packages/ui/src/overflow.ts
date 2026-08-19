@@ -92,24 +92,52 @@ export class ToolbarOverflow {
       for (const control of group.querySelectorAll<HTMLElement>('[aria-label], select')) {
         const item = control.cloneNode(true) as HTMLElement
         item.removeAttribute('tabindex')
+        // cloneNode copies the option elements but not the select's current
+        // value, which the toolbar sets as a property rather than an attribute.
+        // Without this the menu opens showing the first option instead of the
+        // block the caret is actually in.
+        if (control instanceof HTMLSelectElement && item instanceof HTMLSelectElement) {
+          item.value = control.value
+        }
         this.#menu.appendChild(item)
       }
     }
 
-    // Cloning controls duplicates listeners-less buttons. Clicks on the clones
-    // are forwarded to the originals, which still own the commands.
+    // Cloning controls duplicates listener-less buttons. Activation on a clone is
+    // forwarded to the original, which still owns the command.
     this.#menu.onclick = (event) => {
-      const clone = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-ol-id], select')
+      const target = event.target as HTMLElement | null
+      // A <select> is driven by `change`, not `click`. Forwarding a click here
+      // fired before any option was chosen and carried no value with it.
+      if (target?.closest('select')) return
+      const clone = target?.closest<HTMLElement>('[data-ol-id]')
       if (!clone) return
-      const id = clone instanceof HTMLSelectElement ? 'blockType' : clone.dataset['olId']
       const original = this.#toolbar.querySelector<HTMLElement>(
-        id === 'blockType' ? 'select' : `[data-ol-id="${id}"]`,
+        `[data-ol-id="${clone.dataset['olId']}"]`,
       )
       original?.click()
-      this.#menu.hidden = true
-      this.#more.setAttribute('aria-expanded', 'false')
+      this.#close()
+    }
+
+    // The clone has no listeners of its own, so a chosen value has to be written
+    // onto the real control and announced there. Clicking the original was the
+    // previous behaviour and never carried the value, so headings and custom
+    // formats could not be applied from the overflow menu at all.
+    this.#menu.onchange = (event) => {
+      const clone = event.target
+      if (!(clone instanceof HTMLSelectElement)) return
+      const original = this.#toolbar.querySelector<HTMLSelectElement>('select')
+      if (!original) return
+      original.value = clone.value
+      original.dispatchEvent(new Event('change', { bubbles: true }))
+      this.#close()
     }
     void this.#host
+  }
+
+  #close(): void {
+    this.#menu.hidden = true
+    this.#more.setAttribute('aria-expanded', 'false')
   }
 
   #groups(): HTMLElement[] {

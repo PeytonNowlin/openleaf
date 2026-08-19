@@ -65,6 +65,7 @@ import {
   MenuBar,
   PopupMenu,
   SOURCE_TOGGLE_EVENT,
+  selectMenus,
   TABLE_CONTEXT_ITEMS,
   Toolbar,
   VISUAL_AIDS_TOGGLE_EVENT,
@@ -81,7 +82,6 @@ import {
   promptHelp,
   registerDefaultItems,
   runUploader,
-  setUiLocale,
   type ColourScheme,
 } from '@openleaf-editor/ui'
 import { baseKeymap } from 'prosemirror-commands'
@@ -147,6 +147,8 @@ export class OpenLeafEditor extends HTMLElement {
   #resizeObserver: ResizeObserver | null = null
   #visualAids = true
   #fullscreen = false
+  /** True while a real fullscreen session is ours, as opposed to the fallback. */
+  #nativeFullscreen = false
   #onSubmit = (): void => this.#syncToTextarea()
   #onFormData = (event: FormDataEvent): void => {
     this.#syncToTextarea()
@@ -207,7 +209,6 @@ export class OpenLeafEditor extends HTMLElement {
     ensureSkins(this.ownerDocument)
     applySkin(this, this.getAttribute('skin'))
     applyColourScheme(this, this.#colourScheme())
-    this.#applyLocale()
 
     this.#textarea = this.#findTextarea()
     const initialHtml = this.#textarea?.value ?? this.innerHTML
@@ -232,8 +233,14 @@ export class OpenLeafEditor extends HTMLElement {
     const wantsMenubar = menubarAttr !== null && menubarAttr !== 'none'
 
     if (wantsMenubar) {
-      this.#menubar = new MenuBar(this, this.ownerDocument)
-      this.appendChild(this.#menubar.el)
+      // The attribute is a list, not a flag: `menubar="edit help"` asks for those
+      // two menus in that order. An unrecognised list leaves no menubar rather
+      // than an empty one with nothing in it.
+      const menus = selectMenus(menubarAttr)
+      if (menus.length > 0) {
+        this.#menubar = new MenuBar(this, this.ownerDocument, menus, this.getAttribute('lang'))
+        this.appendChild(this.#menubar.el)
+      }
     }
 
     if (wantsToolbar) {
@@ -241,6 +248,7 @@ export class OpenLeafEditor extends HTMLElement {
         ...(layout ? { layout } : {}),
         overflow,
         formats,
+        locale: this.getAttribute('lang'),
       })
       this.appendChild(this.#toolbar.el)
     }
@@ -252,6 +260,7 @@ export class OpenLeafEditor extends HTMLElement {
         label: 'More formatting',
         overflow,
         formats,
+        locale: this.getAttribute('lang'),
       })
       this.appendChild(this.#toolbar2.el)
     }
@@ -365,6 +374,7 @@ export class OpenLeafEditor extends HTMLElement {
     void this.#mountContentCss()
     this.addEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
     this.addEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
+    this.ownerDocument.addEventListener('fullscreenchange', this.#onFullscreenChange)
     this.addEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
 
     if (nestedTextarea) {
@@ -426,6 +436,7 @@ export class OpenLeafEditor extends HTMLElement {
     this.#form?.removeEventListener('reset', this.#onReset)
     this.removeEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
     this.removeEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
+    this.ownerDocument.removeEventListener('fullscreenchange', this.#onFullscreenChange)
     this.removeEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
     this.removeEventListener('contextmenu', this.#onContextMenu)
     this.ownerDocument.removeEventListener('pointerdown', this.#onContextPointer, true)
@@ -697,9 +708,17 @@ export class OpenLeafEditor extends HTMLElement {
     }
   }
 
+  /**
+   * Relabel this editor's chrome for its own `lang`.
+   *
+   * Deliberately not `setUiLocale`, which is the document-wide default: two
+   * editors with different `lang` values on one page both ended up in whichever
+   * built last, because every subscribed toolbar re-rendered on the change.
+   */
   #applyLocale(): void {
     const lang = this.getAttribute('lang')
-    if (lang) setUiLocale(lang)
+    this.#toolbar?.setLocale(lang)
+    this.#toolbar2?.setLocale(lang)
   }
 
   #mountFloating(): void {
@@ -793,13 +812,37 @@ export class OpenLeafEditor extends HTMLElement {
     await loadContentCss(this.ownerDocument, urls)
   }
 
+  #applyFullscreen(active: boolean): void {
+    this.#fullscreen = active
+    this.classList.toggle('ol-fullscreen', active)
+    this.#toolbar?.setItemState('fullscreen', { active })
+    this.#toolbar2?.setItemState('fullscreen', { active })
+  }
+
+  /**
+   * Reconcile with a fullscreen session that ended somewhere else.
+   *
+   * Escape and the browser's own control leave fullscreen without going through
+   * the toolbar. The `ol-fullscreen` class carries the fixed-position fallback,
+   * so left set it kept the editor covering the page, and the next press of the
+   * button only cleared the stale state instead of entering fullscreen.
+   *
+   * Guarded on `#nativeFullscreen`, because no `fullscreenchange` fires when
+   * `requestFullscreen` is unavailable and the class-based fallback is all there
+   * is -- an event about some other element must not tear that down.
+   */
+  #onFullscreenChange = (): void => {
+    const native = this.ownerDocument.fullscreenElement === this
+    if (native) this.#applyFullscreen(true)
+    else if (this.#nativeFullscreen) this.#applyFullscreen(false)
+    this.#nativeFullscreen = native
+  }
+
   #onToggleFullscreen = (): void => {
-    this.#fullscreen = !this.#fullscreen
-    this.classList.toggle('ol-fullscreen', this.#fullscreen)
-    this.#toolbar?.setItemState('fullscreen', { active: this.#fullscreen })
-    this.#toolbar2?.setItemState('fullscreen', { active: this.#fullscreen })
-    if (this.#fullscreen) {
-      void this.requestFullscreen?.().catch(() => {
+    const next = !this.#fullscreen
+    this.#applyFullscreen(next)
+    if (next) {
+      void Promise.resolve(this.requestFullscreen?.()).catch(() => {
         /* class-based fallback already applied */
       })
     } else if (this.ownerDocument.fullscreenElement === this) {

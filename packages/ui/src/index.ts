@@ -12,11 +12,19 @@ export {
   type ToolbarItemSpec,
 } from './registry.js'
 export { SOURCE_TOGGLE_EVENT, FULLSCREEN_TOGGLE_EVENT, VISUAL_AIDS_TOGGLE_EVENT, registerDefaultItems } from './items.js'
-export { t, setUiLocale, uiLocale, registerTranslations, onLocaleChange } from './i18n.js'
+export {
+  t,
+  setUiLocale,
+  uiLocale,
+  registerTranslations,
+  onLocaleChange,
+  withLocale,
+} from './i18n.js'
 export {
   MenuBar,
   PopupMenu,
   DEFAULT_MENUBAR,
+  selectMenus,
   LINK_CONTEXT_ITEMS,
   IMAGE_CONTEXT_ITEMS,
   TABLE_CONTEXT_ITEMS,

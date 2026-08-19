@@ -13,7 +13,7 @@
 
 import type { EditorState } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
-import { t } from './i18n.js'
+import { t, withLocale } from './i18n.js'
 import { getToolbarItem, type ToolbarItemSpec } from './registry.js'
 import { ensureStyles } from './styles.js'
 
@@ -236,6 +236,33 @@ export class PopupMenu {
   }
 }
 
+/**
+ * The menus an integrator asked for, in the order they asked for them.
+ *
+ * `menubar` with no value means "give me the menubar", so an empty list is every
+ * default menu. Named ids are honoured as written: `menubar="edit help"` used to
+ * render Insert, Format and View as well, because the attribute was read as a
+ * boolean and the list thrown away. An unknown id is skipped rather than fatal,
+ * so a layout written against a later version degrades instead of breaking.
+ */
+export function selectMenus(
+  attr: string | null | undefined,
+  menus: readonly MenuSpec[] = DEFAULT_MENUBAR,
+): readonly MenuSpec[] {
+  const ids = (attr ?? '')
+    .split(/[\s,]+/)
+    .map((id) => id.trim())
+    .filter((id) => id !== '')
+  if (ids.length === 0) return menus
+  const byId = new Map(menus.map((menu) => [menu.id, menu]))
+  const picked: MenuSpec[] = []
+  for (const id of ids) {
+    const menu = byId.get(id)
+    if (menu && !picked.includes(menu)) picked.push(menu)
+  }
+  return picked
+}
+
 export class MenuBar {
   readonly el: HTMLDivElement
   #doc: Document
@@ -245,15 +272,25 @@ export class MenuBar {
   #popup: PopupMenu
   #openId: string | null = null
 
-  constructor(host: HTMLElement, doc: Document, menus: readonly MenuSpec[] = DEFAULT_MENUBAR) {
+  #locale: string | null
+
+  constructor(
+    host: HTMLElement,
+    doc: Document,
+    menus: readonly MenuSpec[] = DEFAULT_MENUBAR,
+    locale: string | null = null,
+  ) {
     this.#host = host
     this.#doc = doc
     this.#menus = menus
+    this.#locale = locale
     ensureStyles(doc)
     this.el = doc.createElement('div')
     this.el.className = 'ol-menubar'
     this.el.setAttribute('role', 'menubar')
-    this.el.setAttribute('aria-label', t('Editor menu'))
+    withLocale(locale, () => {
+      this.el.setAttribute('aria-label', t('Editor menu'))
+    })
     this.#popup = new PopupMenu(host, doc)
     this.#render()
     this.el.addEventListener('keydown', this.#onKeydown)
@@ -273,6 +310,10 @@ export class MenuBar {
   }
 
   #render(): void {
+    withLocale(this.#locale, () => this.#renderScoped())
+  }
+
+  #renderScoped(): void {
     this.el.replaceChildren()
     for (const menu of this.#menus) {
       const button = this.#doc.createElement('button')
