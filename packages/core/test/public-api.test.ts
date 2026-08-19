@@ -197,3 +197,21 @@ describe('command behaviour', () => {
     expect(bindings['Tab']).toBeUndefined()
   })
 })
+
+describe('explicit Document option', () => {
+  it('serializes preserved nodes without a global document', () => {
+    const html = '<div class="callout" data-id="7"><p>p</p></div>'
+    const node = core.parseHtml(html)
+    const held = document
+    const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'document')
+    // Simulate a Node serialize that was given `{ document }` and has no
+    // global. The option used to be ignored for preserved atoms.
+    Object.defineProperty(globalThis, 'document', { value: undefined, configurable: true })
+    try {
+      expect(core.serializeHtml(node, { document: held })).toBe(html)
+    } finally {
+      if (originalDescriptor) Object.defineProperty(globalThis, 'document', originalDescriptor)
+      else globalThis.document = held
+    }
+  })
+})

@@ -9,9 +9,14 @@
  * copied from a terminal theme: several popular palettes put comments at around
  * 3:1 on white, which fails WCAG 1.4.3 for body-size text. Comments here are the
  * colour most likely to be dismissed as "just grey" and are deliberately not.
+ *
+ * The two palettes are written once each below, and *which* one is in force is
+ * kept a separate question from what the colours are -- otherwise the selectors
+ * that answer it would each carry their own copy of seventeen colours, and the
+ * one line a copy was missing would be a colour nobody looks at until it is the
+ * wrong one.
  */
-export const HIGHLIGHT_CSS = `
-.ol-editor {
+const LIGHT_TOKENS = `
   --ol-t-comment: var(--openleaf-code-comment, #5c6370);
   --ol-t-punct: var(--openleaf-code-punctuation, #6e7781);
   --ol-t-tag: var(--openleaf-code-tag, #116329);
@@ -26,30 +31,51 @@ export const HIGHLIGHT_CSS = `
   --ol-t-selector: var(--openleaf-code-selector, #116329);
   --ol-t-property: var(--openleaf-code-property, #0550ae);
   --ol-t-entity: var(--openleaf-code-entity, #953800);
+  --ol-t-fg: var(--openleaf-code-text, #1f2328);
   --ol-t-surface: var(--openleaf-code-surface, #f6f8fa);
   --ol-t-code-border: var(--openleaf-code-border, #d1d9e0);
+`
+
+const DARK_TOKENS = `
+  --ol-t-comment: var(--openleaf-code-comment, #8b949e);
+  --ol-t-punct: var(--openleaf-code-punctuation, #8b949e);
+  --ol-t-tag: var(--openleaf-code-tag, #7ee787);
+  --ol-t-attr: var(--openleaf-code-attr-name, #79c0ff);
+  --ol-t-value: var(--openleaf-code-attr-value, #a5d6ff);
+  --ol-t-string: var(--openleaf-code-string, #a5d6ff);
+  --ol-t-keyword: var(--openleaf-code-keyword, #ff7b72);
+  --ol-t-literal: var(--openleaf-code-literal, #ffa657);
+  --ol-t-number: var(--openleaf-code-number, #ffa657);
+  --ol-t-function: var(--openleaf-code-function, #d2a8ff);
+  --ol-t-operator: var(--openleaf-code-operator, #ff7b72);
+  --ol-t-selector: var(--openleaf-code-selector, #7ee787);
+  --ol-t-property: var(--openleaf-code-property, #79c0ff);
+  --ol-t-entity: var(--openleaf-code-entity, #ffa657);
+  --ol-t-fg: var(--openleaf-code-text, #e6edf3);
+  --ol-t-surface: var(--openleaf-code-surface, #161b22);
+  --ol-t-code-border: var(--openleaf-code-border, #30363d);
+`
+
+export const HIGHLIGHT_CSS = `
+.ol-editor {${LIGHT_TOKENS}}
+
+/* Which palette, and why a skin gets the last word.
+   The obvious answer -- follow \`prefers-color-scheme\` -- is only right while the
+   editor around the code block is following it too. A skin replaces the editor's
+   palette outright and is unmoved by the system setting, so a code block that
+   kept following the system landed a dark surface inside a cream editor on any
+   machine set to dark. Hence \`data-ol-scheme\`, which the skin declares: it wins
+   over the theme attribute, and the theme attribute wins over the system, in the
+   same order the editor's own surface resolves. Matching that order is the whole
+   fix -- a syntax palette is only ever readable relative to the surface it is
+   sitting on, and here that surface belongs to the editor. */
+@media (prefers-color-scheme: dark) {
+  .ol-editor:not([data-ol-theme="light"]):not([data-ol-scheme]) {${DARK_TOKENS}}
 }
 
-@media (prefers-color-scheme: dark) {
-  .ol-editor:not([data-ol-theme="light"]) {
-    --ol-t-comment: var(--openleaf-code-comment, #8b949e);
-    --ol-t-punct: var(--openleaf-code-punctuation, #8b949e);
-    --ol-t-tag: var(--openleaf-code-tag, #7ee787);
-    --ol-t-attr: var(--openleaf-code-attr-name, #79c0ff);
-    --ol-t-value: var(--openleaf-code-attr-value, #a5d6ff);
-    --ol-t-string: var(--openleaf-code-string, #a5d6ff);
-    --ol-t-keyword: var(--openleaf-code-keyword, #ff7b72);
-    --ol-t-literal: var(--openleaf-code-literal, #ffa657);
-    --ol-t-number: var(--openleaf-code-number, #ffa657);
-    --ol-t-function: var(--openleaf-code-function, #d2a8ff);
-    --ol-t-operator: var(--openleaf-code-operator, #ff7b72);
-    --ol-t-selector: var(--openleaf-code-selector, #7ee787);
-    --ol-t-property: var(--openleaf-code-property, #79c0ff);
-    --ol-t-entity: var(--openleaf-code-entity, #ffa657);
-    --ol-t-surface: var(--openleaf-code-surface, #161b22);
-    --ol-t-code-border: var(--openleaf-code-border, #30363d);
-  }
-}
+.ol-editor[data-ol-theme="dark"]:not([data-ol-scheme]) {${DARK_TOKENS}}
+
+.ol-editor[data-ol-scheme="dark"] {${DARK_TOKENS}}
 
 /* The code block's own surface.
    Owning the background is not a style preference: this plugin sets foreground
@@ -58,10 +84,17 @@ export const HIGHLIGHT_CSS = `
    background they were never picked for. Light-mode syntax colours on a dark
    host background are unreadable, and they were unreadable on our own demo page
    before this rule. Without the plugin loaded, pre is left entirely to the host,
-   because then nothing here has an opinion about its foreground either. */
+   because then nothing here has an opinion about its foreground either.
+
+   The unhighlighted text in the block -- whitespace-separated identifiers no
+   grammar claimed, and every line of a block whose language is unknown -- is
+   coloured from the same palette for the same reason. It previously inherited
+   the editor's own text colour, which is a different colour chosen against a
+   different background, and read as invisible whenever the two surfaces
+   disagreed. */
 .ol-editor .ol-content .ProseMirror pre {
   background: var(--ol-t-surface);
-  color: var(--ol-t-text, inherit);
+  color: var(--ol-t-fg);
   border: 1px solid var(--ol-t-code-border);
   border-radius: var(--ol-radius, 4px);
   padding: 10px 12px;

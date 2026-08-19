@@ -217,6 +217,16 @@ const ratio = width / height   // division, not a regex
   reference an internal class, so an internal rename cannot break it. Switching
   one keeps your undo history, because nothing is rebuilt.
 </p>
+<p class="subtitle" style="margin:0 0 1.5rem">
+  Plus one declared word: a skin that replaces the surface says whether it is
+  <code>light</code> or <code>dark</code>. Custom properties cannot reach a
+  native <code>&lt;select&gt;</code>'s popup, scrollbar chrome, or the syntax
+  palette above — those follow the <em>colour scheme</em>, so without that word
+  they keep following your system and contradict the skin. Try Paper on a
+  machine set to dark: the code block used to come out near-black. That also
+  means a skin outranks the colour scheme buttons below it, since its tokens own
+  the surface either way.
+</p>
 
 <p class="subtitle" style="margin:0 0 1rem">
   A note for integrators, learned the hard way while building this page: a

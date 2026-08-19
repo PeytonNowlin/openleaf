@@ -36,6 +36,25 @@
  * useful than a mechanism that quietly does nothing.
  */
 
+/**
+ * The dark palette, as fallbacks for the same public tokens the light one uses.
+ *
+ * Written once and applied from three selectors below rather than pasted three
+ * times, because the failure mode of a pasted palette is one selector quietly
+ * missing a line -- and the line it is missing is a colour nobody looks at until
+ * it is the wrong one.
+ */
+const DARK_TOKENS = `
+  --ol-text: var(--openleaf-color-text, #e6edf3);
+  --ol-text-muted: var(--openleaf-color-text-muted, #9198a1);
+  --ol-surface: var(--openleaf-color-surface, #0d1117);
+  --ol-surface-hover: var(--openleaf-color-surface-hover, #21262d);
+  --ol-surface-active: var(--openleaf-color-surface-active, #1f3a5f);
+  --ol-border: var(--openleaf-color-border, #3d444d);
+  --ol-accent: var(--openleaf-color-accent, #79c0ff);
+  --ol-focus: var(--openleaf-color-focus, #79c0ff);
+`
+
 export const CSS = `
 .ol-editor {
   /* Two families, named before either is public API. A singular
@@ -73,29 +92,32 @@ export const CSS = `
   color: var(--ol-text);
 }
 
+/* Three ways into the dark palette, and one way out of it.
+   \`data-ol-scheme\` is set from the applied skin's declared scheme, and a skin
+   that declares one outranks both the attribute and the system -- it has to,
+   because its tokens have already replaced the palette outright. Without the
+   \`:not()\` guards a light skin on a dark machine would take these fallbacks for
+   every token it did not itself set, which is a light surface carrying dark-mode
+   muted text. */
 @media (prefers-color-scheme: dark) {
-  .ol-editor:not([data-ol-theme="light"]) {
-    --ol-text: var(--openleaf-color-text, #e6edf3);
-    --ol-text-muted: var(--openleaf-color-text-muted, #9198a1);
-    --ol-surface: var(--openleaf-color-surface, #0d1117);
-    --ol-surface-hover: var(--openleaf-color-surface-hover, #21262d);
-    --ol-surface-active: var(--openleaf-color-surface-active, #1f3a5f);
-    --ol-border: var(--openleaf-color-border, #3d444d);
-    --ol-accent: var(--openleaf-color-accent, #79c0ff);
-    --ol-focus: var(--openleaf-color-focus, #79c0ff);
-  }
+  .ol-editor:not([data-ol-theme="light"]):not([data-ol-scheme]) {${DARK_TOKENS}}
 }
 
-.ol-editor[data-ol-theme="dark"] {
-  --ol-text: var(--openleaf-color-text, #e6edf3);
-  --ol-text-muted: var(--openleaf-color-text-muted, #9198a1);
-  --ol-surface: var(--openleaf-color-surface, #0d1117);
-  --ol-surface-hover: var(--openleaf-color-surface-hover, #21262d);
-  --ol-surface-active: var(--openleaf-color-surface-active, #1f3a5f);
-  --ol-border: var(--openleaf-color-border, #3d444d);
-  --ol-accent: var(--openleaf-color-accent, #79c0ff);
-  --ol-focus: var(--openleaf-color-focus, #79c0ff);
-}
+.ol-editor[data-ol-theme="dark"]:not([data-ol-scheme]) {${DARK_TOKENS}}
+
+.ol-editor[data-ol-scheme="dark"] {${DARK_TOKENS}}
+
+/* Native widget chrome -- the popup a \`select\` opens, scrollbars, the caret,
+   form control backgrounds -- is painted by the browser from \`color-scheme\`,
+   not from any property we can hand an integrator. Left alone it follows the
+   page, which is right while the editor's own palette also follows the page and
+   wrong the moment either attribute pins the editor to one world. So it is set
+   exactly when the editor stops following along, and inherited from the host
+   otherwise. */
+.ol-editor[data-ol-theme="light"] { color-scheme: light; }
+.ol-editor[data-ol-theme="dark"] { color-scheme: dark; }
+.ol-editor[data-ol-scheme="light"] { color-scheme: light; }
+.ol-editor[data-ol-scheme="dark"] { color-scheme: dark; }
 
 /* Wrapping, not scrolling and not an overflow menu. Both of those hide
    controls -- one off-screen, one behind a click -- and a formatting control

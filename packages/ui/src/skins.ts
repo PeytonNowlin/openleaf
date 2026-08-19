@@ -17,6 +17,16 @@
  * Anything a skin can do, an integrator can do inline by setting the same
  * properties. Skins exist so a look can be *named, shared and switched*, not to
  * unlock capability.
+ *
+ * ## The one thing a skin declares that is not a property
+ *
+ * `scheme`. Some of what an editor looks like is decided by the browser rather
+ * than by us -- the popup a native `select` opens, scrollbar chrome, the syntax
+ * palette in the opt-in highlighting bundle -- and none of it reads custom
+ * properties. Those follow the *colour scheme*, so a skin that replaces the
+ * surface has to say which scheme its palette belongs to or they keep following
+ * the visitor's system and contradict it. That is one declared word, not a
+ * selector, so the guarantee above is intact.
  */
 
 import { registerStyles } from './styles.js'
@@ -28,6 +38,23 @@ export interface Skin {
   label: string
   /** Custom-property declarations. No selectors -- they are scoped for you. */
   tokens: string
+  /**
+   * Which world this skin's palette lives in. Omit for a skin that does not
+   * set `--openleaf-color-surface` -- a density skin, or one that only brands
+   * the accent.
+   *
+   * A skin that sets the surface has taken the palette over: it looks the same
+   * whether the visitor's system is light or dark, which is the point, and it
+   * therefore also decides which world everything keyed off the *scheme* rather
+   * than off a token belongs to. That is not a small list -- syntax
+   * highlighting, native `select` popups, scrollbars, form control chrome --
+   * and none of it can be expressed as a custom property.
+   *
+   * Undeclared, those follow the system instead, which is how a light skin ends
+   * up with a dark code block on a machine set to dark: exactly the bug this
+   * field exists to make unrepresentable.
+   */
+  scheme?: 'light' | 'dark'
 }
 
 /**
@@ -43,6 +70,7 @@ export const BUILT_IN_SKINS: readonly Skin[] = [
   {
     name: 'midnight',
     label: 'Midnight',
+    scheme: 'dark',
     tokens: `
       --openleaf-color-text: #e6edf3;
       --openleaf-color-text-muted: #9198a1;
@@ -57,6 +85,7 @@ export const BUILT_IN_SKINS: readonly Skin[] = [
   {
     name: 'paper',
     label: 'Paper',
+    scheme: 'light',
     tokens: `
       --openleaf-color-text: #2b2621;
       --openleaf-color-text-muted: #6b6157;
@@ -78,6 +107,7 @@ export const BUILT_IN_SKINS: readonly Skin[] = [
      */
     name: 'contrast',
     label: 'High contrast',
+    scheme: 'light',
     tokens: `
       --openleaf-color-text: #000000;
       --openleaf-color-text-muted: #1a1a1a;
@@ -93,9 +123,11 @@ export const BUILT_IN_SKINS: readonly Skin[] = [
   },
   {
     /*
-     * Density, not colour -- so it composes with any of the others. The button
-     * stays at 28px because WCAG 2.2 SC 2.5.8 asks for 24 CSS px minimum and
-     * "compact" is not a licence to go under it.
+     * Density, not colour -- so it composes with any of the others, and so it
+     * declares no `scheme`: it has no opinion about the palette and must not
+     * override whichever one is already in force. The button stays at 28px
+     * because WCAG 2.2 SC 2.5.8 asks for 24 CSS px minimum and "compact" is not
+     * a licence to go under it.
      */
     name: 'compact',
     label: 'Compact',
@@ -136,10 +168,46 @@ function sync(doc?: Document): void {
  *   tokens: '--openleaf-color-accent: #c2185b; --openleaf-radius: 12px;',
  * })
  * ```
+ *
+ * A skin that replaces the surface must also say which world it is in, or the
+ * parts of the editor that cannot be reached by a custom property -- syntax
+ * colours, native widget chrome -- keep following the visitor's system and end
+ * up contradicting it:
+ *
+ * ```ts
+ * registerSkin({
+ *   name: 'acme-dark',
+ *   label: 'Acme dark',
+ *   scheme: 'dark',
+ *   tokens: '--openleaf-color-surface: #101418; --openleaf-color-text: #e8eef4;',
+ * })
+ * ```
  */
 export function registerSkin(skin: Skin, doc?: Document): void {
+  warnIfSchemeMissing(skin)
   skins.set(skin.name, skin)
   sync(doc)
+}
+
+/*
+ * Setting the surface without declaring the scheme is silently half a skin, and
+ * the half that is missing only shows up on a machine set to the opposite mode
+ * -- which is rarely the machine the skin was written on. This is the one thing
+ * worth a console message, because nothing about the result looks like a
+ * mistake locally.
+ */
+const schemeWarned = new Set<string>()
+
+function warnIfSchemeMissing(skin: Skin): void {
+  if (skin.scheme || !skin.tokens.includes('--openleaf-color-surface:')) return
+  if (schemeWarned.has(skin.name)) return
+  schemeWarned.add(skin.name)
+  console.warn(
+    `@openleaf/ui: skin "${skin.name}" sets --openleaf-color-surface but declares ` +
+      'no scheme, so syntax highlighting and native widgets inside it keep ' +
+      "following the visitor's system setting and can contradict the palette. " +
+      "Add scheme: 'light' or scheme: 'dark'.",
+  )
 }
 
 export function availableSkins(): readonly Skin[] {
@@ -162,9 +230,11 @@ export function applySkin(host: HTMLElement, name: string | null): void {
   ensureSkins(host.ownerDocument)
   if (name === null || name === '' || name === 'default') {
     host.removeAttribute('data-ol-skin')
+    host.removeAttribute('data-ol-scheme')
     return
   }
-  if (!skins.has(name)) {
+  const skin = skins.get(name)
+  if (!skin) {
     console.warn(
       `@openleaf/ui: no skin named "${name}". Available: ` +
         `${[...skins.keys()].join(', ')}. The editor keeps its current appearance.`,
@@ -172,9 +242,24 @@ export function applySkin(host: HTMLElement, name: string | null): void {
     return
   }
   host.setAttribute('data-ol-skin', name)
+  // A separate attribute from the skin's name because it is a separate
+  // question: stylesheets that must branch on the scheme -- the highlighting
+  // plugin's palette, the native-widget rules in the core sheet -- have no way
+  // to know what `midnight` means, and hard-coding a list of skin names into
+  // them is precisely the internal coupling skins exist to avoid.
+  if (skin.scheme) host.setAttribute('data-ol-scheme', skin.scheme)
+  else host.removeAttribute('data-ol-scheme')
 }
 
-/** Force light or dark, or follow the visitor's system setting. */
+/**
+ * Force light or dark, or follow the visitor's system setting.
+ *
+ * A colour skin outranks this, and has to: its tokens set the palette outright,
+ * so `theme="dark"` under the paper skin cannot actually darken the surface. It
+ * would only darken the few things a token cannot reach -- which is how you get
+ * a dark code block in a cream editor. Better that the skin wins wholly than
+ * that it wins in part.
+ */
 export type ColourScheme = 'light' | 'dark' | 'auto'
 
 export function applyColourScheme(host: HTMLElement, scheme: ColourScheme): void {

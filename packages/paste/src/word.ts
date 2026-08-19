@@ -157,6 +157,9 @@ function buildNested(run: ListInfo[], doc: Document): Element {
 
     if (item.level > top.level) {
       const nested = doc.createElement(item.ordered ? 'ol' : 'ul')
+      if (item.ordered && item.start !== null && item.start !== 1) {
+        nested.setAttribute('start', String(item.start))
+      }
       const host = top.list.lastElementChild ?? top.list.appendChild(doc.createElement('li'))
       host.appendChild(nested)
       stack.push({ level: item.level, ordered: item.ordered, list: nested })
@@ -166,6 +169,9 @@ function buildNested(run: ListInfo[], doc: Document): Element {
       stack.pop()
       const parent = stack[stack.length - 1]!
       const sibling = doc.createElement(item.ordered ? 'ol' : 'ul')
+      if (item.ordered && item.start !== null && item.start !== 1) {
+        sibling.setAttribute('start', String(item.start))
+      }
       const host = parent.list.lastElementChild ?? parent.list
       host.appendChild(sibling)
       stack.push({ level: item.level, ordered: item.ordered, list: sibling })
@@ -184,6 +190,13 @@ function buildNested(run: ListInfo[], doc: Document): Element {
 
 /** Replace runs of Word list paragraphs with real nested lists. */
 function reconstructLists(container: Element, doc: Document): void {
+  // Word wraps the body in <div class="WordSection1">. The algorithm only
+  // sees direct children, so without this the whole paste becomes one
+  // attributed wrapper and the lists inside it are never reconstructed.
+  for (const child of Array.from(container.children)) {
+    if (!analyze(child)) reconstructLists(child, doc)
+  }
+
   let children = Array.from(container.children)
   let i = 0
 
@@ -231,7 +244,9 @@ function stripJunk(container: Element): void {
 
     const cls = el.getAttribute('class')
     if (cls) {
-      const kept = cls.split(/\s+/).filter((c) => c && !/^Mso/i.test(c))
+      const kept = cls
+        .split(/\s+/)
+        .filter((c) => c && !/^Mso/i.test(c) && !/^WordSection/i.test(c))
       if (kept.length) el.setAttribute('class', kept.join(' '))
       else el.removeAttribute('class')
     }
