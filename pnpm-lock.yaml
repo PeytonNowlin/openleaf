@@ -123,6 +123,9 @@ importers:
       '@openleaf/ui':
         specifier: workspace:*
         version: link:../ui
+      prosemirror-state:
+        specifier: ^1.4.3
+        version: 1.4.4
       prosemirror-view:
         specifier: ^1.37.0
         version: 1.42.2

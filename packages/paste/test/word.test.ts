@@ -88,6 +88,25 @@ describe('list reconstruction', () => {
     expect(normalizeWord(html)).toContain('<ol start="3">')
   })
 
+  it('carries a nested ordered list start onto the inner <ol>', () => {
+    const html = wordItem('Outer', '1.', 1) + wordItem('Nested third', '3.', 2)
+    const out = normalizeWord(html)
+    expect(out).toContain('<ol start="3">')
+  })
+
+  it('reconstructs lists inside a WordSection1 wrapper', () => {
+    const html =
+      '<div class="WordSection1">' +
+      wordItem('Item one', '·') +
+      wordItem('Item two', '·') +
+      '</div>'
+    const out = normalizeWord(html)
+    expect(out).toContain('<ul>')
+    expect(out).toContain('Item one')
+    expect(out).not.toContain('WordSection')
+    expect(out).not.toContain('·')
+  })
+
   it('nests a deeper level inside the last <li> of its parent', () => {
     const html =
       wordItem('Top level', '·', 1) +

@@ -8,7 +8,7 @@
  */
 
 import { DOMParser, DOMSerializer, type Node as PMNode, type Schema } from 'prosemirror-model'
-import { isInsidePreserved } from './preserve.js'
+import { isInsidePreserved, withSerializationDocument } from './preserve.js'
 import { coreSchema } from './extensions.js'
 
 /**
@@ -110,15 +110,17 @@ function unwrapSoleCellParagraph(host: Element): void {
 /** Serialize an OpenLeaf document back to an HTML string. */
 export function serializeHtml(node: PMNode, opts?: HtmlIOOptions): string {
   const doc = resolveDocument(opts)
-  // Taken from the document itself, so a document built on an extended schema
-  // serializes with a serializer that knows its node types. Passing the wrong
-  // schema explicitly is still possible, but the default is now correct.
-  const target = opts?.schema ?? node.type.schema
-  const fragment = serializerFor(target).serializeFragment(node.content, { document: doc })
-  const host = doc.createElement('div')
-  host.appendChild(fragment)
-  unwrapSoleCellParagraph(host)
-  return host.innerHTML
+  return withSerializationDocument(doc, () => {
+    // Taken from the document itself, so a document built on an extended schema
+    // serializes with a serializer that knows its node types. Passing the wrong
+    // schema explicitly is still possible, but the default is now correct.
+    const target = opts?.schema ?? node.type.schema
+    const fragment = serializerFor(target).serializeFragment(node.content, { document: doc })
+    const host = doc.createElement('div')
+    host.appendChild(fragment)
+    unwrapSoleCellParagraph(host)
+    return host.innerHTML
+  })
 }
 
 /** Convenience: one full parse/serialize cycle. */

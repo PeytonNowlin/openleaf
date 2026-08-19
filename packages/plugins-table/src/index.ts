@@ -38,12 +38,12 @@
 import { canInsert, isNodeActive, registerEditorPlugin } from '@openleaf/core'
 import { registerIcons, registerToolbarItem } from '@openleaf/ui'
 import { TABLE_ICON_PATHS } from './icons.js'
-import type { Command, EditorState } from 'prosemirror-state'
+import type { Command, EditorState, Transaction } from 'prosemirror-state'
 import {
-  addColumnAfter,
-  addColumnBefore,
-  addRowAfter,
-  addRowBefore,
+  addColumnAfter as addColumnAfterRaw,
+  addColumnBefore as addColumnBeforeRaw,
+  addRowAfter as addRowAfterRaw,
+  addRowBefore as addRowBeforeRaw,
   columnResizing,
   deleteColumn,
   deleteRow,
@@ -51,7 +51,7 @@ import {
   mergeCells,
   splitCell,
   tableEditing,
-  toggleHeaderRow,
+  toggleHeaderRow as toggleHeaderRowRaw,
 } from 'prosemirror-tables'
 
 export const TABLE_TOOLBAR_ITEMS = [
@@ -113,6 +113,77 @@ export function insertTable(rows = 3, cols = 3): Command {
     return true
   }
 }
+
+/**
+ * Keep `scope` valid when cells change role.
+ *
+ * `td` and `th` share an attribute set, so the upstream toggle copies `scope`
+ * onto a body cell (invalid HTML) and creates header cells without it.
+ * Inserting a table already writes `scope="col"`; toggling and adding columns
+ * should not undo that.
+ */
+function applyCellScope(tr: Transaction): Transaction {
+  const header = tr.doc.type.schema.nodes['table_header']
+  const cell = tr.doc.type.schema.nodes['table_cell']
+  if (!header || !cell) return tr
+
+  let tablePos = -1
+  for (let depth = tr.selection.$from.depth; depth > 0; depth -= 1) {
+    if (tr.selection.$from.node(depth).type.spec['tableRole'] === 'table') {
+      tablePos = tr.selection.$from.before(depth)
+      break
+    }
+  }
+  if (tablePos < 0) return tr
+
+  const table = tr.doc.nodeAt(tablePos)
+  if (!table) return tr
+
+  // Walked by row and column rather than as a flat descendant list, because a
+  // header's scope depends on where it sits. `setNodeMarkup` only changes
+  // attributes, so every node keeps its size and these positions stay valid.
+  table.forEach((row, rowOffset, rowIndex) => {
+    const rowPos = tablePos + 1 + rowOffset
+    row.forEach((cellNode, cellOffset, cellIndex) => {
+      const pos = rowPos + 1 + cellOffset
+      if (cellNode.type === cell && cellNode.attrs['scope']) {
+        tr.setNodeMarkup(pos, undefined, { ...cellNode.attrs, scope: null })
+        return
+      }
+      if (cellNode.type !== header) return
+      const scope = cellNode.attrs['scope']
+      if (scope !== null && scope !== undefined && scope !== '') return
+      // A header in the top row labels a column. A header that opens a later
+      // row labels that row -- writing "col" there tells a screen reader the
+      // opposite of the truth, which is worse than the missing scope this
+      // replaces.
+      tr.setNodeMarkup(pos, undefined, {
+        ...cellNode.attrs,
+        scope: rowIndex === 0 || cellIndex > 0 ? 'col' : 'row',
+      })
+    })
+  })
+  return tr
+}
+
+function withCellScope(command: Command): Command {
+  return (state, dispatch, view) => {
+    if (!dispatch) return command(state, undefined, view)
+    return command(
+      state,
+      (tr) => {
+        dispatch(applyCellScope(tr))
+      },
+      view,
+    )
+  }
+}
+
+export const addColumnAfter = withCellScope(addColumnAfterRaw)
+export const addColumnBefore = withCellScope(addColumnBeforeRaw)
+export const addRowAfter = withCellScope(addRowAfterRaw)
+export const addRowBefore = withCellScope(addRowBeforeRaw)
+export const toggleHeaderRow = withCellScope(toggleHeaderRowRaw)
 
 /** The ProseMirror plugins table editing needs. */
 export function tableEditingPlugins() {
@@ -191,14 +262,9 @@ export function installTableEditing(): void {
 }
 
 export {
-  addColumnAfter,
-  addColumnBefore,
-  addRowAfter,
-  addRowBefore,
   deleteColumn,
   deleteRow,
   deleteTable,
   mergeCells,
   splitCell,
-  toggleHeaderRow,
 } from 'prosemirror-tables'

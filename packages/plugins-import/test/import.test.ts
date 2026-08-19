@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseHtml, serializeHtml } from '@openleaf/core'
 import { afterEach, describe, expect, it } from 'vitest'
+import { EditorState, TextSelection } from 'prosemirror-state'
+import { EditorView } from 'prosemirror-view'
 import {
   clearFileConverters,
   convertFile,
@@ -11,6 +13,7 @@ import {
   registerFileConverter,
   textToHtml,
 } from '../src/converters.js'
+import { importFileIntoView } from '../src/import.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const fixture = (name: string): Buffer => readFileSync(join(HERE, 'fixtures', name))
@@ -188,6 +191,67 @@ describe('the converter seam, driven by mammoth against a real .docx', () => {
       expect(result?.warnings).toEqual(['3 images could not be imported'])
     } finally {
       dispose()
+    }
+  })
+})
+
+describe('inserting at the cursor that started the import', () => {
+  function mount(html: string): EditorView {
+    const place = document.createElement('div')
+    document.body.appendChild(place)
+    return new EditorView(place, {
+      state: EditorState.create({ doc: parseHtml(html) }),
+    })
+  }
+
+  function posAfter(view: EditorView, text: string): number {
+    let found = -1
+    view.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === text) {
+        found = pos + node.nodeSize
+        return false
+      }
+      return true
+    })
+    return found
+  }
+
+  it('inserts at the original caret after a delayed conversion', async () => {
+    let release!: () => void
+    const hang = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const dispose = registerFileConverter(async (file) => {
+      if (file.name !== 'slow.html') return null
+      await hang
+      return { html: '<p>IMPORTED</p>' }
+    })
+
+    const view = mount('<p>FIRST</p><p>SECOND</p>')
+    try {
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, posAfter(view, 'FIRST'))),
+      )
+
+      const pending = importFileIntoView(view, textFile('<p>ignored</p>', 'slow.html', 'text/html'))
+
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, posAfter(view, 'SECOND'))),
+      )
+      view.dispatch(view.state.tr.insertText('x', posAfter(view, 'SECOND') - 1))
+
+      release()
+      const outcome = await pending
+      expect(outcome.ok).toBe(true)
+
+      const stored = serializeHtml(view.state.doc)
+      // Imported between the original paragraphs. The later edit inside SECOND
+      // stayed in SECOND instead of being split around the imported block.
+      expect(stored).toBe('<p>FIRST</p><p>IMPORTED</p><p>SECONxD</p>')
+    } finally {
+      dispose()
+      view.destroy()
+      view.dom.remove()
     }
   })
 })

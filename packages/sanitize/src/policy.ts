@@ -84,7 +84,12 @@ export const DEFAULT_POLICY: Policy = {
     h6: { attributes: ['dir'] },
     blockquote: {},
     pre: {},
-    code: {},
+    // The language class and nothing else. The schema reads `language-js` from
+    // either element and normalizes it onto <code>, so that is the only place
+    // stored content carries it -- allowing it on <pre> too would widen the
+    // policy for markup the editor does not emit. A class on <pre> is
+    // preservation residue, and preservation is opt-in via policyForPreserved().
+    code: { attributes: ['class'] },
     ul: {},
     ol: { attributes: ['start'] },
     li: {},

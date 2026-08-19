@@ -91,13 +91,16 @@ export function isMarkActive(state: EditorState, markName: string): boolean {
 export function isNodeActive(state: EditorState, nodeName: string, attrs?: Attrs): boolean {
   const type = nodeIn(state, nodeName)
   if (!type) return false
-  const { $from, to } = state.selection
+  const { $from, from, to } = state.selection
 
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
     const parent = $from.node(depth)
     if (parent.type !== type) continue
-    // Confirm the selection does not extend past this node.
-    if ($from.start(depth) > to) continue
+    // The selection must sit inside this node. `$from.start(depth)` is always
+    // ≤ `to` for an ancestor of `$from`, so comparing start against `to`
+    // cannot detect a range that runs past the node. Compare against the
+    // node's end, and require `from` to be at or after its start.
+    if (from < $from.start(depth) || to > $from.end(depth)) continue
     if (!attrs) return true
     return Object.entries(attrs).every(([key, value]) => parent.attrs[key] === value)
   }
@@ -118,10 +121,12 @@ export function canInsert(state: EditorState, nodeName: string): boolean {
 
 /** The heading level at the cursor, or null when not in a heading. */
 export function activeHeadingLevel(state: EditorState): number | null {
-  const { $from } = state.selection
+  const { $from, from, to } = state.selection
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
     const parent = $from.node(depth)
-    if (parent.type === nodeIn(state, 'heading')) return parent.attrs['level'] as number
+    if (parent.type !== nodeIn(state, 'heading')) continue
+    if (from < $from.start(depth) || to > $from.end(depth)) continue
+    return parent.attrs['level'] as number
   }
   return null
 }
@@ -187,24 +192,37 @@ export const wrapInBlockquote: Command = nodeCommand('blockquote', (type) => wra
 
 export const toggleBlockquote: Command = (state, dispatch, view) => {
   if (!isNodeActive(state, 'blockquote')) return wrapInBlockquote(state, dispatch, view)
-  // Lifting out of a quote is `liftListItem`-shaped work; reuse ProseMirror's
-  // generic lift via the list helper on the enclosing paragraph.
-  return liftOut(state, dispatch)
+  return unwrapBlockquote(state, dispatch)
 }
 
-/** Lift the selection out of its immediate wrapper. */
-function liftOut(state: EditorState, dispatch?: (tr: import('prosemirror-state').Transaction) => void): boolean {
-  const { $from, $to } = state.selection
-  const range = $from.blockRange($to)
-  if (!range) return false
-  const target = range.depth > 0 ? range.depth - 1 : 0
-  if (target < 0) return false
-  if (dispatch) {
-    const tr = state.tr
-    tr.lift(range, target)
-    dispatch(tr.scrollIntoView())
+/**
+ * Unwrap the enclosing blockquote, not the innermost block.
+ *
+ * The previous implementation lifted `$from.blockRange()` by `depth - 1`.
+ * Inside `<blockquote><ul><li><p>…</p></li></ul></blockquote>` that range is
+ * the paragraph, and lifting it into the list is illegal (`bullet_list`
+ * only accepts `list_item`). The command threw `TransformError` on a toolbar
+ * click. Replacing the blockquote node with its children is valid wherever
+ * a blockquote is, because its content matches the parent content expression.
+ */
+function unwrapBlockquote(
+  state: EditorState,
+  dispatch?: (tr: import('prosemirror-state').Transaction) => void,
+): boolean {
+  const { $from } = state.selection
+  const type = nodeIn(state, 'blockquote')
+  if (!type) return false
+
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type !== type) continue
+    if (dispatch) {
+      const node = $from.node(depth)
+      const pos = $from.before(depth)
+      dispatch(state.tr.replaceWith(pos, pos + node.nodeSize, node.content).scrollIntoView())
+    }
+    return true
   }
-  return true
+  return false
 }
 
 export const insertHorizontalRule: Command = (state, dispatch) => {
@@ -221,14 +239,41 @@ export const insertHorizontalRule: Command = (state, dispatch) => {
  * Lists
  * ------------------------------------------------------------------ */
 
-export const toggleBulletList: Command = (state, dispatch, view) => {
-  if (isNodeActive(state, 'bullet_list')) return outdentListItem(state, dispatch, view)
-  return nodeCommand('bullet_list', (type) => wrapInList(type))(state, dispatch, view)
+export const toggleBulletList: Command = toggleList('bullet_list')
+export const toggleOrderedList: Command = toggleList('ordered_list')
+
+/**
+ * Innermost list containing the selection, walking from the cursor outward.
+ *
+ * Nested lists must convert the inner one: converting the outer list would
+ * leave the author's current list type unchanged, which looks like the
+ * button did nothing.
+ */
+function enclosingList(
+  state: EditorState,
+): { pos: number; name: 'bullet_list' | 'ordered_list' } | null {
+  const { $from } = state.selection
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const name = $from.node(depth).type.name
+    if (name === 'bullet_list' || name === 'ordered_list') {
+      return { pos: $from.before(depth), name }
+    }
+  }
+  return null
 }
 
-export const toggleOrderedList: Command = (state, dispatch, view) => {
-  if (isNodeActive(state, 'ordered_list')) return outdentListItem(state, dispatch, view)
-  return nodeCommand('ordered_list', (type) => wrapInList(type))(state, dispatch, view)
+function toggleList(target: 'bullet_list' | 'ordered_list'): Command {
+  return (state, dispatch, view) => {
+    const enclosing = enclosingList(state)
+    if (enclosing?.name === target) return outdentListItem(state, dispatch, view)
+    if (enclosing) {
+      const type = nodeIn(state, target)
+      if (!type) return false
+      if (dispatch) dispatch(state.tr.setNodeMarkup(enclosing.pos, type).scrollIntoView())
+      return true
+    }
+    return nodeCommand(target, (type) => wrapInList(type))(state, dispatch, view)
+  }
 }
 
 export const splitListItemCommand: Command = nodeCommand('list_item', (t) => splitListItem(t))

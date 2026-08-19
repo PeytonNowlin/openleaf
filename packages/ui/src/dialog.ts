@@ -110,7 +110,9 @@ function showForm(
   doc: Document,
   title: string,
   fields: FieldSpec[],
-  options: { extraCheckbox?: { name: string; label: string; hint?: string } } = {},
+  options: {
+    extraCheckbox?: { name: string; label: string; hint?: string; checked?: boolean }
+  } = {},
   validate?: (values: Record<string, string>) => string | null,
 ): Promise<Record<string, string> | null> {
   ensureDialogStyles(doc)
@@ -158,6 +160,7 @@ function showForm(
     checkbox = doc.createElement('input')
     checkbox.type = 'checkbox'
     checkbox.name = options.extraCheckbox.name
+    checkbox.checked = options.extraCheckbox.checked === true
     wrap.appendChild(checkbox)
     const span = doc.createElement('span')
     span.textContent = options.extraCheckbox.label
@@ -258,6 +261,7 @@ export async function promptForLink(
       extraCheckbox: {
         name: 'newWindow',
         label: 'Open in a new window',
+        checked: existing?.target === '_blank',
         hint:
           'Opening in a new window without warning can disorient people using ' +
           'screen readers or magnification. Leave this off unless you have a reason.',

@@ -102,11 +102,29 @@ test.describe('the source view', () => {
 
   test('formatting does not change the document', async ({ page }) => {
     // The whole safety property: indenting for display must parse identically.
-    const before = await page.evaluate(
-      () => (document.querySelector('openleaf-editor') as HTMLElement & { value: string }).value,
-    )
+    // Compare what would be posted, before and after. Reading `el.value` here
+    // would read the source box, and that is indented display text rather than
+    // the document -- asserting the posted value equals it only passed while
+    // closing source leaked the indentation into the textarea.
+    const before = await value(page)
     await page.getByRole('button', { name: 'HTML source' }).click()
     await expect.poll(() => value(page)).toBe(before)
+  })
+
+  test('looking at the source is not an edit', async ({ page }) => {
+    // The source box is pretty-printed, so its text never equals the
+    // serialization. Comparing text rather than documents on close made merely
+    // opening source view an undoable change with a change event attached.
+    await page.evaluate(() => {
+      ;(window as Window & { __olChanges?: number }).__olChanges = 0
+      document.querySelector('openleaf-editor')!.addEventListener('openleaf:change', () => {
+        const w = window as Window & { __olChanges?: number }
+        w.__olChanges = (w.__olChanges ?? 0) + 1
+      })
+    })
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    await expect(editor(page)).toBeVisible()
+    expect(await page.evaluate(() => (window as Window & { __olChanges?: number }).__olChanges)).toBe(0)
   })
 
   test('an edit made in source view is applied', async ({ page }) => {
@@ -143,6 +161,19 @@ test.describe('the code block surface follows the editor, not the host page', ()
     return (0.2126 * (r as number) + 0.7152 * (g as number) + 0.0722 * (b as number)) / 255
   }
 
+  /** The real WCAG 1.4.3 ratio, where "readable" has to be an actual number. */
+  const contrast = (a: string, b: string): number => {
+    const relative = (rgb: string): number => {
+      const channels = (rgb.match(/\d+/g) ?? ['0', '0', '0']).slice(0, 3).map((n) => {
+        const c = Number(n) / 255
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+      })
+      return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!
+    }
+    const [hi, lo] = [relative(a), relative(b)].sort((x, y) => y - x)
+    return (hi! + 0.05) / (lo! + 0.05)
+  }
+
   async function surfaces(page: Page) {
     return page.evaluate(() => {
       const pre = document.querySelector('.ProseMirror pre')!
@@ -170,6 +201,93 @@ test.describe('the code block surface follows the editor, not the host page', ()
       expect(Math.abs(luminance(code) - luminance(keyword))).toBeGreaterThan(0.15)
     })
   }
+
+  /*
+   * Second regression, same shape, found on the demo again: the code block
+   * followed the *system* while the editor around it followed the *skin*. A
+   * skin replaces the palette outright and is unmoved by the system setting, so
+   * on a machine set to dark the cream Paper skin came with a near-black code
+   * block, and light-on-light for Midnight on a machine set to light.
+   *
+   * Both directions are tested, because only fixing the one in the bug report
+   * is how the mirror image ships.
+   */
+  for (const [skin, system] of [
+    ['paper', 'dark'],
+    ['contrast', 'dark'],
+    ['midnight', 'light'],
+  ] as const) {
+    test(`the ${skin} skin holds its own world on a ${system} machine`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: system })
+      await page.goto(HIGHLIGHTED)
+      await expect(editor(page)).toBeVisible()
+      await page.locator('openleaf-editor').evaluate((el, s) => el.setAttribute('skin', s), skin)
+
+      const { code, editor: surface, keyword } = await surfaces(page)
+      expect(Math.abs(luminance(code) - luminance(surface))).toBeLessThan(0.35)
+      expect(Math.abs(luminance(code) - luminance(keyword))).toBeGreaterThan(0.15)
+    })
+  }
+
+  test('a skin outranks the theme attribute, which cannot move its surface anyway', async ({
+    page,
+  }) => {
+    // theme="dark" under a light skin used to darken only the things a token
+    // cannot reach -- which is a dark code block in a cream editor.
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.goto(HIGHLIGHTED)
+    await expect(editor(page)).toBeVisible()
+    await page.locator('openleaf-editor').evaluate((el) => {
+      el.setAttribute('skin', 'paper')
+      el.setAttribute('theme', 'dark')
+    })
+
+    const { code, editor: surface } = await surfaces(page)
+    expect(luminance(surface)).toBeGreaterThan(0.5)
+    expect(Math.abs(luminance(code) - luminance(surface))).toBeLessThan(0.35)
+  })
+
+  test('a density skin does not claim a scheme it has no opinion about', async ({ page }) => {
+    // compact declares none, so the code block keeps following the system.
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.goto(HIGHLIGHTED)
+    await expect(editor(page)).toBeVisible()
+    await page.locator('openleaf-editor').evaluate((el) => el.setAttribute('skin', 'compact'))
+
+    const { code, editor: surface } = await surfaces(page)
+    expect(luminance(surface)).toBeLessThan(0.5)
+    expect(Math.abs(luminance(code) - luminance(surface))).toBeLessThan(0.35)
+  })
+
+  test('code the grammar did not claim is readable on the surface we own', async ({ page }) => {
+    /*
+     * `greet`, `width`, `height` -- plain identifiers no rule matched. They took
+     * the editor's own text colour, chosen against the editor's surface rather
+     * than this one, and vanished whenever the two disagreed. WCAG 1.4.3 body
+     * text is 4.5:1; this is what "we own the background, so we own the
+     * foreground on it" has to mean in a number.
+     */
+    for (const [skin, system] of [
+      ['midnight', 'light'],
+      ['paper', 'dark'],
+      ['', 'dark'],
+      ['', 'light'],
+    ] as const) {
+      await page.emulateMedia({ colorScheme: system })
+      await page.goto(HIGHLIGHTED)
+      await expect(editor(page)).toBeVisible()
+      if (skin) {
+        await page.locator('openleaf-editor').evaluate((el, s) => el.setAttribute('skin', s), skin)
+      }
+      const { fg, bg } = await page.evaluate(() => {
+        const pre = document.querySelector('.ProseMirror pre')!
+        const style = getComputedStyle(pre)
+        return { fg: style.color, bg: style.backgroundColor }
+      })
+      expect(contrast(fg, bg), `${skin || 'default'} skin on a ${system} machine`)
+        .toBeGreaterThanOrEqual(4.5)
+    }
+  })
 
   test('a host page styling pre does not reach inside the editor', async ({ page }) => {
     await page.goto(HIGHLIGHTED)
