@@ -50,6 +50,11 @@ const EXPECTED_EXPORTS = [
   'undo', 'redo',
   // keymap
   'buildKeymap', 'shortcuts', 'shortcutFor',
+  // chrome helpers used by the host and the formats dropdown
+  'autolinkPlugin', 'hrefFromTypedUrl',
+  'visualAidsPlugin',
+  'nonEditablePlugin', 'isNonEditableNode',
+  'parseFormatList', 'setBlockClass', 'activeBlockClass', 'carriedClass',
   // plugin registry
   'registerEditorPlugin', 'createRegisteredPlugins', 'onEditorPluginsChange',
   // table nodes

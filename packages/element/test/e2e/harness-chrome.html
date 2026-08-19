@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OpenLeaf chrome harness</title>
+</head>
+<body>
+<form>
+  <openleaf-editor
+    for="body"
+    aria-label="Post body"
+    menubar
+    toolbar="undo redo | blockType | bold italic | help fullscreen visualAids"
+    formats="p.lead=Lead"
+    selection-toolbar="bold italic | link"
+  ></openleaf-editor>
+  <textarea id="body" name="body" hidden><p>A stored paragraph.</p></textarea>
+</form>
+<script src="/demo/openleaf.min.js"></script>
+</body>
+</html>

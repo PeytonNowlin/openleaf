@@ -1,0 +1,89 @@
+/**
+ * Turn a typed URL into a link when the author finishes it.
+ *
+ * Space and Enter are the commit keys, matching the behaviour authors already
+ * have in mail clients and office software. The plugin never rewrites a range
+ * that is already a link, and it refuses anything `isSafeUrl` would drop, so
+ * typing `javascript:` cannot become a mark the serializer would then emit.
+ */
+
+import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state'
+import { isSafeUrl } from './url.js'
+
+const key = new PluginKey('openleaf-autolink')
+
+/**
+ * A URL at the end of a typed run. `www.` is accepted because people type it;
+ * the href we store is always an absolute `https://` form, so the serializer
+ * never emits a scheme-less token a browser would treat as a relative path.
+ */
+const TRAILING_URL = /(?:https?:\/\/|www\.)[^\s<>"'()]+$/i
+
+export function hrefFromTypedUrl(raw: string): string | null {
+  const trimmed = raw.replace(/[.,;:!?)]+$/, '')
+  if (!trimmed) return null
+  const href = /^www\./i.test(trimmed) ? `https://${trimmed}` : trimmed
+  return isSafeUrl(href) ? href : null
+}
+
+function trailingUrl(state: EditorState, end: number): { from: number; to: number; href: string } | null {
+  const $end = state.doc.resolve(end)
+  if (!$end.parent.isTextblock) return null
+  const parentStart = $end.start()
+  const raw = $end.parent.textBetween(0, $end.parentOffset, undefined, '\ufffc')
+  const trimmed = raw.replace(/[\s\u00a0]+$/, '')
+  const match = TRAILING_URL.exec(trimmed)
+  if (!match) return null
+  const href = hrefFromTypedUrl(match[0])
+  if (!href) return null
+  const from = parentStart + (match.index ?? 0)
+  const to = parentStart + trimmed.length
+  if (from >= to) return null
+  const link = state.schema.marks['link']
+  if (!link) return null
+  if (state.doc.rangeHasMark(from, to, link)) return null
+  return { from, to, href }
+}
+
+function applyAutolink(state: EditorState, end: number): Transaction | null {
+  const found = trailingUrl(state, end)
+  if (!found) return null
+  const link = state.schema.marks['link']
+  if (!link) return null
+  return state.tr.addMark(found.from, found.to, link.create({ href: found.href }))
+}
+
+function maybeAutolink(view: { state: EditorState; dispatch: (tr: Transaction) => void }, end: number): boolean {
+  const tr = applyAutolink(view.state, end)
+  if (!tr) return false
+  view.dispatch(tr)
+  return true
+}
+
+export function autolinkPlugin(): Plugin {
+  return new Plugin({
+    key,
+    appendTransaction(transactions, _oldState, newState) {
+      if (!transactions.some((tr) => tr.docChanged)) return null
+      if (transactions.some((tr) => tr.getMeta(key))) return null
+      const $from = newState.selection.$from
+      if (!$from.parent.isTextblock || $from.parentOffset === 0) return null
+      const prev = $from.parent.textBetween($from.parentOffset - 1, $from.parentOffset)
+      if (prev !== ' ' && prev !== '\u00a0') return null
+      const tr = applyAutolink(newState, $from.pos)
+      return tr ? tr.setMeta(key, true) : null
+    },
+    props: {
+      handleTextInput(view, from, _to, text) {
+        if (text !== ' ' && text !== '\u00a0') return false
+        maybeAutolink(view, from)
+        return false
+      },
+      handleKeyDown(view, event) {
+        if (event.key !== 'Enter' || event.shiftKey) return false
+        maybeAutolink(view, view.state.selection.from)
+        return false
+      },
+    },
+  })
+}

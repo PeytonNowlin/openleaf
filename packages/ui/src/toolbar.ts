@@ -29,10 +29,12 @@
  *    Escape leaves, matching TinyMCE and CKEditor 5 so muscle memory transfers.
  */
 
-import { activeHeadingLevel, shortcutFor, toggleHeading, setParagraph } from '@openleaf-editor/core'
+import { activeBlockClass, activeHeadingLevel, setBlockClass, setParagraph, shortcutFor, toggleHeading, type FormatSpec } from '@openleaf-editor/core'
 import type { EditorState, Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { ensureSprite, iconElement } from './icons.js'
+import { t, onLocaleChange } from './i18n.js'
+import { ToolbarOverflow } from './overflow.js'
 import {
   DEFAULT_LAYOUT,
   getToolbarItem,
@@ -47,6 +49,13 @@ export interface ToolbarOptions {
   label?: string
   /** Space-separated item ids, `|` for a separator. */
   layout?: string
+  /**
+   * Collapse groups that do not fit into a More menu. Off by default: wrapping
+   * keeps every control visible, which is the safer accessibility default.
+   */
+  overflow?: boolean
+  /** Extra block formats, typically classes from the host's content CSS. */
+  formats?: readonly FormatSpec[]
 }
 
 interface Control {
@@ -114,7 +123,12 @@ export class Toolbar {
   #live: HTMLDivElement
   #liveTimer: ReturnType<typeof setTimeout> | undefined
   #layout: string
+  #label: string
+  #formats: readonly FormatSpec[]
+  #wantsOverflow: boolean
+  #overflow: ToolbarOverflow | null = null
   #unsubscribe: (() => void) | undefined
+  #unlocale: (() => void) | undefined
   /** Focusable buttons in DOM order; the roving tabindex walks this. */
   #focusables: HTMLButtonElement[] = []
   #rovingIndex = 0
@@ -123,6 +137,9 @@ export class Toolbar {
     this.#host = host
     this.#doc = doc
     this.#layout = options.layout ?? DEFAULT_LAYOUT
+    this.#label = options.label ?? 'Formatting'
+    this.#formats = options.formats ?? []
+    this.#wantsOverflow = options.overflow === true
 
     ensureStyles(doc)
     ensureSprite(doc)
@@ -130,7 +147,7 @@ export class Toolbar {
     this.el = doc.createElement('div')
     this.el.className = 'ol-toolbar'
     this.el.setAttribute('role', 'toolbar')
-    this.el.setAttribute('aria-label', options.label ?? 'Formatting')
+    this.el.setAttribute('aria-label', t(this.#label))
 
     this.#live = doc.createElement('div')
     this.#live.className = 'ol-live'
@@ -147,17 +164,25 @@ export class Toolbar {
     this.#unsubscribe = onRegistryChange(() => {
       this.#rerenderPreservingState()
     })
+    this.#unlocale = onLocaleChange(() => {
+      this.#rerenderPreservingState()
+    })
   }
 
   /** Attach to a view and build the controls. */
   mount(view: EditorView): void {
     this.#view = view
     this.#render()
+    if (this.#wantsOverflow && !this.#overflow) {
+      this.#overflow = new ToolbarOverflow(this.el, this.#host, this.#doc)
+    }
     this.update(view.state)
   }
 
   destroy(): void {
     this.#unsubscribe?.()
+    this.#unlocale?.()
+    this.#overflow?.destroy()
     clearTimeout(this.#liveTimer)
     this.el.removeEventListener('keydown', this.#onKeydown)
     this.#destroyCustoms()
@@ -242,7 +267,9 @@ export class Toolbar {
 
     if (group.childElementCount > 0) this.el.appendChild(group)
 
+    this.el.setAttribute('aria-label', t(this.#label))
     this.#refreshFocusables()
+    this.#overflow?.reattach()
   }
 
   /**
@@ -308,10 +335,11 @@ export class Toolbar {
 
     // The accessible name stays constant across states. Baking "pressed" into
     // it would double up with what the platform already announces.
-    button.setAttribute('aria-label', spec.label)
+    button.setAttribute('aria-label', t(spec.label))
 
     const shortcut = spec.shortcut ? shortcutFor(spec.shortcut) : null
-    button.title = shortcut ? `${spec.label} (${shortcut})` : spec.label
+    const label = t(spec.label)
+    button.title = shortcut ? `${label} (${shortcut})` : label
 
     if ((spec.kind ?? 'action') === 'toggle') {
       button.setAttribute('aria-pressed', 'false')
@@ -376,22 +404,28 @@ export class Toolbar {
   #buildBlockTypeSelect(): HTMLSelectElement {
     const select = this.#doc.createElement('select')
     select.className = 'ol-select'
-    select.setAttribute('aria-label', 'Paragraph style')
+    select.setAttribute('aria-label', t('Paragraph style'))
     select.dataset['olId'] = BLOCK_TYPE_ID
 
     const options: Array<[string, string]> = [
-      ['p', 'Paragraph'],
-      ['1', 'Heading 1'],
-      ['2', 'Heading 2'],
-      ['3', 'Heading 3'],
-      ['4', 'Heading 4'],
-      ['5', 'Heading 5'],
-      ['6', 'Heading 6'],
+      ['p', t('Paragraph')],
+      ['1', t('Heading 1')],
+      ['2', t('Heading 2')],
+      ['3', t('Heading 3')],
+      ['4', t('Heading 4')],
+      ['5', t('Heading 5')],
+      ['6', t('Heading 6')],
     ]
     for (const [value, label] of options) {
       const option = this.#doc.createElement('option')
       option.value = value
       option.textContent = label
+      select.appendChild(option)
+    }
+    for (const format of this.#formats) {
+      const option = this.#doc.createElement('option')
+      option.value = `class:${format.token}`
+      option.textContent = t(format.label)
       select.appendChild(option)
     }
 
@@ -428,8 +462,14 @@ export class Toolbar {
       const view = this.#view
       if (!view) return
       const value = select.value
-      const command = value === 'p' ? setParagraph : toggleHeading(Number(value))
-      command(view.state, view.dispatch, view)
+      if (value.startsWith('class:')) {
+        const token = value.slice('class:'.length)
+        const className = token.includes('.') ? (token.split('.').pop() ?? token) : token.replace(/^\./, '')
+        setBlockClass(className)(view.state, view.dispatch, view)
+      } else {
+        const command = value === 'p' ? setParagraph : toggleHeading(Number(value))
+        command(view.state, view.dispatch, view)
+      }
       // Return the caret to the content only when the author committed the
       // choice by pointer. Keyboard users keep focus and leave with Tab or
       // Escape.
@@ -543,9 +583,23 @@ export class Toolbar {
     }
 
     if (this.#select) {
-      const level = activeHeadingLevel(state)
-      const value = level === null ? 'p' : String(level)
-      if (this.#select.value !== value) this.#select.value = value
+      const formatClass = activeBlockClass(state)
+      const matching = formatClass
+        ? this.#formats.find((format) => {
+            const token = format.token.includes('.')
+              ? (format.token.split('.').pop() ?? format.token)
+              : format.token.replace(/^\./, '')
+            return token === formatClass
+          })
+        : undefined
+      if (matching) {
+        const next = `class:${matching.token}`
+        if (this.#select.value !== next) this.#select.value = next
+      } else {
+        const level = activeHeadingLevel(state)
+        const value = level === null ? 'p' : String(level)
+        if (this.#select.value !== value) this.#select.value = value
+      }
     }
 
     if (transitions.length > 0) this.#announce(transitions.join(', '))

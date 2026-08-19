@@ -27,7 +27,10 @@ export const BUDGETS_KB = {
   // core cannot delegate -- reading the `text-align` and `color` markup an
   // inherited archive already contains, which is the same reasoning that keeps
   // the table schema here while table editing is opt-in.
-  'openleaf.min.js': 92,
+  // Raised again for editor chrome (menubar, context menus, floating
+  // toolbars, help, visual aids, autolink, i18n). Wrappers are separate
+  // packages and do not land in this file.
+  'openleaf.min.js': 105,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,

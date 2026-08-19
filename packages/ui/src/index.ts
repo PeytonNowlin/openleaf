@@ -11,7 +11,25 @@ export {
   type ToolbarControl,
   type ToolbarItemSpec,
 } from './registry.js'
-export { SOURCE_TOGGLE_EVENT, registerDefaultItems } from './items.js'
+export { SOURCE_TOGGLE_EVENT, FULLSCREEN_TOGGLE_EVENT, VISUAL_AIDS_TOGGLE_EVENT, registerDefaultItems } from './items.js'
+export { t, setUiLocale, uiLocale, registerTranslations, onLocaleChange } from './i18n.js'
+export {
+  MenuBar,
+  PopupMenu,
+  DEFAULT_MENUBAR,
+  LINK_CONTEXT_ITEMS,
+  IMAGE_CONTEXT_ITEMS,
+  TABLE_CONTEXT_ITEMS,
+  type MenuSpec,
+  type MenuEntry,
+} from './menu.js'
+export { promptHelp } from './help.js'
+export {
+  FloatingToolbars,
+  DEFAULT_SELECTION_LAYOUT,
+  DEFAULT_INSERT_LAYOUT,
+} from './floating.js'
+export { loadContentCss, contentCssUrls, scopeContentCss } from './content-css.js'
 export { CSS, ensureStyles, markStylesExternal, registerStyles } from './styles.js'
 export { ensureSprite, iconElement, iconNames, registerIcons, type IconName } from './icons.js'
 export {

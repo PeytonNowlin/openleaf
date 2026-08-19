@@ -1,0 +1,32 @@
+{
+  "name": "@openleaf-editor/react",
+  "version": "0.1.0-beta.1",
+  "description": "React wrapper for the OpenLeaf custom element. The editor itself stays framework-free.",
+  "license": "Apache-2.0",
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeytonNowlin/openleaf.git",
+    "directory": "packages/react"
+  },
+  "homepage": "https://peytonnowlin.github.io/openleaf/",
+  "bugs": { "url": "https://github.com/PeytonNowlin/openleaf/issues" },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "files": ["dist"],
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "dependencies": {
+    "@openleaf-editor/element": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "react": "^19.1.0"
+  }
+}

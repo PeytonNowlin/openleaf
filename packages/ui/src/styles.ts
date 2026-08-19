@@ -89,6 +89,7 @@ export const CSS = `
   --ol-focus-offset: var(--openleaf-focus-offset, 1px);
 
   display: block;
+  position: relative;
   color: var(--ol-text);
 }
 
@@ -417,6 +418,171 @@ export const CSS = `
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/* Menubar, menus, floating chrome, visual aids, fullscreen, inline. */
+.ol-editor .ol-menubar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ol-gap);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--ol-border);
+  border-bottom: 0;
+  border-radius: var(--ol-radius) var(--ol-radius) 0 0;
+  background: var(--ol-surface);
+  position: relative;
+  z-index: var(--ol-z);
+}
+.ol-editor .ol-menubar + .ol-toolbar {
+  border-radius: 0;
+}
+.ol-editor .ol-menu-trigger {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--ol-radius);
+  background: transparent;
+  color: var(--ol-text);
+  font: inherit;
+  font-family: var(--ol-font);
+  font-size: var(--ol-font-size);
+  cursor: pointer;
+  appearance: none;
+}
+.ol-editor .ol-menu-trigger:hover,
+.ol-editor .ol-menu-trigger[aria-expanded="true"] {
+  background: var(--ol-surface-hover);
+}
+.ol-editor .ol-menu-trigger:focus-visible {
+  outline: var(--ol-focus-width) solid var(--ol-focus);
+  outline-offset: var(--ol-focus-offset);
+}
+.ol-editor .ol-menu {
+  position: absolute;
+  z-index: calc(var(--ol-z) + 20);
+  min-width: 12rem;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--ol-border);
+  border-radius: var(--ol-radius);
+  background: var(--ol-surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+.ol-editor .ol-menu-item {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--ol-radius);
+  background: transparent;
+  color: var(--ol-text);
+  font: inherit;
+  font-family: var(--ol-font);
+  font-size: var(--ol-font-size);
+  text-align: start;
+  cursor: pointer;
+  appearance: none;
+}
+.ol-editor .ol-menu-item:hover,
+.ol-editor .ol-menu-item:focus-visible {
+  background: var(--ol-surface-hover);
+  outline: none;
+}
+.ol-editor .ol-menu-item[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+.ol-editor .ol-menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--ol-border);
+}
+.ol-editor .ol-toolbar.ol-floating {
+  position: absolute;
+  flex-wrap: nowrap;
+  border: 1px solid var(--ol-border);
+  border-radius: var(--ol-radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  z-index: calc(var(--ol-z) + 10);
+}
+.ol-editor .ol-toolbar.ol-toolbar--overflow {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.ol-editor.ol-visual-aids .ol-empty-block {
+  outline: 1px dashed var(--ol-border);
+  outline-offset: 2px;
+  min-height: 1.2em;
+}
+.ol-editor.ol-visual-aids .ol-nbsp {
+  background: color-mix(in srgb, var(--ol-accent) 25%, transparent);
+  box-shadow: inset 0 -1px 0 var(--ol-accent);
+}
+.ol-editor.ol-visual-aids .ol-hidden-structure {
+  outline: 1px dotted var(--ol-accent);
+  outline-offset: 2px;
+}
+.ol-editor .ol-noneditable {
+  cursor: default;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 6px,
+    color-mix(in srgb, var(--ol-border) 35%, transparent) 6px,
+    color-mix(in srgb, var(--ol-border) 35%, transparent) 7px
+  );
+}
+.ol-editor.ol-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  margin: 0;
+  border-radius: 0;
+  background: var(--ol-surface);
+  display: flex;
+  flex-direction: column;
+}
+.ol-editor.ol-fullscreen .ol-content,
+.ol-editor.ol-fullscreen .ol-source {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.ol-editor.ol-autoresize .ol-content .ProseMirror {
+  overflow: hidden;
+}
+.ol-editor.ol-inline:not(.ol-inline-active) .ol-toolbar,
+.ol-editor.ol-inline:not(.ol-inline-active) .ol-menubar {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
+.ol-editor.ol-inline .ol-content {
+  border-radius: var(--ol-radius);
+}
+.ol-help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: inherit;
+}
+.ol-help-table th,
+.ol-help-table td {
+  padding: 4px 8px;
+  text-align: start;
+  vertical-align: top;
+  border-bottom: 1px solid var(--openleaf-color-border, #d1d9e0);
+}
+.ol-help-table th {
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* Coarse pointers get a larger target. WCAG 2.2 SC 2.5.8 asks for 24x24 CSS px

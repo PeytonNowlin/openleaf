@@ -112,6 +112,46 @@ Appearance can be selected without rebuilding the editor or losing undo history:
 Built-in skins are `midnight`, `paper`, `contrast`, and `compact`. The `theme`
 attribute accepts `light`, `dark`, or `auto`.
 
+### Editor chrome
+
+The canvas is not an iframe. Host typography already applies, and extra published
+styles can be loaded with `content-css`. Chrome around the canvas is optional
+and attribute-driven:
+
+```html
+<openleaf-editor
+  for="body"
+  menubar
+  toolbar2="undo redo"
+  toolbar-overflow
+  selection-toolbar="bold italic | link"
+  insert-toolbar="link image"
+  formats="p.lead=Lead paragraph|.note=Note"
+  content-css="/css/article.css"
+  lang="fr"
+  inline
+  autoresize
+></openleaf-editor>
+```
+
+- **Menubar** — `menubar` enables Edit, Insert, Format, View, and Help.
+- **Context menus** — right-click a link, image, or table. Set `contextmenu="none"` to disable.
+- **Floating toolbars** — `selection-toolbar` and `insert-toolbar`.
+- **Fullscreen, help, visual aids** — toolbar ids `fullscreen`, `help`, `visualAids`. F1 opens help.
+- **Autoresize / inline** — grow with content, or hide chrome until focus.
+- **Autolink** — URLs become links on space or Enter. Set `autolink="false"` to disable.
+- **Formats** — class names from the host’s content CSS, applied to the current block.
+- **Translations** — `lang` plus `registerTranslations('fr', { Bold: 'Gras' })`.
+- **Non-editable regions** — `contenteditable="false"` in stored HTML is honoured while editing and still round-trips.
+
+First-party wrappers keep the same element underneath:
+
+```ts
+import { OpenLeafEditor } from '@openleaf-editor/react'
+import { OpenLeafEditor as VueOpenLeaf } from '@openleaf-editor/vue'
+import { OpenLeafComponent } from '@openleaf-editor/angular'
+```
+
 ## Optional plugins
 
 Plugins remain separate so applications only ship the features they use. Keep
@@ -150,8 +190,11 @@ toolbar. Add the plugin controls to the `toolbar` attribute where you want them.
 | [`@openleaf-editor/element`](packages/element) | Drop-in `<openleaf-editor>` custom element |
 | [`@openleaf-editor/core`](packages/core) | Schema, commands, HTML I/O, and content preservation |
 | [`@openleaf-editor/paste`](packages/paste) | Word and Google Docs paste normalization |
-| [`@openleaf-editor/ui`](packages/ui) | Toolbar, dialogs, icons, skins, and theme tokens |
+| [`@openleaf-editor/ui`](packages/ui) | Toolbar, menus, dialogs, icons, skins, and theme tokens |
 | [`@openleaf-editor/sanitize`](packages/sanitize) | Canonical allowlist and sanitizer adapters |
+| [`@openleaf-editor/react`](packages/react) | React wrapper around the custom element |
+| [`@openleaf-editor/vue`](packages/vue) | Vue 3 wrapper around the custom element |
+| [`@openleaf-editor/angular`](packages/angular) | Angular wrapper around the custom element |
 | [`@openleaf-editor/plugins-table`](packages/plugins-table) | Table editing controls and behavior |
 | [`@openleaf-editor/plugins-colour`](packages/plugins-colour) | Text and highlight color pickers |
 | [`@openleaf-editor/plugins-highlight`](packages/plugins-highlight) | Code highlighting and formatted source view |
