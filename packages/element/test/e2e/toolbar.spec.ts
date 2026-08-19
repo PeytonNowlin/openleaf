@@ -284,6 +284,40 @@ test.describe('source view', () => {
     await expect(button(page, 'HTML source')).toHaveAttribute('aria-pressed', 'false')
     await expect.poll(() => page.locator('#body').inputValue()).toBe('<p>Replaced by hand.</p>')
   })
+
+  test('keeps source pressed when a plugin registers a toolbar item', async ({ page }) => {
+    await button(page, 'HTML source').click()
+    await expect(button(page, 'HTML source')).toHaveAttribute('aria-pressed', 'true')
+
+    await page.evaluate(() => {
+      const ui = (
+        globalThis as unknown as {
+          OpenLeaf: {
+            __runtime: Record<
+              string,
+              {
+                registerToolbarItem: (spec: {
+                  id: string
+                  type: string
+                  kind: string
+                  label: string
+                }) => void
+              }
+            >
+          }
+        }
+      ).OpenLeaf.__runtime['@openleaf/ui']
+      ui!.registerToolbarItem({
+        id: 'unrelatedExtra',
+        type: 'button',
+        kind: 'action',
+        label: 'Unrelated extra',
+      })
+    })
+
+    await expect(button(page, 'HTML source')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toBeVisible()
+  })
 })
 
 test.describe('integrator configuration', () => {

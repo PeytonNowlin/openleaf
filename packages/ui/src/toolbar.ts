@@ -137,11 +137,7 @@ export class Toolbar {
     // code-split chunks, and a button that silently never appears is worse than
     // a re-render.
     this.#unsubscribe = onRegistryChange(() => {
-      this.#render()
-      // A fresh render leaves every control's state uncomputed, so a control
-      // that should be disabled is briefly clickable. Recompute at once when
-      // there is a view to compute from.
-      if (this.#view) this.update(this.#view.state)
+      this.#rerenderPreservingState()
     })
   }
 
@@ -213,6 +209,47 @@ export class Toolbar {
     if (group.childElementCount > 0) this.el.appendChild(group)
 
     this.#refreshFocusables()
+  }
+
+  /**
+   * Rebuild after a registry change without dropping host-pushed state.
+   *
+   * Source view's pressed state lives on the control via `setItemState`, not in
+   * the document. Replacing every button would flash it off, and would yank
+   * focus out of a control the author was on.
+   */
+  #rerenderPreservingState(): void {
+    const forced = new Map<string, { active?: boolean; enabled?: boolean }>()
+    for (const [id, control] of this.#controls) {
+      const next: { active?: boolean; enabled?: boolean } = {}
+      if (control.forcedActive !== undefined) next.active = control.forcedActive
+      if (control.forcedEnabled !== undefined) next.enabled = control.forcedEnabled
+      if (next.active !== undefined || next.enabled !== undefined) forced.set(id, next)
+    }
+
+    const active = this.#doc.activeElement
+    const focusedId =
+      active instanceof HTMLElement && this.el.contains(active)
+        ? (active.dataset['olId'] ?? null)
+        : null
+
+    this.#render()
+    for (const [id, state] of forced) this.setItemState(id, state)
+    if (this.#view) this.update(this.#view.state)
+
+    if (!focusedId) return
+    if (focusedId === BLOCK_TYPE_ID) {
+      this.#select?.focus()
+      return
+    }
+    const control = this.#controls.get(focusedId)
+    if (!control) return
+    const index = this.#focusables.indexOf(control.el)
+    if (index >= 0) {
+      this.#rovingIndex = index
+      this.#applyRoving()
+    }
+    control.el.focus()
   }
 
   #newGroup(): HTMLDivElement {
