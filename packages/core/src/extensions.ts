@@ -147,6 +147,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Residue a spec has already encoded into a modelled attribute, and so must not
+ * carry a second copy of.
+ *
+ * `code_block` reads `language-js` from either `<pre>` or `<code>` and re-emits
+ * it on `<code>` -- read both, write one. Carrying the `<pre>`'s class verbatim
+ * writes it twice, so the language token is dropped from the residue while any
+ * other class the author put there is kept. Keyed by node name because the
+ * overlap is a property of the spec, not of the attribute.
+ */
+const CARRY_SCRUB: Record<string, (carried: Record<string, string>) => void> = {
+  code_block(carried) {
+    const cls = carried['class']
+    if (cls === undefined) return
+    const kept = cls.split(/\s+/).filter((c) => c && !/^(?:language|lang)-/i.test(c))
+    if (kept.length > 0) carried['class'] = kept.join(' ')
+    else delete carried['class']
+  },
+}
+
+/**
  * Wrap a node spec so attributes it does not model survive the round trip.
  *
  * Applied to extension nodes unconditionally: they only ever claim markup the
@@ -176,6 +196,7 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
           if (URL_ATTRIBUTES.has(attr.name.toLowerCase()) && !isSafeUrl(attr.value)) continue
           carried[attr.name] = attr.value
         }
+        CARRY_SCRUB[name]?.(carried)
         return {
           ...(base as Record<string, unknown>),
           [CARRIED_ATTR]: Object.keys(carried).length > 0 ? carried : null,
@@ -202,7 +223,6 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
       }
     : originalToDOM
 
-  void name
   return { ...spec, attrs, parseDOM, ...(toDOM ? { toDOM } : {}) }
 }
 
