@@ -31,7 +31,8 @@ npm install @openleaf-editor/plugins-table@beta \
             @openleaf-editor/plugins-colour@beta \
             @openleaf-editor/plugins-highlight@beta \
             @openleaf-editor/plugins-import@beta \
-            @openleaf-editor/plugins-import-docx@beta
+            @openleaf-editor/plugins-import-docx@beta \
+            @openleaf-editor/plugins-session@beta
 ```
 
 ```ts
@@ -40,12 +41,14 @@ import { installColourPicker } from '@openleaf-editor/plugins-colour'
 import { installSyntaxHighlighting } from '@openleaf-editor/plugins-highlight'
 import { installImport } from '@openleaf-editor/plugins-import'
 import { installDocxImport } from '@openleaf-editor/plugins-import-docx'
+import { installSessionTools } from '@openleaf-editor/plugins-session'
 
 installTableEditing()
 installColourPicker()
 installSyntaxHighlighting()
 installImport()
 installDocxImport()
+installSessionTools()
 ```
 
 **Keep every `@openleaf-editor/*` package on the same version.** They pin each

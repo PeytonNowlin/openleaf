@@ -172,7 +172,7 @@
 <div id="editor-wrap">
   <label for="body" class="visually-hidden">Post body</label>
   <openleaf-editor for="body" aria-label="Post body"
-    toolbar="undo redo | blockType | bold italic underline strikethrough code | textColour highlightColour | alignLeft alignCenter alignRight alignJustify | bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | insertTable addRowAfter deleteRow addColumnAfter deleteColumn toggleHeaderRow deleteTable | importFile source"></openleaf-editor>
+    toolbar="undo redo | blockType | bold italic underline strikethrough code | textColour highlightColour | alignLeft alignCenter alignRight alignJustify | bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | insertTable addRowAfter deleteRow addColumnAfter deleteColumn toggleHeaderRow deleteTable | importFile | find wordCount save preview print newDocument | source"></openleaf-editor>
   <textarea id="body" name="body" hidden>
     <h2>Try editing this</h2>
     <p>Ordinary HTML in, ordinary HTML out — <strong>bold</strong>, <em>italic</em>,
@@ -530,6 +530,32 @@ const ratio = width / height   // division, not a regex
   with the keyboard says <em>“Bold on”</em>, because otherwise nothing observes it.
 </p>
 
+<h2 id="session">Finding, counting, and recovery</h2>
+<p class="lede">
+  The authoring tools a CMS form already expects, as a separate bundle so a
+  comment box does not download them.
+</p>
+
+<p>
+  Find and replace, a word count, autosave to this browser with restore on
+  return, a warning before leaving with unsaved changes, Save as a toolbar
+  action (it submits the form, or calls a callback you register), print, a
+  read-only preview, and new document. Load the bundle and name the controls:
+</p>
+
+<pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
+&lt;script src="/js/openleaf-session.min.js"&gt;&lt;/script&gt;
+
+&lt;openleaf-editor toolbar="bold italic | find wordCount save preview print newDocument | source"&gt;&lt;/openleaf-editor&gt;</pre>
+
+<p>
+  Autosave, restore, the leave warning, and the word-count status attach to
+  every editor once the bundle is present — they are not toolbar items. Save
+  submits the bound form by default; <code>OpenLeaf.registerSaveHandler(fn)</code>
+  is the callback path, and a cancelable <code>openleaf:save</code> event is
+  the hook for anything else.
+</p>
+
 <h2 id="restricted">A smaller toolbar</h2>
 <p class="lede">
   Plugins declare capability. Integrators declare layout. Installing a plugin never
@@ -585,6 +611,7 @@ const ratio = width / height   // division, not a regex
 <script src="./openleaf-highlight.min.js"></script>
 <script src="./openleaf-import.min.js"></script>
 <script src="./openleaf-import-docx.min.js"></script>
+<script src="./openleaf-session.min.js"></script>
 <script>
 (function () {
   'use strict'
