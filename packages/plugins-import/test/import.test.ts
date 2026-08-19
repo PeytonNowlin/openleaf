@@ -14,6 +14,11 @@ import {
   textToHtml,
 } from '../src/converters.js'
 import { importFileIntoView } from '../src/import.js'
+import {
+  acceptedExtensions,
+  addAcceptedExtensions,
+  removeAcceptedExtensions,
+} from '../src/index.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const fixture = (name: string): Buffer => readFileSync(join(HERE, 'fixtures', name))
@@ -192,6 +197,36 @@ describe('the converter seam, driven by mammoth against a real .docx', () => {
     } finally {
       dispose()
     }
+  })
+})
+
+describe('the picker accept list', () => {
+  const extra = '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+  afterEach(() => {
+    removeAcceptedExtensions(extra)
+    removeAcceptedExtensions('.docx')
+  })
+
+  it('grows when a converter registers a format, and shrinks when it is removed', () => {
+    const before = acceptedExtensions()
+    expect(before).not.toContain('.docx')
+
+    addAcceptedExtensions(extra)
+    expect(acceptedExtensions()).toContain('.docx')
+    expect(acceptedExtensions()).toContain(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    )
+
+    removeAcceptedExtensions(extra)
+    expect(acceptedExtensions()).toBe(before)
+  })
+
+  it('does not duplicate an extension added twice', () => {
+    addAcceptedExtensions('.docx')
+    const once = acceptedExtensions()
+    addAcceptedExtensions('.docx')
+    expect(acceptedExtensions()).toBe(once)
   })
 })
 

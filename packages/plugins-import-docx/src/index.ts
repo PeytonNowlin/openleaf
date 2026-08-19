@@ -35,7 +35,7 @@
  */
 
 import mammoth from 'mammoth/mammoth.browser.js'
-import { addAcceptedExtensions, registerFileConverter } from '@openleaf/plugins-import'
+import { addAcceptedExtensions, registerFileConverter, removeAcceptedExtensions } from '@openleaf/plugins-import'
 
 export interface DocxOptions {
   /**
@@ -69,14 +69,17 @@ const DEFAULT_STYLE_MAP = [
 
 let installed = false
 
-/** Register the `.docx` converter. Idempotent. */
+const DOCX_ACCEPT =
+  '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+/** Register the `.docx` converter. Idempotent while installed; the disposer fully uninstalls. */
 export function installDocxImport(options: DocxOptions = {}): () => void {
   if (installed) return () => undefined
   installed = true
 
-  addAcceptedExtensions('.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+  addAcceptedExtensions(DOCX_ACCEPT)
 
-  return registerFileConverter(async (file) => {
+  const unregister = registerFileConverter(async (file) => {
     if (!/\.docx$/i.test(file.name)) return null
 
     let droppedImages = 0
@@ -113,6 +116,12 @@ export function installDocxImport(options: DocxOptions = {}): () => void {
 
     return { html: value, warnings }
   })
+
+  return () => {
+    unregister()
+    removeAcceptedExtensions(DOCX_ACCEPT)
+    installed = false
+  }
 }
 
 export { mammoth }

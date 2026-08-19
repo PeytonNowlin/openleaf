@@ -36,9 +36,31 @@ const ICONS = {
 /** Extensions offered in the picker; grows as converters register. */
 let accept = BUILT_IN_ACCEPT
 
+function tokens(list: string): string[] {
+  return list
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+}
+
 /** Widen the file picker for a format a converter handles. */
 export function addAcceptedExtensions(extensions: string): void {
-  accept = `${accept},${extensions}`
+  const next = new Set(tokens(accept))
+  for (const part of tokens(extensions)) next.add(part)
+  accept = [...next].join(',')
+}
+
+/** Undo a previous `addAcceptedExtensions` call. */
+export function removeAcceptedExtensions(extensions: string): void {
+  const drop = new Set(tokens(extensions))
+  accept = tokens(accept)
+    .filter((part) => !drop.has(part))
+    .join(',')
+}
+
+/** Current picker accept list. Testing seam. */
+export function acceptedExtensions(): string {
+  return accept
 }
 
 async function pickAndImport(view: import('prosemirror-view').EditorView, host: HTMLElement): Promise<void> {
