@@ -1,10 +1,19 @@
 {
   "name": "@openleaf-editor/paste",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "Paste normalizers for OpenLeaf: turns Word, Google Docs and Excel debris into clean semantic HTML.",
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeytonNowlin/openleaf.git",
+    "directory": "packages/paste"
+  },
+  "homepage": "https://peytonnowlin.github.io/openleaf/",
+  "bugs": {
+    "url": "https://github.com/PeytonNowlin/openleaf/issues"
   },
   "type": "module",
   "main": "./dist/index.js",

@@ -1,18 +1,36 @@
 {
   "name": "@openleaf-editor/plugins-import",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "Opt-in file import for OpenLeaf: HTML and plain text with no dependency, plus a seam for .docx and other formats.",
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeytonNowlin/openleaf.git",
+    "directory": "packages/plugins-import"
+  },
+  "homepage": "https://peytonnowlin.github.io/openleaf/",
+  "bugs": {
+    "url": "https://github.com/PeytonNowlin/openleaf/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
-  "scripts": { "build": "tsc -p tsconfig.json" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
   "dependencies": {
     "@openleaf-editor/core": "workspace:*",
     "@openleaf-editor/paste": "workspace:*",

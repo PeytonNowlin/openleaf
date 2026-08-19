@@ -782,6 +782,16 @@ No build step. A script tag and an element.
 <script src="/js/openleaf.min.js"></script>
 ```
 
+From npm, for a bundler. This is a **beta** — install with the tag:
+
+```bash
+npm install @openleaf-editor/element@beta
+```
+
+```ts
+import '@openleaf-editor/element'
+```
+
 The element keeps the textarea in sync and writes to it before submit, so
 server code that already reads `$_POST['body']` keeps working untouched.
 

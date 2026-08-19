@@ -17,7 +17,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b",
     "verify": "node scripts/verify.mjs",
-    "verify:quick": "node scripts/verify.mjs --quick"
+    "verify:quick": "node scripts/verify.mjs --quick",
+    "publish:beta": "pnpm -r --filter \"./packages/**\" publish --access public --tag beta"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
