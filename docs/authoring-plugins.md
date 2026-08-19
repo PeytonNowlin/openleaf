@@ -24,7 +24,8 @@ below.
 | Reach the live view | `element.view` | Works |
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
 | **Add a node or mark type** | — | **Not available out of tree.** Commands and HTML I/O are schema-agnostic already; schema assembly is not |
-| Add a dropdown, colour grid or popover control | — | Not implemented; `type: 'select' \| 'custom'` renders as a button |
+| Add a colour grid or popover control | `registerToolbarItem` with `type: 'custom'` and a `render` function | Works — see [4.9](#49-custom-controls-own-their-own-dom-and-their-own-cleanup) |
+| Add a dropdown | — | `type: 'select'` is not implemented and renders as a button; the block-type control is special-cased by id |
 | Add CSS for your node | — | No extension point; see [4.7](#47-there-is-no-css-extension-point) |
 
 ### Where schema extensibility actually stands
@@ -761,13 +762,16 @@ For nodes, there is less machinery and more judgement:
 ### 4.5 The bundle budget
 
 ```
-openleaf.min.js            265.9 KB min     83.9 KB gzip
-openleaf-tables.min.js      37.8 KB min     12.5 KB gzip
+openleaf.min.js            289.3 KB min     91.7 KB gzip
+openleaf-tables.min.js      38.6 KB min     12.8 KB gzip
+openleaf-colour.min.js        9.7 KB min      3.7 KB gzip
 ```
 
-The gate in `scripts/verify.mjs` fails above **90 KB gzipped for the core
-bundle**, so there is about 6 KB of headroom, and it is shared with alignment,
-colours and find-and-replace. Assume you have none.
+The gate in `scripts/bundle-budgets.mjs` fails above **92 KB gzipped for the core
+bundle**, so there is about 0.3 KB of headroom. Assume you have none — and read
+the raise from 90 to 92 as the cautionary tale it is: alignment, colour and image
+upload cost 3.1 KB between them, the colour picker had to move out to its own
+bundle, and the budget still went up.
 
 - **Icons go through `registerIcons`, from your own bundle.** Eleven table icons
   are about a kilobyte, and `icons.ts` keeps `PATHS` mutable specifically so a
@@ -780,8 +784,10 @@ colours and find-and-replace. Assume you have none.
 - **`node demo/build.mjs --sizes` attributes bytes per package.** Use it before
   and after. An aggregate gate tells you the bundle no longer fits but not which
   feature spent the budget, so the blame lands on whatever shipped last.
-- **Only the core bundle is gated.** Plugin bundles are reported but not
-  budgeted. Treat that as an absence of a check rather than as permission.
+- **Every bundle is gated**, not just core. `BUDGETS_KB` in
+  `scripts/bundle-budgets.mjs` carries one number per file, because an opt-in
+  bundle that grows without limit defeats the point of making it opt-in. Add
+  yours there when you add the build step.
 
 ### 4.6 Keyboard bindings cannot shadow core bindings
 
@@ -811,23 +817,31 @@ failure — "for the institutional users who most need a free editor, that is a
 procurement blocker rather than a rough edge". Core uses `Mod-[` and `Mod-]` for
 indentation instead.
 
-### 4.7 There is no CSS extension point
+### 4.7 CSS goes through `registerStyles`, from your own bundle
 
 `packages/ui/src/styles.ts` exports `CSS` as a single template literal and
-`ensureStyles(doc)` adopts it once per document via `adoptedStyleSheets`. There
-is no `registerStyles`. And there is deliberately no `<style>` injection
-fallback, because it is blocked by exactly the strict-CSP configurations that
-would need it and it fails silently.
+`ensureStyles(doc)` adopts it once per document via `adoptedStyleSheets`.
+`registerStyles(css, doc?)` is the same path for a plugin's own rules, and it is
+what `@openleaf-editor/plugins-colour` uses for the picker's popover and swatch
+grid. There is deliberately no `<style>` injection fallback, because it is blocked
+by exactly the strict-CSP configurations that would need it and it fails silently;
+`registerStyles` returns `'adopted' | 'unavailable' | 'already'` so you can tell
+which happened.
 
-So today, a plugin that needs CSS has two options, and the second is not good:
+Put your rules in your own bundle, not in core's `CSS`. Table styles are in core
+for a reason that is specific to them and stated in the comment there — "these
+styles live in core, not in the opt-in table plugin, because table NODES live in
+core" — and it does not generalise: anything else spends the core bundle budget on
+behalf of deployments that never load your plugin.
 
-1. **Put the rules in core's `CSS`.** That is what tables did, and the comment
-   there gives the honest reason: "These styles live in core, not in the opt-in
-   table plugin, because table NODES live in core." It spends the core bundle
-   budget on behalf of deployments that may not load your plugin.
-2. **Ship a separate stylesheet the integrator links.** Workable, but it breaks
-   the no-build-step promise for script-tag integrations and gives you no
-   CSP-safe injection path.
+Two things to get right in the CSS itself, both of which the colour picker has to:
+
+- **Namespace under `.ol-`, and theme through the tokens with fallbacks.** A host
+  that themes the editor themes your control with it; one that does not still gets
+  something legible.
+- **Handle `forced-colors: active`.** It paints over `background-color`, so a
+  control whose only signal is a colour conveys nothing there. The swatches survive
+  it because every one of them also has a name.
 
 If your node can render acceptably with the host site's own typography, prefer
 adding nothing. The content area has no Shadow DOM precisely so that host styles
@@ -850,6 +864,46 @@ for (const el of document.querySelectorAll('openleaf-editor')) {
 Prefer `isActive` / `isEnabled` wherever the answer is derivable from the
 document and the selection. Reach for `setItemState` only when it genuinely is
 not, which is the case the escape hatch was added for.
+
+### 4.9 Custom controls own their own DOM, and their own cleanup
+
+`type: 'custom'` with a `render(ctx)` function is how a control that is not a
+button gets built. `@openleaf-editor/plugins-colour` is the worked example.
+
+```ts
+registerToolbarItem({
+  id: 'textColour',
+  type: 'custom',
+  label: 'Text colour',
+  render: ({ view, host }) => ({
+    el,                        // goes in the toolbar
+    update: (state) => { … },  // every transaction, guarded like a predicate
+    destroy: () => { … },      // remove anything you put in the document
+  }),
+})
+```
+
+Four constraints, each of which cost something to learn:
+
+- **Exactly one focusable `button.ol-btn` in the element you return.** That is
+  what the toolbar's roving tabindex walks. Two makes the bar two tab stops where
+  the author expects one; none makes your control unreachable by keyboard.
+- **Anything else lives outside the toolbar element.** The picker appends its grid
+  to the host and uses `popover="manual"` for the top layer. Left inside the
+  toolbar, its thirty-two swatch buttons would be found by that same query, and one
+  tab stop becomes thirty-three.
+- **`preventDefault` on `mousedown` for every control that runs a command.** Without
+  it the editor blurs, the selection collapses, and the command applies to nothing.
+  This is engine-dependent, which is what makes it dangerous: the colour picker
+  worked in Chromium with this missing and silently did nothing in WebKit.
+- **`destroy` is called before every re-render, not only on teardown.** A registry
+  change re-renders the toolbar, and a popover you attached to the document
+  survives `replaceChildren` — so without cleanup a late-loading plugin leaves an
+  orphaned popover on the page with no trigger attached to it.
+
+`render` and `update` are both guarded: a throw costs your control and is logged
+once, and the rest of the toolbar keeps working. Do not rely on that — it is there
+so a bug in a colour picker cannot take Undo and Save down with it.
 
 ---
 

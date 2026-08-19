@@ -27,9 +27,11 @@
  * under the attacker's control.
  */
 
+import { filterStyle } from './css.js'
 import {
   DEFAULT_POLICY,
   allowedAttributes,
+  allowedStyleProperties,
   isAllowedElement,
   type Policy,
 } from './policy.js'
@@ -112,6 +114,16 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
 
       if (!permitted.has(name)) {
         node.removeAttribute(attr.name)
+        continue
+      }
+      if (name === 'style') {
+        // Allowing `style` is allowing a list of declarations, never the
+        // attribute wholesale. A paragraph may carry `text-align`; the same
+        // attribute carrying `position:fixed` is a page-covering overlay that
+        // looks like your own UI, so what is not on the list goes.
+        const kept = filterStyle(attr.value, allowedStyleProperties(policy, tag))
+        if (kept === null) node.removeAttribute(attr.name)
+        else if (kept !== attr.value) node.setAttribute(attr.name, kept)
         continue
       }
       if (policy.urlAttributes.includes(name) && !isUrlAllowed(attr.value, policy)) {

@@ -12,7 +12,7 @@
  *                      is *gras* in French, *fett* in German; a "B" icon is a
  *                      translation bug wearing a costume.
  *
- * All 16 icons are a 24x24 viewBox with `stroke="currentColor"`, so they inherit
+ * All 20 icons are a 24x24 viewBox with `stroke="currentColor"`, so they inherit
  * text colour for free and need no separate dark-mode set. Roughly 2 KB raw,
  * under 1 KB gzipped.
  *
@@ -44,6 +44,10 @@ const PATHS: Record<string, string> = {
   unlink: 'M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71M5.17 11.75l-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71M2 2l20 20',
   image: 'M3 3h18v18H3zM8.5 9.5a1.5 1.5 0 1 0 .01 0M21 15l-5-5L5 21',
   horizontalRule: 'M4 12h16',
+  alignLeft: 'M3 6h18M3 12h10M3 18h14',
+  alignCenter: 'M3 6h18M7 12h10M5 18h14',
+  alignRight: 'M3 6h18M11 12h10M7 18h14',
+  alignJustify: 'M3 6h18M3 12h18M3 18h18',
   undo: 'M3 7v6h6M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13',
   redo: 'M21 7v6h-6M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13',
   source: 'M18 16l4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16',
@@ -73,6 +77,15 @@ const DIRECTIONAL: ReadonlySet<string> = new Set([
   'bulletList',
   'orderedList',
 ])
+
+/*
+ * The alignment icons are deliberately absent from that set, and it is the
+ * counter-intuitive case. They look like the mirroring candidates -- a glyph of
+ * short lines ragged on the left -- but `text-align: left` means the left edge in
+ * an RTL document too. Mirroring them would show a right-ragged icon on the
+ * button that aligns text left, which is not localisation, it is a lie about
+ * what the control does.
+ */
 
 export function iconNames(): IconName[] {
   return Object.keys(PATHS)

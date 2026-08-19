@@ -1,4 +1,15 @@
 export { baseSchema, coreMarks, coreNodes } from './schema.js'
+export {
+  ALIGNMENTS,
+  COLOUR_PROPERTIES,
+  MODELLED_PROPERTIES,
+  isFullyModelledStyle,
+  parseDeclarations,
+  safeAlign,
+  safeColor,
+  serializeDeclarations,
+  type Align,
+} from './css.js'
 export { parseHtml, serializeHtml, roundTrip, type HtmlIOOptions } from './html.js'
 export { isLosslesslyUnwrappable, unknownBlock, unknownInline } from './preserve.js'
 export {
@@ -9,8 +20,11 @@ export {
 } from './url.js'
 export {
   // predicates
+  activeBackgroundColor,
   activeHeadingLevel,
   activeLink,
+  activeTextAlign,
+  activeTextColor,
   canInsert,
   canRedo,
   canUndo,
@@ -22,13 +36,20 @@ export {
   toggleItalic,
   toggleStrike,
   toggleUnderline,
+  // colour
+  clearBackgroundColor,
+  clearTextColor,
+  setBackgroundColor,
+  setTextColor,
   // blocks
   insertHorizontalRule,
   setHeading,
   setParagraph,
+  setTextAlign,
   toggleBlockquote,
   toggleCodeBlock,
   toggleHeading,
+  toggleTextAlign,
   wrapInBlockquote,
   // lists
   indentListItem,

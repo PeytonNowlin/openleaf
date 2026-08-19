@@ -1,7 +1,7 @@
 {
-  "name": "@openleaf-editor/plugins-highlight",
+  "name": "@openleaf-editor/plugins-colour",
   "version": "0.1.0-beta.1",
-  "description": "Opt-in syntax highlighting and HTML formatting for OpenLeaf: coloured code blocks and a formatted, highlighted source view. Ships a small built-in tokenizer for HTML/CSS/JS and a seam for Prism, refractor or highlight.js.",
+  "description": "Opt-in colour controls for OpenLeaf: a keyboard-navigable swatch picker for text and highlight colour. The colour marks themselves live in @openleaf-editor/core so every deployment reads coloured content faithfully.",
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
@@ -9,7 +9,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/PeytonNowlin/openleaf.git",
-    "directory": "packages/plugins-highlight"
+    "directory": "packages/plugins-colour"
   },
   "homepage": "https://peytonnowlin.github.io/openleaf/",
   "bugs": {
@@ -22,23 +22,19 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./openleaf-colour.css": "./dist/openleaf-colour.css"
   },
   "files": [
     "dist"
   ],
-  "sideEffects": false,
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json && node scripts/emit-css.mjs"
   },
   "dependencies": {
     "@openleaf-editor/core": "workspace:*",
     "@openleaf-editor/ui": "workspace:*",
-    "prosemirror-model": "^1.24.1",
     "prosemirror-state": "^1.4.3",
     "prosemirror-view": "^1.37.0"
-  },
-  "devDependencies": {
-    "refractor": "^5.0.0"
   }
 }

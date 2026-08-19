@@ -29,6 +29,7 @@ import {
   insertHorizontalRule,
   outdentListItem,
   setParagraph,
+  toggleTextAlign,
   splitListItemCommand,
   toggleBlockquote,
   toggleBold,
@@ -77,6 +78,16 @@ export const shortcuts: Shortcut[] = [
   { keys: 'Mod-Shift-.', command: toggleBlockquote, label: 'Blockquote' },
   { keys: 'Mod-Alt-c', command: toggleCodeBlock, label: 'Code block' },
   { keys: 'Mod-Shift-Enter', command: insertHorizontalRule, label: 'Horizontal rule' },
+
+  // Alignment. Mod-Shift-L/E/R/J is Word and Google Docs, unchanged since the
+  // nineties, and it is one of the few shortcut families authors actually have
+  // in their fingers. There is deliberately no binding for "clear alignment":
+  // pressing the one already in force does that, which is what the same keys do
+  // in both of those editors.
+  { keys: 'Mod-Shift-l', command: toggleTextAlign('left'), label: 'Align left' },
+  { keys: 'Mod-Shift-e', command: toggleTextAlign('center'), label: 'Align centre' },
+  { keys: 'Mod-Shift-r', command: toggleTextAlign('right'), label: 'Align right' },
+  { keys: 'Mod-Shift-j', command: toggleTextAlign('justify'), label: 'Justify' },
 
   // Lists. Mod-Shift-7/8 matches Word and Google Docs.
   { keys: 'Mod-Shift-7', command: toggleOrderedList, label: 'Numbered list' },

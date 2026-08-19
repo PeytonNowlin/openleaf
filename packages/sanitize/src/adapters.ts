@@ -10,7 +10,8 @@
  * One policy, three configurations, generated rather than transcribed.
  */
 
-import type { Policy } from './policy.js'
+import { allStyleProperties, filterStyle } from './css.js'
+import { allowedStyleProperties, type Policy } from './policy.js'
 
 /* ------------------------------------------------------------------ *
  * DOMPurify (JavaScript, browser and Node)
@@ -43,6 +44,25 @@ export interface DOMPurifyConfig {
  * a widening, not a hole -- no dangerous attribute is introduced -- but if
  * per-element precision matters to you, use DOMPurify's `uponSanitizeAttribute`
  * hook with `allowedAttributes()` from this package.
+ *
+ * ## `style` is the one where the imprecision matters -- install the hook
+ *
+ * `style` has to be allowed, because the editor writes `text-align` and colour
+ * into it and a config that strips it deletes the alignment from every document
+ * it touches. But a GLOBAL `style` allowance is not the same kind of widening as
+ * a stray `start`: DOMPurify performs no CSS property filtering of its own, so
+ * without the hook below, stored content may carry
+ * `style="position:fixed;inset:0"` -- an overlay covering the page with something
+ * that looks like your UI.
+ *
+ * ```js
+ * const purify = DOMPurify(window)
+ * purify.addHook('uponSanitizeAttribute', styleAttributeHook(DEFAULT_POLICY))
+ * const clean = purify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY))
+ * ```
+ *
+ * `styleValidationNote(policy)` returns that instruction as a string, for a
+ * generator that emits setup code rather than calling this itself.
  */
 export function toDOMPurifyConfig(policy: Policy): DOMPurifyConfig {
   const attributes = new Set(policy.globalAttributes)
@@ -64,12 +84,64 @@ export function toDOMPurifyConfig(policy: Policy): DOMPurifyConfig {
     FORBID_CONTENTS: [...policy.dropWithContent],
     // `on*` handlers are removed by DOMPurify unconditionally; naming them here
     // documents the intent and survives a future config change.
-    FORBID_ATTR: ['style', 'srcdoc', 'formaction', 'ping'],
+    // `style` is NOT forbidden here, unlike every other version of this list you
+    // will have seen. It is what carries alignment and colour, and the property
+    // filtering is delegated to styleAttributeHook -- which you must install.
+    FORBID_ATTR: ['srcdoc', 'formaction', 'ping'],
     // `data-` attributes are not blanket-allowed: `data-` is where component
     // frameworks put behaviour, and pasted content should not get to address it.
     ALLOW_DATA_ATTR: false,
     KEEP_CONTENT: true,
   }
+}
+
+/** What DOMPurify hands an `uponSanitizeAttribute` hook. */
+export interface DOMPurifyAttributeEvent {
+  attrName: string
+  attrValue: string
+  keepAttr: boolean
+  forceKeepAttr?: boolean | undefined
+}
+
+/**
+ * A DOMPurify hook that filters `style` per element, the way the policy says.
+ *
+ * Restores the precision `ALLOWED_ATTR` cannot express: the element decides which
+ * declarations may appear, and every value is checked. Attributes other than
+ * `style` are left exactly as DOMPurify found them, so installing this cannot
+ * widen anything else.
+ *
+ * `forceKeepAttr` is set on a surviving `style`, which is what lets the hook
+ * decide the outcome even for an attribute a config forbids -- so a policy that
+ * allows no style properties at all keeps working, and this hook is safe to
+ * install on any config.
+ */
+export function styleAttributeHook(
+  policy: Policy,
+): (node: Element, data: DOMPurifyAttributeEvent) => void {
+  return (node, data) => {
+    if (data.attrName !== 'style') return
+    const kept = filterStyle(data.attrValue, allowedStyleProperties(policy, node.nodeName))
+    if (kept === null) {
+      data.keepAttr = false
+      data.forceKeepAttr = false
+      return
+    }
+    data.attrValue = kept
+    data.keepAttr = true
+    data.forceKeepAttr = true
+  }
+}
+
+/** The one-line reminder, for a generator emitting setup code. */
+export function styleValidationNote(policy: Policy): string {
+  const properties = allStyleProperties(policy.elements)
+  if (properties.length === 0) return 'This policy permits no style declarations.'
+  return (
+    `This policy permits ${properties.join(', ')} inside a style attribute. ` +
+    'Install styleAttributeHook() as an uponSanitizeAttribute hook, or DOMPurify ' +
+    'will allow any declaration at all on any element it keeps.'
+  )
 }
 
 /* ------------------------------------------------------------------ *
@@ -85,12 +157,22 @@ export function toDOMPurifyConfig(policy: Policy): DOMPurifyConfig {
  *
  * ```python
  * import bleach
- * from openleaf_policy import ALLOWED_TAGS, ALLOWED_ATTRIBUTES, ALLOWED_PROTOCOLS
+ * from bleach.css_sanitizer import CSSSanitizer
+ * from openleaf_policy import (ALLOWED_TAGS, ALLOWED_ATTRIBUTES,
+ *                              ALLOWED_PROTOCOLS, ALLOWED_CSS_PROPERTIES)
  *
  * clean = bleach.clean(dirty, tags=ALLOWED_TAGS,
  *                      attributes=ALLOWED_ATTRIBUTES,
- *                      protocols=ALLOWED_PROTOCOLS, strip=True)
+ *                      protocols=ALLOWED_PROTOCOLS,
+ *                      css_sanitizer=CSSSanitizer(
+ *                          allowed_css_properties=ALLOWED_CSS_PROPERTIES),
+ *                      strip=True)
  * ```
+ *
+ * bleach's CSS sanitizer is property-level, not per element and not value-level:
+ * it will allow `text-align` on a `<span>` and any value tinycss2 parses. That is
+ * a widening in the same direction as DOMPurify's global attributes. It does drop
+ * `url(` and `expression(`, which are the parts that matter.
  */
 export function toBleachConfig(policy: Policy): string {
   const tags = Object.keys(policy.elements)
@@ -118,6 +200,13 @@ export function toBleachConfig(policy: Policy): string {
     '}',
     '',
     `ALLOWED_PROTOCOLS = [${policy.urlSchemes.map((s) => JSON.stringify(s)).join(', ')}]`,
+    '',
+    '# Without css_sanitizer=CSSSanitizer(allowed_css_properties=ALLOWED_CSS_PROPERTIES),',
+    '# bleach strips every style attribute -- which deletes the alignment and colour',
+    '# out of content the editor legitimately produced.',
+    `ALLOWED_CSS_PROPERTIES = [${allStyleProperties(policy.elements)
+      .map((p) => JSON.stringify(p))
+      .join(', ')}]`,
     '',
     `DROP_WITH_CONTENT = [${policy.dropWithContent.map((t) => JSON.stringify(t)).join(', ')}]`,
     '',
@@ -186,6 +275,9 @@ ${policy.urlSchemes.map((s) => `        ${JSON.stringify(s)} => true,`).join('\n
     $config->set('URI.DisableExternalResources', false);${policy.allowRelativeUrls ? '' : `
     // HTMLPurifier has no first-class relative-URL switch. A custom URI filter
     // that rejects scheme-less values must be registered by the integrator.`}
+    $config->set('CSS.AllowedProperties', [
+${allStyleProperties(policy.elements).map((p) => `        ${JSON.stringify(p)} => true,`).join('\n')}
+    ]);
     $config->set('Attr.AllowedFrameTargets', ['_blank', '_self', '_parent', '_top']);
     // HTMLPurifier adds rel="noreferrer" to target=_blank links itself.
     $config->set('HTML.TargetNoreferrer', true);

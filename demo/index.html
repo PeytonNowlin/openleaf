@@ -144,7 +144,7 @@
   </p>
   <p class="badges">
     <span class="badge">Apache-2.0</span>
-    <span class="badge">85 KB gzipped</span>
+    <span class="badge">92 KB gzipped</span>
     <span class="badge">No framework</span>
     <span class="badge">Built on ProseMirror</span>
     <span class="badge"><a href="https://github.com/PeytonNowlin/openleaf">Source on GitHub</a></span>
@@ -172,7 +172,7 @@
 <div id="editor-wrap">
   <label for="body" class="visually-hidden">Post body</label>
   <openleaf-editor for="body" aria-label="Post body"
-    toolbar="undo redo | blockType | bold italic underline strikethrough code | bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | insertTable addRowAfter deleteRow addColumnAfter deleteColumn toggleHeaderRow deleteTable | importFile source"></openleaf-editor>
+    toolbar="undo redo | blockType | bold italic underline strikethrough code | textColour highlightColour | alignLeft alignCenter alignRight alignJustify | bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | insertTable addRowAfter deleteRow addColumnAfter deleteColumn toggleHeaderRow deleteTable | importFile source"></openleaf-editor>
   <textarea id="body" name="body" hidden>
     <h2>Try editing this</h2>
     <p>Ordinary HTML in, ordinary HTML out — <strong>bold</strong>, <em>italic</em>,
@@ -195,6 +195,13 @@
 const greet = (name) =&gt; `hello ${name}`
 const ratio = width / height   // division, not a regex
 </code></pre>
+    <p style="text-align: center;">This paragraph arrived centred, spelled the way
+    TinyMCE spells it. Save it and check the output below: the declaration comes
+    back unchanged.</p>
+    <p><span style="color:#cc0000">Red text</span>,
+    <span style="background-color:#fde047">a highlight</span>, and
+    <font color="green">a legacy font tag</font> — all editable, none of them an
+    opaque preserved card.</p>
     <p dir="rtl">ونص من اليمين إلى اليسار، لأن اتجاه النص ليس تنسيقًا.</p>
   </textarea>
 </div>
@@ -297,16 +304,117 @@ const ratio = width / height   // division, not a regex
 </p>
 
 <pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
-&lt;script src="/js/openleaf-tables.min.js"&gt;&lt;/script&gt;   &lt;!-- 12.5 KB, optional --&gt;</pre>
+&lt;script src="/js/openleaf-tables.min.js"&gt;&lt;/script&gt;   &lt;!-- 12.8 KB, optional --&gt;</pre>
 
 <p>
   The table above is live — click into it and use the table controls in the
   toolbar. Drag a column border to resize.
 </p>
 
+<h2 id="format">Alignment, colour and image upload</h2>
+<p class="lede">
+  The formatting authors ask for first, and the one place OpenLeaf writes a
+  <code>style</code> attribute on purpose.
+</p>
+
+<p>
+  <strong>Alignment and the colour marks are in the core bundle.</strong> Not
+  because everyone wants the buttons, but because everyone has the content:
+  <code>&lt;p style="text-align: center"&gt;</code> and
+  <code>&lt;span style="color:#c00"&gt;</code> are what fifteen years of CMS
+  content looks like. Without schema support for them, a coloured span is claimed
+  by the preservation layer and becomes an opaque card — round-tripped perfectly
+  and impossible to type in. It is the same reasoning that keeps the table schema
+  in core while table editing is opt-in.
+</p>
+
+<p>
+  So OpenLeaf reads <code>text-align</code>, the legacy <code>align</code>
+  attribute, <code>color</code>, <code>background-color</code> and
+  <code>&lt;font color&gt;</code>, and writes back the one spelling that is still
+  valid HTML. Two things it deliberately does <em>not</em> do: it does not expand
+  your hex colours into <code>rgb()</code>, and it does not drop the declarations
+  it has no opinion about. A paragraph stored as
+  <code>style="line-height:1.8;text-align:center"</code> keeps its line height.
+</p>
+
+<p>
+  <strong>The colour picker is a 3.7 KB opt-in bundle.</strong> The swatch grid,
+  its keyboard model and its popover are the part with real weight, and the core
+  bundle's budget is a hard number:
+</p>
+
+<pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
+&lt;script src="/js/openleaf-colour.min.js"&gt;&lt;/script&gt;   &lt;!-- 3.7 KB, optional --&gt;</pre>
+
+<p>
+  Every swatch is a real button with the colour's <em>name</em> as its accessible
+  name, so the grid works with a screen reader and in a forced-colours mode where
+  the swatch itself conveys nothing. Arrow keys move within the grid, Escape
+  closes and returns focus to the trigger, and there is a native
+  <code>&lt;input type="color"&gt;</code> for anything the palette does not cover.
+  Installing the bundle does not rearrange your toolbar: name
+  <code>textColor</code> and <code>highlightColor</code> in the
+  <code>toolbar</code> attribute, or use the ready-made
+  <code>LAYOUT_WITH_COLOUR</code>.
+</p>
+
+<h3>Image upload is a hook, not an endpoint</h3>
+
+<p>
+  OpenLeaf has no server, so it cannot upload anything. What it owns is the
+  flow — pick or drop a file, hand it over, get a URL back, ask for alternative
+  text, insert — and the transport belongs to the one part of the stack that knows
+  your media library:
+</p>
+
+<pre>OpenLeaf.registerImageUploader(async (file) =&gt; {
+  const body = new FormData()
+  body.append('file', file)
+  const res = await fetch('/admin/media', { method: 'POST', body })
+  if (!res.ok) throw new Error('The server rejected the upload.')
+  const { url, width, height } = await res.json()
+  return { src: url, width, height }
+})</pre>
+
+<p>
+  Register one and the image dialog grows a file picker, and dropping or pasting
+  an image file into the editor routes through the same hook. Register nothing and
+  the picker is not offered at all — the dialog is insert-by-URL, exactly as
+  before. There is <em>no</em> <code>data:</code> URL fallback: OpenLeaf refuses
+  <code>data:</code> URLs because <code>data:text/html</code> is a full XSS
+  vector, so a fallback that "worked" would produce content the schema drops on
+  the next parse, and the author would watch their image vanish on save.
+</p>
+
+<p>
+  The alternative text is asked for in the <em>same</em> dialog as the file, which
+  is why the upload happens when you press Save rather than when you choose the
+  file. One decision point, and no path through it that inserts an image nobody
+  described. If the upload fails, the dialog stays open with your description
+  still in it.
+</p>
+
+<p class="subtitle">
+  The uploader on this page is a stand-in: there is no server behind a static
+  demo, so it waits half a second and hands back an image that already exists in
+  this repository. Everything else — the picker, the alt-text requirement, the
+  drop handling, the failure message — is the real thing. Try dropping a PNG onto
+  the editor above, and try naming a file <code>broken.png</code> to see a failure.
+</p>
+
+<p class="subtitle">
+  One consequence worth knowing before you turn this on: under a strict
+  Content-Security-Policy without <code>unsafe-inline</code> in
+  <code>style-src</code>, a browser refuses to parse <code>style</code> attributes
+  — so aligned and coloured content will not <em>render</em> on the published page,
+  wherever it came from. The editor itself keeps working, because it falls back to
+  a CSSOM write, which CSP does not gate.
+</p>
+
 <h2 id="highlighting">Syntax highlighting and source formatting</h2>
 <p class="lede">
-  A second opt-in bundle, 5.3 KB. It colours code blocks and it formats the HTML
+  A second opt-in bundle, 6.1 KB. It colours code blocks and it formats the HTML
   source view — which is arguably the bigger win.
 </p>
 
@@ -321,7 +429,7 @@ const ratio = width / height   // division, not a regex
 </p>
 
 <pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
-&lt;script src="/js/openleaf-highlight.min.js"&gt;&lt;/script&gt;   &lt;!-- 5.3 KB, optional --&gt;</pre>
+&lt;script src="/js/openleaf-highlight.min.js"&gt;&lt;/script&gt;   &lt;!-- 6.1 KB, optional --&gt;</pre>
 
 <p>
   The built-in tokenizer covers HTML, CSS and JavaScript in 1.9 KB — which is the
@@ -334,7 +442,7 @@ const ratio = width / height   // division, not a regex
 
 <h2 id="import">Importing a file</h2>
 <p class="lede">
-  A third opt-in bundle, 2.2 KB. A toolbar button and drag-and-drop.
+  A third opt-in bundle, 2.8 KB. A toolbar button and drag-and-drop.
 </p>
 
 <p>
@@ -369,14 +477,14 @@ const ratio = width / height   // division, not a regex
 
 <p>
   <code>.docx</code> works, and it is a <em>separate</em> bundle. Measured:
-  mammoth is 123 KB gzipped, larger than the entire editor, so a site that only
+  mammoth is 122.9 KB gzipped, larger than the entire editor, so a site that only
   imports HTML must not pay for it. Load one more script and Word documents work;
   do not, and they do not.
 </p>
 
 <pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
-&lt;script src="/js/openleaf-import.min.js"&gt;&lt;/script&gt;        &lt;!-- 2.5 KB --&gt;
-&lt;script src="/js/openleaf-import-docx.min.js"&gt;&lt;/script&gt;   &lt;!-- 123 KB, Word only --&gt;</pre>
+&lt;script src="/js/openleaf-import.min.js"&gt;&lt;/script&gt;        &lt;!-- 2.8 KB --&gt;
+&lt;script src="/js/openleaf-import-docx.min.js"&gt;&lt;/script&gt;   &lt;!-- 122.9 KB, Word only --&gt;</pre>
 
 <p>
   Images are the one thing that does not come across. Word embeds them in the
@@ -473,6 +581,7 @@ const ratio = width / height   // division, not a regex
 <script src="./openleaf.min.js"></script>
 <!-- The opt-in bundle. Order matters: it borrows the runtime the first one publishes. -->
 <script src="./openleaf-tables.min.js"></script>
+<script src="./openleaf-colour.min.js"></script>
 <script src="./openleaf-highlight.min.js"></script>
 <script src="./openleaf-import.min.js"></script>
 <script src="./openleaf-import-docx.min.js"></script>
@@ -489,6 +598,25 @@ const ratio = width / height   // division, not a regex
   }
   renderOutput()
   main.addEventListener('openleaf:change', renderOutput)
+
+  /* ---- image upload ------------------------------------------------- *
+   * A stand-in for a CMS media endpoint. A static demo has no server, and
+   * there is deliberately no data: URL fallback in OpenLeaf -- the schema
+   * refuses data: URLs, so one would produce content that vanishes on the
+   * next save. So this hands back an image that already exists here, after
+   * a pause long enough to see the dialog's uploading state.                */
+
+  OpenLeaf.registerImageUploader(function (file) {
+    return new Promise(function (resolve, reject) {
+      setTimeout(function () {
+        if (file.name.indexOf('broken') !== -1) {
+          reject(new Error('The server rejected the upload. (Try a different name.)'))
+          return
+        }
+        resolve({ src: './assets/openleaf-mark.png', width: 96, height: 96 })
+      }, 500)
+    })
+  })
 
   /* ---- skins and colour scheme ------------------------------------- */
 

@@ -28,21 +28,45 @@ export interface ToolbarContext {
   host: HTMLElement
 }
 
+/**
+ * A control a `custom` item builds for itself.
+ *
+ * The contract is narrow on purpose. A custom item owns its own markup, so it
+ * can be a colour grid or a table-size picker, but it does not get to own the
+ * toolbar's keyboard model: the element it returns must contain exactly one
+ * focusable `button.ol-btn`, because that is what the roving tabindex walks. A
+ * control with two focusable buttons in the bar would make the toolbar two tab
+ * stops where the author expects one; a control with none would be unreachable
+ * by keyboard. Anything else the control needs -- a popover, a grid of swatches
+ * -- belongs outside the toolbar element, in the top layer or on the host.
+ */
+export interface ToolbarControl {
+  /** The element placed in the toolbar. */
+  el: HTMLElement
+  /**
+   * Reflect the editor state. Called on every transaction, so it must be cheap
+   * and must not throw; a throw is caught and logged once, like a predicate.
+   */
+  update?: (state: EditorState) => void
+  /** Release listeners, and remove anything the control put in the document. */
+  destroy?: () => void
+}
+
 export interface ToolbarItemSpec {
   /** Stable id used in the `toolbar` layout attribute. */
   id: string
   /**
    * What kind of control this is.
    *
-   * Present from day one even though **only `button` is implemented** -- the
-   * block-type control is special-cased by id, not by type. A flat spec models
-   * a button and nothing else, and adding this discriminant *after* the config
-   * shape is public is precisely the breaking change the registry exists to
-   * avoid. Colour grids, table-insert popovers and link editors will all be
-   * `custom`.
+   * `button` is the common case. `custom` hands the item a chance to build its
+   * own DOM through `render`, which is how the colour picker exists at all: a
+   * swatch grid is not a button, and modelling it as one would have meant
+   * special-casing it in the toolbar by id, the way the block-type `select`
+   * still is.
    *
-   * Declaring an unimplemented variant logs a warning rather than failing
-   * quietly as a button.
+   * `select` remains unimplemented, and the block-type control is special-cased
+   * by id rather than being one. Declaring it logs a warning rather than
+   * rendering a plausible-looking button that is not the control asked for.
    */
   type?: 'button' | 'select' | 'custom'
   /** Accessible name. Kept constant across states -- the platform announces pressed. */
@@ -57,6 +81,11 @@ export interface ToolbarItemSpec {
   command?: Command
   /** For items needing more than the editor state -- dialogs, mode switches. */
   run?: (ctx: ToolbarContext) => void
+  /**
+   * For `type: 'custom'`: build the control. Required for that type, ignored
+   * otherwise.
+   */
+  render?: (ctx: ToolbarContext) => ToolbarControl
   isActive?: (state: EditorState) => boolean
   /** Defaults to asking `command` whether it would apply. */
   isEnabled?: (state: EditorState) => boolean
@@ -129,4 +158,22 @@ export function clearToolbarItems(): void {
  */
 export const DEFAULT_LAYOUT =
   'undo redo | blockType | bold italic underline strikethrough code | ' +
+  'alignLeft alignCenter alignRight alignJustify | ' +
   'bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | source'
+
+/**
+ * The default layout with the colour controls in it.
+ *
+ * Not the default, and deliberately not: the colour picker ships in an opt-in
+ * bundle, and naming an item that is not registered logs a warning for every
+ * deployment that did not load it. An integrator who loads the colour bundle
+ * either uses this layout or names `textColour` and `highlightColour` in their own.
+ *
+ * The colour bundle does NOT rewrite the default layout on install. Installing a
+ * plugin must not silently rearrange somebody's toolbar -- that is the whole
+ * reason capability and layout are separate concerns here.
+ */
+export const LAYOUT_WITH_COLOUR = DEFAULT_LAYOUT.replace(
+  'alignLeft',
+  'textColour highlightColour | alignLeft',
+)

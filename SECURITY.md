@@ -58,6 +58,36 @@ There is deliberately no "allow whatever the editor emitted" mode. That is not a
 policy, it is a wish -- the editor faithfully preserves whatever an author
 pasted.
 
+### The `style` attribute, and the DOMPurify hook you have to install
+
+Since alignment and colour landed, the policy permits a `style` attribute on
+paragraphs, headings and `<span>` -- for `text-align`, `color` and
+`background-color` only, with the values checked. It has to: those declarations
+are how every editor OpenLeaf replaces expresses alignment and colour, and a
+policy that forbids `style` outright deletes them out of every document it
+touches.
+
+`sanitizeHtml()` and the emitted `allowlist.json` carry that precision per
+element. **The DOMPurify config cannot**, because `ALLOWED_ATTR` is global and
+DOMPurify performs no CSS property filtering of its own. Install the hook:
+
+```js
+import DOMPurify from 'dompurify'
+import { DEFAULT_POLICY, styleAttributeHook, toDOMPurifyConfig } from '@openleaf-editor/sanitize'
+
+const purify = DOMPurify(window)
+purify.addHook('uponSanitizeAttribute', styleAttributeHook(DEFAULT_POLICY))
+const clean = purify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY))
+```
+
+Without it, stored content may carry any declaration at all on any element
+DOMPurify keeps -- `position:fixed;inset:0` being the one that matters, since it
+covers the page with something that looks like your own UI. That is a
+UI-redress vector rather than script execution, and it is still not something to
+leave open. The `bleach` and HTMLPurifier configs filter by property but not by
+element or value, which is a narrower version of the same gap, documented where
+each is emitted.
+
 ### In scope
 
 - XSS reachable through the editor's own parsing, serialization, or

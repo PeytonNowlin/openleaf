@@ -48,6 +48,12 @@ import {
   type ParseRule,
   type TagParseRule,
 } from 'prosemirror-model'
+import {
+  MODELLED_PROPERTIES,
+  applyStyleAttribute,
+  parseDeclarations,
+  serializeDeclarations,
+} from './css.js'
 import { coreMarks, coreNodes } from './schema.js'
 import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
 
@@ -164,6 +170,89 @@ const CARRY_SCRUB: Record<string, (carried: Record<string, string>) => void> = {
     if (kept.length > 0) carried['class'] = kept.join(' ')
     else delete carried['class']
   },
+  paragraph: scrubModelledStyle,
+  heading: scrubModelledStyle,
+}
+
+/**
+ * Drop the declarations a text block now models from its carried residue.
+ *
+ * `text-align` is the node's own `align` attribute and colour is the two colour
+ * marks, so carrying either a second time emits both spellings of the same
+ * intent -- and the moment an author changes the alignment, the copy that is not
+ * modelled disagrees with the one that is. The legacy `align` attribute goes for
+ * the same reason: it is where the value may have been read from, and it is not
+ * where it is written back.
+ *
+ * Anything else in the attribute stays. A paragraph stored as
+ * `style="line-height:1.4;text-align:left"` keeps its line height, which is the
+ * whole point of the carry mechanism.
+ */
+function scrubModelledStyle(carried: Record<string, string>): void {
+  delete carried['align']
+  const style = carried['style']
+  if (style === undefined) return
+  const declarations = parseDeclarations(style)
+  for (const name of MODELLED_PROPERTIES) declarations.delete(name)
+  const rest = serializeDeclarations(declarations)
+  if (rest !== null) carried['style'] = rest
+  else delete carried['style']
+}
+
+/**
+ * Merge carried residue with the attributes a spec produced.
+ *
+ * Modelled attributes win, because the spec is the authority on the names it
+ * declared -- except for `style`, where winning wholesale is a content-loss bug.
+ * A paragraph whose stored style was `line-height:1.4;text-align:left` has the
+ * line height in its residue and the alignment in its `align` attribute; a plain
+ * object spread replaces the residue's `style` with the spec's and the line
+ * height is gone. So `style` is merged one declaration at a time, residue first
+ * so the modelled value overrides a stale copy of itself.
+ */
+/**
+ * Merge carried residue onto an element a spec built for itself.
+ *
+ * The array path below cannot cover this case, and it is not hypothetical: a
+ * paragraph carrying CSS returns a real element from `toDOM` so that its `style`
+ * attribute is not rewritten by the CSSOM. That element has to be given the
+ * residue too, or modelling `text-align` would silently drop the `line-height`
+ * next to it -- the exact loss the carry mechanism exists to prevent,
+ * reintroduced from a new direction.
+ */
+function applyCarriedToElement(el: Element, carried: Record<string, string>): void {
+  for (const [name, value] of Object.entries(carried)) {
+    if (name === 'style') {
+      const declarations = parseDeclarations(value)
+      // Residue first, then what the spec wrote, so a modelled declaration wins
+      // over a stale copy of itself while everything else survives.
+      for (const [property, css] of parseDeclarations(el.getAttribute('style'))) {
+        declarations.set(property, css)
+      }
+      const style = serializeDeclarations(declarations)
+      if (style !== null) applyStyleAttribute(el, style)
+      continue
+    }
+    // A spec's own attributes win: it is the authority on the names it declared.
+    if (!el.hasAttribute(name)) el.setAttribute(name, value)
+  }
+}
+
+function mergeCarried(
+  carried: Record<string, string>,
+  modelled: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...carried, ...modelled }
+  const before = carried['style']
+  const after = modelled['style']
+  if (typeof before === 'string' && typeof after === 'string') {
+    const declarations = parseDeclarations(before)
+    for (const [name, value] of parseDeclarations(after)) declarations.set(name, value)
+    const style = serializeDeclarations(declarations)
+    if (style !== null) merged['style'] = style
+    else delete merged['style']
+  }
+  return merged
 }
 
 /**
@@ -210,12 +299,17 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
     ? (node) => {
         const out = originalToDOM(node)
         const carried = node.attrs[CARRIED_ATTR] as Record<string, string> | null
-        if (!carried || !Array.isArray(out)) return out
+        if (!carried) return out
+        if (!Array.isArray(out)) {
+          // `{ dom, contentDOM }`, or a bare node. Both are legal output specs and
+          // both mean the spec built its own element.
+          const dom = isPlainObject(out) ? (out as { dom?: unknown }).dom : out
+          if (dom instanceof Element) applyCarriedToElement(dom, carried)
+          return out
+        }
         const result = [...out] as unknown[]
         if (isPlainObject(result[1])) {
-          // Modelled attributes win: an author's spec is the authority on the
-          // names it declared.
-          result[1] = { ...carried, ...(result[1] as Record<string, unknown>) }
+          result[1] = mergeCarried(carried, result[1] as Record<string, unknown>)
         } else {
           result.splice(1, 0, carried)
         }

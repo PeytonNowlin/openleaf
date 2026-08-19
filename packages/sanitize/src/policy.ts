@@ -40,10 +40,26 @@
 export interface ElementPolicy {
   /** Attribute names permitted on this element, beyond the global ones. */
   attributes?: string[]
+  /**
+   * CSS properties permitted inside a `style` attribute on this element.
+   *
+   * Only consulted when `style` is in `attributes`. The two are separate because
+   * allowing the attribute and allowing a property are different decisions: an
+   * element may carry `style` for `text-align` and still have `position` stripped
+   * out of it.
+   */
+  styleProperties?: string[]
 }
 
 export interface Policy {
-  /** Bumped when the shape changes, so consumers can detect a mismatch. */
+  /**
+   * Bumped when the shape changes, so consumers can detect a mismatch.
+   *
+   * 2 added `styleProperties`, when the editor learned to write alignment and
+   * colour. A version 1 consumer reading a version 2 policy sees `style` in an
+   * element's attributes and no idea which declarations are meant, so it would
+   * allow the lot -- which is why this is a version bump rather than an addition.
+   */
   version: number
   /** Permitted elements, and the attributes each may carry. */
   elements: Record<string, ElementPolicy>
@@ -72,16 +88,41 @@ export interface Policy {
  * knowingly; narrowing one after content has been stored is a migration.
  */
 export const DEFAULT_POLICY: Policy = {
-  version: 1,
+  version: 2,
 
   elements: {
-    p: { attributes: ['dir'] },
-    h1: { attributes: ['dir'] },
-    h2: { attributes: ['dir'] },
-    h3: { attributes: ['dir'] },
-    h4: { attributes: ['dir'] },
-    h5: { attributes: ['dir'] },
-    h6: { attributes: ['dir'] },
+    /*
+     * `style` on a text block, for `text-align` and nothing else.
+     *
+     * Allowing the attribute at all is the most consequential line in this file,
+     * so here is the reasoning. `<p align="center">` was removed from HTML years
+     * ago and every editor OpenLeaf is meant to replace writes
+     * `style="text-align:center"`, so a policy that forbids `style` outright
+     * deletes the alignment out of every document it touches -- the
+     * "content dies on the server" failure this package exists to prevent.
+     *
+     * What makes it safe is that the property list is closed and the VALUES are
+     * checked. `style` earned its reputation from `expression()`, `url()` and
+     * `position:fixed` overlays; none of those is reachable through a property
+     * list of `text-align` whose values must be one of four keywords.
+     */
+    p: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
+    h1: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
+    h2: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
+    h3: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
+    h4: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
+    h5: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
+    h6: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
+    /*
+     * `<span>` exists in this policy only to carry colour.
+     *
+     * Note what it does NOT allow: no `class`, so pasted content cannot borrow
+     * the site's styling to impersonate UI, and no properties beyond the two
+     * colours. A span with any other attribute is unwrapped and its text kept,
+     * which is what the editor's own preservation layer does with one it cannot
+     * model.
+     */
+    span: { attributes: ['style'], styleProperties: ['color', 'background-color'] },
     blockquote: {},
     pre: {},
     // The language class and nothing else. The schema reads `language-js` from
@@ -170,16 +211,22 @@ export const DEFAULT_POLICY: Policy = {
  *   'drupal-media': ['data-entity-type', 'data-entity-uuid', 'data-view-mode'],
  *   figure: ['class'],
  *   figcaption: [],
+ *   // The object form, when a declaration has to survive as well as an attribute.
+ *   p: { attributes: ['style'], styleProperties: ['line-height'] },
  * })
  * ```
+ *
+ * A property named here still has to have a checker in css.ts, and there is
+ * deliberately no "allow any value" mode: `styleProperties: ['background']`
+ * without one permits nothing, rather than permitting `url(...)`.
  */
 export function policyForPreserved(
   base: Policy,
-  additions: Record<string, string[]>,
+  additions: Record<string, string[] | ElementPolicy>,
 ): Policy {
   const elements: Record<string, ElementPolicy> = { ...base.elements }
 
-  for (const [tag, attributes] of Object.entries(additions)) {
+  for (const [tag, addition] of Object.entries(additions)) {
     const name = tag.toLowerCase()
     if (base.dropWithContent.includes(name)) {
       throw new Error(
@@ -188,8 +235,22 @@ export function policyForPreserved(
           'list explicitly so the decision is visible in review.',
       )
     }
-    const existing = elements[name]?.attributes ?? []
-    elements[name] = { attributes: [...new Set([...existing, ...attributes])] }
+    // An array is the original shape, kept working: `{ div: ['class'] }`. The
+    // object shape is for the case an array cannot express, which arrived with
+    // `styleProperties` -- preserved markup carrying a declaration OpenLeaf does
+    // not model, such as a `line-height` an author set years ago.
+    const next: ElementPolicy = Array.isArray(addition) ? { attributes: addition } : addition
+    const existing = elements[name]
+    const attributes = [
+      ...new Set([...(existing?.attributes ?? []), ...(next.attributes ?? [])]),
+    ]
+    const styleProperties = [
+      ...new Set([...(existing?.styleProperties ?? []), ...(next.styleProperties ?? [])]),
+    ]
+    elements[name] = {
+      attributes,
+      ...(styleProperties.length > 0 ? { styleProperties } : {}),
+    }
   }
 
   return { ...base, elements }
@@ -200,6 +261,11 @@ export function allowedAttributes(policy: Policy, tag: string): Set<string> {
   const element = policy.elements[tag.toLowerCase()]
   if (!element) return new Set()
   return new Set([...policy.globalAttributes, ...(element.attributes ?? [])])
+}
+
+/** Every CSS property permitted inside `style` on an element. */
+export function allowedStyleProperties(policy: Policy, tag: string): Set<string> {
+  return new Set(policy.elements[tag.toLowerCase()]?.styleProperties ?? [])
 }
 
 /** Is this element permitted at all? */
