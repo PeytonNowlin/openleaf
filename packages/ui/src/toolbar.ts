@@ -37,6 +37,7 @@ import {
   DEFAULT_LAYOUT,
   getToolbarItem,
   onRegistryChange,
+  type ToolbarControl,
   type ToolbarItemSpec,
 } from './registry.js'
 import { ensureStyles } from './styles.js'
@@ -60,6 +61,12 @@ interface Control {
 }
 
 const BLOCK_TYPE_ID = 'blockType'
+
+/** A `custom` item's control, and the id it was built for. */
+interface MountedControl {
+  id: string
+  control: ToolbarControl
+}
 
 /** Item+callback pairs already reported, so a per-keystroke failure logs once. */
 const reported = new Set<string>()
@@ -102,6 +109,7 @@ export class Toolbar {
   #host: HTMLElement
   #view: EditorView | null = null
   #controls = new Map<string, Control>()
+  #customs: MountedControl[] = []
   #select: HTMLSelectElement | null = null
   #live: HTMLDivElement
   #liveTimer: ReturnType<typeof setTimeout> | undefined
@@ -152,8 +160,29 @@ export class Toolbar {
     this.#unsubscribe?.()
     clearTimeout(this.#liveTimer)
     this.el.removeEventListener('keydown', this.#onKeydown)
+    this.#destroyCustoms()
     this.#controls.clear()
     this.#view = null
+  }
+
+  /**
+   * Tear down `custom` controls.
+   *
+   * Called on destroy AND before every re-render. A custom control may have put
+   * a popover in the top layer, which is outside this element and therefore
+   * survives `replaceChildren` -- so without this, a registry change while a
+   * colour picker is open leaves an orphaned popover on the page with no trigger
+   * attached to it.
+   */
+  #destroyCustoms(): void {
+    for (const { id, control } of this.#customs) {
+      try {
+        control.destroy?.()
+      } catch (error) {
+        console.error(`@openleaf-editor/ui: toolbar item "${id}" threw while being destroyed`, error)
+      }
+    }
+    this.#customs = []
   }
 
   /** The live region element, which the host mounts once. */
@@ -166,6 +195,7 @@ export class Toolbar {
    * -------------------------------------------------------------- */
 
   #render(): void {
+    this.#destroyCustoms()
     this.el.replaceChildren()
     this.#controls.clear()
     this.#select = null
@@ -192,10 +222,14 @@ export class Toolbar {
         console.warn(`@openleaf-editor/ui: no toolbar item registered for "${token}"`)
         continue
       }
-      // Only `button` is implemented. The `type` discriminant exists so that
-      // adding variants later is not a breaking change to a published config
-      // shape -- but a declared-and-inert variant is worse than an absent one,
-      // because the author sees a plausible button and no signal that the
+      if (spec.type === 'custom') {
+        const el = this.#buildCustom(spec)
+        if (el) group.appendChild(el)
+        continue
+      }
+      // `select` is still unimplemented -- the block-type control is special-cased
+      // by id, not by type. A declared-and-inert variant is worse than an absent
+      // one, because the author sees a plausible button and no signal that the
       // control they asked for was not built.
       if (spec.type && spec.type !== 'button') {
         console.warn(
@@ -293,6 +327,42 @@ export class Toolbar {
 
     this.#controls.set(spec.id, { spec, el: button, active: null, enabled: null })
     return button
+  }
+
+  /**
+   * Build a `custom` control.
+   *
+   * Everything the item does is third-party code running inside the editor's
+   * render path, so a throw here must cost that one control and nothing else: a
+   * colour picker that fails to build must not take the rest of the toolbar --
+   * and with it Bold, Undo and Save -- down with it.
+   */
+  #buildCustom(spec: ToolbarItemSpec): HTMLElement | null {
+    const view = this.#view
+    if (!spec.render) {
+      console.warn(
+        `@openleaf-editor/ui: toolbar item "${spec.id}" declares type "custom" but has no ` +
+          'render function, so there is nothing to build.',
+      )
+      return null
+    }
+    // No view yet means this is a pre-mount re-render triggered by a late
+    // registration. mount() renders again with a view, so the control appears
+    // then rather than being built against nothing.
+    if (!view) return null
+
+    try {
+      const control = spec.render({ view, host: this.#host })
+      this.#customs.push({ id: spec.id, control })
+      return control.el
+    } catch (error) {
+      console.error(
+        `@openleaf-editor/ui: toolbar item "${spec.id}" threw while rendering. ` +
+          'It has been left out; the rest of the toolbar is unaffected.',
+        error,
+      )
+      return null
+    }
   }
 
   /**
@@ -457,6 +527,19 @@ export class Toolbar {
           }
         }
       }
+    }
+
+    for (const { id, control } of this.#customs) {
+      // Readonly is the toolbar's business, not each control's: reflecting it
+      // here means a custom control gets the same disabled treatment as a button
+      // without every plugin author having to remember the attribute exists.
+      const trigger = control.el.querySelector<HTMLButtonElement>('button.ol-btn')
+      trigger?.setAttribute('aria-disabled', this.#host.hasAttribute('readonly') ? 'true' : 'false')
+      if (!control.update) continue
+      guarded(id, 'update', () => {
+        control.update?.(state)
+        return true
+      })
     }
 
     if (this.#select) {

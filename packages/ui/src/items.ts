@@ -9,6 +9,7 @@
 
 import {
   activeLink,
+  activeTextAlign,
   insertHorizontalRule,
   insertImage,
   isMarkActive,
@@ -23,14 +24,17 @@ import {
   toggleItalic,
   toggleOrderedList,
   toggleStrike,
+  toggleTextAlign,
   toggleUnderline,
   undo,
   unsetLink,
+  type Align,
 } from '@openleaf-editor/core'
 import type { Command } from 'prosemirror-state'
 import { promptForImage, promptForLink } from './dialog.js'
 import type { IconName } from './icons.js'
 import { registerToolbarItem } from './registry.js'
+import { imageUploaderFor, runUploader } from './upload.js'
 
 /** Event the host listens for to switch between rich and source views. */
 export const SOURCE_TOGGLE_EVENT = 'openleaf:toggle-source'
@@ -156,6 +160,33 @@ export function registerDefaultItems(): void {
     shortcut: 'Code block',
   })
 
+  /* ---- alignment ----
+     Toggles, not actions, and the pressed state is the EXPLICIT alignment only.
+     A paragraph nobody has aligned follows the document's reading direction, so
+     lighting up the left button for it would be wrong in Arabic and Hebrew --
+     and `aria-pressed="true"` on a paragraph that is not left-aligned is a lie
+     a screen reader repeats. See activeTextAlign in core. */
+
+  const alignItems: Array<{ id: string; label: string; icon: IconName; align: Align }> = [
+    { id: 'alignLeft', label: 'Align left', icon: 'alignLeft', align: 'left' },
+    { id: 'alignCenter', label: 'Align centre', icon: 'alignCenter', align: 'center' },
+    { id: 'alignRight', label: 'Align right', icon: 'alignRight', align: 'right' },
+    { id: 'alignJustify', label: 'Justify', icon: 'alignJustify', align: 'justify' },
+  ]
+
+  for (const item of alignItems) {
+    registerToolbarItem({
+      id: item.id,
+      type: 'button',
+      kind: 'toggle',
+      label: item.label,
+      icon: item.icon,
+      command: toggleTextAlign(item.align),
+      isActive: (state) => activeTextAlign(state) === item.align,
+      shortcut: item.label,
+    })
+  }
+
   /* ---- insertions ---- */
 
   registerToolbarItem({
@@ -200,12 +231,25 @@ export function registerDefaultItems(): void {
     label: 'Insert image',
     icon: 'image',
     run: ({ view, host }) => {
-      void promptForImage(host.ownerDocument).then((result) => {
+      // One item, two dialogs, decided by whether this page can upload. A file
+      // picker that appears and then fails because no uploader was registered is
+      // worse than no picker: the author has already chosen the file.
+      const uploader = imageUploaderFor(host)
+      const options = uploader
+        ? { upload: (file: File) => runUploader(uploader, file, host) }
+        : {}
+
+      void promptForImage(host.ownerDocument, options).then((result) => {
         if (!result) {
           view.focus()
           return
         }
-        insertImage({ src: result.src, alt: result.alt })(view.state, view.dispatch, view)
+        insertImage({
+          src: result.src,
+          alt: result.alt,
+          width: result.width,
+          height: result.height,
+        })(view.state, view.dispatch, view)
         view.focus()
       })
     },
