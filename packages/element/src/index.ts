@@ -32,6 +32,7 @@ import {
   buildKeymap,
   coreSchema,
   createRegisteredPlugins,
+  insertImage,
   onEditorPluginsChange,
   onSchemaExtensionsChange,
   parseHtml,
@@ -44,15 +45,20 @@ import {
   Toolbar,
   applyColourScheme,
   applySkin,
+  canUploadImages,
   ensureSkins,
   ensureStyles,
+  imageFilesFrom,
+  imageUploaderFor,
+  promptForImage,
   registerDefaultItems,
+  runUploader,
   type ColourScheme,
 } from '@openleaf-editor/ui'
 import { baseKeymap } from 'prosemirror-commands'
 import { history } from 'prosemirror-history'
 import { keymap } from 'prosemirror-keymap'
-import { EditorState, Plugin } from 'prosemirror-state'
+import { EditorState, Plugin, TextSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 
 let hintCounter = 0
@@ -247,6 +253,10 @@ export class OpenLeafEditor extends HTMLElement {
       // structure as proprietary CSS, so without this a pasted list arrives as
       // a wall of paragraphs with stray bullet characters in the text.
       transformPastedHTML: (html) => normalizePastedHtml(html),
+      // Dropping or pasting an image file is the way most people expect to add
+      // one, and both arrive as a File rather than as markup.
+      handleDrop: (view, event) => this.#handleImageFiles(view, event, event.dataTransfer),
+      handlePaste: (view, event) => this.#handleImageFiles(view, event, event.clipboardData),
       dispatchTransaction: (tr) => {
         const view = this.#view
         if (!view) return
@@ -501,6 +511,79 @@ export class OpenLeafEditor extends HTMLElement {
     this.#textarea.value = serializeHtml(this.#view.state.doc)
   }
 
+  /**
+   * Claim a drop or paste that carries image files.
+   *
+   * Returns false -- declining, so ProseMirror and anything listening further up
+   * behave as they did -- unless this editor can actually upload. A drop that is
+   * intercepted and then silently does nothing is worse than one that falls
+   * through to the browser.
+   *
+   * `stopPropagation` is not tidiness. The import bundle listens for file drops
+   * at the DOCUMENT level and claims any drop over an editor, so without it a
+   * dropped PNG would be handled here AND handed to the import converters, which
+   * would announce that they cannot read a .png over the top of a working upload.
+   */
+  #handleImageFiles(
+    view: EditorView,
+    event: DragEvent | ClipboardEvent,
+    transfer: DataTransfer | null,
+  ): boolean {
+    if (this.hasAttribute('readonly')) return false
+    if (!canUploadImages(this)) return false
+    const files = imageFilesFrom(transfer)
+    if (files.length === 0) return false
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    // Insert where the author dropped, not where the caret happens to be. The
+    // position is resolved now, while the coordinates are still meaningful: the
+    // dialog that follows is modal and the pointer will have moved.
+    if (event instanceof DragEvent) {
+      const at = view.posAtCoords({ left: event.clientX, top: event.clientY })
+      if (at) {
+        view.dispatch(
+          view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(at.pos))),
+        )
+      }
+    }
+
+    void this.#uploadImages(view, files)
+    return true
+  }
+
+  /**
+   * Upload dropped files one at a time, asking for a description of each.
+   *
+   * Sequential rather than concurrent, and it is a deliberate trade of speed for
+   * a property worth more: every image OpenLeaf inserts has been described or
+   * explicitly marked decorative. Uploading in parallel would mean either
+   * stacking modal dialogs or inserting undescribed images and asking later --
+   * and "later" has no UI, because there is no image-editing dialog yet.
+   */
+  async #uploadImages(view: EditorView, files: readonly File[]): Promise<void> {
+    const uploader = imageUploaderFor(this)
+    if (!uploader) return
+
+    for (const file of files) {
+      const result = await promptForImage(this.ownerDocument, {
+        file,
+        upload: (chosen) => runUploader(uploader, chosen, this),
+      })
+      // A cancelled description skips this file and moves to the next, rather
+      // than abandoning the rest of a multi-file drop.
+      if (!result) continue
+      insertImage({
+        src: result.src,
+        alt: result.alt,
+        width: result.width,
+        height: result.height,
+      })(view.state, view.dispatch, view)
+    }
+    view.focus()
+  }
+
   #applyReadonly(): void {
     // `editable()` already reads the attribute; the view has to be told to
     // re-evaluate it. Without this, adding readonly after mount leaves
@@ -523,6 +606,17 @@ export class OpenLeafEditor extends HTMLElement {
  * clipboard HTML somewhere other than the editor.
  */
 export { normalizePastedHtml } from '@openleaf-editor/paste'
+
+/**
+ * Re-exported so a plain `<script>` integration can register an upload endpoint
+ * without a build step: `OpenLeaf.registerImageUploader(fn)`. Setting
+ * `element.imageUploader` overrides it for one editor.
+ */
+export {
+  registerImageUploader,
+  type ImageUploadResult,
+  type ImageUploader,
+} from '@openleaf-editor/ui'
 
 /** Idempotent: safe to import twice, or alongside a bundled copy. */
 export function defineOpenLeafEditor(tag = 'openleaf-editor'): void {
