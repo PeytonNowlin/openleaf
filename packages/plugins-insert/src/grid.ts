@@ -50,28 +50,64 @@ export function buildGlyphPicker(
   if (!SUPPORTS_POPOVER) wrap.appendChild(grid)
   else doc.body.appendChild(grid)
 
+  const isOpen = (): boolean =>
+    SUPPORTS_POPOVER ? grid.matches(':popover-open') : !grid.hidden
+
   const close = (): void => {
     trigger.setAttribute('aria-expanded', 'false')
-    if (SUPPORTS_POPOVER && 'hidePopover' in grid) (grid as HTMLElement & { hidePopover(): void }).hidePopover()
-    else grid.hidden = true
+    if (!SUPPORTS_POPOVER) {
+      grid.hidden = true
+      return
+    }
+    // Guarded: hidePopover() throws on an element that is not showing, and
+    // destroy() closes whether or not the picker was ever opened.
+    if (grid.matches(':popover-open')) {
+      ;(grid as HTMLElement & { hidePopover(): void }).hidePopover()
+    }
+  }
+
+  /**
+   * Anchor the grid under its trigger, and keep it on screen.
+   *
+   * The popover path needs this as much as the fallback does: UA styles for
+   * `[popover]` are `position: fixed; inset: 0; margin: auto`, which centres the
+   * panel in the viewport rather than putting it under the button that opened
+   * it. Measured after showing, because a hidden element has no size to clamp.
+   */
+  const place = (): void => {
+    const trigger_ = trigger.getBoundingClientRect()
+    const win = doc.defaultView
+    const viewWidth = win?.innerWidth ?? 0
+    const viewHeight = win?.innerHeight ?? 0
+    grid.style.position = 'fixed'
+    grid.style.margin = '0'
+    const box = grid.getBoundingClientRect()
+    const left = Math.max(4, Math.min(trigger_.left, viewWidth - box.width - 4))
+    // Flipped above the trigger when there is no room below it.
+    const below = trigger_.bottom + 4
+    const top = below + box.height > viewHeight ? Math.max(4, trigger_.top - box.height - 4) : below
+    grid.style.left = `${Math.round(left)}px`
+    grid.style.top = `${Math.round(top)}px`
   }
 
   const open = (): void => {
     trigger.setAttribute('aria-expanded', 'true')
-    if (SUPPORTS_POPOVER && 'showPopover' in grid) (grid as HTMLElement & { showPopover(): void }).showPopover()
-    else {
-      grid.hidden = false
-      const rect = trigger.getBoundingClientRect()
-      grid.style.position = 'fixed'
-      grid.style.left = `${rect.left}px`
-      grid.style.top = `${rect.bottom + 4}px`
+    if (!SUPPORTS_POPOVER) grid.hidden = false
+    else if (!grid.matches(':popover-open')) {
+      ;(grid as HTMLElement & { showPopover(): void }).showPopover()
     }
+    place()
     grid.querySelector('button')?.focus()
   }
 
-  grid.hidden = true
+  // `hidden` is the fallback path's only lever. On the popover path the popover
+  // state is what closes the grid, and leaving `hidden` set as well would fight
+  // the stylesheet rule that implements it -- showPopover() would open a grid
+  // that `[hidden]` still keeps at display:none.
+  if (!SUPPORTS_POPOVER) grid.hidden = true
+
   trigger.addEventListener('click', () => {
-    if (trigger.getAttribute('aria-expanded') === 'true') close()
+    if (isOpen()) close()
     else open()
   })
   grid.addEventListener('keydown', (event) => {

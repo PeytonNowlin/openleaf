@@ -14,6 +14,20 @@ export const INSERT_CSS = `
   font: 16px/1.2 var(--openleaf-font, system-ui, sans-serif);
   z-index: var(--openleaf-z-popover, 40);
 }
+/*
+ * Both hidden states are restated here, because the rules that implement them
+ * belong to the user agent while the display:grid above belongs to this sheet --
+ * and an author declaration beats a UA one whatever its specificity. Without
+ * these the grid is permanently displayed, and since the popover attribute also
+ * carries UA position:fixed, inset:0 and margin:auto, what an author saw was an
+ * emoji panel floating in the middle of the page on load, following the scroll.
+ *
+ * The attribute selector on the second rule matters: on a browser without
+ * popover support the grid carries no such attribute and lives in the toolbar,
+ * where a bare :not(:popover-open) would match forever and hide it for good.
+ */
+.ol-insert-grid[hidden] { display: none; }
+.ol-insert-grid[popover]:not(:popover-open) { display: none; }
 .ol-insert-grid button {
   box-sizing: border-box;
   width: 2rem; height: 2rem; margin: 0; padding: 0;
