@@ -73,11 +73,14 @@ DOMPurify performs no CSS property filtering of its own. Install the hook:
 
 ```js
 import DOMPurify from 'dompurify'
-import { DEFAULT_POLICY, styleAttributeHook, toDOMPurifyConfig } from '@openleaf-editor/sanitize'
+import {
+  DEFAULT_POLICY, embedHook, styleAttributeHook, toDOMPurifyConfig,
+} from '@openleaf-editor/sanitize'
 
 const purify = DOMPurify(window)
 purify.addHook('uponSanitizeAttribute', styleAttributeHook(DEFAULT_POLICY))
-const clean = purify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY))
+purify.addHook('uponSanitizeElement', embedHook(DEFAULT_POLICY))
+const clean = purify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY, { embedHook: true }))
 ```
 
 Without it, stored content may carry any declaration at all on any element
@@ -87,6 +90,33 @@ UI-redress vector rather than script execution, and it is still not something to
 leave open. The `bleach` and HTMLPurifier configs filter by property but not by
 element or value, which is a narrower version of the same gap, documented where
 each is emitted.
+
+### `<iframe>`, and why the DOMPurify config withholds it
+
+The policy permits an iframe only when its `src` is one of a closed list of
+player hosts. That is a per-element host check, and no DOMPurify config can
+express it: `ALLOWED_URI_REGEXP` applies to every URL attribute at once, so
+narrowing it to YouTube would delete every ordinary link in the document.
+
+So `toDOMPurifyConfig(DEFAULT_POLICY)` **drops iframes**, and
+`{ embedHook: true }` above is your assertion that `embedHook(DEFAULT_POLICY)` is
+installed to make the check. Listing the element without that check would let
+`<iframe src="https://evil.example">` through the sanitizer this file
+recommends -- a nested attacker-controlled page, which is the single thing the
+embed allowlist exists to refuse. Omitting both is safe and loses stored embeds;
+that is the right direction to fail.
+
+The hook also filters `allow`. An allowlisted host is not sufficient on its own:
+`allow` is how a frame asks to step outside the restrictions the rest of the page
+lives under, so a permitted player URL carrying `allow="camera; microphone"`
+would otherwise be handed the camera. `sanitizeHtml()` applies the same filter.
+
+`bleach` cannot express the host list in configuration either, so
+`toBleachConfig` emits a `filter_embeds` pre-pass to run alongside
+`drop_with_content`. HTMLPurifier can: `toHtmlPurifierConfig` emits
+`HTML.SafeIframe` and a generated `URI.SafeIframeRegexp`. It strips `allow`
+outright, having no definition for it, so embeds arrive without their
+permissions rather than with too many.
 
 ### In scope
 

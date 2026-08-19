@@ -60,6 +60,16 @@ interface FieldSpec {
   accept?: string
   /** When set, the field is a `<select>` rather than an input. */
   options?: ReadonlyArray<{ value: string; label: string }>
+  /**
+   * The field this control writes into when it changes.
+   *
+   * A chooser that only *contributed* its value could never change a field that
+   * was already filled in: editing a link or an image prefills the address, so
+   * picking from the list lost to it every time and the list worked only for new
+   * insertions. Writing into the field it fills keeps one source of truth, and
+   * shows the author what they picked so they can still edit it.
+   */
+  fills?: string
 }
 
 /** What a commit attempt produced: a value to resolve with, or a message to show. */
@@ -226,6 +236,17 @@ function showForm<T>(
     label.appendChild(control)
     inputs.set(field.name, control)
     form.appendChild(label)
+  }
+
+  // Wired after the loop, so a chooser can fill a field declared after it.
+  for (const field of fields) {
+    if (!field.fills) continue
+    const source = inputs.get(field.name)
+    const target = inputs.get(field.fills)
+    if (!source || !target) continue
+    source.addEventListener('change', () => {
+      if (source.value !== '') target.value = source.value
+    })
   }
 
   if (options.browse) {
@@ -418,6 +439,7 @@ export async function promptForLink(
             name: 'listed',
             label: 'Choose a page',
             options: [{ value: '', label: 'Type an address instead' }, ...listed.map((item) => ({ value: item.value, label: item.title }))],
+            fills: 'href',
           },
         ]
       : []),
@@ -465,7 +487,9 @@ export async function promptForLink(
         : {}),
     },
     (values) => {
-      const href = values['href'] || values['listed'] || ''
+      // The address field alone: choosing from the list writes into it, so there
+      // is no second place a destination can hide.
+      const href = values['href'] || ''
       if (!href) return { error: 'Enter an address for the link.' }
       const newWindow = values['newWindow'] === 'on'
       return {
@@ -555,6 +579,7 @@ export async function promptForImage(
                 name: 'listed',
                 label: 'Choose an image',
                 options: [{ value: '', label: 'Type an address instead' }, ...listed.map((item) => ({ value: item.value, label: item.title }))],
+                fills: 'src',
               },
             ]
           : []),
@@ -626,7 +651,7 @@ export async function promptForImage(
     },
     (values, files) => {
       const chosen = file ?? files['file']
-      const src = values['src'] || values['listed'] || ''
+      const src = values['src'] || ''
 
       if (!chosen && !src) {
         return { error: upload ? 'Choose a file or enter an image address.' : 'Enter an image address.' }

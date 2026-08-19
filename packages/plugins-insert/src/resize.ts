@@ -3,6 +3,31 @@ import type { Node as PMNode } from 'prosemirror-model'
 import { Plugin } from 'prosemirror-state'
 import type { EditorView, NodeView } from 'prosemirror-view'
 
+/**
+ * Put a stored dimension on the element without going through `img.width`.
+ *
+ * The schema preserves what the document said, and `width="50%"` is legal HTML.
+ * `img.width` is an unsigned long, so `Number('50%')` is NaN and lands as 0 --
+ * collapsing the image instead of rendering it at half the container. A
+ * percentage is not a valid width attribute value either, so it goes on the
+ * style, which is editor-only DOM and never serialized.
+ */
+function setDimension(img: HTMLImageElement, name: 'width' | 'height', raw: unknown): void {
+  const value = raw === null || raw === undefined ? '' : String(raw).trim()
+  if (value === '') {
+    img.removeAttribute(name)
+    img.style.removeProperty(name)
+    return
+  }
+  if (/^\d+$/.test(value)) {
+    img.style.removeProperty(name)
+    img.setAttribute(name, value)
+    return
+  }
+  img.removeAttribute(name)
+  img.style.setProperty(name, value)
+}
+
 function applyAttrs(img: HTMLImageElement, node: PMNode): void {
   img.src = node.attrs['src'] as string
   const alt = node.attrs['alt']
@@ -11,12 +36,8 @@ function applyAttrs(img: HTMLImageElement, node: PMNode): void {
   const title = node.attrs['title']
   if (title) img.title = title as string
   else img.removeAttribute('title')
-  const width = node.attrs['width']
-  if (width) img.width = Number(width)
-  else img.removeAttribute('width')
-  const height = node.attrs['height']
-  if (height) img.height = Number(height)
-  else img.removeAttribute('height')
+  setDimension(img, 'width', node.attrs['width'])
+  setDimension(img, 'height', node.attrs['height'])
   const align = node.attrs['align'] as ImageAlign | null
   const classes = [align ? IMAGE_ALIGN_CLASS[align] : '', (node.attrs['className'] as string | null) ?? '']
     .filter((part) => part !== '')

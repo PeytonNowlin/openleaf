@@ -92,19 +92,29 @@ export function safeEmbedSrc(value: string | null | undefined): string | null {
 /**
  * Permissions policy tokens an iframe may advertise.
  *
- * The attribute is a space-separated list. Anything not in the closed set is
- * dropped rather than stored: `allow` is how an embed asks to skip the
- * sandbox the rest of the page lives in.
+ * Anything not in the closed set is dropped rather than stored: `allow` is how
+ * an embed asks to skip the sandbox the rest of the page lives in.
+ *
+ * The attribute is a **semicolon**-delimited list of directives, each one a
+ * feature name followed by an optional origin allowlist -- `camera 'self';
+ * fullscreen *`. Splitting on whitespace instead read the standard YouTube
+ * string `allow="autoplay; fullscreen; picture-in-picture"` as the tokens
+ * "autoplay;" and "fullscreen;", so only the last survived, and a trailing
+ * semicolon lost every permission the author had.
+ *
+ * Only the feature name is kept. Dropping the origin allowlist leaves the
+ * attribute's default, which is the frame's own origin -- so `camera *` narrows
+ * to the embed itself rather than being stored as written.
  */
 export function safeAllowList(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null
   const kept: string[] = []
   const seen = new Set<string>()
-  for (const token of value.trim().split(/\s+/)) {
-    const name = token.toLowerCase()
+  for (const directive of value.split(';')) {
+    const name = (directive.trim().split(/\s+/)[0] ?? '').toLowerCase()
     if (!ALLOW_TOKENS.has(name) || seen.has(name)) continue
     seen.add(name)
     kept.push(name)
   }
-  return kept.length > 0 ? kept.join(' ') : null
+  return kept.length > 0 ? kept.join('; ') : null
 }

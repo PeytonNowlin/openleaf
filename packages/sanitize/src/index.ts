@@ -1,4 +1,10 @@
-export { EMBED_HOSTS, isAllowedEmbedSrc, type EmbedHostRule } from './embed.js'
+export {
+  EMBED_ALLOW_TOKENS,
+  EMBED_HOSTS,
+  isAllowedEmbedSrc,
+  safeAllowList,
+  type EmbedHostRule,
+} from './embed.js'
 export {
   DEFAULT_POLICY,
   allowedAttributes,
@@ -11,6 +17,9 @@ export {
 export { allStyleProperties, filterStyle, isAllowedDeclaration } from './css.js'
 export { isUrlAllowed, sanitizeHtml, type SanitizeOptions } from './sanitize.js'
 export {
+  embedHook,
+  embedSrcPattern,
+  embedValidationNote,
   styleAttributeHook,
   styleValidationNote,
   toBleachConfig,
