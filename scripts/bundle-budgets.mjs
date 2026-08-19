@@ -32,8 +32,12 @@ export const BUDGETS_KB = {
   // media, heading ids) landed in the base schema, and again when table
   // captions, colgroup and cell style joined it. All of them have to live in
   // core or inherited markup degrades to an uneditable atom -- a caption core
-  // cannot read is a caption it deletes. Editing chrome stays opt-in.
-  'openleaf.min.js': 97,
+  // cannot read is a caption it deletes.
+  //
+  // Raised again for editor chrome: menubar, context menus, floating toolbars,
+  // help, visual aids, autolink and i18n. The framework wrappers are separate
+  // packages and do not land in this file.
+  'openleaf.min.js': 104,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,

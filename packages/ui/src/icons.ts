@@ -51,6 +51,10 @@ const PATHS: Record<string, string> = {
   undo: 'M3 7v6h6M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13',
   redo: 'M21 7v6h-6M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13',
   source: 'M18 16l4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16',
+  more: 'M6 12h.01M12 12h.01M18 12h.01',
+  fullscreen: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  help: 'M12 18h.01M9.1 9a3 3 0 1 1 5.8 1c0 2-3 2-3 4',
+  visualAids: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 12a2 2 0 1 0 .01 0',
 }
 
 /**

@@ -56,6 +56,14 @@ const EXPECTED_EXPORTS = [
   'undo', 'redo',
   // keymap
   'buildKeymap', 'shortcuts', 'shortcutFor',
+  // chrome helpers used by the host and the formats dropdown
+  'autolinkPlugin', 'hrefFromTypedUrl',
+  'visualAidsPlugin',
+  'nonEditablePlugin', 'isNonEditableNode',
+  // `formatParts` splits a format token into the element and the class it names.
+  // The element half used to be parsed and discarded, so `h2=Section` set
+  // class="h2" on a paragraph rather than making it a heading.
+  'parseFormatList', 'formatParts', 'setBlockClass', 'activeBlockClass', 'carriedClass',
   // plugin registry
   'registerEditorPlugin', 'createRegisteredPlugins', 'onEditorPluginsChange',
   // table nodes, and the style validator the property dialogs in

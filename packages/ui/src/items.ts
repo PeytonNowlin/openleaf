@@ -32,12 +32,15 @@ import {
 } from '@openleaf-editor/core'
 import type { Command } from 'prosemirror-state'
 import { promptForImage, promptForLink } from './dialog.js'
+import { promptHelp } from './help.js'
 import type { IconName } from './icons.js'
 import { registerToolbarItem } from './registry.js'
 import { imageUploaderFor, runUploader } from './upload.js'
 
 /** Event the host listens for to switch between rich and source views. */
 export const SOURCE_TOGGLE_EVENT = 'openleaf:toggle-source'
+export const FULLSCREEN_TOGGLE_EVENT = 'openleaf:toggle-fullscreen'
+export const VISUAL_AIDS_TOGGLE_EVENT = 'openleaf:toggle-visual-aids'
 
 let registered = false
 
@@ -284,6 +287,41 @@ export function registerDefaultItems(): void {
     isActive: () => false,
     run: ({ host }) => {
       host.dispatchEvent(new CustomEvent(SOURCE_TOGGLE_EVENT, { bubbles: true }))
+    },
+  })
+
+  registerToolbarItem({
+    id: 'fullscreen',
+    type: 'button',
+    kind: 'toggle',
+    label: 'Fullscreen',
+    icon: 'fullscreen',
+    isActive: () => false,
+    run: ({ host }) => {
+      host.dispatchEvent(new CustomEvent(FULLSCREEN_TOGGLE_EVENT, { bubbles: true }))
+    },
+  })
+
+  registerToolbarItem({
+    id: 'visualAids',
+    type: 'button',
+    kind: 'toggle',
+    label: 'Visual aids',
+    icon: 'visualAids',
+    isActive: () => false,
+    run: ({ host }) => {
+      host.dispatchEvent(new CustomEvent(VISUAL_AIDS_TOGGLE_EVENT, { bubbles: true }))
+    },
+  })
+
+  registerToolbarItem({
+    id: 'help',
+    type: 'button',
+    kind: 'action',
+    label: 'Help',
+    icon: 'help',
+    run: ({ host }) => {
+      promptHelp(host.ownerDocument)
     },
   })
 }

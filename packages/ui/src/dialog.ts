@@ -134,7 +134,7 @@ const DIALOG_CSS = `
 
 let dialogStylesReady = false
 
-function ensureDialogStyles(doc: Document): void {
+export function ensureDialogStyles(doc: Document): void {
   ensureStyles(doc)
   if (dialogStylesReady) return
   try {
