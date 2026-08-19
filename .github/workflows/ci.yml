@@ -36,12 +36,11 @@ jobs:
       - name: Round-trip fidelity and unit tests
         run: pnpm test
 
+      # Every bundle, not just the core one: the budgets live in
+      # scripts/bundle-budgets.mjs so this and `pnpm verify` cannot drift into
+      # measuring different files against different numbers.
       - name: Bundle size
-        run: |
-          node demo/build.mjs
-          gzip -c demo/openleaf.min.js | wc -c \
-            | awk '{ printf "gzipped: %.1f KB\n", $1/1024;
-                     if ($1 > 90*1024) { print "FAIL: bundle exceeds 90 KB gzipped budget"; exit 1 } }'
+        run: node scripts/bundle-budgets.mjs
 
   browser:
     name: Browser tests

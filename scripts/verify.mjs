@@ -10,27 +10,12 @@
  * read the tree rather than the build, so they cost nothing to run here.
  */
 
-import { execFileSync, spawnSync } from 'node:child_process'
-import { gzipSync } from 'node:zlib'
+import { spawnSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { checkBundleSizes, describeBudgets } from './bundle-budgets.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
-/**
- * Per-bundle gzip budgets.
- *
- * The plugin bundle was previously ungated, so it could grow without limit while
- * the gate stayed green -- which defeats the point of making it opt-in.
- */
-const BUDGETS_KB = {
-  'openleaf.min.js': 90,
-  'openleaf-tables.min.js': 25,
-  'openleaf-highlight.min.js': 15,
-  'openleaf-import.min.js': 12,
-  // Larger than the editor, which is exactly why it is a separate file.
-  'openleaf-import-docx.min.js': 140,
-}
-
 const args = new Set(process.argv.slice(2))
 const quick = args.has('--quick')
 
@@ -145,22 +130,9 @@ const schemaGuardOk = step('no schema singleton outside core', () => {
 
 // 6. Bundle size. The "no build step" promise means integrators load this over
 //    the wire, so the number is a feature and regressions should hurt.
-const sizeOk = step(
-  `bundle size budgets (${Object.entries(BUDGETS_KB).map(([n, k]) => `${n} ${k} KB`).join(', ')})`,
-  () => {
-    execFileSync('node', ['demo/build.mjs'], { cwd: ROOT, stdio: 'ignore' })
-    const measured = []
-    for (const [file, budget] of Object.entries(BUDGETS_KB)) {
-      const raw = readFileSync(new URL(`../demo/${file}`, import.meta.url))
-      const kb = gzipSync(raw).length / 1024
-      if (kb > budget) {
-        throw new Error(`${file} is ${kb.toFixed(1)} KB gzipped, over its ${budget} KB budget`)
-      }
-      measured.push(`${file.replace('openleaf', '').replace('.min.js', '') || 'core'} ${kb.toFixed(1)}/${budget}`)
-    }
-    return measured.join(', ')
-  },
-)
+//    Shared with the CI workflow via scripts/bundle-budgets.mjs, so the two
+//    cannot measure different files against different numbers.
+const sizeOk = step(`bundle size budgets (${describeBudgets()})`, () => checkBundleSizes())
 
 // Summary
 const width = Math.max(...results.map((r) => r.name.length))
