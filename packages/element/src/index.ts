@@ -103,6 +103,23 @@ export class OpenLeafEditor extends HTMLElement {
   #unwatchPlugins: (() => void) | undefined
   #unwatchSchema: (() => void) | undefined
   #onSubmit = (): void => this.#syncToTextarea()
+  #onFormData = (event: FormDataEvent): void => {
+    this.#syncToTextarea()
+    // formdata fires after the browser has already built event.formData from
+    // the current controls. Updating textarea.value does not change that
+    // snapshot; the entry has to be written onto the FormData itself.
+    if (this.#textarea?.name) event.formData.set(this.#textarea.name, this.#textarea.value)
+  }
+  #onReset = (): void => {
+    // The reset event fires *before* the controls are restored -- read
+    // textarea.value in the handler and it is still the edited text. The
+    // microtask runs after the reset algorithm finishes, which is the first
+    // point the default is actually readable. Removing it re-loads the
+    // editor with the content the reset was meant to discard.
+    queueMicrotask(() => {
+      if (this.#textarea) this.value = this.#textarea.value
+    })
+  }
 
   /**
    * Build the editor -- but not before the document's scripts have run.
@@ -148,8 +165,12 @@ export class OpenLeafEditor extends HTMLElement {
 
     this.#textarea = this.#findTextarea()
     const initialHtml = this.#textarea?.value ?? this.innerHTML
-    // The element's own markup is only a seed; ProseMirror owns the DOM from
-    // here, so clear it before mounting.
+    const nestedTextarea =
+      this.#textarea && this.contains(this.#textarea) ? this.#textarea : null
+    // Nested binding used to `innerHTML = ''` the textarea out of the document,
+    // so it was no longer a successful form control. Lift it aside first, then
+    // put it back hidden so the form still posts it.
+    nestedTextarea?.remove()
     this.innerHTML = ''
     this.classList.add('ol-editor')
 
@@ -261,6 +282,11 @@ export class OpenLeafEditor extends HTMLElement {
     this.#toolbar?.mount(this.#view)
     this.addEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
 
+    if (nestedTextarea) {
+      nestedTextarea.hidden = true
+      this.appendChild(nestedTextarea)
+    }
+
     // An editor already on the page when a deferred bundle finishes loading
     // would otherwise never receive its plugins, and the author would find
     // table controls that do nothing. `reconfigure` keeps the document and the
@@ -289,15 +315,19 @@ export class OpenLeafEditor extends HTMLElement {
 
     // Belt and braces: `submit` covers ordinary posts, `formdata` covers
     // fetch-based submissions built from a FormData snapshot.
-    this.#form = this.closest('form')
+    // Prefer the bound textarea's form: the documented `for` binding allows
+    // the editor to live outside the <form>, next to a hidden textarea inside it.
+    this.#form = this.#textarea?.form ?? this.closest('form')
     this.#form?.addEventListener('submit', this.#onSubmit)
-    this.#form?.addEventListener('formdata', this.#onSubmit)
+    this.#form?.addEventListener('formdata', this.#onFormData)
+    this.#form?.addEventListener('reset', this.#onReset)
     this.#syncToTextarea()
   }
 
   disconnectedCallback(): void {
     this.#form?.removeEventListener('submit', this.#onSubmit)
-    this.#form?.removeEventListener('formdata', this.#onSubmit)
+    this.#form?.removeEventListener('formdata', this.#onFormData)
+    this.#form?.removeEventListener('reset', this.#onReset)
     this.removeEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
     this.#unwatchPlugins?.()
     this.#unwatchSchema?.()
