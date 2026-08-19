@@ -102,6 +102,7 @@ const schemaGuardOk = step('no schema singleton outside core', () => {
   const offenders = []
   const roots = ['packages/element/src', 'packages/ui/src', 'packages/paste/src',
                  'packages/plugins-table/src', 'packages/plugins-highlight/src',
+                 'packages/plugins-session/src',
                  'packages/plugins-insert/src']
   for (const root of roots) {
     let files

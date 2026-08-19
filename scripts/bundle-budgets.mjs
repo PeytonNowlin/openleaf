@@ -37,6 +37,7 @@ export const BUDGETS_KB = {
   'openleaf-import.min.js': 12,
   // Larger than the editor, which is exactly why it is a separate file.
   'openleaf-import-docx.min.js': 140,
+  'openleaf-session.min.js': 10,
   'openleaf-insert.min.js': 20,
 }
 
