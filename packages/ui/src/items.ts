@@ -206,8 +206,9 @@ export function registerDefaultItems(): void {
       const existing = activeLink(view.state)
       void promptForLink(host.ownerDocument, {
         href: (existing?.['href'] as string | undefined) ?? '',
+        title: (existing?.['title'] as string | undefined) ?? null,
         target: (existing?.['target'] as string | undefined) ?? null,
-      }).then((result) => {
+      }, host).then((result) => {
         if (!result) {
           view.focus()
           return
@@ -239,8 +240,8 @@ export function registerDefaultItems(): void {
       // worse than no picker: the author has already chosen the file.
       const uploader = imageUploaderFor(host)
       const options = uploader
-        ? { upload: (file: File) => runUploader(uploader, file, host) }
-        : {}
+        ? { upload: (file: File) => runUploader(uploader, file, host), host }
+        : { host }
 
       void promptForImage(host.ownerDocument, options).then((result) => {
         if (!result) {
@@ -250,8 +251,12 @@ export function registerDefaultItems(): void {
         insertImage({
           src: result.src,
           alt: result.alt,
+          title: result.title,
           width: result.width,
           height: result.height,
+          align: result.align,
+          className: result.className,
+          ...(result.caption ? { caption: result.caption } : {}),
         })(view.state, view.dispatch, view)
         view.focus()
       })

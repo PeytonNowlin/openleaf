@@ -682,6 +682,7 @@ export class OpenLeafEditor extends HTMLElement {
       const result = await promptForImage(this.ownerDocument, {
         file,
         upload: (chosen) => runUploader(uploader, chosen, this),
+        host: this,
       })
       // A cancelled description skips this file and moves to the next, rather
       // than abandoning the rest of a multi-file drop.
@@ -689,8 +690,12 @@ export class OpenLeafEditor extends HTMLElement {
       insertImage({
         src: result.src,
         alt: result.alt,
+        title: result.title,
         width: result.width,
         height: result.height,
+        align: result.align,
+        className: result.className,
+        ...(result.caption ? { caption: result.caption } : {}),
       })(view.state, view.dispatch, view)
     }
     view.focus()
@@ -878,11 +883,19 @@ export { normalizePastedHtml } from '@openleaf-editor/paste'
  * `element.imageUploader` overrides it for one editor.
  */
 export {
+  registerFilePicker,
+  registerImageClasses,
+  registerImageList,
   registerImageUploader,
+  registerLinkList,
   registerTranslations,
   setUiLocale,
+  type FilePicker,
+  type FilePickerKind,
   type ImageUploadResult,
   type ImageUploader,
+  type ListedResource,
+  type PickedResource,
 } from '@openleaf-editor/ui'
 
 /** Idempotent: safe to import twice, or alongside a bundled copy. */

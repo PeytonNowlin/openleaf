@@ -338,6 +338,15 @@ export const CSS = `
   position: relative;
 }
 
+/* Presentational valign is otherwise beaten by the rule above, which would
+   make the cell-properties dialog a no-op on screen. */
+.ol-editor .ol-content .ProseMirror td[valign="middle"],
+.ol-editor .ol-content .ProseMirror th[valign="middle"] { vertical-align: middle; }
+.ol-editor .ol-content .ProseMirror td[valign="bottom"],
+.ol-editor .ol-content .ProseMirror th[valign="bottom"] { vertical-align: bottom; }
+.ol-editor .ol-content .ProseMirror td[valign="baseline"],
+.ol-editor .ol-content .ProseMirror th[valign="baseline"] { vertical-align: baseline; }
+
 .ol-editor .ol-content .ProseMirror th {
   background: var(--ol-surface-hover);
   font-weight: 600;
@@ -370,6 +379,47 @@ export const CSS = `
 
 .ol-editor .ol-content .ProseMirror.resize-cursor {
   cursor: col-resize;
+}
+
+.ol-editor .ol-content .ProseMirror img.ol-float-left {
+  float: left;
+  margin: 0 1em 0.5em 0;
+}
+.ol-editor .ol-content .ProseMirror img.ol-float-right {
+  float: right;
+  margin: 0 0 0.5em 1em;
+}
+.ol-editor .ol-content .ProseMirror img.ol-align-center {
+  display: block;
+  margin: 0 auto 0.5em;
+}
+.ol-editor .ol-content .ProseMirror figure {
+  margin: 0 0 1em;
+}
+.ol-editor .ol-content .ProseMirror figcaption {
+  font-size: .9em;
+  opacity: .8;
+  margin-top: .35em;
+}
+.ol-editor .ol-content .ProseMirror details {
+  border: 1px solid var(--ol-border);
+  border-radius: var(--ol-radius);
+  padding: .5em .75em;
+  margin: 0 0 1em;
+}
+.ol-editor .ol-content .ProseMirror summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.ol-editor .ol-content .ProseMirror hr.ol-pagebreak {
+  border: 0;
+  border-top: 2px dashed var(--ol-border);
+  margin: 1.5em 0;
+}
+.ol-editor .ol-content .ProseMirror iframe,
+.ol-editor .ol-content .ProseMirror video,
+.ol-editor .ol-content .ProseMirror audio {
+  max-width: 100%;
 }
 
 /* Preserved-but-unrecognised markup, surfaced rather than hidden. */

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OpenLeaf insert tools harness</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; max-width: 52rem; }
+  /* Tall enough to scroll, so a panel that follows the viewport is detectable. */
+  .filler { height: 200vh; }
+</style>
+</head>
+<body>
+<form id="post-form" method="post" action="/submitted">
+  <label for="body">Post body</label>
+  <openleaf-editor
+    for="body"
+    aria-label="Post body"
+    toolbar="undo redo | bold italic | link image media details anchor | charmap emoji datetime pagebreak nbsp | source"></openleaf-editor>
+  <textarea id="body" name="body" hidden><p>Alpha beta.</p></textarea>
+</form>
+<div class="filler"></div>
+
+<script src="/demo/openleaf.min.js"></script>
+<script src="/demo/openleaf-insert.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<p>A financial report of the kind a CMS accumulates, where the table's caption
+is the only thing naming what the numbers are.</p>
+
+<table border="1" cellpadding="4" cellspacing="0" width="100%" class="report">
+  <caption class="table-caption">Table 3: revenue by region, <strong>Q1 2019</strong></caption>
+  <colgroup>
+    <col width="200" class="region">
+    <col width="120">
+    <col width="120">
+  </colgroup>
+  <thead>
+    <tr><th scope="col">Region</th><th scope="col">Q1</th><th scope="col">Q4</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>North</td><td align="right">1,204</td><td align="right">1,180</td></tr>
+    <tr><td>South</td><td align="right">986</td><td align="right">1,021</td></tr>
+  </tbody>
+</table>
+
+<p>A second table using bare <code>col</code> elements with no colgroup wrapper,
+which is legal and appears in hand-authored legacy markup.</p>
+
+<table>
+  <caption>Headcount</caption>
+  <col width="300">
+  <col width="80">
+  <tbody>
+    <tr><td>Engineering</td><td align="right">14</td></tr>
+  </tbody>
+</table>

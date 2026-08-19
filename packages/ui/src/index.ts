@@ -41,12 +41,30 @@ export { loadContentCss, contentCssUrls, scopeContentCss } from './content-css.j
 export { CSS, ensureStyles, markStylesExternal, registerStyles } from './styles.js'
 export { ensureSprite, iconElement, iconNames, registerIcons, type IconName } from './icons.js'
 export {
+  promptFields,
   promptForImage,
   promptForLink,
+  type FieldOption,
+  type FieldSpec,
   type ImagePromptOptions,
   type ImageResult,
   type LinkResult,
+  type PromptFormOptions,
 } from './dialog.js'
+export {
+  filePickerFor,
+  listedImageClasses,
+  listedImages,
+  listedLinks,
+  registerFilePicker,
+  registerImageClasses,
+  registerImageList,
+  registerLinkList,
+  type FilePicker,
+  type FilePickerKind,
+  type ListedResource,
+  type PickedResource,
+} from './pickers.js'
 export {
   IMAGE_ACCEPT,
   canUploadImages,

@@ -18,4 +18,8 @@ export const TABLE_ICON_PATHS: Record<string, string> = {
   splitCell: 'M3 5h18v14H3zM12 5v14M9 9l-2 3 2 3M15 9l2 3-2 3',
   headerRow: 'M3 4h18v5H3zM3 9v11h18V9M3 14h18M9 9v11M15 9v11',
   tableDelete: 'M3 4h18v16H3zM3 10h18M9 4v16M8 14l8-8M16 14l-8-8',
+  tableProperties: 'M3 4h18v16H3zM3 10h18M9 4v16M16 14h4M18 12v4',
+  rowProperties: 'M3 9h18v6H3zM16 6h4M18 4v4',
+  cellProperties: 'M3 4h18v16H3zM12 4v16M3 12h18M16 8h4M18 6v4',
+  tableCaption: 'M3 9h18v11H3zM7 4h10M12 4v3',
 }

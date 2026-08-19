@@ -25,8 +25,11 @@ describe('executable content must not survive the round trip', () => {
     expect(out).toContain('<p>ok</p>')
   })
 
-  it('drops <iframe>', () => {
+  it('drops a hostile iframe and keeps an allowlisted player', () => {
     expect(roundTrip('<p>ok</p><iframe src="https://evil.example"></iframe>')).not.toContain('iframe')
+    expect(roundTrip('<iframe src="https://www.youtube.com/embed/abc" title="Clip"></iframe>')).toContain(
+      'youtube.com/embed/abc',
+    )
   })
 
   it('drops <object> and <embed>', () => {

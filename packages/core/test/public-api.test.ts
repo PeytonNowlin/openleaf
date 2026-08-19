@@ -32,6 +32,10 @@ const EXPECTED_EXPORTS = [
   // @openleaf-editor/sanitize mirrors in its policy and pins with a test
   'ALIGNMENTS', 'MODELLED_PROPERTIES', 'COLOUR_PROPERTIES', 'safeAlign', 'safeColor',
   'parseDeclarations', 'serializeDeclarations', 'isFullyModelledStyle',
+  // embed allowlist and class/id tokens
+  'EMBED_HOSTS', 'isAllowedEmbedSrc', 'safeAllowList', 'safeEmbedSrc',
+  'IMAGE_ALIGNMENTS', 'IMAGE_ALIGN_CLASS', 'IMAGE_ALIGN_CLASSES', 'imageAlignFromClass',
+  'safeClassList', 'safeId',
   // predicates
   'isMarkActive', 'isNodeActive', 'canInsert', 'activeHeadingLevel', 'activeLink',
   'canUndo', 'canRedo', 'activeTextAlign', 'activeTextColor', 'activeBackgroundColor',
@@ -46,6 +50,8 @@ const EXPECTED_EXPORTS = [
   'indentListItem', 'outdentListItem',
   // links and images
   'setLink', 'unsetLink', 'insertImage',
+  'insertAudio', 'insertDetails', 'insertHtml', 'insertIframe', 'insertNamedAnchor',
+  'insertNonBreakingSpace', 'insertPageBreak', 'insertText', 'insertVideo', 'setHeadingId',
   // history
   'undo', 'redo',
   // keymap
@@ -60,8 +66,11 @@ const EXPECTED_EXPORTS = [
   'parseFormatList', 'formatParts', 'setBlockClass', 'activeBlockClass', 'carriedClass',
   // plugin registry
   'registerEditorPlugin', 'createRegisteredPlugins', 'onEditorPluginsChange',
-  // table nodes
-  'table', 'table_row', 'table_cell', 'table_header',
+  // table nodes, and the style validator the property dialogs in
+  // @openleaf-editor/plugins-table share with the parse path -- exported so a
+  // dialog writing attributes directly cannot disagree with the schema about an
+  // acceptable padding, which is how `padding: 0;position:fixed;inset:0` got in
+  'table', 'table_row', 'table_cell', 'table_header', 'safeTableStyleValue',
 ] as const
 
 describe('the public surface', () => {
@@ -89,6 +98,8 @@ describe('the schema an integrator sees', () => {
         'horizontal_rule', 'image', 'list_item', 'ordered_list', 'paragraph',
         'table', 'table_cell', 'table_header', 'table_row', 'text',
         'unknown_block', 'unknown_inline',
+        'audio', 'details', 'figcaption', 'figure', 'iframe', 'named_anchor',
+        'page_break', 'summary', 'video',
       ].sort(),
     )
   })
@@ -111,7 +122,7 @@ describe('the schema an integrator sees', () => {
  * ------------------------------------------------------------------ */
 
 function stateFrom(html: string, pos = 3): EditorState {
-  const state = EditorState.create({ doc: core.parseHtml(html), schema: core.schema })
+  const state = EditorState.create({ doc: core.parseHtml(html), schema: core.coreSchema() })
   // Clamp: a fixed default position falls outside a one-character document, and
   // a command declining because the caret was out of range looks exactly like a
   // command that is broken.

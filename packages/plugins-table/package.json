@@ -1,7 +1,7 @@
 {
   "name": "@openleaf-editor/plugins-table",
   "version": "0.1.0-beta.1",
-  "description": "Opt-in table editing for OpenLeaf: cell selection, column resizing, row and column commands, and toolbar controls. The table schema itself lives in @openleaf-editor/core so every deployment reads tables faithfully.",
+  "description": "Opt-in table editing for OpenLeaf: cell selection, column resizing, property dialogs, captions, insert grid, context menu, and row/column commands. The table schema itself lives in @openleaf-editor/core so every deployment reads tables faithfully.",
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"

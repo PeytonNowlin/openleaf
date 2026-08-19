@@ -11,7 +11,21 @@
 import { Schema, type Attrs, type DOMOutputSpec, type MarkSpec, type NodeSpec } from 'prosemirror-model'
 import { applyStyleAttribute, parseDeclarations, safeAlign, safeColor, type Align } from './css.js'
 import { serializationTarget, unknownBlock, unknownInline } from './preserve.js'
+import {
+  audio,
+  details,
+  figcaption,
+  figure,
+  iframe,
+  imageDomAttrs,
+  imageParseAttrs,
+  named_anchor,
+  page_break,
+  summary,
+  video,
+} from './structure.js'
 import { table, table_cell, table_header, table_row } from './tables.js'
+import { safeId } from './tokens.js'
 import { isSafeUrl } from './url.js'
 
 /**
@@ -30,6 +44,10 @@ function textBlockAttrs(el: Element): { dir: string | null; align: Align | null 
   return { dir, align: safeAlign(declaration ?? el.getAttribute('align'), dir) }
 }
 
+function headingAttrs(el: Element, level: number): { level: number; dir: string | null; align: Align | null; id: string | null } {
+  return { level, id: safeId(el.getAttribute('id')), ...textBlockAttrs(el) }
+}
+
 /**
  * Write them back.
  *
@@ -43,6 +61,8 @@ function textBlockDOMAttrs(attrs: Attrs): Record<string, string> {
   const out: Record<string, string> = {}
   const dir = attrs['dir'] as string | null
   if (dir !== null) out['dir'] = dir
+  const id = attrs['id'] as string | null | undefined
+  if (id) out['id'] = id
   const align = attrs['align'] as Align | null
   if (align !== null) out['style'] = `text-align:${align}`
   return out
@@ -96,13 +116,18 @@ export const coreNodes: Record<string, NodeSpec> = {
   },
 
   heading: {
-    attrs: { level: { default: 1 }, dir: { default: null }, align: { default: null } },
+    attrs: {
+      level: { default: 1 },
+      dir: { default: null },
+      align: { default: null },
+      id: { default: null },
+    },
     content: 'inline*',
     group: 'block',
     defining: true,
     parseDOM: [1, 2, 3, 4, 5, 6].map((level) => ({
       tag: `h${level}`,
-      getAttrs: (dom) => ({ level, ...textBlockAttrs(dom as Element) }),
+      getAttrs: (dom) => headingAttrs(dom as Element, level),
     })),
     toDOM: (node) => textBlockToDOM(`h${node.attrs['level'] as number}`, node.attrs),
   },
@@ -152,7 +177,12 @@ export const coreNodes: Record<string, NodeSpec> = {
 
   horizontal_rule: {
     group: 'block',
-    parseDOM: [{ tag: 'hr' }],
+    parseDOM: [
+      {
+        tag: 'hr',
+        getAttrs: (dom) => ((dom as Element).classList.contains('ol-pagebreak') ? false : null),
+      },
+    ],
     toDOM: () => ['hr'],
   },
 
@@ -199,36 +229,16 @@ export const coreNodes: Record<string, NodeSpec> = {
       title: { default: null },
       width: { default: null },
       height: { default: null },
+      align: { default: null },
+      className: { default: null },
     },
     parseDOM: [
       {
         tag: 'img[src]',
-        getAttrs(dom) {
-          const el = dom as Element
-          // Returning false declines the rule, so an image with a
-          // `javascript:` src is dropped rather than carried through.
-          if (!isSafeUrl(el.getAttribute('src'))) return false
-          return {
-            src: el.getAttribute('src'),
-            // An absent alt and alt="" mean different things to a screen
-            // reader: "undescribed" versus "decorative". Never conflate them.
-            alt: el.getAttribute('alt'),
-            title: el.getAttribute('title'),
-            width: el.getAttribute('width'),
-            height: el.getAttribute('height'),
-          }
-        },
+        getAttrs: (dom) => imageParseAttrs(dom as Element),
       },
     ],
-    toDOM(node) {
-      const { src, alt, title, width, height } = node.attrs
-      const attrs: Record<string, string> = { src: src as string }
-      if (alt !== null) attrs['alt'] = alt as string
-      if (title !== null) attrs['title'] = title as string
-      if (width !== null) attrs['width'] = width as string
-      if (height !== null) attrs['height'] = height as string
-      return ['img', attrs]
-    },
+    toDOM: (node) => ['img', imageDomAttrs(node.attrs)],
   },
 
   hard_break: {
@@ -250,6 +260,18 @@ export const coreNodes: Record<string, NodeSpec> = {
   table_row,
   table_cell,
   table_header,
+
+  // Media and structure: in the base schema so stored documents stay editable.
+  // The insert dialogs, character map and resize handles are the opt-in plugin.
+  video,
+  audio,
+  iframe,
+  details,
+  summary,
+  figure,
+  figcaption,
+  page_break,
+  named_anchor,
 
   unknown_block: unknownBlock,
   unknown_inline: unknownInline,
@@ -340,11 +362,15 @@ export const coreMarks: Record<string, MarkSpec> = {
     attrs: { color: {} },
     parseDOM: [
       {
-        // The CSSOM expands the `background` shorthand, so Word's
-        // `style="background:yellow"` arrives here as well without a second rule.
-        style: 'background-color',
-        getAttrs(value) {
-          const color = safeColor(value)
+        // Restricted to span so a cell's own background is not also read as a
+        // highlight mark on every character inside it. The CSSOM still expands
+        // the `background` shorthand on the element, so Word's
+        // `style="background:yellow"` arrives here without a second rule.
+        tag: 'span',
+        getAttrs(dom) {
+          const el = dom as HTMLElement
+          const fromAttr = parseDeclarations(el.getAttribute('style')).get('background-color')
+          const color = safeColor(el.style.backgroundColor) ?? safeColor(fromAttr)
           return color ? { color } : false
         },
       },
@@ -359,6 +385,7 @@ export const coreMarks: Record<string, MarkSpec> = {
       title: { default: null },
       target: { default: null },
       rel: { default: null },
+      id: { default: null },
     },
     inclusive: false,
     parseDOM: [
@@ -375,16 +402,18 @@ export const coreMarks: Record<string, MarkSpec> = {
             title: el.getAttribute('title'),
             target: el.getAttribute('target'),
             rel: el.getAttribute('rel'),
+            id: safeId(el.getAttribute('id')),
           }
         },
       },
     ],
     toDOM(node) {
-      const { href, title, target, rel } = node.attrs
+      const { href, title, target, rel, id } = node.attrs
       const attrs: Record<string, string> = { href: href as string }
       if (title !== null) attrs['title'] = title as string
       if (target !== null) attrs['target'] = target as string
       if (rel !== null) attrs['rel'] = rel as string
+      if (id !== null) attrs['id'] = id as string
       return ['a', attrs, 0]
     },
   },

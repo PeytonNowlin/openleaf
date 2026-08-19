@@ -51,7 +51,7 @@ semantic HTML.
 - Word and Google Docs paste cleanup, including nested list reconstruction
 - Keyboard-accessible toolbar with configurable controls and themes
 - Alignment, links, images, lists, block quotes, code blocks, and source view
-- Optional tables, color controls, syntax highlighting, and file import
+- Optional tables, color controls, syntax highlighting, file import, and session tools
 - Shared sanitization policy for browser, Node.js, Python, and PHP integrations
 - Strict TypeScript with unit, fidelity, and cross-browser test suites
 - Apache-2.0 licensed with no feature-gated commercial edition
@@ -163,7 +163,9 @@ npm install \
   @openleaf-editor/plugins-colour@beta \
   @openleaf-editor/plugins-highlight@beta \
   @openleaf-editor/plugins-import@beta \
-  @openleaf-editor/plugins-import-docx@beta
+  @openleaf-editor/plugins-import-docx@beta \
+  @openleaf-editor/plugins-session@beta \
+  @openleaf-editor/plugins-insert@beta
 ```
 
 ```ts
@@ -172,12 +174,16 @@ import { installColourPicker } from '@openleaf-editor/plugins-colour'
 import { installSyntaxHighlighting } from '@openleaf-editor/plugins-highlight'
 import { installImport } from '@openleaf-editor/plugins-import'
 import { installDocxImport } from '@openleaf-editor/plugins-import-docx'
+import { installSessionTools } from '@openleaf-editor/plugins-session'
+import { installInsertTools } from '@openleaf-editor/plugins-insert'
 
 installTableEditing()
 installColourPicker()
 installSyntaxHighlighting()
 installImport()
 installDocxImport()
+installSessionTools()
+installInsertTools()
 ```
 
 Installing a plugin registers its capabilities; it does not rearrange a custom
@@ -200,6 +206,8 @@ toolbar. Add the plugin controls to the `toolbar` attribute where you want them.
 | [`@openleaf-editor/plugins-highlight`](packages/plugins-highlight) | Code highlighting and formatted source view |
 | [`@openleaf-editor/plugins-import`](packages/plugins-import) | HTML and plain-text file import |
 | [`@openleaf-editor/plugins-import-docx`](packages/plugins-import-docx) | Microsoft Word `.docx` import via Mammoth |
+| [`@openleaf-editor/plugins-session`](packages/plugins-session) | Find and replace, word count, autosave, save, print, preview, and new document |
+| [`@openleaf-editor/plugins-insert`](packages/plugins-insert) | Media, details, anchors, character map, emoji, snippets, and image resize |
 
 For schema extensions and custom toolbar items, see
 [Authoring OpenLeaf plugins](docs/authoring-plugins.md).
@@ -266,7 +274,6 @@ production-readiness areas need broader validation:
 - Real screen-reader testing and a published accessibility conformance report
 - Mobile, touch-selection, soft-keyboard, and IME coverage
 - Production feedback across varied CMS environments and legacy HTML archives
-- Known table fidelity gaps for `<caption>` and `<colgroup>`
 
 Accessibility is a release criterion, not a badge inferred from automated checks.
 OpenLeaf currently makes no WCAG conformance claim.

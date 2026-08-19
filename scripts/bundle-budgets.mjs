@@ -27,16 +27,25 @@ export const BUDGETS_KB = {
   // core cannot delegate -- reading the `text-align` and `color` markup an
   // inherited archive already contains, which is the same reasoning that keeps
   // the table schema here while table editing is opt-in.
-  // Raised again for editor chrome (menubar, context menus, floating
-  // toolbars, help, visual aids, autolink, i18n). Wrappers are separate
+  //
+  // Raised from 92 when insert/structure nodes (figure, details, allowlisted
+  // media, heading ids) landed in the base schema, and again when table
+  // captions, colgroup and cell style joined it. All of them have to live in
+  // core or inherited markup degrades to an uneditable atom -- a caption core
+  // cannot read is a caption it deletes.
+  //
+  // Raised again for editor chrome: menubar, context menus, floating toolbars,
+  // help, visual aids, autolink and i18n. The framework wrappers are separate
   // packages and do not land in this file.
-  'openleaf.min.js': 105,
+  'openleaf.min.js': 104,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
   'openleaf-import.min.js': 12,
   // Larger than the editor, which is exactly why it is a separate file.
   'openleaf-import-docx.min.js': 140,
+  'openleaf-session.min.js': 10,
+  'openleaf-insert.min.js': 20,
 }
 
 /** Short label for a bundle: `openleaf-tables.min.js` reads as `-tables`. */
