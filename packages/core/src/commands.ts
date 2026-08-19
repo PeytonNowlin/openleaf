@@ -15,7 +15,7 @@
 
 import { redo, undo } from 'prosemirror-history'
 import { setBlockType, toggleMark, wrapIn } from 'prosemirror-commands'
-import type { Attrs, MarkType, NodeType } from 'prosemirror-model'
+import type { Attrs, MarkType, Node as PMNode, NodeType } from 'prosemirror-model'
 import {
   liftListItem,
   sinkListItem,
@@ -23,6 +23,7 @@ import {
   wrapInList,
 } from 'prosemirror-schema-list'
 import type { Command, EditorState } from 'prosemirror-state'
+import { safeColor, type Align } from './css.js'
 
 /**
  * Types are resolved from the state's schema, never from a captured singleton.
@@ -279,6 +280,198 @@ function toggleList(target: 'bullet_list' | 'ordered_list'): Command {
 export const splitListItemCommand: Command = nodeCommand('list_item', (t) => splitListItem(t))
 export const indentListItem: Command = nodeCommand('list_item', (t) => sinkListItem(t))
 export const outdentListItem: Command = nodeCommand('list_item', (t) => liftListItem(t))
+
+/* ------------------------------------------------------------------ *
+ * Alignment
+ * ------------------------------------------------------------------ */
+
+/**
+ * The text blocks in the selection that can carry an alignment.
+ *
+ * Membership is decided by asking whether the node carries an `align`
+ * attribute, not by naming paragraph and heading. A plugin that adds an
+ * alignable block -- a caption, a callout -- gets the toolbar control and the
+ * keyboard shortcut for free, and this function does not have to learn its name.
+ */
+function alignableBlocks(state: EditorState): Array<{ pos: number; node: PMNode }> {
+  const found: Array<{ pos: number; node: PMNode }> = []
+  const { from, to } = state.selection
+  state.doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isTextblock) return true
+    // Asked of the node's resolved attributes rather than its type's spec:
+    // `spec.attrs` is optional and undeclared in the public typings, whereas
+    // every node carries every attribute its type declares.
+    if (Object.hasOwn(node.attrs, 'align')) found.push({ pos, node })
+    // Never descend into a text block: its inline children are not alignable
+    // and walking them on every keystroke is work with no result.
+    return false
+  })
+  return found
+}
+
+/**
+ * The alignment of the selection, or null when it has none or is mixed.
+ *
+ * Null means "no explicit alignment", which is a genuinely different state from
+ * "aligned left" and is reported as such: an unaligned paragraph follows the
+ * document's reading direction, so it renders right-aligned in Arabic or Hebrew.
+ * Reporting it as left would make the left button light up on text that is not
+ * left-aligned, and would make `aria-pressed="true"` a lie about a paragraph
+ * nobody has aligned.
+ *
+ * A selection spanning blocks with different alignments also reports null.
+ * Showing the first block's value as the state of all of them is a lie the
+ * author acts on -- they see "centred", press it to turn it off, and one
+ * paragraph they never looked at moves.
+ */
+export function activeTextAlign(state: EditorState): Align | null {
+  const blocks = alignableBlocks(state)
+  const first = blocks[0]
+  if (!first) return null
+  const value = (first.node.attrs['align'] as Align | null) ?? null
+  return blocks.every((b) => (b.node.attrs['align'] ?? null) === value) ? value : null
+}
+
+/**
+ * Set the alignment of every alignable block in the selection. `null` clears it.
+ *
+ * Reports true whenever there is something to align, even if it already carries
+ * this value. The alternative -- returning false because the work is already
+ * done -- would make the toolbar render the button for the CURRENT alignment as
+ * disabled, since a command's no-dispatch call is what drives enabled state.
+ */
+export function setTextAlign(align: Align | null): Command {
+  return (state, dispatch) => {
+    const blocks = alignableBlocks(state)
+    if (blocks.length === 0) return false
+    if (dispatch) {
+      const tr = state.tr
+      for (const { pos, node } of blocks) {
+        // No position mapping needed: an attribute-only change replaces a node
+        // with one of identical size, so earlier edits cannot shift later
+        // positions in this loop.
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, align })
+      }
+      dispatch(tr.scrollIntoView())
+    }
+    return true
+  }
+}
+
+/**
+ * Toggle an alignment: applying the one already in force clears it.
+ *
+ * The same reasoning as `toggleHeading`. An author who centred a paragraph by
+ * accident reaches for the control they just pressed, and having it do nothing
+ * because "centre" is already the value leaves them hunting for an
+ * un-centre button that does not exist.
+ */
+export function toggleTextAlign(align: Align): Command {
+  return (state, dispatch, view) => {
+    const next = activeTextAlign(state) === align ? null : align
+    return setTextAlign(next)(state, dispatch, view)
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Colour
+ * ------------------------------------------------------------------ */
+
+/**
+ * Apply a colour mark, replacing any existing one of the same kind.
+ *
+ * Not `toggleMark`: with attributes, toggling means "the same colour twice
+ * removes it", so choosing red on text that is already red would clear it --
+ * and choosing red on text that is blue would leave two overlapping marks whose
+ * winner is decided by mark order. A colour picker is a set operation, so the
+ * existing mark is removed first and the new one added over the whole range.
+ *
+ * With an empty selection the colour goes onto the stored marks, so it applies
+ * to what the author types next. That is the same behaviour as pressing Bold on
+ * an empty cursor, and leaving it out is the most common complaint about colour
+ * pickers -- you choose a colour, type, and get black text.
+ */
+function colorCommand(name: string, color: string | null): Command {
+  return (state, dispatch) => {
+    const type = markIn(state, name)
+    if (!type) return false
+
+    // A colour the schema would refuse is a bug in the caller, not a formatting
+    // request. Declining is better than writing an attribute that will be
+    // dropped on the next parse, which would look like the editor losing edits.
+    const value = color === null ? null : safeColor(color)
+    if (color !== null && value === null) return false
+
+    const { empty, from, to } = state.selection
+
+    if (empty) {
+      const current = state.storedMarks ?? state.selection.$from.marks()
+      const stripped = current.filter((mark) => mark.type !== type)
+      if (value === null && stripped.length === current.length) return false
+      if (dispatch) {
+        dispatch(
+          state.tr.setStoredMarks(
+            value === null ? stripped : [...stripped, type.create({ color: value })],
+          ),
+        )
+      }
+      return true
+    }
+
+    if (value === null && !state.doc.rangeHasMark(from, to, type)) return false
+    if (dispatch) {
+      const tr = state.tr.removeMark(from, to, type)
+      if (value !== null) tr.addMark(from, to, type.create({ color: value }))
+      dispatch(tr.scrollIntoView())
+    }
+    return true
+  }
+}
+
+/** Attribute of a colour mark across the selection, or null when absent or mixed. */
+function activeColor(state: EditorState, name: string): string | null {
+  const type = markIn(state, name)
+  if (!type) return null
+  const { empty, $from, from, to } = state.selection
+
+  if (empty) {
+    const found = type.isInSet(state.storedMarks ?? $from.marks())
+    return found ? (found.attrs['color'] as string) : null
+  }
+
+  let value: string | null = null
+  let uniform = true
+  state.doc.nodesBetween(from, to, (child) => {
+    if (!child.isText) return true
+    const found = type.isInSet(child.marks)
+    const colour = found ? (found.attrs['color'] as string) : null
+    if (value === null && uniform) value = colour
+    else if (colour !== value) uniform = false
+    return true
+  })
+  // Mixed colours report null for the same reason mixed alignment does: a
+  // swatch showing one of them invites the author to act on all of them.
+  return uniform ? value : null
+}
+
+export function setTextColor(color: string): Command {
+  return colorCommand('text_color', color)
+}
+
+export function setBackgroundColor(color: string): Command {
+  return colorCommand('background_color', color)
+}
+
+export const clearTextColor: Command = colorCommand('text_color', null)
+export const clearBackgroundColor: Command = colorCommand('background_color', null)
+
+export function activeTextColor(state: EditorState): string | null {
+  return activeColor(state, 'text_color')
+}
+
+export function activeBackgroundColor(state: EditorState): string | null {
+  return activeColor(state, 'background_color')
+}
 
 /* ------------------------------------------------------------------ *
  * Links and images

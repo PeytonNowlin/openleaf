@@ -28,14 +28,19 @@ const EXPECTED_EXPORTS = [
   'isLosslesslyUnwrappable', 'unknownBlock', 'unknownInline',
   // url safety
   'isSafeUrl', 'safeUrlOrNull', 'isEventHandlerAttribute', 'URL_ATTRIBUTES',
+  // css safety -- the vocabulary alignment and colour are allowed to write, which
+  // @openleaf-editor/sanitize mirrors in its policy and pins with a test
+  'ALIGNMENTS', 'MODELLED_PROPERTIES', 'COLOUR_PROPERTIES', 'safeAlign', 'safeColor',
+  'parseDeclarations', 'serializeDeclarations', 'isFullyModelledStyle',
   // predicates
   'isMarkActive', 'isNodeActive', 'canInsert', 'activeHeadingLevel', 'activeLink',
-  'canUndo', 'canRedo',
+  'canUndo', 'canRedo', 'activeTextAlign', 'activeTextColor', 'activeBackgroundColor',
   // mark commands
   'toggleBold', 'toggleItalic', 'toggleUnderline', 'toggleStrike', 'toggleInlineCode',
+  'setTextColor', 'setBackgroundColor', 'clearTextColor', 'clearBackgroundColor',
   // block commands
   'setParagraph', 'setHeading', 'toggleHeading', 'toggleCodeBlock', 'toggleBlockquote',
-  'wrapInBlockquote', 'insertHorizontalRule',
+  'wrapInBlockquote', 'insertHorizontalRule', 'setTextAlign', 'toggleTextAlign',
   // lists
   'toggleBulletList', 'toggleOrderedList', 'splitListItemCommand',
   'indentListItem', 'outdentListItem',
@@ -82,7 +87,13 @@ describe('the schema an integrator sees', () => {
 
   it('contains the documented marks', () => {
     expect(Object.keys(core.coreSchema().marks).sort()).toEqual(
-      ['code', 'em', 'link', 'strike', 'strong', 'underline'].sort(),
+      [
+        'code', 'em', 'link', 'strike', 'strong', 'underline',
+        // Colour is two marks, not one: foreground and background are set
+        // independently, and a single mark holding both would have each command
+        // reset the other's value.
+        'text_color', 'background_color',
+      ].sort(),
     )
   })
 })

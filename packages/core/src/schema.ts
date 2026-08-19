@@ -8,10 +8,70 @@
  * there rather than at the package boundary.
  */
 
-import { Schema, type MarkSpec, type NodeSpec } from 'prosemirror-model'
-import { unknownBlock, unknownInline } from './preserve.js'
+import { Schema, type Attrs, type DOMOutputSpec, type MarkSpec, type NodeSpec } from 'prosemirror-model'
+import { applyStyleAttribute, parseDeclarations, safeAlign, safeColor, type Align } from './css.js'
+import { serializationTarget, unknownBlock, unknownInline } from './preserve.js'
 import { table, table_cell, table_header, table_row } from './tables.js'
 import { isSafeUrl } from './url.js'
+
+/**
+ * Read the attributes every text block shares: direction and alignment.
+ *
+ * Alignment is read from `text-align` first and the legacy `align` attribute
+ * second, because content that carries both was almost always produced by an
+ * editor that wrote the modern form and left the old one behind. Reading the
+ * legacy attribute at all is the point: `<p align="center">` is what fifteen
+ * years of CMS content looks like, and a schema that only understands the
+ * declaration silently centres nothing.
+ */
+function textBlockAttrs(el: Element): { dir: string | null; align: Align | null } {
+  const dir = el.getAttribute('dir')
+  const declaration = parseDeclarations(el.getAttribute('style')).get('text-align')
+  return { dir, align: safeAlign(declaration ?? el.getAttribute('align'), dir) }
+}
+
+/**
+ * Write them back.
+ *
+ * Alignment goes out as `style="text-align:..."` and never as the legacy
+ * attribute, so stored content converges on the one form that is still valid
+ * HTML. The `align` attribute the value may have been read from is dropped from
+ * the carried residue by extensions.ts, which is what stops the two spellings
+ * being emitted side by side with a chance to disagree.
+ */
+function textBlockDOMAttrs(attrs: Attrs): Record<string, string> {
+  const out: Record<string, string> = {}
+  const dir = attrs['dir'] as string | null
+  if (dir !== null) out['dir'] = dir
+  const align = attrs['align'] as Align | null
+  if (align !== null) out['style'] = `text-align:${align}`
+  return out
+}
+
+/**
+ * An element carrying these attributes, with `style` applied directly.
+ *
+ * Returned instead of a `['p', attrs, 0]` spec ONLY when there is CSS to write,
+ * because the serializer would otherwise put the declaration through the CSSOM
+ * and rewrite it. See applyStyleAttribute for why that matters. Everything with
+ * no style stays on the plain spec path, which is both cheaper and less code to
+ * be wrong about.
+ */
+function elementWithStyle(tag: string, attrs: Record<string, string>): DOMOutputSpec {
+  const el = serializationTarget().createElement(tag)
+  for (const [name, value] of Object.entries(attrs)) {
+    if (name === 'style') applyStyleAttribute(el, value)
+    else el.setAttribute(name, value)
+  }
+  return { dom: el, contentDOM: el }
+}
+
+/** `toDOM` for a text block: a spec array normally, an element when it has CSS. */
+function textBlockToDOM(tag: string, attrs: Attrs): DOMOutputSpec {
+  const domAttrs = textBlockDOMAttrs(attrs)
+  if (domAttrs['style'] !== undefined) return elementWithStyle(tag, domAttrs)
+  return Object.keys(domAttrs).length > 0 ? [tag, domAttrs, 0] : [tag, 0]
+}
 
 /** The base node specs. Extensions are appended to these. */
 export const coreNodes: Record<string, NodeSpec> = {
@@ -22,35 +82,29 @@ export const coreNodes: Record<string, NodeSpec> = {
     // silently breaks Arabic, Hebrew and Persian content, so it is a
     // first-class schema attribute rather than something the preservation
     // layer has to rescue.
-    attrs: { dir: { default: null } },
+    //
+    // `align` is styling, and is modelled anyway. Left to the preservation
+    // layer it survives as opaque residue -- faithful, but invisible to the
+    // toolbar, so an author cannot see that a paragraph is centred or change
+    // it. A formatting control the editor cannot express is a feature request
+    // the schema is answering.
+    attrs: { dir: { default: null }, align: { default: null } },
     content: 'inline*',
     group: 'block',
-    parseDOM: [
-      {
-        tag: 'p',
-        getAttrs: (dom) => ({ dir: (dom as Element).getAttribute('dir') }),
-      },
-    ],
-    toDOM(node) {
-      const dir = node.attrs['dir'] as string | null
-      return dir ? ['p', { dir }, 0] : ['p', 0]
-    },
+    parseDOM: [{ tag: 'p', getAttrs: (dom) => textBlockAttrs(dom as Element) }],
+    toDOM: (node) => textBlockToDOM('p', node.attrs),
   },
 
   heading: {
-    attrs: { level: { default: 1 }, dir: { default: null } },
+    attrs: { level: { default: 1 }, dir: { default: null }, align: { default: null } },
     content: 'inline*',
     group: 'block',
     defining: true,
     parseDOM: [1, 2, 3, 4, 5, 6].map((level) => ({
       tag: `h${level}`,
-      getAttrs: (dom) => ({ level, dir: (dom as Element).getAttribute('dir') }),
+      getAttrs: (dom) => ({ level, ...textBlockAttrs(dom as Element) }),
     })),
-    toDOM(node) {
-      const tag = `h${node.attrs['level']}`
-      const dir = node.attrs['dir'] as string | null
-      return dir ? [tag, { dir }, 0] : [tag, 0]
-    },
+    toDOM: (node) => textBlockToDOM(`h${node.attrs['level'] as number}`, node.attrs),
   },
 
   blockquote: {
@@ -231,6 +285,72 @@ export const coreMarks: Record<string, MarkSpec> = {
   code: {
     parseDOM: [{ tag: 'code' }],
     toDOM: () => ['code', 0],
+  },
+
+  /*
+   * Colour, as two marks rather than one.
+   *
+   * Foreground and background are independent: an author highlights a run of
+   * text yellow and then makes it red, and a single mark holding both attributes
+   * would have the second command overwrite the first's value with a default.
+   * Two marks compose the way the toolbar's two controls do.
+   *
+   * Both are parsed through a `style` rule, not a tag rule, and that choice is
+   * load-bearing. ProseMirror applies style rules to whatever element carries
+   * the declaration, so `<span style="color:red">`, `<p style="color:red">` and
+   * a `<div>` wrapper all yield the same mark -- whereas a `span[style]` tag rule
+   * would claim the span, drop it, and quietly lose any other declaration on it.
+   *
+   * The value is normalized by `safeColor`, which folds `rgb(255, 0, 0)` back to
+   * `#ff0000`. That is not cosmetic: ProseMirror reads style rules through the
+   * CSSOM, which returns the functional form for an authored hex colour, so
+   * without the fold every hex colour in an archive would be rewritten longer on
+   * the first save.
+   */
+  text_color: {
+    attrs: { color: {} },
+    parseDOM: [
+      {
+        style: 'color',
+        getAttrs(value) {
+          const color = safeColor(value)
+          return color ? { color } : false
+        },
+      },
+      {
+        // `<font color="red">` is what a decade of CMS content looks like, and
+        // it is one of the few legacy tags that maps onto a modern mark with
+        // nothing left over.
+        tag: 'font[color]',
+        getAttrs(dom) {
+          const el = dom as Element
+          // Only when colour is the whole story. `<font face="Arial" size="2">`
+          // carries information this mark cannot hold, so it belongs to the
+          // preservation layer instead -- claiming it here would drop the rest.
+          if (el.attributes.length > 1) return false
+          const color = safeColor(el.getAttribute('color'))
+          return color ? { color } : false
+        },
+      },
+    ],
+    toDOM: (mark) => elementWithStyle('span', { style: `color:${mark.attrs['color'] as string}` }),
+  },
+
+  background_color: {
+    attrs: { color: {} },
+    parseDOM: [
+      {
+        // The CSSOM expands the `background` shorthand, so Word's
+        // `style="background:yellow"` arrives here as well without a second rule.
+        style: 'background-color',
+        getAttrs(value) {
+          const color = safeColor(value)
+          return color ? { color } : false
+        },
+      },
+    ],
+    toDOM: (mark) =>
+      elementWithStyle('span', { style: `background-color:${mark.attrs['color'] as string}` }),
   },
 
   link: {
