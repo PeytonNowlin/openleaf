@@ -123,6 +123,15 @@ describe('heading commands', () => {
     expect(activeHeadingLevel(cursorAt(stateFrom('<h4>x</h4>'), 2))).toBe(4)
     expect(activeHeadingLevel(cursorAt(stateFrom('<p>x</p>'), 2))).toBeNull()
   })
+
+  it('does not treat a mixed heading/paragraph selection as uniformly heading', () => {
+    const state = selectAll(stateFrom('<h2>A</h2><p>B</p>'))
+    expect(isNodeActive(state, 'heading')).toBe(false)
+    expect(activeHeadingLevel(state)).toBeNull()
+    // Applying Heading 2 to a mixed range sets both blocks, rather than
+    // unwrapping the heading because the control thought it was already on.
+    expect(html(run(state, toggleHeading(2)))).toBe('<h2>A</h2><h2>B</h2>')
+  })
 })
 
 describe('list commands', () => {

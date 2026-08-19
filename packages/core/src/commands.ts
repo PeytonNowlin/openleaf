@@ -91,13 +91,16 @@ export function isMarkActive(state: EditorState, markName: string): boolean {
 export function isNodeActive(state: EditorState, nodeName: string, attrs?: Attrs): boolean {
   const type = nodeIn(state, nodeName)
   if (!type) return false
-  const { $from, to } = state.selection
+  const { $from, from, to } = state.selection
 
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
     const parent = $from.node(depth)
     if (parent.type !== type) continue
-    // Confirm the selection does not extend past this node.
-    if ($from.start(depth) > to) continue
+    // The selection must sit inside this node. `$from.start(depth)` is always
+    // ≤ `to` for an ancestor of `$from`, so comparing start against `to`
+    // cannot detect a range that runs past the node. Compare against the
+    // node's end, and require `from` to be at or after its start.
+    if (from < $from.start(depth) || to > $from.end(depth)) continue
     if (!attrs) return true
     return Object.entries(attrs).every(([key, value]) => parent.attrs[key] === value)
   }
@@ -118,10 +121,12 @@ export function canInsert(state: EditorState, nodeName: string): boolean {
 
 /** The heading level at the cursor, or null when not in a heading. */
 export function activeHeadingLevel(state: EditorState): number | null {
-  const { $from } = state.selection
+  const { $from, from, to } = state.selection
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
     const parent = $from.node(depth)
-    if (parent.type === nodeIn(state, 'heading')) return parent.attrs['level'] as number
+    if (parent.type !== nodeIn(state, 'heading')) continue
+    if (from < $from.start(depth) || to > $from.end(depth)) continue
+    return parent.attrs['level'] as number
   }
   return null
 }
