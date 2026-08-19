@@ -196,6 +196,12 @@ describe('adapters keep the runtimes in agreement', () => {
     expect(python).toContain('ALLOWED_PROTOCOLS = ["http", "https"')
     expect(python).toContain('DROP_WITH_CONTENT')
     expect(python).toContain('def drop_with_content')
+    // The drop must go through a parser. A regex pre-pass reconstitutes the
+    // very tag it deletes: removing the inner pair from
+    // `<for<form></form>m action=x>` leaves a live `<form action=x>`.
+    expect(python).toContain('BeautifulSoup')
+    expect(python).toContain('html5lib')
+    expect(python).not.toContain('re.sub')
     expect(python).not.toMatch(/ALLOWED_TAGS = \[[^\]]*script/)
   })
 
