@@ -22,9 +22,16 @@
 
 import { ensureStyles } from './styles.js'
 import { IMAGE_ACCEPT, dimension, type ImageUploadResult } from './upload.js'
+import {
+  filePickerFor,
+  listedImageClasses,
+  listedImages,
+  listedLinks,
+} from './pickers.js'
 
 export interface LinkResult {
   href: string
+  title: string | null
   target: string | null
   rel: string | null
 }
@@ -33,9 +40,13 @@ export interface ImageResult {
   src: string
   /** `''` means explicitly decorative. `null` is never returned. */
   alt: string
+  title: string | null
   /** Intrinsic size, when an uploader reported one. */
   width: string | null
   height: string | null
+  className: string | null
+  align: 'left' | 'right' | 'center' | null
+  caption: string | null
 }
 
 export interface FieldOption {
@@ -52,8 +63,18 @@ export interface FieldSpec {
   hint?: string
   /** For `type: 'file'`: the accept list. */
   accept?: string
-  /** For `type: 'select'`. */
+  /** When set, the field is a `<select>` rather than an input. */
   options?: readonly FieldOption[]
+  /**
+   * The field this control writes into when it changes.
+   *
+   * A chooser that only *contributed* its value could never change a field that
+   * was already filled in: editing a link or an image prefills the address, so
+   * picking from the list lost to it every time and the list worked only for new
+   * insertions. Writing into the field it fills keeps one source of truth, and
+   * shows the author what they picked so they can still edit it.
+   */
+  fills?: string
 }
 
 /** What a commit attempt produced: a value to resolve with, or a message to show. */
@@ -152,6 +173,8 @@ function showForm<T>(
     note?: string
     /** What the primary button says while `commit` is running. */
     busyLabel?: string
+    /** A button that fills fields from a shared file picker. */
+    browse?: { label: string; fill: () => Promise<Record<string, string> | null> }
   } = {},
   commit: Commit<T> = () => ({ error: 'This form has nothing to do.' }),
 ): Promise<T | null> {
@@ -190,18 +213,18 @@ function showForm<T>(
       hint.textContent = field.hint
       label.appendChild(hint)
     }
-    if (field.type === 'select') {
+    let control: HTMLInputElement | HTMLSelectElement
+    if (field.options) {
       const select = doc.createElement('select')
       select.name = field.name
-      for (const option of field.options ?? []) {
-        const el = doc.createElement('option')
-        el.value = option.value
-        el.textContent = option.label
-        select.appendChild(el)
+      for (const option of field.options) {
+        const item = doc.createElement('option')
+        item.value = option.value
+        item.textContent = option.label
+        if (option.value === (field.value ?? '')) item.selected = true
+        select.appendChild(item)
       }
-      select.value = field.value ?? ''
-      label.appendChild(select)
-      inputs.set(field.name, select)
+      control = select
     } else {
       const input = doc.createElement('input')
       input.type = field.type ?? 'text'
@@ -211,14 +234,46 @@ function showForm<T>(
       } else {
         input.value = field.value ?? ''
       }
-      // `required` is deliberately not set on the element. The browser's own
-      // validation bubble cannot be read by a screen reader in every engine and
-      // cannot express "one of these two fields"; the commit step reports into a
-      // live region instead.
-      label.appendChild(input)
-      inputs.set(field.name, input)
+      control = input
     }
+    // `required` is deliberately not set on the element. The browser's own
+    // validation bubble cannot be read by a screen reader in every engine and
+    // cannot express "one of these two fields"; the commit step reports into a
+    // live region instead.
+    label.appendChild(control)
+    inputs.set(field.name, control)
     form.appendChild(label)
+  }
+
+  // Wired after the loop, so a chooser can fill a field declared after it.
+  for (const field of fields) {
+    if (!field.fills) continue
+    const source = inputs.get(field.name)
+    const target = inputs.get(field.fills)
+    if (!source || !target) continue
+    source.addEventListener('change', () => {
+      if (source.value !== '') target.value = source.value
+    })
+  }
+
+  if (options.browse) {
+    const browse = doc.createElement('button')
+    browse.type = 'button'
+    browse.textContent = options.browse.label
+    browse.addEventListener('click', () => {
+      void options.browse?.fill().then((filled) => {
+        if (!filled) return
+        for (const [name, value] of Object.entries(filled)) {
+          const control = inputs.get(name)
+          if (control && control instanceof HTMLInputElement && control.type !== 'file') {
+            control.value = value
+          } else if (control) {
+            control.value = value
+          }
+        }
+      })
+    })
+    form.appendChild(browse)
   }
 
   let checkbox: HTMLInputElement | null = null
@@ -402,21 +457,43 @@ export function promptFields<T>(
 
 export async function promptForLink(
   doc: Document,
-  existing?: { href?: string; target?: string | null },
+  existing?: { href?: string; title?: string | null; target?: string | null },
+  host?: HTMLElement,
 ): Promise<LinkResult | null> {
+  const listed = listedLinks()
+  const picker = host ? filePickerFor(host) : null
+  const fields: FieldSpec[] = [
+    ...(listed.length > 0
+      ? [
+          {
+            name: 'listed',
+            label: 'Choose a page',
+            options: [{ value: '', label: 'Type an address instead' }, ...listed.map((item) => ({ value: item.value, label: item.title }))],
+            fills: 'href',
+          },
+        ]
+      : []),
+    {
+      name: 'href',
+      label: 'Address',
+      type: 'text',
+      value: existing?.href ?? '',
+      required: true,
+      hint: 'For example https://example.org, /about, or mailto:someone@example.org',
+    },
+    {
+      name: 'title',
+      label: 'Title',
+      type: 'text',
+      value: existing?.title ?? '',
+      hint: 'Shown as a tooltip. Optional.',
+    },
+  ]
+
   return showForm<LinkResult>(
     doc,
     existing?.href ? 'Edit link' : 'Insert link',
-    [
-      {
-        name: 'href',
-        label: 'Address',
-        type: 'text',
-        value: existing?.href ?? '',
-        required: true,
-        hint: 'For example https://example.org, /about, or mailto:someone@example.org',
-      },
-    ],
+    fields,
     {
       extraCheckbox: {
         name: 'newWindow',
@@ -426,17 +503,30 @@ export async function promptForLink(
           'Opening in a new window without warning can disorient people using ' +
           'screen readers or magnification. Leave this off unless you have a reason.',
       },
+      ...(picker && host
+        ? {
+            browse: {
+              label: 'Browse files',
+              fill: async () => {
+                const picked = await picker({ kind: 'file', host })
+                if (!picked) return null
+                return { href: picked.url, title: picked.title ?? '' }
+              },
+            },
+          }
+        : {}),
     },
     (values) => {
-      const href = values['href'] ?? ''
+      // The address field alone: choosing from the list writes into it, so there
+      // is no second place a destination can hide.
+      const href = values['href'] || ''
       if (!href) return { error: 'Enter an address for the link.' }
       const newWindow = values['newWindow'] === 'on'
       return {
         value: {
           href,
+          title: values['title'] || null,
           target: newWindow ? '_blank' : null,
-          // rel="noopener" is not optional with target=_blank: without it the
-          // opened page gets a handle on this window.
           rel: newWindow ? 'noopener noreferrer' : null,
         },
       }
@@ -445,44 +535,84 @@ export async function promptForLink(
 }
 
 export interface ImagePromptOptions {
-  /**
-   * A file the author has already chosen, by dropping or pasting it.
-   *
-   * When present the dialog does not offer a picker or an address field: the
-   * source is settled and the only open question is the description.
-   */
   file?: File
-  /** Uploads a file and reports where it landed. Absent means URL-only. */
   upload?: (file: File) => Promise<ImageUploadResult>
+  host?: HTMLElement
+  existing?: {
+    src?: string
+    alt?: string | null
+    title?: string | null
+    className?: string | null
+    align?: 'left' | 'right' | 'center' | null
+    caption?: string | null
+  }
 }
 
-/**
- * Ask for an image.
- *
- * The alternative text is asked for in the same dialog as the file, and this is
- * the reason the upload happens on submit rather than on selection: one dialog
- * means one decision point, and there is no path through it that inserts an
- * image nobody described. A drop that uploaded immediately and asked afterwards
- * would leave an undescribed image in the document every time somebody cancelled
- * -- and OpenLeaf has no image-editing dialog yet, so "afterwards" would mean
- * never.
- */
 export async function promptForImage(
   doc: Document,
   options: ImagePromptOptions = {},
 ): Promise<ImageResult | null> {
-  const { file, upload } = options
+  const { file, upload, host, existing } = options
+  const listed = listedImages()
+  const classes = listedImageClasses()
+  const picker = host ? filePickerFor(host) : null
 
   const describe: FieldSpec = {
     name: 'alt',
     label: 'Alternative text',
     type: 'text',
+    value: existing?.alt ?? '',
     hint: 'Describe what the image shows, for people who cannot see it.',
   }
 
+  const extras: FieldSpec[] = [
+    {
+      name: 'title',
+      label: 'Title',
+      type: 'text',
+      value: existing?.title ?? '',
+      hint: 'Shown as a tooltip. Optional.',
+    },
+    {
+      name: 'align',
+      label: 'Alignment',
+      options: [
+        { value: '', label: 'None' },
+        { value: 'left', label: 'Float left' },
+        { value: 'center', label: 'Centre' },
+        { value: 'right', label: 'Float right' },
+      ],
+      value: existing?.align ?? '',
+    },
+    {
+      name: 'className',
+      label: 'CSS classes',
+      type: 'text',
+      value: existing?.className ?? '',
+      hint: classes.length > 0 ? `Suggested: ${classes.join(', ')}` : 'Optional class names, separated by spaces.',
+    },
+    {
+      name: 'caption',
+      label: 'Caption',
+      type: 'text',
+      value: existing?.caption ?? '',
+      hint: 'Wraps the image in a figure. Leave blank for no caption.',
+    },
+  ]
+
   const fields: FieldSpec[] = file
-    ? [describe]
+    ? [describe, ...extras]
     : [
+        ...(listed.length > 0
+          ? [
+              {
+                name: 'listed',
+                label: 'Choose an image',
+                options: [{ value: '', label: 'Type an address instead' }, ...listed.map((item) => ({ value: item.value, label: item.title }))],
+                fills: 'src',
+              },
+            ]
+          : []),
         ...(upload
           ? [
               {
@@ -498,36 +628,64 @@ export async function promptForImage(
           name: 'src',
           label: upload ? 'Or paste an image address' : 'Image address',
           type: 'text',
+          value: existing?.src ?? '',
           required: !upload,
         },
         describe,
+        ...extras,
       ]
 
-  const decorative = {
-    name: 'decorative',
-    label: 'This image is decorative and needs no description',
-  }
+  const finish = (
+    src: string,
+    alt: string,
+    width: string | null,
+    height: string | null,
+    values: Record<string, string>,
+  ): ImageResult => ({
+    src,
+    alt,
+    title: values['title'] || null,
+    width,
+    height,
+    className: values['className'] || null,
+    align:
+      values['align'] === 'left' || values['align'] === 'right' || values['align'] === 'center'
+        ? values['align']
+        : null,
+    caption: values['caption'] ? values['caption'] : null,
+  })
 
   return showForm<ImageResult>(
     doc,
     file ? 'Describe this image' : 'Insert image',
     fields,
     {
-      extraCheckbox: decorative,
+      extraCheckbox: {
+        name: 'decorative',
+        label: 'This image is decorative and needs no description',
+      },
       ...(file ? { note: `Ready to upload: ${file.name}` } : {}),
       busyLabel: 'Uploading…',
+      ...(picker && host
+        ? {
+            browse: {
+              label: 'Browse files',
+              fill: async () => {
+                const picked = await picker({ kind: 'image', host })
+                if (!picked) return null
+                return { src: picked.url, alt: picked.alt ?? '', title: picked.title ?? '' }
+              },
+            },
+          }
+        : {}),
     },
     (values, files) => {
       const chosen = file ?? files['file']
-      const src = values['src'] ?? ''
+      const src = values['src'] || ''
 
       if (!chosen && !src) {
         return { error: upload ? 'Choose a file or enter an image address.' : 'Enter an image address.' }
       }
-      // Required unless explicitly marked decorative. The checkbox exists so
-      // that the honest answer "this needs no description" is easier than
-      // typing "image" to defeat a validator -- which is what a hard
-      // requirement actually teaches people to do.
       if (!values['alt'] && values['decorative'] !== 'on') {
         return { error: 'Add alternative text, or tick the decorative box.' }
       }
@@ -535,18 +693,11 @@ export async function promptForImage(
       const alt = values['decorative'] === 'on' ? '' : (values['alt'] ?? '')
 
       if (!chosen || !upload) {
-        return { value: { src, alt, width: null, height: null } }
+        return { value: finish(src, alt, null, null, values) }
       }
 
       return upload(chosen).then((result) => ({
-        value: {
-          src: result.src,
-          // An uploader's description only pre-fills; what the author confirmed
-          // in the dialog is what gets stored.
-          alt,
-          width: dimension(result.width),
-          height: dimension(result.height),
-        },
+        value: finish(result.src, alt, dimension(result.width), dimension(result.height), values),
       }))
     },
   )

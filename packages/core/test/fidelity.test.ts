@@ -79,6 +79,7 @@ const BLOCK_SELECTOR = [
   'p', 'div', 'section', 'article', 'aside', 'header', 'footer', 'nav', 'main',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'li', 'ul', 'ol',
   'table', 'caption', 'thead', 'tbody', 'tr', 'td', 'th', 'figure', 'figcaption',
+  'details', 'summary',
   'center', 'hr', 'dl', 'dt', 'dd',
 ].join(',')
 

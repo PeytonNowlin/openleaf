@@ -49,7 +49,7 @@ function select(
   value: string | null | undefined,
   options: typeof ALIGN_OPTIONS | typeof VALIGN_OPTIONS,
 ): FieldSpec {
-  return { name, label, type: 'select', value: value ?? '', options: [...options] }
+  return { name, label, value: value ?? '', options: [...options] }
 }
 
 function backgroundField(value: string | undefined): FieldSpec {

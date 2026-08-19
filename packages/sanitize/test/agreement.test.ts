@@ -1,6 +1,22 @@
-import { parseHtml, safeAlign, safeColor, serializeHtml } from '@openleaf-editor/core'
+import {
+  EMBED_HOSTS,
+  parseHtml,
+  safeAlign,
+  safeAllowList,
+  safeColor,
+  serializeHtml,
+} from '@openleaf-editor/core'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_POLICY, isAllowedDeclaration, sanitizeHtml } from '../src/index.js'
+import {
+  DEFAULT_POLICY,
+  EMBED_HOSTS as POLICY_EMBED_HOSTS,
+  embedSrcPattern,
+  isAllowedDeclaration,
+  isAllowedEmbedSrc,
+  safeAllowList as policySafeAllowList,
+  sanitizeHtml,
+  toDOMPurifyConfig,
+} from '../src/index.js'
 
 /**
  * The default policy and the editor's schema must not drift apart.
@@ -23,6 +39,17 @@ const SCHEMA_NATIVE = [
   '<p dir="ltr">Text with <strong>b</strong> <em>i</em> <u>u</u> <s>s</s> <code>c</code>.</p>',
   '<p><a href="https://example.org" title="T" target="_blank" rel="noopener">link</a></p>',
   '<p><img src="/a.png" alt="described" title="T" width="10" height="20"></p>',
+  '<p><img class="ol-float-left" src="/a.png" alt="x"></p>',
+  '<h2 id="sec">Anchored</h2>',
+  '<p><a href="https://example.org" title="T" id="here">link</a></p>',
+  '<figure><img src="/a.png" alt="x"><figcaption>cap</figcaption></figure>',
+  '<details><summary>More</summary><p>body</p></details>',
+  '<hr class="ol-pagebreak">',
+  '<video src="/talk.mp4" controls=""></video>',
+  '<iframe src="https://www.youtube.com/embed/abc" title="Clip" allowfullscreen=""></iframe>',
+  '<iframe src="https://www.youtube.com/embed/abc" title="Clip" ' +
+    'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; ' +
+    'picture-in-picture; web-share" allowfullscreen=""></iframe>',
   '<p>break<br>after</p>',
   // Alignment and colour. The policy allows `style` on these elements for these
   // declarations and nothing else, which is the narrowest widening that lets the
@@ -127,6 +154,95 @@ describe('the default policy accepts everything the editor emits', () => {
     // paragraph does not make it allowed on a list item.
     expect(sanitizeHtml('<ul><li style="text-align:center">t</li></ul>', { policy: DEFAULT_POLICY }))
       .toBe('<ul><li>t</li></ul>')
+  })
+
+  it('agrees with the editor about which iframe hosts are acceptable', () => {
+    expect(POLICY_EMBED_HOSTS.map((rule) => `${rule.host}:${rule.path?.source ?? '*'}`)).toEqual(
+      EMBED_HOSTS.map((rule) => `${rule.host}:${rule.path?.source ?? '*'}`),
+    )
+  })
+
+  it('agrees with the editor about which iframe permissions are acceptable', () => {
+    // embed.ts here is a deliberate copy of core's, for the same reason css.ts is.
+    for (const value of [
+      'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+      'autoplay; fullscreen; picture-in-picture',
+      'autoplay; fullscreen;',
+      "camera 'self'; microphone; fullscreen *",
+      'autoplay fullscreen',
+      'AUTOPLAY; Fullscreen',
+      'camera; microphone; geolocation',
+      '',
+    ]) {
+      expect(policySafeAllowList(value)).toBe(safeAllowList(value))
+    }
+  })
+
+  // A permitted host is not on its own enough: `allow` is how a frame asks to
+  // step outside the restrictions the rest of the page lives under.
+  it('strips permissions the policy does not name from a permitted embed', () => {
+    const out = sanitizeHtml(
+      '<iframe src="https://www.youtube.com/embed/abc" allow="autoplay; camera; microphone"></iframe>',
+      { policy: DEFAULT_POLICY },
+    )
+    expect(out).toContain('allow="autoplay"')
+    expect(out).not.toContain('camera')
+    expect(out).not.toContain('microphone')
+  })
+
+  it('drops the attribute entirely when no permission survives', () => {
+    const out = sanitizeHtml(
+      '<iframe src="https://www.youtube.com/embed/abc" allow="camera; geolocation"></iframe>',
+      { policy: DEFAULT_POLICY },
+    )
+    expect(out).not.toContain('allow')
+  })
+
+  it('removes an embed from a host the policy does not permit', () => {
+    const out = sanitizeHtml('<p>a</p><iframe src="https://evil.example/x"></iframe><p>b</p>', {
+      policy: DEFAULT_POLICY,
+    })
+    expect(out).toBe('<p>a</p><p>b</p>')
+  })
+
+  // No DOMPurify config can express a per-element host allowlist, so listing the
+  // element without the hook would let an arbitrary nested page through the
+  // sanitizer SECURITY.md recommends.
+  it('withholds iframe from the DOMPurify config unless the embed hook is declared', () => {
+    const guarded = toDOMPurifyConfig(DEFAULT_POLICY)
+    expect(guarded.ALLOWED_TAGS).not.toContain('iframe')
+    expect(guarded.FORBID_TAGS).toContain('iframe')
+    expect(guarded.FORBID_CONTENTS).toContain('iframe')
+
+    const hooked = toDOMPurifyConfig(DEFAULT_POLICY, { embedHook: true })
+    expect(hooked.ALLOWED_TAGS).toContain('iframe')
+    expect(hooked.FORBID_TAGS).not.toContain('iframe')
+  })
+
+  // The emitted pattern is what bleach and HTMLPurifier enforce with, so it has
+  // to answer exactly as the code path does -- spoofed hosts included.
+  it('generates an embed pattern that agrees with the host check', () => {
+    const pattern = new RegExp(embedSrcPattern(), 'i')
+    for (const url of [
+      'https://www.youtube.com/embed/abc',
+      'https://youtube.com/embed/abc',
+      'https://youtube-nocookie.com/embed/abc',
+      'https://player.vimeo.com/video/1',
+      'https://dailymotion.com/embed/video/1',
+      'https://player.twitch.tv/?channel=x',
+      'https://player.twitch.tv',
+      'https://w.soundcloud.com/player/?url=x',
+      'https://open.spotify.com/embed/track/1',
+      'https://www.google.com/maps/embed?pb=1',
+      'https://evil.example/',
+      'https://youtube.com.evil.example/embed/x',
+      'https://notyoutube.com/embed/x',
+      'https://youtube.com/watch?v=x',
+      'http://www.youtube.com/embed/abc',
+      'https://player.twitch.tv.evil.example/x',
+    ]) {
+      expect(pattern.test(url), url).toBe(isAllowedEmbedSrc(url))
+    }
   })
 
   it('still strips what the editor would never emit', () => {
