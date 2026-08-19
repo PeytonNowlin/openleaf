@@ -37,15 +37,15 @@
 > - The **content-preservation layer** — the thing that stops a
 >   ProseMirror-based editor from silently eating legacy markup
 > - The round-trip fidelity harness: **9/9 stored fixtures fully lossless**,
->   **138 unit tests** green, typechecked strict
+>   **401 unit tests** green, typechecked strict
 > - **Paste normalizers for Word and Google Docs** — reconstructs real nested
 >   `<ul>`/`<ol>` from Word's `mso-list` markup, strips the vendor styling, and
 >   parses to **zero** preserved atoms
 > - **A working toolbar** — 17 controls, `role="toolbar"` with a roving tabindex,
 >   `Alt+F10` in and `Escape` out, live-region announcements, link and image
 >   dialogs, source view, and a CSS-custom-property theme API
-> - `<openleaf-editor>` verified in **real browsers** — 44 tests across Chromium,
->   Firefox and WebKit (**128 passing runs**): loads stored HTML, accepts typing,
+> - `<openleaf-editor>` verified in **real browsers** — 138 tests across Chromium,
+>   Firefox and WebKit (**414 passing runs**): loads stored HTML, accepts typing,
 >   pastes from Word and Google Docs, drives every toolbar control by keyboard,
 >   writes back to the textarea, posts through a real form submit, and does not
 >   alter a document that is opened and saved untouched
@@ -53,16 +53,16 @@
 >   DOMPurify, Python `bleach` and PHP HTMLPurifier so every runtime enforces the
 >   same rules
 > - **Tables** — read and written by every deployment; editing is an opt-in
->   12.5 KB bundle that shares the core runtime rather than duplicating it
+>   12.8 KB bundle that shares the core runtime rather than duplicating it
 > - **Syntax highlighting and source formatting** — coloured code blocks, and a
->   source view that is indented and highlighted, in a 5.3 KB opt-in bundle
+>   source view that is indented and highlighted, in a 6.1 KB opt-in bundle
 > - **Plugins can add node and mark types** — the schema is built from
 >   registered extensions, not a frozen singleton
 > - **File import** — drag in a Word `.docx`, an HTML or text file, or Word's own
 >   "Save as Web Page" export, and headings, nested lists, quotes and tables all
->   arrive. 2.5 KB, plus 123 KB only if you want `.docx`.
-> - Bundles: **86 KB gzipped** core, plus optional **12.5 KB** tables,
->   **5.3 KB** highlighting and **2.2 KB** import, each downloaded only if asked for
+>   arrive. 2.8 KB, plus 123 KB only if you want `.docx`.
+> - Bundles: **88.4 KB gzipped** core, plus optional **12.8 KB** tables,
+>   **6.1 KB** highlighting and **2.8 KB** import, each downloaded only if asked for
 >
 > **What does not exist yet**
 > - Image upload (insert-by-URL only), find and replace, alignment, colours
@@ -186,11 +186,13 @@ $ pnpm test
   callout-div.html        stored    ok     ok       0
   drupal-ckeditor.html    stored    ok     ok       0
   legacy-wordpress.html   stored    ok     ok       0
+  marker-collision.html   stored    ok     ok       0
   nested-lists.html       stored    ok     ok       0
+  preserved-table.html    stored    ok     ok       0
   rtl-content.html        stored    ok     ok       0
   semantic-baseline.html  stored    ok     ok       0
-  gdocs-paste.html        paste     ok     ok       4
-  word-paste.html         paste     ok     ok       5
+  gdocs-paste.html        paste     ok     ok       5
+  word-paste.html         paste     ok     ok       2
   stored corpus: 9/9 fully lossless
 ```
 
@@ -454,7 +456,7 @@ So the split moved:
 | | Where | Cost |
 |---|---|---|
 | Table **schema** — parse, serialize, legacy attributes, `scope`, `colspan` | Always in core | ~4 KB |
-| Table **editing** — cell selection, column resizing, row/column commands, toolbar | Opt-in bundle | 12.5 KB gzipped |
+| Table **editing** — cell selection, column resizing, row/column commands, toolbar | Opt-in bundle | 12.8 KB gzipped |
 
 Two script tags, and the order matters:
 
@@ -464,7 +466,7 @@ Two script tags, and the order matters:
 ```
 
 The second bundle **borrows the first one's ProseMirror runtime** rather than
-carrying its own. That is what keeps it 12.5 KB instead of ~200 KB, but the real
+carrying its own. That is what keeps it 12.8 KB instead of ~200 KB, but the real
 reason is correctness: two copies of ProseMirror means two schemas, and a table
 node built by the plugin would be a different node type than the editor accepts —
 a failure that is very hard to read from the symptoms.
@@ -515,7 +517,7 @@ with.
 
 ## Syntax highlighting and source formatting
 
-A second opt-in bundle, **5.3 KB gzipped**. It colours code blocks and formats
+A second opt-in bundle, **6.1 KB gzipped**. It colours code blocks and formats
 the HTML source view — and the formatting is arguably the bigger win, because the
 editor serializes to one long line, which is correct output and unreadable
 source.
@@ -583,7 +585,7 @@ colour something oddly.
 
 ## Importing files
 
-An opt-in bundle, **2.2 KB gzipped**. Adds a toolbar button and drag-and-drop.
+An opt-in bundle, **2.8 KB gzipped**. Adds a toolbar button and drag-and-drop.
 
 ```html
 <script src="/js/openleaf.min.js"></script>
@@ -611,7 +613,7 @@ reason to make Word documents somebody else's problem, so it is a third script:
 
 ```html
 <script src="/js/openleaf.min.js"></script>
-<script src="/js/openleaf-import.min.js"></script>       <!-- 2.5 KB -->
+<script src="/js/openleaf-import.min.js"></script>       <!-- 2.8 KB -->
 <script src="/js/openleaf-import-docx.min.js"></script>  <!-- 123 KB, Word only -->
 ```
 
@@ -756,9 +758,9 @@ That alignment is not a coincidence worth wasting.
 
 **Where that stands today, stated plainly:** the toolbar's ARIA is designed
 against the APG toolbar pattern, reviewed before it was written, and covered by
-29 browser tests that drive it entirely by keyboard. It has **not** been driven
-by a real screen reader. Until it has, there is no conformance claim to make.
-The testing matrix and the known open items are in
+32 browser tests, eight of which drive the keyboard model end to end. It has
+**not** been driven by a real screen reader. Until it has, there is no
+conformance claim to make. The testing matrix and the known open items are in
 [docs/toolbar-design-review.md](docs/toolbar-design-review.md); the priority
 order is NVDA + Firefox, JAWS + Chrome, VoiceOver + Safari, then ChromeVox on
 ChromeOS — which is not optional, because K-12 is majority Chromebook.
@@ -787,26 +789,37 @@ Content is stored as **HTML**, not a proprietary JSON document model. A site
 that adopts OpenLeaf and later abandons it is left with content it can still
 render. Lock-in is not a retention strategy here.
 
-**Current size:** 266 KB minified, **84 KB gzipped** for the core bundle —
+**Current size:** 279 KB minified, **88.4 KB gzipped** for the core bundle —
 editing engine, paste normalizers, toolbar, icons, dialogs and the table schema.
-Optional table *editing* is a further **12.5 KB**, downloaded only by sites that
+Optional table *editing* is a further **12.8 KB**, downloaded only by sites that
 load it.
 
-The gate fails above 90 KB gzipped for the core bundle, so there is **6 KB of
+The gate fails above 90 KB gzipped for the core bundle, so there is **1.6 KB of
 headroom left**. Alignment, colours and find-and-replace have to fit in that, or
 follow tables out into opt-in bundles. The plugin mechanism now exists, so that
 is a realistic option rather than a refactor.
 
-OpenLeaf's own code is 45 KB of the 253 KB raw total; the other 82% is the
+OpenLeaf's own code is 65.8 KB of the 277.9 KB raw total; the other 76% is the
 ProseMirror engine. `node demo/build.mjs --sizes` prints the per-package
 breakdown, because an aggregate gate tells you the bundle no longer fits but not
 which feature spent the budget — so the blame lands on whatever shipped last:
 
 ```
-prosemirror-view      95.8 KB      @openleaf/ui        27.0 KB
-prosemirror-model     43.9 KB      @openleaf/core       8.4 KB
-prosemirror-transform 30.2 KB      @openleaf/paste      6.1 KB
-prosemirror-state     11.6 KB      @openleaf/element    3.7 KB
+  core bundle source breakdown (bytes in output, before gzip)
+  -------------------------------------
+  prosemirror-view             96.0 KB
+  prosemirror-model            44.1 KB
+  @openleaf/ui                 34.7 KB
+  prosemirror-transform        31.0 KB
+  @openleaf/core               17.6 KB
+  prosemirror-commands         12.3 KB
+  prosemirror-state            11.8 KB
+  @openleaf/element             6.9 KB
+  @openleaf/paste               6.6 KB
+  prosemirror-history           6.0 KB
+  prosemirror-schema-list       3.6 KB
+  -------------------------------------
+  OpenLeaf code is 65.8 KB of 277.9 KB (24%); the rest is the ProseMirror engine.
 ```
 
 ## Security
@@ -997,16 +1010,18 @@ no clone, no install. To work on it:
 pnpm install
 pnpm exec playwright install   # first time only
 
-pnpm verify                    # the whole gate. ~20 seconds.
+pnpm verify                    # the whole gate. ~40 seconds.
 ```
 
-`pnpm verify` runs four checks and is the single command that matters:
+`pnpm verify` runs six checks and is the single command that matters:
 
 | | |
 |---|---|
 | typecheck | strict TypeScript across every package |
-| unit tests | 138 tests including both round-trip fidelity corpora |
-| browser tests | 44 tests across Chromium, Firefox and WebKit against the real bundle |
+| unit tests | 401 tests including both round-trip fidelity corpora |
+| browser tests | 138 tests across Chromium, Firefox and WebKit against the real bundle |
+| bundle build | asserts the demo bundle never reads from a built `dist/` |
+| schema singleton | asserts nothing outside core imports a schema instance |
 | bundle size | fails above 90 KB gzipped |
 
 Narrower loops while working:
@@ -1022,10 +1037,12 @@ node demo/build.mjs && open demo/index.html
 ### A note on CI
 
 **GitHub Actions is deliberately manual-only right now** (`workflow_dispatch`).
-The workflow is intact and is the same four checks; it simply does not fire on
-push. Installing three browser engines with system dependencies on a remote
-runner took over fifteen minutes, while the identical gate takes thirteen
-seconds locally — at this stage the wait was costing more than it caught.
+The workflow is intact and runs the same typecheck, unit, bundle-size and
+browser checks; the two source guards `pnpm verify` adds are local-only. It
+simply does not fire on push. Installing three browser engines with system
+dependencies on a remote runner took over fifteen minutes, while the identical
+gate takes forty seconds locally — at this stage the wait was costing more than
+it caught.
 
 Run it on demand with `gh workflow run ci.yml`, and see the comment at the top
 of `.github/workflows/ci.yml` for the two lines that restore push triggers.
