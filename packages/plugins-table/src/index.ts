@@ -139,17 +139,29 @@ function applyCellScope(tr: Transaction): Transaction {
   const table = tr.doc.nodeAt(tablePos)
   if (!table) return tr
 
-  table.descendants((node, rel) => {
-    const pos = tablePos + 1 + rel
-    if (node.type === cell && node.attrs['scope']) {
-      tr.setNodeMarkup(pos, undefined, { ...node.attrs, scope: null })
-    } else if (
-      node.type === header &&
-      (node.attrs['scope'] === null || node.attrs['scope'] === undefined || node.attrs['scope'] === '')
-    ) {
-      tr.setNodeMarkup(pos, undefined, { ...node.attrs, scope: 'col' })
-    }
-    return true
+  // Walked by row and column rather than as a flat descendant list, because a
+  // header's scope depends on where it sits. `setNodeMarkup` only changes
+  // attributes, so every node keeps its size and these positions stay valid.
+  table.forEach((row, rowOffset, rowIndex) => {
+    const rowPos = tablePos + 1 + rowOffset
+    row.forEach((cellNode, cellOffset, cellIndex) => {
+      const pos = rowPos + 1 + cellOffset
+      if (cellNode.type === cell && cellNode.attrs['scope']) {
+        tr.setNodeMarkup(pos, undefined, { ...cellNode.attrs, scope: null })
+        return
+      }
+      if (cellNode.type !== header) return
+      const scope = cellNode.attrs['scope']
+      if (scope !== null && scope !== undefined && scope !== '') return
+      // A header in the top row labels a column. A header that opens a later
+      // row labels that row -- writing "col" there tells a screen reader the
+      // opposite of the truth, which is worse than the missing scope this
+      // replaces.
+      tr.setNodeMarkup(pos, undefined, {
+        ...cellNode.attrs,
+        scope: rowIndex === 0 || cellIndex > 0 ? 'col' : 'row',
+      })
+    })
   })
   return tr
 }
