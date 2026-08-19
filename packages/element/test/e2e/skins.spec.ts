@@ -127,6 +127,108 @@ test.describe('skins', () => {
   })
 })
 
+test.describe('the scheme a skin declares', () => {
+  /*
+   * A skin replaces the palette outright, so it is unmoved by the system
+   * setting -- but the things a custom property cannot reach kept following the
+   * system anyway: the syntax palette in the highlighting bundle, and every
+   * native widget the browser paints from `color-scheme` rather than from CSS.
+   * `data-ol-scheme` is how a skin says which world those belong to.
+   */
+  const scheme = (page: Page) =>
+    page.evaluate(() => getComputedStyle(document.querySelector('.ol-editor')!).colorScheme)
+
+  test('a colour skin publishes it as an attribute stylesheets can branch on', async ({ page }) => {
+    await host(page).evaluate((el) => el.setAttribute('skin', 'paper'))
+    await expect(host(page)).toHaveAttribute('data-ol-scheme', 'light')
+    await host(page).evaluate((el) => el.setAttribute('skin', 'midnight'))
+    await expect(host(page)).toHaveAttribute('data-ol-scheme', 'dark')
+  })
+
+  test('a density skin declares none and leaves the scheme alone', async ({ page }) => {
+    await host(page).evaluate((el) => el.setAttribute('skin', 'compact'))
+    await expect(host(page)).not.toHaveAttribute('data-ol-scheme', /.*/)
+  })
+
+  test('removing the skin removes it too', async ({ page }) => {
+    await host(page).evaluate((el) => el.setAttribute('skin', 'midnight'))
+    await host(page).evaluate((el) => el.removeAttribute('skin'))
+    await expect(host(page)).not.toHaveAttribute('data-ol-scheme', /.*/)
+  })
+
+  test('native widgets follow the skin, not the system', async ({ page }) => {
+    // The block-type control is a real <select>; its popup is painted by the OS
+    // from color-scheme, and nothing an integrator can set in a token reaches it.
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await host(page).evaluate((el) => el.setAttribute('skin', 'paper'))
+    expect(await scheme(page)).toBe('light')
+
+    await page.emulateMedia({ colorScheme: 'light' })
+    await host(page).evaluate((el) => el.setAttribute('skin', 'midnight'))
+    expect(await scheme(page)).toBe('dark')
+  })
+
+  test('it outranks theme, which cannot move the skin\'s surface anyway', async ({ page }) => {
+    await host(page).evaluate((el) => {
+      el.setAttribute('skin', 'paper')
+      el.setAttribute('theme', 'dark')
+    })
+    expect(await scheme(page)).toBe('light')
+    // The surface is the skin's either way -- the token wins on its own. What
+    // this stops is the theme moving only the parts a token cannot reach.
+    const surface = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.ol-content')!).backgroundColor,
+    )
+    expect(surface).toBe('rgb(251, 247, 240)')
+  })
+
+  test('a light skin does not take dark fallbacks for what it left unset', async ({ page }) => {
+    // A partial skin -- surface only. Under a dark system the remaining tokens
+    // used to fall back to the dark palette: dark-mode muted text on cream.
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.evaluate(() => {
+      const ui = (window as never as {
+        OpenLeaf: { __runtime: Record<string, { registerSkin: (s: unknown) => void }> }
+      }).OpenLeaf.__runtime['@openleaf/ui']!
+      ui.registerSkin({
+        name: 'partial',
+        label: 'Partial',
+        scheme: 'light',
+        tokens: '--openleaf-color-surface: #fbf7f0;',
+      })
+    })
+    await host(page).evaluate((el) => el.setAttribute('skin', 'partial'))
+    expect(await buttonColour(page)).toBe('rgb(31, 35, 40)')
+  })
+
+  test('a surface skin with no scheme is warned about, not silently accepted', async ({ page }) => {
+    // It only looks wrong on a machine set to the opposite mode, which is rarely
+    // the machine the skin was written on.
+    const warnings: string[] = []
+    page.on('console', (m) => {
+      if (m.type() === 'warning') warnings.push(m.text())
+    })
+    await page.evaluate(() => {
+      const ui = (window as never as {
+        OpenLeaf: { __runtime: Record<string, { registerSkin: (s: unknown) => void }> }
+      }).OpenLeaf.__runtime['@openleaf/ui']!
+      ui.registerSkin({
+        name: 'forgetful',
+        label: 'Forgetful',
+        tokens: '--openleaf-color-surface: #101418; --openleaf-color-text: #e8eef4;',
+      })
+      // An accent-only brand skin is not the same thing and must stay quiet.
+      ui.registerSkin({
+        name: 'brand-only',
+        label: 'Brand only',
+        tokens: '--openleaf-color-accent: #c2185b;',
+      })
+    })
+    await expect.poll(() => warnings.join('\n')).toContain('"forgetful"')
+    expect(warnings.join('\n')).not.toContain('brand-only')
+  })
+})
+
 test.describe('colour scheme', () => {
   test('theme="dark" forces dark regardless of the system setting', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' })

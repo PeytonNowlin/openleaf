@@ -123,6 +123,15 @@ describe('heading commands', () => {
     expect(activeHeadingLevel(cursorAt(stateFrom('<h4>x</h4>'), 2))).toBe(4)
     expect(activeHeadingLevel(cursorAt(stateFrom('<p>x</p>'), 2))).toBeNull()
   })
+
+  it('does not treat a mixed heading/paragraph selection as uniformly heading', () => {
+    const state = selectAll(stateFrom('<h2>A</h2><p>B</p>'))
+    expect(isNodeActive(state, 'heading')).toBe(false)
+    expect(activeHeadingLevel(state)).toBeNull()
+    // Applying Heading 2 to a mixed range sets both blocks, rather than
+    // unwrapping the heading because the control thought it was already on.
+    expect(html(run(state, toggleHeading(2)))).toBe('<h2>A</h2><h2>B</h2>')
+  })
 })
 
 describe('list commands', () => {
@@ -141,6 +150,16 @@ describe('list commands', () => {
     expect(html(run(state, toggleOrderedList))).toBe('<ol><li><p>item</p></li></ol>')
   })
 
+  it('converts a bullet list to an ordered list', () => {
+    const state = cursorAt(stateFrom('<ul><li><p>item</p></li></ul>'), 4)
+    expect(html(run(state, toggleOrderedList))).toBe('<ol><li><p>item</p></li></ol>')
+  })
+
+  it('converts an ordered list to a bullet list', () => {
+    const state = cursorAt(stateFrom('<ol><li><p>item</p></li></ol>'), 4)
+    expect(html(run(state, toggleBulletList))).toBe('<ul><li><p>item</p></li></ul>')
+  })
+
   it('reports list membership', () => {
     const inList = cursorAt(stateFrom('<ul><li><p>item</p></li></ul>'), 4)
     expect(isNodeActive(inList, 'bullet_list')).toBe(true)
@@ -155,6 +174,17 @@ describe('block commands', () => {
 
     const unquoted = run(cursorAt(quoted!, 4), toggleBlockquote)
     expect(html(unquoted)).toBe('<p>quote me</p>')
+  })
+
+  it('unwraps a quoted list without throwing', () => {
+    // The previous lift targeted the paragraph inside the list item, which
+    // `bullet_list` will not accept. Unwrapping has to replace the blockquote
+    // itself, leaving the list intact.
+    const state = cursorAt(
+      stateFrom('<blockquote><ul><li><p>item</p></li></ul></blockquote>'),
+      5,
+    )
+    expect(html(run(state, toggleBlockquote))).toBe('<ul><li><p>item</p></li></ul>')
   })
 
   it('toggles a code block on and off', () => {

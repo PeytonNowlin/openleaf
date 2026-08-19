@@ -217,3 +217,34 @@ test.describe('the CMS form contract', () => {
     expect(String(posted)).toContain('seed')
   })
 })
+
+test.describe('readonly and for attributes', () => {
+  test('adding readonly stops typing and toolbar commands', async ({ page }) => {
+    await page.locator('openleaf-editor').evaluate((el) => el.setAttribute('readonly', ''))
+    await expect(editor(page)).toHaveAttribute('contenteditable', 'false')
+
+    await editor(page).click()
+    await page.keyboard.type('should-not-land')
+    expect(await submittedValue(page)).not.toContain('should-not-land')
+
+    await expect(page.getByRole('button', { name: 'Bold' })).toHaveAttribute('aria-disabled', 'true')
+    await page.getByRole('button', { name: 'Bold' }).click({ force: true })
+    expect(await submittedValue(page)).not.toContain('<strong>')
+  })
+
+  test('changing for rebinds the textarea', async ({ page }) => {
+    await page.evaluate(() => {
+      const other = document.createElement('textarea')
+      other.id = 'other'
+      other.name = 'other'
+      other.hidden = true
+      document.querySelector('form')?.append(other)
+      document.querySelector('openleaf-editor')?.setAttribute('for', 'other')
+    })
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' rebound')
+    await expect.poll(() => page.locator('#other').inputValue()).toContain('rebound')
+    expect(await submittedValue(page)).not.toContain('rebound')
+  })
+})
