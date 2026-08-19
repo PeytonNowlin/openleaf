@@ -123,7 +123,8 @@ npm install \
   @openleaf-editor/plugins-colour@beta \
   @openleaf-editor/plugins-highlight@beta \
   @openleaf-editor/plugins-import@beta \
-  @openleaf-editor/plugins-import-docx@beta
+  @openleaf-editor/plugins-import-docx@beta \
+  @openleaf-editor/plugins-insert@beta
 ```
 
 ```ts
@@ -132,12 +133,14 @@ import { installColourPicker } from '@openleaf-editor/plugins-colour'
 import { installSyntaxHighlighting } from '@openleaf-editor/plugins-highlight'
 import { installImport } from '@openleaf-editor/plugins-import'
 import { installDocxImport } from '@openleaf-editor/plugins-import-docx'
+import { installInsertTools } from '@openleaf-editor/plugins-insert'
 
 installTableEditing()
 installColourPicker()
 installSyntaxHighlighting()
 installImport()
 installDocxImport()
+installInsertTools()
 ```
 
 Installing a plugin registers its capabilities; it does not rearrange a custom
@@ -157,6 +160,7 @@ toolbar. Add the plugin controls to the `toolbar` attribute where you want them.
 | [`@openleaf-editor/plugins-highlight`](packages/plugins-highlight) | Code highlighting and formatted source view |
 | [`@openleaf-editor/plugins-import`](packages/plugins-import) | HTML and plain-text file import |
 | [`@openleaf-editor/plugins-import-docx`](packages/plugins-import-docx) | Microsoft Word `.docx` import via Mammoth |
+| [`@openleaf-editor/plugins-insert`](packages/plugins-insert) | Media, details, anchors, character map, emoji, snippets, and image resize |
 
 For schema extensions and custom toolbar items, see
 [Authoring OpenLeaf plugins](docs/authoring-plugins.md).

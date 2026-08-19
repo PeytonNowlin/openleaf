@@ -22,6 +22,20 @@ export {
   type LinkResult,
 } from './dialog.js'
 export {
+  filePickerFor,
+  listedImageClasses,
+  listedImages,
+  listedLinks,
+  registerFilePicker,
+  registerImageClasses,
+  registerImageList,
+  registerLinkList,
+  type FilePicker,
+  type FilePickerKind,
+  type ListedResource,
+  type PickedResource,
+} from './pickers.js'
+export {
   IMAGE_ACCEPT,
   canUploadImages,
   imageFilesFrom,

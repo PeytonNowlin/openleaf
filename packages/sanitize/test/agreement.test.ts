@@ -1,6 +1,6 @@
-import { parseHtml, safeAlign, safeColor, serializeHtml } from '@openleaf-editor/core'
+import { EMBED_HOSTS, parseHtml, safeAlign, safeColor, serializeHtml } from '@openleaf-editor/core'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_POLICY, isAllowedDeclaration, sanitizeHtml } from '../src/index.js'
+import { DEFAULT_POLICY, EMBED_HOSTS as POLICY_EMBED_HOSTS, isAllowedDeclaration, sanitizeHtml } from '../src/index.js'
 
 /**
  * The default policy and the editor's schema must not drift apart.
@@ -23,6 +23,14 @@ const SCHEMA_NATIVE = [
   '<p dir="ltr">Text with <strong>b</strong> <em>i</em> <u>u</u> <s>s</s> <code>c</code>.</p>',
   '<p><a href="https://example.org" title="T" target="_blank" rel="noopener">link</a></p>',
   '<p><img src="/a.png" alt="described" title="T" width="10" height="20"></p>',
+  '<p><img class="ol-float-left" src="/a.png" alt="x"></p>',
+  '<h2 id="sec">Anchored</h2>',
+  '<p><a href="https://example.org" title="T" id="here">link</a></p>',
+  '<figure><img src="/a.png" alt="x"><figcaption>cap</figcaption></figure>',
+  '<details><summary>More</summary><p>body</p></details>',
+  '<hr class="ol-pagebreak">',
+  '<video src="/talk.mp4" controls=""></video>',
+  '<iframe src="https://www.youtube.com/embed/abc" title="Clip" allowfullscreen=""></iframe>',
   '<p>break<br>after</p>',
   // Alignment and colour. The policy allows `style` on these elements for these
   // declarations and nothing else, which is the narrowest widening that lets the
@@ -121,6 +129,12 @@ describe('the default policy accepts everything the editor emits', () => {
     // paragraph does not make it allowed on a list item.
     expect(sanitizeHtml('<ul><li style="text-align:center">t</li></ul>', { policy: DEFAULT_POLICY }))
       .toBe('<ul><li>t</li></ul>')
+  })
+
+  it('agrees with the editor about which iframe hosts are acceptable', () => {
+    expect(POLICY_EMBED_HOSTS.map((rule) => `${rule.host}:${rule.path?.source ?? '*'}`)).toEqual(
+      EMBED_HOSTS.map((rule) => `${rule.host}:${rule.path?.source ?? '*'}`),
+    )
   })
 
   it('still strips what the editor would never emit', () => {

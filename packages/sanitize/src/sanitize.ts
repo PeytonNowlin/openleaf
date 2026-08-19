@@ -27,6 +27,7 @@
  * under the attacker's control.
  */
 
+import { isAllowedEmbedSrc } from './embed.js'
 import { filterStyle } from './css.js'
 import {
   DEFAULT_POLICY,
@@ -129,6 +130,18 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
       if (policy.urlAttributes.includes(name) && !isUrlAllowed(attr.value, policy)) {
         node.removeAttribute(attr.name)
       }
+    }
+
+    if (tag === 'iframe') {
+      const src = node.getAttribute('src')
+      if (!isAllowedEmbedSrc(src)) {
+        node.remove()
+        return
+      }
+    }
+    if ((tag === 'video' || tag === 'audio') && !node.getAttribute('src')) {
+      node.remove()
+      return
     }
 
     // A link that opens a new window without rel=noopener hands the opened page

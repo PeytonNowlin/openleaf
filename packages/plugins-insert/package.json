@@ -1,0 +1,41 @@
+{
+  "name": "@openleaf-editor/plugins-insert",
+  "version": "0.1.0-beta.1",
+  "description": "Opt-in insert tools for OpenLeaf: media embeds, collapsible sections, anchors, character map, emoji, snippets, page breaks, and image resize handles. The matching schema nodes live in @openleaf-editor/core so stored documents round-trip whether or not this package is loaded.",
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeytonNowlin/openleaf.git",
+    "directory": "packages/plugins-insert"
+  },
+  "homepage": "https://peytonnowlin.github.io/openleaf/",
+  "bugs": {
+    "url": "https://github.com/PeytonNowlin/openleaf/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./openleaf-insert.css": "./dist/openleaf-insert.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/emit-css.mjs"
+  },
+  "dependencies": {
+    "@openleaf-editor/core": "workspace:*",
+    "@openleaf-editor/ui": "workspace:*",
+    "prosemirror-model": "^1.25.11",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-view": "^1.37.0"
+  }
+}

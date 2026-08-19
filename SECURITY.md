@@ -94,8 +94,9 @@ each is emitted.
   paste handling that would surprise a correctly-sanitizing server
 - Executable content surviving a round trip through the editor. The
   preservation layer keeps unrecognised markup, and it must never keep markup
-  that runs: `<script>`, `<iframe>`, `<object>`, `<form>`, inline `on*` handlers
-  and `javascript:` URLs are all dropped in `@openleaf-editor/core`, with tests
+  that runs: `<script>`, unallowlisted `<iframe>`, `<object>`, `<form>`, inline `on*` handlers
+  and `javascript:` URLs are all dropped in `@openleaf-editor/core`, with tests.
+  `<iframe>` is stored only for `https:` URLs on a closed list of player hosts.
 - The published allowlist permitting a construct that is unsafe to render
 - Prototype pollution or code execution in the parsing path
 - Content-destroying bugs in the preservation layer (we treat silent

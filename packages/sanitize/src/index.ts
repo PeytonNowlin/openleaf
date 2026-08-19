@@ -1,3 +1,4 @@
+export { EMBED_HOSTS, isAllowedEmbedSrc, type EmbedHostRule } from './embed.js'
 export {
   DEFAULT_POLICY,
   allowedAttributes,

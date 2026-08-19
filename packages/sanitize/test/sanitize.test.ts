@@ -14,7 +14,7 @@ const clean = (html: string, policy = DEFAULT_POLICY): string =>
 describe('executable content', () => {
   const vectors: Array<[string, string]> = [
     ['script tag', '<p>ok</p><script>alert(1)</script>'],
-    ['iframe', '<p>ok</p><iframe src="https://evil.example"></iframe>'],
+    ['iframe from an unknown host', '<p>ok</p><iframe src="https://evil.example"></iframe>'],
     ['object', '<p>ok</p><object data="x.swf"></object>'],
     ['embed', '<p>ok</p><embed src="x.swf">'],
     ['form and input', '<p>ok</p><form action="/steal"><input name="pw"></form>'],
@@ -33,6 +33,11 @@ describe('executable content', () => {
       expect(out).not.toContain('alert(1)')
     })
   }
+
+  it('keeps an allowlisted YouTube embed', () => {
+    const html = '<iframe src="https://www.youtube.com/embed/abc" title="Clip" allowfullscreen></iframe>'
+    expect(clean(html)).toContain('youtube.com/embed/abc')
+  })
 
   it('removes the CONTENT of a dropped element, not just its tags', () => {
     // Unwrapping a <script> would leave the literal text "alert(1)" in the
@@ -192,7 +197,7 @@ describe('adapters keep the runtimes in agreement', () => {
     const python = toBleachConfig(DEFAULT_POLICY)
     expect(python).toContain('ALLOWED_TAGS')
     expect(python).toContain('"ol": ["start"]')
-    expect(python).toContain('"a": ["href", "title", "target", "rel"]')
+    expect(python).toContain('"a": ["href", "title", "target", "rel", "id"]')
     expect(python).toContain('ALLOWED_PROTOCOLS = ["http", "https"')
     expect(python).toContain('DROP_WITH_CONTENT')
     expect(python).toContain('def drop_with_content')
@@ -209,7 +214,7 @@ describe('adapters keep the runtimes in agreement', () => {
     const php = toHtmlPurifierConfig(DEFAULT_POLICY)
     expect(php).toContain('HTML.Allowed')
     expect(php).toContain('ol[start]')
-    expect(php).toContain('a[href|title|target|rel]')
+    expect(php).toContain('a[href|title|target|rel|id]')
     expect(php).toContain('"https" => true')
     expect(php).toContain('TargetNoopener')
     expect(php).toContain("'_self'")
