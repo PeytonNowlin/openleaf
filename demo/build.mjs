@@ -5,6 +5,7 @@
  *                           and the table schema
  *   openleaf-tables.min.js  opt-in table editing
  *   openleaf-colour.min.js   opt-in colour picker
+ *   openleaf-session.min.js  opt-in find, count, autosave, save, print, preview
  *
  * The second bundle resolves ProseMirror and the OpenLeaf packages from the
  * runtime the first one publishes, rather than carrying its own copies. That is
@@ -42,6 +43,7 @@ const WORKSPACE_ALIASES = {
   '@openleaf-editor/plugins-highlight': src('../packages/plugins-highlight/src/index.ts'),
   '@openleaf-editor/plugins-import': src('../packages/plugins-import/src/index.ts'),
   '@openleaf-editor/plugins-import-docx': src('../packages/plugins-import-docx/src/index.ts'),
+  '@openleaf-editor/plugins-session': src('../packages/plugins-session/src/index.ts'),
 }
 
 /** Modules the core bundle publishes and plugin bundles borrow. */
@@ -205,12 +207,26 @@ await build({
 })
 const docxGz = report('openleaf-import-docx.min.js', src('./openleaf-import-docx.min.js'))
 
+/* ---- opt-in session tools: find, count, autosave, save, print, preview ---- */
+await build({
+  entryPoints: [src('./entry-session.ts')],
+  bundle: true,
+  format: 'iife',
+  target: ['es2020'],
+  minify: true,
+  sourcemap: true,
+  outfile: src('./openleaf-session.min.js'),
+  alias: { '@openleaf-editor/plugins-session': WORKSPACE_ALIASES['@openleaf-editor/plugins-session'] },
+  plugins: [shareRuntime('OpenLeaf')],
+})
+const sessionGz = report('openleaf-session.min.js', src('./openleaf-session.min.js'))
+
 console.log(
   `\ncore is the budgeted bundle (${(coreGz / 1024).toFixed(1)} KB gzip). ` +
     `Optional: tables ${(tablesGz / 1024).toFixed(1)} KB, colour ` +
     `${(colorGz / 1024).toFixed(1)} KB, highlighting ` +
     `${(highlightGz / 1024).toFixed(1)} KB, import ${(importGz / 1024).toFixed(1)} KB, ` +
-    `Word .docx ${(docxGz / 1024).toFixed(1)} KB.`,
+    `Word .docx ${(docxGz / 1024).toFixed(1)} KB, session ${(sessionGz / 1024).toFixed(1)} KB.`,
 )
 
 /* ---- per-package attribution for the core bundle ---- */

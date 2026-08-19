@@ -162,6 +162,27 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/plugins-session:
+    dependencies:
+      '@openleaf-editor/core':
+        specifier: workspace:*
+        version: link:../core
+      '@openleaf-editor/ui':
+        specifier: workspace:*
+        version: link:../ui
+      prosemirror-keymap:
+        specifier: ^1.2.2
+        version: 1.2.3
+      prosemirror-model:
+        specifier: ^1.24.1
+        version: 1.25.11
+      prosemirror-state:
+        specifier: ^1.4.3
+        version: 1.4.4
+      prosemirror-view:
+        specifier: ^1.37.0
+        version: 1.42.2
+
   packages/plugins-table:
     dependencies:
       '@openleaf-editor/core':

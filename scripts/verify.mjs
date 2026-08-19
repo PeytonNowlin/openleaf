@@ -101,7 +101,8 @@ const cleanBuildOk = step('bundle build has no dist dependency', () => {
 const schemaGuardOk = step('no schema singleton outside core', () => {
   const offenders = []
   const roots = ['packages/element/src', 'packages/ui/src', 'packages/paste/src',
-                 'packages/plugins-table/src', 'packages/plugins-highlight/src']
+                 'packages/plugins-table/src', 'packages/plugins-highlight/src',
+                 'packages/plugins-session/src']
   for (const root of roots) {
     let files
     try {
