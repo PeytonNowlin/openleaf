@@ -49,6 +49,8 @@ interface FieldSpec {
   hint?: string
   /** For `type: 'file'`: the accept list. */
   accept?: string
+  /** For `type: 'select'`: the options, in order. */
+  choices?: { value: string; label: string }[]
 }
 
 /** What a commit attempt produced: a value to resolve with, or a message to show. */
@@ -75,7 +77,7 @@ const DIALOG_CSS = `
 .ol-dialog label { display: grid; gap: 4px; font-weight: 500; }
 .ol-dialog .ol-hint { font-weight: 400; font-size: .9em; opacity: .75; }
 .ol-dialog input[type="text"], .ol-dialog input[type="url"], .ol-dialog input[type="file"],
-.ol-dialog textarea {
+.ol-dialog textarea, .ol-dialog select {
   box-sizing: border-box; width: 100%; padding: 6px 8px;
   border: 1px solid var(--openleaf-color-border, #d1d9e0);
   border-radius: var(--openleaf-radius, 4px);
@@ -173,7 +175,7 @@ function showForm<T>(
     form.appendChild(note)
   }
 
-  const inputs = new Map<string, HTMLInputElement | HTMLTextAreaElement>()
+  const inputs = new Map<string, HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>()
   for (const field of fields) {
     const label = doc.createElement('label')
     const text = doc.createElement('span')
@@ -186,9 +188,23 @@ function showForm<T>(
       label.appendChild(hint)
     }
     const input =
-      field.type === 'textarea' ? doc.createElement('textarea') : doc.createElement('input')
+      field.type === 'textarea'
+        ? doc.createElement('textarea')
+        : field.type === 'select'
+          ? doc.createElement('select')
+          : doc.createElement('input')
     if (input instanceof HTMLInputElement) input.type = field.type ?? 'text'
     input.name = field.name
+    // Options first: assigning `value` to a select with no matching option is
+    // silently ignored, which would leave the wrong choice preselected.
+    if (input instanceof HTMLSelectElement) {
+      for (const choice of field.choices ?? []) {
+        const option = doc.createElement('option')
+        option.value = choice.value
+        option.textContent = choice.label
+        input.appendChild(option)
+      }
+    }
     if (input instanceof HTMLInputElement && field.type === 'file') {
       if (field.accept) input.accept = field.accept
     } else {
@@ -343,7 +359,14 @@ function showForm<T>(
     dialog.showModal()
     focusFirst()
     const first = fields[0] ? inputs.get(fields[0].name) : undefined
-    if (first && first.type !== 'file') first.select()
+    // Only text controls have text worth preselecting: a file input throws, and
+    // a <select> has none.
+    if (
+      first instanceof HTMLTextAreaElement ||
+      (first instanceof HTMLInputElement && first.type !== 'file')
+    ) {
+      first.select()
+    }
   })
 }
 
@@ -564,20 +587,42 @@ export interface MediaResult {
   kind: 'video' | 'audio'
 }
 
-/** Ask for a video or audio element, including poster frames and extra sources. */
+/**
+ * Ask for a video or audio element, including poster frames and extra sources.
+ *
+ * The caller may pin the kind -- editing existing media already knows it -- and
+ * otherwise the author chooses it in the form. Without that choice the dialog
+ * could only ever produce video, which is what made `insertAudio` unreachable
+ * from the toolbar even though the node type is there.
+ */
 export async function promptForMedia(
   doc: Document,
   options: { existing?: Partial<MediaResult>; kind?: 'video' | 'audio' } = {},
 ): Promise<MediaResult | null> {
-  const kind = options.existing?.kind ?? options.kind ?? 'video'
+  const pinned = options.existing?.kind ?? options.kind ?? null
+  const kind = pinned ?? 'video'
   const existing = options.existing ?? {}
   return showForm<MediaResult>(
     doc,
     existing.src ? 'Edit media' : 'Insert media',
     [
+      ...(pinned === null
+        ? [
+            {
+              name: 'kind',
+              label: 'Kind',
+              type: 'select',
+              value: kind,
+              choices: [
+                { value: 'video', label: 'Video' },
+                { value: 'audio', label: 'Audio' },
+              ],
+            },
+          ]
+        : []),
       {
         name: 'src',
-        label: kind === 'video' ? 'Video address' : 'Audio address',
+        label: pinned === null ? 'Media address' : kind === 'video' ? 'Video address' : 'Audio address',
         type: 'text',
         value: existing.src ?? '',
         required: true,
@@ -589,7 +634,10 @@ export async function promptForMedia(
               label: 'Poster image',
               type: 'text',
               value: existing.poster ?? '',
-              hint: 'Shown before the video plays.',
+              hint:
+                pinned === null
+                  ? 'Video only. Shown before the video plays.'
+                  : 'Shown before the video plays.',
             },
           ]
         : []),
@@ -629,11 +677,15 @@ export async function promptForMedia(
     (values) => {
       const src = values['src'] ?? ''
       if (!src) return { error: 'Enter an address for the media.' }
+      const chosen: 'video' | 'audio' = values['kind'] === 'audio' ? 'audio' : kind
       return {
         value: {
-          kind,
+          kind: chosen,
           src,
-          poster: values['poster'] || null,
+          // Audio has no poster frame. The field is offered whenever the kind is
+          // chosen in this same form, so honouring it for audio would write an
+          // attribute the element does not have.
+          poster: chosen === 'video' ? values['poster'] || null : null,
           width: values['width'] || null,
           height: values['height'] || null,
           class: values['class'] || null,

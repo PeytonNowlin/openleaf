@@ -16,16 +16,44 @@ import type { Node as PMNode } from 'prosemirror-model'
 import { Plugin } from 'prosemirror-state'
 import type { EditorView, NodeView } from 'prosemirror-view'
 
+/** `<source>` and `<track>`, the only children core models on a media node. */
+const FURNITURE_TAGS = new Set(['source', 'track'])
+
+/**
+ * Put the node's stored `<source>`/`<track>` children back on the element.
+ *
+ * Core deliberately models and preserves them, so source-only media -- a
+ * `<video>` with no `src` of its own and two `<source>` children -- has nothing
+ * to play without this, and alternate formats cannot stand in when the browser
+ * cannot decode the primary one.
+ */
+function appendFurniture(host: Element, html: string | null, doc: Document): void {
+  if (!html) return
+  const tpl = doc.createElement('template')
+  tpl.innerHTML = html
+  for (const child of Array.from(tpl.content.children)) {
+    if (!FURNITURE_TAGS.has(child.nodeName.toLowerCase())) continue
+    host.appendChild(child)
+  }
+}
+
 function renderMedia(node: PMNode, wrap: HTMLElement): HTMLElement {
   const name = node.type.name
-  const el = wrap.ownerDocument.createElement(name === 'audio' ? 'audio' : name === 'video' ? 'video' : 'img')
+  const doc = wrap.ownerDocument
+  const el = doc.createElement(name === 'audio' ? 'audio' : name === 'video' ? 'video' : 'img')
   const src = node.attrs['src'] as string | null
   if (src) el.setAttribute('src', src)
-  if (name === 'img') {
+  // The node type is `image`; only the element it renders to is an `<img>`.
+  // Testing the element's name here stripped every alt attribute from the live
+  // editor DOM, losing both descriptions and a deliberate decorative `alt=""`.
+  if (name === 'image') {
     const alt = node.attrs['alt']
     if (alt !== null && alt !== undefined) el.setAttribute('alt', String(alt))
   }
-  if (name === 'video' || name === 'audio') (el as HTMLMediaElement).controls = true
+  if (name === 'video' || name === 'audio') {
+    ;(el as HTMLMediaElement).controls = true
+    appendFurniture(el, node.attrs['furniture'] as string | null, doc)
+  }
   const poster = node.attrs['poster'] as string | null
   if (poster && name === 'video') el.setAttribute('poster', poster)
   const width = node.attrs['width'] as string | null

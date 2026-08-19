@@ -136,8 +136,38 @@ function appendFurniture(host: Element, html: string, doc: Document): void {
   tpl.innerHTML = html
   for (const child of Array.from(tpl.content.children)) {
     if (!FURNITURE_TAGS.has(child.nodeName.toLowerCase())) continue
-    host.appendChild(child)
+    // Scrubbed here, not only on the way out of a parse. Furniture read from
+    // stored HTML has already been through `readFurniture`, but a string typed
+    // into the insert dialog has not: without this, `<source src="clip.webm"
+    // onerror="...">` would be written into stored HTML exactly as typed, and so
+    // would an unsafe `src`. Scrubbing an already-scrubbed element is a no-op.
+    const clean = doc.createElement('template')
+    clean.innerHTML = scrub(child)
+    const el = clean.content.firstElementChild
+    if (el) host.appendChild(el)
   }
+}
+
+/**
+ * True when the element holds content this schema cannot carry.
+ *
+ * `<source>` and `<track>` are furniture, and video and audio are atoms, so
+ * fallback content -- "Download <a href='...'>the video</a>", shown by browsers
+ * that cannot play the file -- has nowhere to live on the node and would be
+ * destroyed on the next save. Declining hands the element to the preservation
+ * layer, which keeps it whole and untouched instead.
+ */
+function hasUnmodelledContent(el: Element): boolean {
+  for (const child of Array.from(el.childNodes)) {
+    if (child.nodeType === 1) {
+      if (!FURNITURE_TAGS.has(child.nodeName.toLowerCase())) return true
+      continue
+    }
+    // Pretty-printed markup leaves whitespace between the <source> children.
+    // That is layout, not fallback, and modelling the element still round-trips.
+    if (child.nodeType === 3 && (child.textContent ?? '').trim() !== '') return true
+  }
+  return false
 }
 
 function mediaGetAttrs(el: Element, modelled: readonly string[]): false | Record<string, unknown> {
@@ -147,6 +177,7 @@ function mediaGetAttrs(el: Element, modelled: readonly string[]): false | Record
   if (src && !isSafeUrl(src)) return false
   if (poster && !isSafeUrl(poster)) return false
   if (!src && !furniture) return false
+  if (hasUnmodelledContent(el)) return false
   return {
     ...readAttrs(el, modelled),
     extra: leftoverAttrs(el, modelled),

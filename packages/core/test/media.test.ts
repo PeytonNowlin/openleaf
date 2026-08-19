@@ -60,6 +60,47 @@ describe('figures and media', () => {
     expect(out).toContain('poster="/a.jpg"')
   })
 
+  // The node is an atom and only <source>/<track> are modelled, so a fallback
+  // message has nowhere to live on it. Modelling the element anyway deleted the
+  // fallback on the next save; declining hands it to preservation intact.
+  it('declines media carrying fallback content, so preservation keeps it whole', () => {
+    const html = '<p><video src="/clip.mp4" controls>Download <a href="/clip.mp4">the video</a></video></p>'
+    const out = serializeHtml(parseHtml(html))
+    expect(out).toContain('Download')
+    expect(out).toContain('<a href="/clip.mp4">the video</a>')
+    expect(serializeHtml(parseHtml(out))).toBe(out)
+  })
+
+  it('declines source-only media carrying fallback content', () => {
+    const html = '<p><audio controls><source src="/a.ogg">No audio support.</audio></p>'
+    const out = serializeHtml(parseHtml(html))
+    expect(out).toContain('No audio support.')
+    expect(out).toContain('<source src="/a.ogg">')
+  })
+
+  // Whitespace between the <source> children is layout, not fallback: the
+  // element still round-trips as a real node, which is what keeps it editable.
+  it('still models media whose only extra children are whitespace', () => {
+    const html = '<p><video src="/clip.mp4" controls>\n  <source src="/clip.webm">\n</video></p>'
+    const out = serializeHtml(parseHtml(html))
+    expect(out).toBe('<p><video src="/clip.mp4" controls=""><source src="/clip.webm"></video></p>')
+  })
+
+  // Furniture typed into the insert dialog has not been through readFurniture,
+  // so the serializer is the only place left to scrub it.
+  it('scrubs furniture supplied by a command rather than by a parse', () => {
+    const out = apply(
+      '<p>x</p>',
+      insertVideo({
+        src: '/a.mp4',
+        furniture: '<source src="/a.webm" onerror="alert(1)"><source src="javascript:alert(2)">',
+      }),
+    )
+    expect(out).toContain('<source src="/a.webm">')
+    expect(out).not.toContain('onerror')
+    expect(out).not.toContain('javascript:')
+  })
+
   it('keeps class on an image', () => {
     const out = serializeHtml(parseHtml('<p><img src="/a.png" alt="" class="align-center"></p>'))
     expect(out).toContain('class="align-center"')
