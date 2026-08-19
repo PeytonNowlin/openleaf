@@ -335,6 +335,21 @@ test.describe('integrator configuration', () => {
     await expect(restricted.locator('button')).toHaveCount(3)
   })
 
+  test('Alt+F10 focuses the block-type select when it is the only control', async ({ page }) => {
+    await page.evaluate(() => {
+      const host = document.createElement('openleaf-editor')
+      host.setAttribute('aria-label', 'Note')
+      host.setAttribute('toolbar', 'blockType')
+      document.body.appendChild(host)
+    })
+
+    const note = page.getByRole('textbox', { name: 'Note' })
+    await expect(note).toBeVisible()
+    await note.click()
+    await page.keyboard.press('Alt+F10')
+    expect(await focusedName(page)).toBe('Paragraph style')
+  })
+
   test('omits the toolbar entirely with toolbar="none"', async ({ page }) => {
     await page.evaluate(() => {
       const host = document.createElement('openleaf-editor')
