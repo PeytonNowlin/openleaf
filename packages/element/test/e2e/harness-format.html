@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OpenLeaf alignment, colour and upload harness</title>
+<style>body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; max-width: 52rem; }</style>
+</head>
+<body>
+<!--
+  Alignment and image upload come from the core bundle. Colour needs the second
+  script tag, in the documented order: it borrows the first bundle's ProseMirror
+  runtime, so loading it first would find no runtime to borrow.
+
+  The stored content is deliberately what an inherited archive looks like -- a
+  legacy `align` attribute, a TinyMCE-spelled `text-align: center;`, a coloured
+  span and a `<font>` element -- because the interesting claim is not that the
+  buttons work, it is that this content survives being opened and saved.
+-->
+<form id="post-form" method="post" action="/submitted">
+  <label for="body">Post body</label>
+  <openleaf-editor
+    for="body"
+    aria-label="Post body"
+    toolbar="undo redo | bold italic | textColour highlightColour | alignLeft alignCenter alignRight alignJustify | image"></openleaf-editor>
+  <textarea id="body" name="body" hidden><p style="text-align: center;">Centred already.</p>
+<p align="right">Legacy right.</p>
+<p><span style="color:#cc0000">Red run</span> and <font color="green">a font tag</font>.</p>
+<p style="line-height:1.8;text-align:center">Carrying a line height.</p>
+<p>Plain paragraph.</p></textarea>
+  <button type="submit" id="save">Save</button>
+</form>
+
+<script src="/demo/openleaf.min.js"></script>
+<script src="/demo/openleaf-colour.min.js"></script>
+<script>
+  /*
+   * A stub uploader, standing in for a CMS media endpoint.
+   *
+   * Records what it was handed so a test can assert the editor passed a real
+   * File through, and reports dimensions so the inserted <img> carries them.
+   */
+  window.uploaded = []
+  OpenLeaf.registerImageUploader(async (file) => {
+    window.uploaded.push({ name: file.name, type: file.type, size: file.size })
+    if (file.name.includes('broken')) throw new Error('The server rejected the upload.')
+    return { src: '/uploads/' + file.name, width: 320, height: 200 }
+  })
+</script>
+</body>
+</html>

@@ -4,6 +4,7 @@
  *   openleaf.min.js         core: editor, paste normalizers, toolbar, dialogs,
  *                           and the table schema
  *   openleaf-tables.min.js  opt-in table editing
+ *   openleaf-colour.min.js   opt-in colour picker
  *
  * The second bundle resolves ProseMirror and the OpenLeaf packages from the
  * runtime the first one publishes, rather than carrying its own copies. That is
@@ -37,6 +38,7 @@ const WORKSPACE_ALIASES = {
   '@openleaf-editor/paste': src('../packages/paste/src/index.ts'),
   '@openleaf-editor/ui': src('../packages/ui/src/index.ts'),
   '@openleaf-editor/plugins-table': src('../packages/plugins-table/src/index.ts'),
+  '@openleaf-editor/plugins-colour': src('../packages/plugins-colour/src/index.ts'),
   '@openleaf-editor/plugins-highlight': src('../packages/plugins-highlight/src/index.ts'),
   '@openleaf-editor/plugins-import': src('../packages/plugins-import/src/index.ts'),
   '@openleaf-editor/plugins-import-docx': src('../packages/plugins-import-docx/src/index.ts'),
@@ -143,6 +145,20 @@ await build({
 })
 const tablesGz = report('openleaf-tables.min.js', src('./openleaf-tables.min.js'))
 
+/* ---- opt-in colour bundle ---- */
+await build({
+  entryPoints: [src('./entry-colour.ts')],
+  bundle: true,
+  format: 'iife',
+  target: ['es2020'],
+  minify: true,
+  sourcemap: true,
+  outfile: src('./openleaf-colour.min.js'),
+  alias: { '@openleaf-editor/plugins-colour': WORKSPACE_ALIASES['@openleaf-editor/plugins-colour'] },
+  plugins: [shareRuntime('OpenLeaf')],
+})
+const colorGz = report('openleaf-colour.min.js', src('./openleaf-colour.min.js'))
+
 /* ---- opt-in syntax highlighting bundle ---- */
 await build({
   entryPoints: [src('./entry-highlight.ts')],
@@ -191,7 +207,8 @@ const docxGz = report('openleaf-import-docx.min.js', src('./openleaf-import-docx
 
 console.log(
   `\ncore is the budgeted bundle (${(coreGz / 1024).toFixed(1)} KB gzip). ` +
-    `Optional: tables ${(tablesGz / 1024).toFixed(1)} KB, highlighting ` +
+    `Optional: tables ${(tablesGz / 1024).toFixed(1)} KB, colour ` +
+    `${(colorGz / 1024).toFixed(1)} KB, highlighting ` +
     `${(highlightGz / 1024).toFixed(1)} KB, import ${(importGz / 1024).toFixed(1)} KB, ` +
     `Word .docx ${(docxGz / 1024).toFixed(1)} KB.`,
 )

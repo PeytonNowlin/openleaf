@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!--
+  A strict style policy: no 'unsafe-inline', so the browser refuses to parse any
+  style ATTRIBUTE, on our markup or anyone's. `script-src` is left alone because
+  the point of this harness is the styling path, not script loading.
+
+  Two claims are under test here. The toolbar's constructable stylesheet must
+  still apply, because CSP gates resources parsed as style and a CSSOM object
+  attached via adoptedStyleSheets never passes through that gate. And alignment
+  must still render in the editor, because the schema detects that its style
+  attribute was not honoured and falls back to a CSSOM write.
+-->
+<meta http-equiv="Content-Security-Policy" content="style-src 'self'">
+<title>OpenLeaf strict-CSP harness</title>
+</head>
+<body>
+<form id="post-form" method="post" action="/submitted">
+  <label for="body">Post body</label>
+  <openleaf-editor for="body" aria-label="Post body"
+    toolbar="bold italic | alignLeft alignCenter alignRight"></openleaf-editor>
+  <textarea id="body" name="body" hidden><p style="text-align:center">Centred.</p>
+<p><span style="color:#cc0000">Red.</span></p></textarea>
+  <button type="submit" id="save">Save</button>
+</form>
+<script src="/demo/openleaf.min.js"></script>
+</body>
+</html>

@@ -22,8 +22,14 @@ import { gzipSync } from 'node:zlib'
  * while the gate stayed green -- which defeats the point of making them opt-in.
  */
 export const BUDGETS_KB = {
-  'openleaf.min.js': 90,
+  // Raised from 90 when alignment, colour and image upload landed. The colour
+  // PICKER followed tables out into an opt-in bundle; what stayed is the part
+  // core cannot delegate -- reading the `text-align` and `color` markup an
+  // inherited archive already contains, which is the same reasoning that keeps
+  // the table schema here while table editing is opt-in.
+  'openleaf.min.js': 92,
   'openleaf-tables.min.js': 25,
+  'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
   'openleaf-import.min.js': 12,
   // Larger than the editor, which is exactly why it is a separate file.
