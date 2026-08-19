@@ -220,6 +220,20 @@ describe('core claimed tags carry residual attributes', () => {
     expect(out).toContain('reversed')
   })
 
+  it('does not emit the language class twice for a code block', () => {
+    // The spec reads `language-*` from either element and writes it onto
+    // <code>. Carrying the <pre>'s class verbatim wrote it on both.
+    expect(serializeHtml(parseHtml('<pre class="language-js"><code>x</code></pre>'))).toBe(
+      '<pre><code class="language-js">x</code></pre>',
+    )
+  })
+
+  it('keeps a non-language class on a code block', () => {
+    expect(
+      serializeHtml(parseHtml('<pre class="wide language-js"><code>x</code></pre>')),
+    ).toBe('<pre class="wide"><code class="language-js">x</code></pre>')
+  })
+
   it('still drops event handlers on claimed tags', () => {
     expect(serializeHtml(parseHtml('<p class="lead" onclick="alert(1)">x</p>'))).toBe(
       '<p class="lead">x</p>',
