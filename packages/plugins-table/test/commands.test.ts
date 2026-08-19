@@ -1,7 +1,7 @@
 import { parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { EditorState, TextSelection, type Command, type Transaction } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
-import { addColumnAfter, addRowAfter, toggleHeaderRow } from '../src/index.js'
+import { addColumnAfter, addRowAfter, insertTable, setCellVerticalAlign, setTableCaption, setTableColgroup, toggleHeaderRow } from '../src/index.js'
 
 function stateIn(html: string, text: string): EditorState {
   const doc = parseHtml(html)
@@ -80,5 +80,37 @@ describe('header cell scope', () => {
     const html = serializeHtml(apply(start, addColumnAfter).doc)
     expect(html.match(/<th scope="col">/g)?.length).toBe(2)
     expect(html).not.toMatch(/<th>/)
+  })
+})
+
+describe('caption, alignment and nested tables', () => {
+  it('writes a caption onto a table that had none', () => {
+    const start = stateIn('<table><tbody><tr><td>A</td></tr></tbody></table>', 'A')
+    const html = serializeHtml(apply(start, setTableCaption('Q1 results')).doc)
+    expect(html).toContain('<caption>Q1 results</caption>')
+  })
+
+  it('sets cell vertical alignment', () => {
+    const start = stateIn('<table><tbody><tr><td>A</td></tr></tbody></table>', 'A')
+    const html = serializeHtml(apply(start, setCellVerticalAlign('middle')).doc)
+    expect(html).toContain('valign="middle"')
+  })
+
+  it('writes a colgroup from column widths', () => {
+    const start = stateIn(
+      '<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>',
+      'A',
+    )
+    const html = serializeHtml(apply(start, setTableColgroup(['120', '80'])).doc)
+    expect(html).toContain('<colgroup>')
+    expect(html).toContain('width="120"')
+    expect(html).toContain('width="80"')
+  })
+
+  it('inserts a nested table inside a cell', () => {
+    const start = stateIn('<table><tbody><tr><td>A</td></tr></tbody></table>', 'A')
+    const html = serializeHtml(apply(start, insertTable(2, 2)).doc)
+    expect(html.match(/<table/g)?.length).toBe(2)
+    expect(html).toContain('<th scope="col">')
   })
 })

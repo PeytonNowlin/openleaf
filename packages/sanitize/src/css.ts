@@ -24,10 +24,20 @@ const FUNCTIONAL = /^(?:rgba?|hsla?)\(\s*[0-9a-z\s.,%/+-]+\)$/i
 const KEYWORD = /^[a-z]{3,24}$/i
 
 /** How a declaration's value is checked, by property. */
+const LENGTH = /^-?\d+(?:\.\d+)?(?:px|em|rem|%|pt|ex|ch)?$/i
+const VALIGN = new Set(['top', 'middle', 'bottom', 'baseline'])
+
 const CHECKS: Record<string, (value: string) => boolean> = {
   'text-align': (value) => ALIGN.has(value.toLowerCase()),
   color: isColor,
   'background-color': isColor,
+  padding: (value) => {
+    const parts = value.trim().split(/\s+/)
+    return parts.length >= 1 && parts.length <= 4 && parts.every((part) => LENGTH.test(part))
+  },
+  width: (value) => LENGTH.test(value.trim()),
+  height: (value) => LENGTH.test(value.trim()),
+  'vertical-align': (value) => VALIGN.has(value.trim().toLowerCase()),
 }
 
 function isColor(value: string): boolean {

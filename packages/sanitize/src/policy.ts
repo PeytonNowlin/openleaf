@@ -172,23 +172,39 @@ export const DEFAULT_POLICY: Policy = {
      * unrelated values.
      */
     table: {
-      attributes: ['border', 'cellpadding', 'cellspacing', 'width', 'align', 'summary', 'class'],
+      attributes: ['border', 'cellpadding', 'cellspacing', 'width', 'align', 'summary', 'class', 'style'],
+      styleProperties: ['background-color', 'width', 'height'],
     },
+    /*
+     * `caption` is here because it is a table's accessible name, and `colgroup`
+     * and `col` because they carry the column widths a page's layout depends on.
+     * The schema preserves all three verbatim; a policy that stripped them would
+     * delete on the way to the database exactly what the editor just took care
+     * to keep, which is the drift this shared policy exists to prevent.
+     */
+    caption: { attributes: ['align', 'class', 'style'], styleProperties: ['text-align'] },
+    colgroup: { attributes: ['span', 'width', 'align', 'valign', 'class'] },
+    col: { attributes: ['span', 'width', 'align', 'valign', 'class'] },
     thead: {},
     tbody: {},
     tfoot: {},
-    tr: { attributes: ['class', 'align'] },
+    tr: {
+      attributes: ['class', 'align', 'valign', 'style'],
+      styleProperties: ['background-color', 'height'],
+    },
     td: {
       attributes: [
         'colspan', 'rowspan', 'data-colwidth',
-        'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr',
+        'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr', 'style',
       ],
+      styleProperties: ['background-color', 'padding'],
     },
     th: {
       attributes: [
         'colspan', 'rowspan', 'data-colwidth',
-        'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr',
+        'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr', 'style',
       ],
+      styleProperties: ['background-color', 'padding'],
     },
   },
 

@@ -27,10 +27,13 @@ export const BUDGETS_KB = {
   // core cannot delegate -- reading the `text-align` and `color` markup an
   // inherited archive already contains, which is the same reasoning that keeps
   // the table schema here while table editing is opt-in.
+  //
   // Raised from 92 when insert/structure nodes (figure, details, allowlisted
-  // media, heading ids) landed in the base schema. Editing chrome stays in
-  // `@openleaf-editor/plugins-insert`; this is the storage format.
-  'openleaf.min.js': 96,
+  // media, heading ids) landed in the base schema, and again when table
+  // captions, colgroup and cell style joined it. All of them have to live in
+  // core or inherited markup degrades to an uneditable atom -- a caption core
+  // cannot read is a caption it deletes. Editing chrome stays opt-in.
+  'openleaf.min.js': 97,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,

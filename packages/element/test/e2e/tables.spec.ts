@@ -70,6 +70,7 @@ test.describe('with the table bundle loaded', () => {
     // problem authors rarely go back and fix.
     await editor(page).getByText('After the table.').click()
     await toolbar(page).getByRole('button', { name: 'Insert table' }).click()
+    await page.getByRole('gridcell', { name: '3 by 3 table' }).click()
 
     await expect.poll(() => value(page)).toMatch(/<th scope="col">/)
     await expect(editor(page).locator('table')).toHaveCount(2)
@@ -157,5 +158,73 @@ test.describe('with the table bundle loaded', () => {
   test('the round trip keeps legacy table attributes', async ({ page }) => {
     await expect.poll(() => value(page)).toContain('border="1"')
     await expect.poll(() => value(page)).toContain('cellpadding="4"')
+  })
+
+  test('edits a caption from the toolbar dialog', async ({ page }) => {
+    await editor(page).getByText('North').click()
+    await toolbar(page).getByRole('button', { name: 'Table caption' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Table caption' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByLabel('Caption').fill('Regional totals')
+    await dialog.getByRole('button', { name: 'Save' }).click()
+    await expect.poll(() => value(page)).toContain('<caption>Regional totals</caption>')
+  })
+
+  test('sets cell vertical alignment from cell properties', async ({ page }) => {
+    await editor(page).getByText('North').click()
+    await toolbar(page).getByRole('button', { name: 'Cell properties' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Cell properties' })
+    await dialog.getByLabel('Vertical alignment').selectOption('middle')
+    await dialog.getByRole('button', { name: 'Save' }).click()
+    await expect.poll(() => value(page)).toMatch(/<td[^>]*valign="middle"/)
+  })
+
+  test('opens a context menu on a table cell', async ({ page }) => {
+    const cell = editor(page).locator('td', { hasText: 'North' })
+    await cell.click()
+    await cell.click({ button: 'right' })
+    const menu = page.getByRole('menu', { name: 'Table' })
+    await expect(menu).toBeVisible()
+    await menu.getByRole('menuitem', { name: 'Insert row below' }).click()
+    await expect(editor(page).locator('table tr')).toHaveCount(3)
+  })
+
+  // A secondary click does not always move ProseMirror's selection: with a cell
+  // selection live in one table, right-clicking a second one left it in place, so
+  // every menu command ran on the table the author had not clicked.
+  test('acts on the table that was right-clicked, not the one still selected', async ({ page }) => {
+    await page.evaluate(() => {
+      const host = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      host.value =
+        '<table><tbody><tr><td>first-a</td><td>first-b</td></tr>' +
+        '<tr><td>first-c</td><td>first-d</td></tr></tbody></table>' +
+        '<table><tbody><tr><td>second-a</td><td>second-b</td></tr>' +
+        '<tr><td>second-c</td><td>second-d</td></tr></tbody></table>'
+    })
+    const content = editor(page)
+    await expect(content.getByText('second-a')).toBeVisible()
+
+    // A cell selection across the first table's opening row -- the case
+    // prosemirror-tables holds on to across a secondary click elsewhere.
+    await content.getByText('first-a').click()
+    await content.getByText('first-b').click({ modifiers: ['Shift'] })
+
+    await content.getByText('second-a').click({ button: 'right' })
+    const menu = page.getByRole('menu', { name: 'Table' })
+    await expect(menu).toBeVisible()
+    await menu.getByRole('menuitem', { name: 'Delete row' }).click()
+
+    // The clicked table lost its row; the still-selected one kept everything.
+    await expect.poll(() => value(page)).not.toContain('second-a')
+    const html = await value(page)
+    expect(html).toContain('first-a')
+    expect(html).toContain('first-b')
+  })
+
+  test('inserts a nested table from the size grid', async ({ page }) => {
+    await editor(page).getByText('North').click()
+    await toolbar(page).getByRole('button', { name: 'Insert table' }).click()
+    await page.getByRole('gridcell', { name: '2 by 2 table' }).click()
+    await expect(editor(page).locator('table table')).toHaveCount(1)
   })
 })

@@ -49,7 +49,12 @@ export interface ImageResult {
   caption: string | null
 }
 
-interface FieldSpec {
+export interface FieldOption {
+  value: string
+  label: string
+}
+
+export interface FieldSpec {
   name: string
   label: string
   type?: string
@@ -59,7 +64,7 @@ interface FieldSpec {
   /** For `type: 'file'`: the accept list. */
   accept?: string
   /** When set, the field is a `<select>` rather than an input. */
-  options?: ReadonlyArray<{ value: string; label: string }>
+  options?: readonly FieldOption[]
   /**
    * The field this control writes into when it changes.
    *
@@ -95,13 +100,15 @@ const DIALOG_CSS = `
 .ol-dialog h2 { margin: 0; font-size: 1.1em; }
 .ol-dialog label { display: grid; gap: 4px; font-weight: 500; }
 .ol-dialog .ol-hint { font-weight: 400; font-size: .9em; opacity: .75; }
-.ol-dialog input[type="text"], .ol-dialog input[type="url"], .ol-dialog input[type="file"], .ol-dialog select {
+.ol-dialog input[type="text"], .ol-dialog input[type="url"], .ol-dialog input[type="file"],
+.ol-dialog input[type="color"], .ol-dialog input[type="number"], .ol-dialog select {
   box-sizing: border-box; width: 100%; padding: 6px 8px;
   border: 1px solid var(--openleaf-color-border, #d1d9e0);
   border-radius: var(--openleaf-radius, 4px);
   background: var(--openleaf-color-surface, #fff);
   color: inherit; font: inherit;
 }
+.ol-dialog input[type="color"] { height: 2.25rem; padding: 2px; }
 .ol-dialog .ol-check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
 .ol-dialog .ol-check input { margin: 0; }
 .ol-dialog .ol-actions { display: flex; justify-content: flex-end; gap: 8px; }
@@ -423,6 +430,29 @@ function hash(value: string): number {
   let out = 0
   for (let i = 0; i < value.length; i += 1) out = (out * 31 + value.charCodeAt(i)) | 0
   return out
+}
+
+export interface PromptFormOptions {
+  extraCheckbox?: { name: string; label: string; hint?: string; checked?: boolean }
+  note?: string
+  busyLabel?: string
+}
+
+/**
+ * A generic modal form, used by table property dialogs and anything else that
+ * is a handful of labelled fields rather than a specialised prompt.
+ */
+export function promptFields<T>(
+  doc: Document,
+  title: string,
+  fields: FieldSpec[],
+  options: PromptFormOptions,
+  commit: (
+    values: Record<string, string>,
+    files: Record<string, File | undefined>,
+  ) => Promise<{ value: T } | { error: string }> | { value: T } | { error: string },
+): Promise<T | null> {
+  return showForm(doc, title, fields, options, commit)
 }
 
 export async function promptForLink(

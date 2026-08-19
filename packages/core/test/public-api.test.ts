@@ -58,8 +58,11 @@ const EXPECTED_EXPORTS = [
   'buildKeymap', 'shortcuts', 'shortcutFor',
   // plugin registry
   'registerEditorPlugin', 'createRegisteredPlugins', 'onEditorPluginsChange',
-  // table nodes
-  'table', 'table_row', 'table_cell', 'table_header',
+  // table nodes, and the style validator the property dialogs in
+  // @openleaf-editor/plugins-table share with the parse path -- exported so a
+  // dialog writing attributes directly cannot disagree with the schema about an
+  // acceptable padding, which is how `padding: 0;position:fixed;inset:0` got in
+  'table', 'table_row', 'table_cell', 'table_header', 'safeTableStyleValue',
 ] as const
 
 describe('the public surface', () => {

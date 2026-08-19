@@ -231,7 +231,6 @@ production-readiness areas need broader validation:
 - Real screen-reader testing and a published accessibility conformance report
 - Mobile, touch-selection, soft-keyboard, and IME coverage
 - Production feedback across varied CMS environments and legacy HTML archives
-- Known table fidelity gaps for `<caption>` and `<colgroup>`
 
 Accessibility is a release criterion, not a badge inferred from automated checks.
 OpenLeaf currently makes no WCAG conformance claim.

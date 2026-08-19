@@ -91,8 +91,12 @@ const dropDeclinedMedia = ['iframe', 'video', 'audio'].map((tag) => ({
  * Preserving an element verbatim means preserving its attributes verbatim, and
  * `<div class="callout" onclick="steal()">` is not something an author needs
  * kept. Works on a clone so the live parse tree is untouched.
+ *
+ * Exported because the table schema stores `<caption>` and `<colgroup>` the same
+ * way, for the same reason, and a second scrubber that drifted from this one
+ * would be a hole in exactly the code path that exists to close holes.
  */
-function scrub(el: Element): string {
+export function scrub(el: Element): string {
   const clone = el.cloneNode(true) as Element
 
   const visit = (node: Element): void => {
@@ -221,6 +225,26 @@ export function withSerializationDocument<T>(doc: Document, fn: () => T): T {
   } finally {
     serializationDocument = previous
   }
+}
+
+/**
+ * True while `serializeHtml` is running.
+ *
+ * A node whose `toDOM` needs to render differently for the editor than for the
+ * saved HTML has no other way to tell which one it is building. The table spec
+ * needs exactly that: a preserved `<caption>` must be `contenteditable="false"`
+ * on screen, because it sits inside the editable area but outside the node's
+ * `contentDOM`, and letting a caret into it means typing that ProseMirror will
+ * silently revert. That attribute must NOT reach the saved HTML, where it would
+ * be our editor scribbling on the author's markup.
+ *
+ * Stripping it afterwards was the other option and is worse: it cannot tell the
+ * attribute it just added from the same attribute in somebody's document -- the
+ * collision the preserved-element WeakSet above exists to avoid. Not emitting it
+ * at all has no such failure mode.
+ */
+export function isSerializing(): boolean {
+  return serializationDocument !== undefined
 }
 
 /**
