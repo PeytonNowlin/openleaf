@@ -3,9 +3,11 @@
  * `pnpm verify` -- the full gate, run locally.
  *
  * This is the local equivalent of the CI workflow, which is manual-only while
- * the project is young. It runs the same four checks in the same order and
- * fails the same way, so "it passes locally" and "it passes CI" mean the same
- * thing. If you change one, change the other.
+ * the project is young. It runs CI's four checks in the same order and fails
+ * the same way, so "it passes locally" and "it passes CI" mean the same thing.
+ * If you change one, change the other. The two source guards below -- the
+ * dist-dependency check and the schema-singleton check -- are local-only: they
+ * read the tree rather than the build, so they cost nothing to run here.
  */
 
 import { execFileSync, spawnSync } from 'node:child_process'
