@@ -449,16 +449,26 @@ export class OpenLeafEditor extends HTMLElement {
     this.#sourceArea = null
     this.#sourceMode = false
     if (options.apply && view) {
-      const current = serializeHtml(view.state.doc)
-      if (html !== current) this.#replaceDocument(html)
+      // Compare documents, not strings. A source-view enhancer is free to
+      // pretty-print the HTML for display, and that indentation parses to the
+      // same document. Comparing the text would call it an edit, so merely
+      // looking at the source would land an undo step and fire
+      // openleaf:change -- the two things leaving source is meant not to do.
+      this.#replaceDocument(html, { onlyIfChanged: true })
     }
   }
 
-  /** Replace the document with a transaction so undo and change events survive. */
-  #replaceDocument(html: string): void {
+  /**
+   * Replace the document with a transaction, so undo and change events survive.
+   *
+   * `onlyIfChanged` skips the dispatch when the HTML parses to the document
+   * already on screen.
+   */
+  #replaceDocument(html: string, options?: { onlyIfChanged?: boolean }): void {
     const view = this.#view
     if (!view) return
     const next = parseHtml(html, { schema: this.#schema })
+    if (options?.onlyIfChanged && next.eq(view.state.doc)) return
     view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, next.content))
   }
 

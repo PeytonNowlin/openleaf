@@ -102,11 +102,29 @@ test.describe('the source view', () => {
 
   test('formatting does not change the document', async ({ page }) => {
     // The whole safety property: indenting for display must parse identically.
-    const before = await page.evaluate(
-      () => (document.querySelector('openleaf-editor') as HTMLElement & { value: string }).value,
-    )
+    // Compare what would be posted, before and after. Reading `el.value` here
+    // would read the source box, and that is indented display text rather than
+    // the document -- asserting the posted value equals it only passed while
+    // closing source leaked the indentation into the textarea.
+    const before = await value(page)
     await page.getByRole('button', { name: 'HTML source' }).click()
     await expect.poll(() => value(page)).toBe(before)
+  })
+
+  test('looking at the source is not an edit', async ({ page }) => {
+    // The source box is pretty-printed, so its text never equals the
+    // serialization. Comparing text rather than documents on close made merely
+    // opening source view an undoable change with a change event attached.
+    await page.evaluate(() => {
+      ;(window as Window & { __olChanges?: number }).__olChanges = 0
+      document.querySelector('openleaf-editor')!.addEventListener('openleaf:change', () => {
+        const w = window as Window & { __olChanges?: number }
+        w.__olChanges = (w.__olChanges ?? 0) + 1
+      })
+    })
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    await expect(editor(page)).toBeVisible()
+    expect(await page.evaluate(() => (window as Window & { __olChanges?: number }).__olChanges)).toBe(0)
   })
 
   test('an edit made in source view is applied', async ({ page }) => {
