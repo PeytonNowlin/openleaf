@@ -4,10 +4,12 @@
  * Matches are computed against the concatenated text of the document so a query
  * can span a mark boundary ("hel" in bold next to "lo" in roman still finds
  * "hello"). They do not span block boundaries: joining paragraphs would make
- * "end.start" match across a break the author cannot see as one string.
+ * "end.start" match across a break the author cannot see as one string. Nor do
+ * they span an inline leaf -- an image, a hard break -- because a match that
+ * covered one would take it with it on Replace.
  */
 
-import type { Node as PMNode } from 'prosemirror-model'
+import type { Mark, Node as PMNode } from 'prosemirror-model'
 import { Plugin, PluginKey, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 
@@ -29,9 +31,12 @@ export function emptySearchState(): SearchState {
   return { query: '', caseSensitive: false, matches: [], index: -1 }
 }
 
+/** Stands in for an inline leaf, so a query cannot match straight through one. */
+const ATOM = '\uFFFC'
+
 interface TextIndex {
   text: string
-  /** Document position for each character in `text`. -1 marks a block break. */
+  /** Document position for each character in `text`. -1 marks a boundary. */
   pos: number[]
 }
 
@@ -44,10 +49,19 @@ function indexText(doc: PMNode): TextIndex {
       text += '\n'
       pos.push(-1)
     }
-    if (!node.isText || !node.text) return true
-    for (let i = 0; i < node.text.length; i += 1) {
-      text += node.text[i]
-      pos.push(nodePos + i)
+    if (node.isText && node.text) {
+      for (let i = 0; i < node.text.length; i += 1) {
+        text += node.text[i]
+        pos.push(nodePos + i)
+      }
+      return true
+    }
+    // An inline leaf contributes no text of its own. Skipping it silently would
+    // leave the characters either side adjacent in the index, so "hello" would
+    // match across the image in `<p>hel<img>lo</p>` and Replace would delete it.
+    if (node.isInline) {
+      text += ATOM
+      pos.push(-1)
     }
     return true
   })
@@ -185,6 +199,21 @@ export const findPrev: Command = (state, dispatch) => {
   return true
 }
 
+/**
+ * The marks of the text standing at `pos`, not the marks the caret would inherit.
+ *
+ * `$pos.marks()` answers "what would I type in", which at a mark boundary is
+ * taken from the character *before* the position: replacing the plain "hello" in
+ * `<p><strong>x</strong>hello</p>` would come back bold, and replacing bold text
+ * that follows plain text would come back plain. A replacement has to wear the
+ * marks of the text it stands in for, which is the text node starting at `pos`.
+ */
+function marksAt(doc: PMNode, pos: number): readonly Mark[] {
+  const $pos = doc.resolve(pos)
+  const after = $pos.nodeAfter
+  return after?.isText ? after.marks : $pos.marks()
+}
+
 export function replaceCurrent(replacement: string): Command {
   return (state, dispatch) => {
     const search = searchKey.getState(state)
@@ -193,7 +222,7 @@ export function replaceCurrent(replacement: string): Command {
     if (!match) return false
     if (!dispatch) return true
 
-    const marks = state.doc.resolve(match.from).marks()
+    const marks = marksAt(state.doc, match.from)
     let tr = state.tr
     if (replacement.length === 0) tr = tr.delete(match.from, match.to)
     else tr = tr.replaceWith(match.from, match.to, state.schema.text(replacement, marks))
@@ -214,7 +243,7 @@ export function replaceAll(replacement: string): Command {
       if (!match) continue
       const mappedFrom = tr.mapping.map(match.from)
       const mappedTo = tr.mapping.map(match.to)
-      const marks = tr.doc.resolve(mappedFrom).marks()
+      const marks = marksAt(tr.doc, mappedFrom)
       if (replacement.length === 0) tr = tr.delete(mappedFrom, mappedTo)
       else tr = tr.replaceWith(mappedFrom, mappedTo, state.schema.text(replacement, marks))
     }

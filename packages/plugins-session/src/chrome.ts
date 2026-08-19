@@ -61,9 +61,44 @@ interface SessionHandle {
   destroy: () => void
 }
 
+/**
+ * Emitted by `<openleaf-editor>` when the HTML source box opens and closes.
+ *
+ * Named here rather than imported: this plugin does not depend on the element
+ * package, and the element declares the same names for the same reason.
+ */
+const SOURCE_OPEN_EVENT = 'openleaf:source-open'
+const SOURCE_CLOSE_EVENT = 'openleaf:source-close'
+
+interface Baseline {
+  /** The HTML as of the last save. */
+  html: string
+  /** Whether a stored draft has already been offered for this host. */
+  offeredRestore: boolean
+}
+
 const handles = new WeakMap<HTMLElement, SessionHandle>()
+/**
+ * Held per host rather than in the plugin view's closure.
+ *
+ * Registering another opt-in plugin reconfigures the editor state, and
+ * ProseMirror destroys and recreates every plugin view when it does. A baseline
+ * that lived in the closure would be re-read from the current document on the
+ * way back up, adopting the author's unsaved edits as though they had been
+ * saved -- and the next update would then clear the recovery draft the departing
+ * view had just written, taking the leave warning with it.
+ */
+const baselines = new WeakMap<HTMLElement, Baseline>()
 const live = new Set<SessionHandle>()
 const guardedWindows = new WeakSet<Window>()
+
+function baselineFor(host: EditorHost, html: () => string): Baseline {
+  const existing = baselines.get(host)
+  if (existing) return existing
+  const created: Baseline = { html: html(), offeredRestore: false }
+  baselines.set(host, created)
+  return created
+}
 
 export function sessionFor(host: HTMLElement): SessionHandle | undefined {
   return handles.get(host)
@@ -130,11 +165,21 @@ function attachSession(
   const doc = host.ownerDocument
   const win = doc.defaultView
   const key = draftStorageKey(host)
-  // Taken from the live document, not `host.value`: this plugin view runs
-  // inside the EditorView constructor, before `<openleaf-editor>` has assigned
-  // `#view`, so the element's getter still returns the raw textarea string.
-  let lastSaved = serializeHtml(view.state.doc)
   let timer: ReturnType<typeof setTimeout> | undefined
+
+  /**
+   * The HTML the editor is showing right now.
+   *
+   * `host.value` is the authority once the element has wired up its view: with
+   * the HTML source box open the live document is the textarea's text, and
+   * comparing the untouched `view.state.doc` would report a session that has
+   * been edited in source mode as clean. During this plugin view's construction
+   * the element has not assigned its `#view` yet, so its getter would hand back
+   * the raw textarea string -- serialize the document instead.
+   */
+  const currentHtml = (): string => (host.view ? host.value : serializeHtml(view.state.doc))
+
+  const baseline = baselineFor(host, currentHtml)
 
   const findBar = buildFindBar(host, view)
   const status = doc.createElement('div')
@@ -146,12 +191,12 @@ function attachSession(
   else host.prepend(findBar.root)
   host.appendChild(status)
 
-  const isDirty = (): boolean => serializeHtml(view.state.doc) !== lastSaved
+  const isDirty = (): boolean => currentHtml() !== baseline.html
 
   const persist = (): void => {
     if (!options.autosave) return
-    const html = host.value
-    if (html === lastSaved) {
+    const html = currentHtml()
+    if (html === baseline.html) {
       clearDraft(options.storage, key)
       return
     }
@@ -165,19 +210,44 @@ function attachSession(
   }
 
   const onSubmit = (): void => {
-    lastSaved = serializeHtml(view.state.doc)
+    baseline.html = currentHtml()
     clearDraft(options.storage, key)
   }
 
   const form = boundForm(host)
   form?.addEventListener('submit', onSubmit)
 
+  // While the source box is open the author's edits land in a textarea, which
+  // dispatches no ProseMirror transactions -- so this plugin view's `update`
+  // never runs and the debounce is never rearmed. Watching the textarea is what
+  // keeps source-mode edits autosaved and keeps them counted as unsaved on the
+  // way out of the tab.
+  let sourceArea: HTMLTextAreaElement | null = null
+  const onSourceInput = (): void => schedule()
+  const onSourceOpen = (event: Event): void => {
+    const area = (event as CustomEvent<{ textarea?: HTMLTextAreaElement }>).detail?.textarea
+    if (!area) return
+    sourceArea?.removeEventListener('input', onSourceInput)
+    sourceArea = area
+    area.addEventListener('input', onSourceInput)
+  }
+  const onSourceClose = (): void => {
+    sourceArea?.removeEventListener('input', onSourceInput)
+    sourceArea = null
+    // Leaving source mode need not change the document -- the element compares
+    // documents rather than strings, so merely looking at the source dispatches
+    // nothing -- which leaves no update to settle the draft. Settle it here.
+    schedule()
+  }
+  host.addEventListener(SOURCE_OPEN_EVENT, onSourceOpen)
+  host.addEventListener(SOURCE_CLOSE_EVENT, onSourceClose)
+
   const handle: SessionHandle = {
     host,
     openFind: () => findBar.open(),
     closeFind: () => findBar.close(),
     markClean: () => {
-      lastSaved = serializeHtml(view.state.doc)
+      baseline.html = currentHtml()
       clearDraft(options.storage, key)
     },
     isDirty,
@@ -190,6 +260,9 @@ function attachSession(
       if (timer !== undefined) clearTimeout(timer)
       persist()
       form?.removeEventListener('submit', onSubmit)
+      sourceArea?.removeEventListener('input', onSourceInput)
+      host.removeEventListener(SOURCE_OPEN_EVENT, onSourceOpen)
+      host.removeEventListener(SOURCE_CLOSE_EVENT, onSourceClose)
       findBar.root.remove()
       status.remove()
       live.delete(handle)
@@ -203,9 +276,14 @@ function attachSession(
 
   if (options.warn && win) ensureLeaveGuard(win)
 
-  if (options.restore) {
+  if (options.restore && !baseline.offeredRestore) {
     const draft = readDraft(options.storage, key)
-    if (draft && draft.html !== lastSaved) {
+    // Not offered when the draft is what is already on screen. A plugin view
+    // restart writes a draft of the unsaved document as it goes, and offering to
+    // restore the document the author is looking at is noise. Asked at most once
+    // per host, so declining survives a reconfiguration too.
+    if (draft && draft.html !== baseline.html && draft.html !== currentHtml()) {
+      baseline.offeredRestore = true
       queueMicrotask(() => {
         void offerRestore(host, draft.html, draft.savedAt, handle)
       })

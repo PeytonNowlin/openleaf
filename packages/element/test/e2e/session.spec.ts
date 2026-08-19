@@ -82,6 +82,58 @@ test.describe('with the session bundle loaded', () => {
     await expect.poll(() => value(page)).toBe('<p></p>')
   })
 
+  // The source box is a plain textarea: typing in it dispatches no ProseMirror
+  // transaction, so nothing on the plugin view's update path would ever notice.
+  // Left unwatched, an author who edits the source and closes the tab loses it.
+  test('autosaves edits made in the HTML source box', async ({ page }) => {
+    const key = 'openleaf:draft:v1:/packages/element/test/e2e/harness-session.html#body'
+    const draft = () => page.evaluate((k) => localStorage.getItem(k), key)
+
+    // Dirty the document the ordinary way first, so there is a draft on record
+    // and the autosave path is known to be working before source mode is opened.
+    await editor(page).click()
+    await page.keyboard.type('delta')
+    await expect.poll(draft, { timeout: 5000 }).toContain('delta')
+
+    await toolbar(page).getByRole('button', { name: 'HTML source' }).click()
+    const source = page.getByRole('textbox', { name: 'HTML source' })
+    await expect(source).toBeVisible()
+    // Drain the debounce that opening the view armed. Typing while that timer is
+    // still pending would get the edit autosaved by it -- reading the textarea
+    // through host.value -- whether or not anything is watching the textarea,
+    // which would make this test pass without the behaviour under test.
+    await page.waitForTimeout(1500)
+
+    await source.fill('<p>typed into the source</p>')
+    await expect.poll(draft, { timeout: 5000 }).toContain('typed into the source')
+  })
+
+  // Registering another opt-in plugin reconfigures the editor state, and
+  // ProseMirror destroys and recreates every plugin view when it does. The record
+  // of what was last saved has to outlive that: a fresh one read off the current
+  // document would adopt the author's unsaved edits as saved, then clear the
+  // recovery draft written on the way out and stop warning about them.
+  test('keeps unsaved changes unsaved when another plugin registers', async ({ page }) => {
+    const key = 'openleaf:draft:v1:/packages/element/test/e2e/harness-session.html#body'
+    const draft = () => page.evaluate((k) => localStorage.getItem(k), key)
+
+    await editor(page).click()
+    await page.keyboard.type('delta')
+    await expect.poll(draft, { timeout: 5000 }).toContain('delta')
+
+    await page.evaluate(() => {
+      const host = globalThis as unknown as {
+        OpenLeaf: { __runtime: Record<string, { registerEditorPlugin: (f: () => []) => void }> }
+      }
+      host.OpenLeaf.__runtime['@openleaf-editor/core']!.registerEditorPlugin(() => [])
+    })
+
+    // A debounce later, so the recreated view has had its chance to decide the
+    // document matches what was saved and throw the draft away.
+    await page.waitForTimeout(1500)
+    expect(await draft()).toContain('delta')
+  })
+
   test('offers to restore a stored draft', async ({ page }) => {
     const key = 'openleaf:draft:v1:/packages/element/test/e2e/harness-session.html#body'
     await page.evaluate(({ key }) => {

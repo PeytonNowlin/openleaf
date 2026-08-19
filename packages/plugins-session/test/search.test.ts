@@ -58,6 +58,20 @@ describe('findMatches', () => {
     expect(findMatches(doc, 'Hello', { caseSensitive: true })).toHaveLength(1)
     expect(findMatches(doc, 'hello', { caseSensitive: false })).toHaveLength(2)
   })
+
+  // A match that spanned the image would hand Replace a range containing it,
+  // and replacing that range would delete the image the author never selected.
+  it('does not match through an inline image', () => {
+    const doc = parseHtml('<p>hel<img src="x.png" alt="">lo</p>', { schema: coreSchema() })
+    expect(findMatches(doc, 'hello')).toEqual([])
+    expect(findMatches(doc, 'hel')).toHaveLength(1)
+  })
+
+  it('does not match through a hard break', () => {
+    const doc = parseHtml('<p>hel<br>lo</p>', { schema: coreSchema() })
+    expect(findMatches(doc, 'hello')).toEqual([])
+    expect(findMatches(doc, 'lo')).toHaveLength(1)
+  })
 })
 
 describe('find and replace commands', () => {
@@ -99,5 +113,43 @@ describe('find and replace commands', () => {
       state = state.apply(tr)
     })
     expect(serializeHtml(state.doc)).toBe('<p>uno two uno</p>')
+  })
+
+  it('leaves an image standing when text either side of it is replaced', () => {
+    let state = stateFrom('<p>hel<img src="x.png" alt="">lo</p>')
+    setSearch('hel')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    replaceAll('bye')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(serializeHtml(state.doc)).toBe('<p>bye<img src="x.png" alt="">lo</p>')
+  })
+
+  // The marks come from the replaced text, not from the caret. `$pos.marks()`
+  // would inherit the preceding bold in the first case and drop it in the second.
+  it('does not take on marks from the text before the match', () => {
+    let state = stateFrom('<p><strong>x</strong>hello</p>')
+    setSearch('hello')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    replaceAll('uno')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(serializeHtml(state.doc)).toBe('<p><strong>x</strong>uno</p>')
+  })
+
+  it('keeps the marks the matched text carried', () => {
+    let state = stateFrom('<p>x<strong>hello</strong></p>')
+    setSearch('hello')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    findNext(state, (tr) => {
+      state = state.apply(tr)
+    })
+    replaceCurrent('uno')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(serializeHtml(state.doc)).toBe('<p>x<strong>uno</strong></p>')
   })
 })

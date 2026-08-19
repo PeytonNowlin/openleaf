@@ -39,6 +39,13 @@ function boundForm(host: EditorHost): HTMLFormElement | null {
   return host.closest('form')
 }
 
+/**
+ * Persist the document. Resolves true when a save actually happened.
+ *
+ * The caller uses the answer to decide whether to drop the recovery draft and
+ * stop warning about unsaved changes, so "nothing was persisted" and "somebody
+ * else persisted it" have to be told apart.
+ */
 export async function saveDocument(host: EditorHost): Promise<boolean> {
   const html = host.value
   const event = new CustomEvent(SAVE_EVENT, {
@@ -47,7 +54,11 @@ export async function saveDocument(host: EditorHost): Promise<boolean> {
     detail: { html },
   })
   host.dispatchEvent(event)
-  if (event.defaultPrevented) return false
+  // Canceling is the documented way to own saving, not a failure: a listener
+  // that calls preventDefault has taken the HTML and is persisting it itself.
+  // Reporting that as unsaved would keep the draft and the leave warning alive
+  // after every successful save on the event path.
+  if (event.defaultPrevented) return true
 
   if (saveHandler) {
     await saveHandler(html, host)
@@ -55,12 +66,32 @@ export async function saveDocument(host: EditorHost): Promise<boolean> {
   }
 
   const form = boundForm(host)
-  if (form) {
-    form.requestSubmit()
-    return true
-  }
+  if (form) return submitForm(form)
 
   return false
+}
+
+/**
+ * Submit a form, reporting whether the submission actually went out.
+ *
+ * `requestSubmit()` runs constraint validation first and returns quietly when a
+ * required control is invalid, so its return value says nothing. Watching for
+ * the `submit` event it fires is the only way to tell a real submission from one
+ * the browser refused -- and treating a refusal as success would clear the draft
+ * and the leave warning while the edits were still unsaved.
+ */
+function submitForm(form: HTMLFormElement): boolean {
+  let submitted = false
+  const onSubmit = (): void => {
+    submitted = true
+  }
+  form.addEventListener('submit', onSubmit, { capture: true })
+  try {
+    form.requestSubmit()
+  } finally {
+    form.removeEventListener('submit', onSubmit, { capture: true })
+  }
+  return submitted
 }
 
 export function previewDocument(host: EditorHost): void {
