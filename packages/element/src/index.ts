@@ -111,7 +111,11 @@ export class OpenLeafEditor extends HTMLElement {
     if (this.#textarea?.name) event.formData.set(this.#textarea.name, this.#textarea.value)
   }
   #onReset = (): void => {
-    // The reset event runs after controls restore their default values.
+    // The reset event fires *before* the controls are restored -- read
+    // textarea.value in the handler and it is still the edited text. The
+    // microtask runs after the reset algorithm finishes, which is the first
+    // point the default is actually readable. Removing it re-loads the
+    // editor with the content the reset was meant to discard.
     queueMicrotask(() => {
       if (this.#textarea) this.value = this.#textarea.value
     })
