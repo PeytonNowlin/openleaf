@@ -28,7 +28,7 @@
 
 ---
 
-> ## ⚠️ Status: beta (`0.1.0-beta.0`)
+> ## ⚠️ Status: beta (`0.1.0-beta.1`)
 >
 > Packages are on npm under `@openleaf-editor/*`. There is a working editor
 > with a toolbar, but **it has not been used in production by anybody, and its
@@ -39,7 +39,7 @@
 > - The document schema and HTML in / HTML out pipeline
 > - The **content-preservation layer** — the thing that stops a
 >   ProseMirror-based editor from silently eating legacy markup
-> - The round-trip fidelity harness: **9/9 stored fixtures fully lossless**,
+> - The round-trip fidelity harness: **10/10 stored fixtures fully lossless**,
 >   **401 unit tests** green, typechecked strict
 > - **Paste normalizers for Word and Google Docs** — reconstructs real nested
 >   `<ul>`/`<ol>` from Word's `mso-list` markup, strips the vendor styling, and
@@ -47,8 +47,8 @@
 > - **A working toolbar** — 17 controls, `role="toolbar"` with a roving tabindex,
 >   `Alt+F10` in and `Escape` out, live-region announcements, link and image
 >   dialogs, source view, and a CSS-custom-property theme API
-> - `<openleaf-editor>` verified in **real browsers** — 138 tests across Chromium,
->   Firefox and WebKit (**414 passing runs**): loads stored HTML, accepts typing,
+> - `<openleaf-editor>` verified in **real browsers** — 170 tests across Chromium,
+>   Firefox and WebKit (**506 passing runs**): loads stored HTML, accepts typing,
 >   pastes from Word and Google Docs, drives every toolbar control by keyboard,
 >   writes back to the textarea, posts through a real form submit, and does not
 >   alter a document that is opened and saved untouched
@@ -59,16 +59,24 @@
 >   12.8 KB bundle that shares the core runtime rather than duplicating it
 > - **Syntax highlighting and source formatting** — coloured code blocks, and a
 >   source view that is indented and highlighted, in a 6.1 KB opt-in bundle
+> - **Alignment, colour and image upload** — the alignment and colour *marks* are
+>   in core, because reading `<p style="text-align:center">` and
+>   `<span style="color:#c00">` out of an existing archive is not optional. The
+>   colour picker is a 3.7 KB opt-in bundle; upload is a hook you point at your own
+>   media endpoint
 > - **Plugins can add node and mark types** — the schema is built from
 >   registered extensions, not a frozen singleton
 > - **File import** — drag in a Word `.docx`, an HTML or text file, or Word's own
 >   "Save as Web Page" export, and headings, nested lists, quotes and tables all
 >   arrive. 2.8 KB, plus 123 KB only if you want `.docx`.
-> - Bundles: **88.4 KB gzipped** core, plus optional **12.8 KB** tables,
->   **6.1 KB** highlighting and **2.8 KB** import, each downloaded only if asked for
+> - Bundles: **91.7 KB gzipped** core, plus optional **12.8 KB** tables,
+>   **6.1 KB** highlighting, **3.7 KB** colour picker and **2.8 KB** import, each
+>   downloaded only if asked for
 >
 > **What does not exist yet**
-> - Image upload (insert-by-URL only), find and replace, alignment, colours
+> - Find and replace, character count, autosave
+> - Image *resizing*, and there is no dialog for editing an image already in the
+>   document — so alt text can only be set when it is inserted
 > - `<caption>` and `<colgroup>` are dropped from tables — a known bug with a
 >   test pinning it, not a design decision
 > - **Screen reader testing.** The ARIA is designed and unit-tested; it has not
@@ -179,24 +187,25 @@ editor ends up either mangling stored documents or importing a wall of
 
 | Corpus | Standard | Today |
 |---|---|---|
-| `stored/` — the customer's database, authoritative | **Lossless.** Every attribute survives, or a maintainer declared the loss in a reviewed PR. | **9/9 fully lossless** |
+| `stored/` — the customer's database, authoritative | **Lossless.** Every attribute survives, or a maintainer declared the loss in a reviewed PR. | **10/10 fully lossless** |
 | `paste/` — Word, Google Docs, Excel | **Stable and text-preserving.** Stripping vendor styling is the goal, not damage. | 2/2 stable; `mso-*` and `docs-internal-guid` stripped |
 
 ```
 $ pnpm test
-  fixture                 corpus  stable  text  attrs
-  bare-div-wrapper.html   stored    ok     ok       0
-  callout-div.html        stored    ok     ok       0
-  drupal-ckeditor.html    stored    ok     ok       0
-  legacy-wordpress.html   stored    ok     ok       0
-  marker-collision.html   stored    ok     ok       0
-  nested-lists.html       stored    ok     ok       0
-  preserved-table.html    stored    ok     ok       0
-  rtl-content.html        stored    ok     ok       0
-  semantic-baseline.html  stored    ok     ok       0
-  gdocs-paste.html        paste     ok     ok       5
-  word-paste.html         paste     ok     ok       2
-  stored corpus: 9/9 fully lossless
+  fixture                    corpus  stable  text  attrs
+  aligned-and-coloured.html  stored    ok     ok       0
+  bare-div-wrapper.html      stored    ok     ok       0
+  callout-div.html           stored    ok     ok       0
+  drupal-ckeditor.html       stored    ok     ok       0
+  legacy-wordpress.html      stored    ok     ok       0
+  marker-collision.html      stored    ok     ok       0
+  nested-lists.html          stored    ok     ok       0
+  preserved-table.html       stored    ok     ok       0
+  rtl-content.html           stored    ok     ok       0
+  semantic-baseline.html     stored    ok     ok       0
+  gdocs-paste.html           paste     ok     ok       5
+  word-paste.html            paste     ok     ok       2
+  stored corpus: 10/10 fully lossless
 ```
 
 This harness has already earned its keep. It caught `dir` being silently
@@ -422,6 +431,32 @@ For state a predicate cannot derive — an upload in flight, a collaborative loc
 held by someone else — push it instead: `editor.toolbar.setItemState('id',
 { enabled: false })`.
 
+A control that is not a button declares `type: 'custom'` and builds its own DOM,
+which is how the colour picker exists at all — a swatch grid is not a button, and
+modelling it as one would have meant special-casing it in the toolbar by id. The
+contract is narrow: the element it returns must contain exactly one focusable
+`button.ol-btn`, because that is what the roving tabindex walks, and anything else
+it needs belongs outside the toolbar element.
+
+```js
+registerToolbarItem({
+  id: 'textColour',
+  type: 'custom',
+  label: 'Text colour',
+  render: ({ view, host }) => ({
+    el,                       // one `button.ol-btn` inside
+    update: (state) => { … }, // called on every transaction, guarded
+    destroy: () => { … },     // remove any popover you put in the document
+  }),
+})
+```
+
+The built-in ids are `undo redo blockType bold italic underline strikethrough
+code alignLeft alignCenter alignRight alignJustify bulletList orderedList
+blockquote codeBlock link unlink image horizontalRule source`, plus
+`textColour highlightColour` from the colour bundle, `insertTable` and its
+companions from the table bundle, and `importFile` from the import bundle.
+
 ### Content Security Policy
 
 Styles ship as a **constructable stylesheet** attached via
@@ -435,6 +470,34 @@ console warning naming `@openleaf-editor/ui/openleaf.css` to link instead.
 
 No `innerHTML` anywhere in the UI package either, so Trusted Types
 (`require-trusted-types-for 'script'`) does not block the icon sprite.
+
+**One thing a strict policy does affect, and it is worth knowing before you turn
+alignment and colour on.** Those two features are stored as `style` attributes on
+the content, because that is what every editor OpenLeaf replaces writes and
+reading it back is the whole point. A browser under `style-src` without
+`'unsafe-inline'` refuses to parse a `style` attribute — so aligned and coloured
+content will not *render* on your published page, whatever produced it. That is a
+property of the markup, not of this editor.
+
+Inside the editor it does render, because the schema falls back to a CSSOM write
+when it detects that its attribute was not honoured — the same exemption that
+makes the constructable stylesheet work. The cost is that the stored spelling is
+then the CSSOM's rather than the author's, so `text-align:center` comes back as
+`text-align: center;`.
+
+Colour degrades differently, and engine-dependently, because ProseMirror matches
+it through the CSSOM rather than from the raw attribute. Chromium empties the
+CSSOM under this policy, so an existing coloured span cannot be read as a mark and
+falls to the preservation layer instead — returned byte-identical and uneditable,
+which is what happened before colour was modelled at all. Firefox and WebKit
+populate it anyway, so there it is a mark like any other. What holds in all three
+is that **the colour survives**; the first version of this feature unwrapped that
+span and dropped it, which is the kind of bug you only find by running the tests
+under the policy. `packages/element/test/e2e/csp.spec.ts` does.
+
+If inline styles are not acceptable in your deployment, leave the alignment and
+colour controls out of the `toolbar` attribute: the schema still reads existing
+content, and nothing new gets written.
 
 ---
 
@@ -586,6 +649,171 @@ colour something oddly.
 
 ---
 
+## Alignment, colour and image upload
+
+The formatting authors ask for first, and the one place OpenLeaf writes a
+`style` attribute on purpose.
+
+### The split, and why it is not where it looks like it should be
+
+| | Where | Cost |
+|---|---|---|
+| `text-align` on paragraphs and headings, and the `text_color` / `background_color` marks | Core schema | ~1.3 KB gzipped |
+| Four alignment buttons, and their `Mod+Shift+L/E/R/J` shortcuts | Core | ~0.4 KB gzipped |
+| Image upload: hook, file picker, drop and paste | Core | ~1.1 KB gzipped |
+| The colour picker — swatch grid, keyboard model, popover | Opt-in bundle | 3.7 KB gzipped |
+
+The marks are in core for the same reason the table schema is. Without them a
+`<span style="color:#c00">` in inherited content is claimed by the preservation
+layer and becomes an opaque atom: round-tripped byte-perfectly, and impossible to
+type in, spellcheck or partially select. An author opening a decade-old post finds
+a grey card where a sentence used to be. "We read your colours but you may not
+touch them" is not a thing you can tell a CMS.
+
+### What it reads
+
+`text-align`, the legacy `align` attribute, `text-align: start` and `end`
+resolved against the reading direction, `color`, `background-color`, and
+`<font color>`. All of it comes back as the one spelling still valid in HTML5:
+
+```html
+<!-- in -->                              <!-- out -->
+<p align="center">                       <p style="text-align:center">
+<p style="text-align: center;">          <p style="text-align:center">
+<font color="red">                       <span style="color:red">
+<span style="color:#cc0000">             <span style="color:#cc0000">
+<p style="line-height:1.8;text-align:center">   unchanged
+```
+
+Two of those rows are the ones that took work.
+
+**Hex colours stay hex.** ProseMirror matches CSS through the CSSOM, which
+reports `rgb(204, 0, 0)` for an authored `#cc0000`, and its serializer writes
+`style` with `element.style.cssText`, which normalizes again on the way out. Left
+alone, opening and saving a document rewrites every hex colour in it into a longer
+functional form. Measured in Chromium and WebKit: `setAttribute` preserves the
+string and `cssText` does not, so the nodes and marks that emit CSS build their
+own element and set the attribute themselves.
+
+**Declarations OpenLeaf does not model survive next to the one it does.** A
+paragraph stored as `line-height:1.8;text-align:center` keeps its line height,
+because the carry mechanism merges `style` one declaration at a time rather than
+replacing the attribute. Getting that wrong is how modelling a feature *loses*
+fidelity that the preservation layer used to provide for free.
+
+The one normalization that remains: a declaration the schema models is re-emitted
+in the schema's spelling, so `text-align: center;` loses a space and a semicolon.
+Same value, same rendering, and it is pinned by a test so it cannot quietly grow
+into something bigger.
+
+### The colour picker
+
+```html
+<script src="/js/openleaf.min.js"></script>
+<script src="/js/openleaf-colour.min.js"></script>   <!-- 3.7 KB, optional -->
+```
+
+The one hand-rolled widget in the project, because the alternatives are worse
+rather than cheaper: colours in a native `<select>` is a list of names an author
+cannot tell apart, and a modal `<dialog>` hides the text whose colour is being
+chosen. It pays for that by leaning on the platform everywhere it can — the top
+layer via `popover`, a native `<input type="color">` for arbitrary values, and a
+real `<button>` per swatch.
+
+Every swatch carries the colour's **name** as its accessible name. A grid whose
+only distinguishing feature is a background colour is unusable with a screen
+reader and unusable in a forced-colours mode, which is most of the reason this
+control is usually done badly. Arrow keys move within the grid, Home and End go to
+the ends of a row, Escape closes and returns focus to the trigger, and moving
+focus out by any route closes it — so a keyboard user cannot be stranded in it.
+
+The grid lives outside the toolbar element on purpose: the toolbar's roving
+tabindex walks every `button.ol-btn` inside itself, and thirty-two swatches in
+there would turn one tab stop into thirty-three.
+
+Its CSS goes through `registerStyles`, so it takes the same CSP-safe
+constructable-stylesheet path as the toolbar's own. On a browser with no
+`adoptedStyleSheets` support, link
+`@openleaf-editor/plugins-colour/openleaf-colour.css` alongside
+`@openleaf-editor/ui/openleaf.css`.
+
+Installing the bundle does **not** rearrange your toolbar. Name `textColour` and
+`highlightColour` in the `toolbar` attribute, or use `LAYOUT_WITH_COLOUR` from
+`@openleaf-editor/ui`. Pass your own palette if a style guide says so:
+
+```js
+installColourPicker({ palette: [{ value: '#c2185b', name: 'Brand pink' }] })
+```
+
+### Image upload is a hook, not an endpoint
+
+OpenLeaf has no server, so it cannot upload anything. What it owns is the flow —
+pick or drop a file, hand it over, get a URL back, ask for alternative text,
+insert — and the transport belongs to the part of the stack that knows your media
+library:
+
+```js
+OpenLeaf.registerImageUploader(async (file) => {
+  const body = new FormData()
+  body.append('file', file)
+  const res = await fetch('/admin/media', { method: 'POST', body })
+  if (!res.ok) throw new Error('The server rejected the upload.')
+  const { url, width, height } = await res.json()
+  return { src: url, width, height }
+})
+```
+
+Whatever that function throws is shown to the author verbatim, so write the
+message for them rather than for a log. One editor on a page with its own endpoint
+sets `element.imageUploader` instead, which wins over the global one.
+
+Register an uploader and the image dialog grows a file picker, and dropping or
+pasting an image file routes through the same hook. Register nothing and the
+picker is not offered at all — the dialog is insert-by-URL with alt-text
+prompting, exactly as before.
+
+**There is deliberately no `data:` URL fallback.** It is the obvious way to make
+the feature "work" with no server, and it would produce content the schema drops
+on the next parse — `data:text/html` is a full XSS vector, and OpenLeaf refuses
+`data:` URLs everywhere. The author would watch their image appear, save, and find
+it gone. A missing picker is a better failure than that.
+
+Three details that are decisions rather than accidents:
+
+- **The upload happens on Save, not on selection.** Alternative text is asked for
+  in the same dialog as the file, so there is one decision point and no path
+  through it that inserts an image nobody described. OpenLeaf has no dialog for
+  editing an image already in the document, so "ask afterwards" would mean never.
+- **A failed upload keeps the dialog open, with the typed description in it.**
+  Uploading in the background and reporting through a toast loses the alt text and
+  makes the retry a whole new dialog.
+- **SVG is not accepted.** An SVG is a document, not a bitmap: it can carry
+  `<script>`, and deciding a given one is safe means sanitizing its interior — a
+  job for the server that accepts it, not for a drop handler.
+
+### The server side
+
+`@openleaf-editor/sanitize` allows `style` on exactly these elements for exactly
+these declarations, and checks the values. A policy that forbids `style` outright
+deletes the alignment out of every document it touches, which is the
+"content dies on the server" failure that package exists to prevent.
+
+If you use the DOMPurify path, **install the hook**. DOMPurify's `ALLOWED_ATTR` is
+global and it performs no CSS property filtering, so the config alone allows any
+declaration on any element it keeps — including `position:fixed` overlays:
+
+```js
+const purify = DOMPurify(window)
+purify.addHook('uponSanitizeAttribute', styleAttributeHook(DEFAULT_POLICY))
+const clean = purify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY))
+```
+
+The `bleach` and HTMLPurifier configs carry `ALLOWED_CSS_PROPERTIES` and
+`CSS.AllowedProperties` respectively, and both are property-level rather than
+per-element — a widening in the same direction, documented where it is emitted.
+
+---
+
 ## Importing files
 
 An opt-in bundle, **2.8 KB gzipped**. Adds a toolbar button and drag-and-drop.
@@ -704,14 +932,19 @@ The point at which someone could actually replace TinyMCE with this.
   column resizing. Opt-in as a second script tag. See
   [the tables section](#tables) for why the split is not where it looks like it
   should be.
-- [ ] **Images** — upload hook and resize. Insert-by-URL with alt-text
-  prompting already works.
+- [x] **Images** — an upload hook, wired to the dialog's file picker and to drop
+  and paste. Insert-by-URL with alt-text prompting still works when no uploader is
+  registered. Resizing, and a dialog for editing an image already in the document,
+  are not done.
 - [x] **`@openleaf-editor/sanitize`** — the allowlist as *data*, generating config for
   DOMPurify, `bleach` and HTMLPurifier. Every CMS team hand-rolls this in each
   language and discovers the divergence when something gets through the weakest
   one.
 - [x] Source view, with opt-in formatting and syntax highlighting
-- [ ] Find and replace, alignment, colors, character count, autosave
+- [x] **Alignment and colour** — `text-align` and the two colour marks in core, so
+  inherited content is read and written faithfully; the swatch picker in a 3.7 KB
+  opt-in bundle
+- [ ] Find and replace, character count, autosave
 - [ ] i18n scaffolding and a first non-English locale
 
 > **Done when** a real site is running OpenLeaf in production, editors are
@@ -800,6 +1033,7 @@ keep the `@beta` tag:
 
 ```bash
 npm install @openleaf-editor/plugins-table@beta \
+            @openleaf-editor/plugins-colour@beta \
             @openleaf-editor/plugins-highlight@beta \
             @openleaf-editor/plugins-import@beta \
             @openleaf-editor/plugins-import-docx@beta
@@ -807,15 +1041,26 @@ npm install @openleaf-editor/plugins-table@beta \
 
 ```ts
 import { installTableEditing } from '@openleaf-editor/plugins-table'
+import { installColourPicker } from '@openleaf-editor/plugins-colour'
 import { installSyntaxHighlighting } from '@openleaf-editor/plugins-highlight'
 import { installImport } from '@openleaf-editor/plugins-import'
 import { installDocxImport } from '@openleaf-editor/plugins-import-docx'
 
 installTableEditing()
+installColourPicker()
 installSyntaxHighlighting()
 installImport()
 installDocxImport()
 ```
+
+**Keep every `@openleaf-editor/*` package on the same version.** They pin each
+other exactly, so mixing versions installs two copies of the schema and the
+toolbar registry — and a table node built by one is not a node type the other
+accepts.
+
+Alignment and image upload need no package: they are in the element. Point the
+upload at your own endpoint with `registerImageUploader`, exported from
+`@openleaf-editor/element` and from `@openleaf-editor/ui`.
 
 Server-side sanitization is [`@openleaf-editor/sanitize`](https://www.npmjs.com/package/@openleaf-editor/sanitize).
 It is not optional: treat editor output as untrusted HTML.
@@ -828,6 +1073,7 @@ It is not optional: treat editor output as untrusted HTML.
 | [`@openleaf-editor/ui`](https://www.npmjs.com/package/@openleaf-editor/ui) | Toolbar, icons, dialogs, theme tokens |
 | [`@openleaf-editor/sanitize`](https://www.npmjs.com/package/@openleaf-editor/sanitize) | Allowlist as data + DOMPurify / bleach / HTMLPurifier |
 | [`@openleaf-editor/plugins-table`](https://www.npmjs.com/package/@openleaf-editor/plugins-table) | Opt-in table editing |
+| [`@openleaf-editor/plugins-colour`](https://www.npmjs.com/package/@openleaf-editor/plugins-colour) | Opt-in text and highlight colour picker |
 | [`@openleaf-editor/plugins-highlight`](https://www.npmjs.com/package/@openleaf-editor/plugins-highlight) | Opt-in syntax highlighting and source formatting |
 | [`@openleaf-editor/plugins-import`](https://www.npmjs.com/package/@openleaf-editor/plugins-import) | Opt-in HTML / text file import |
 | [`@openleaf-editor/plugins-import-docx`](https://www.npmjs.com/package/@openleaf-editor/plugins-import-docx) | Opt-in Word `.docx` import |
@@ -855,37 +1101,45 @@ Content is stored as **HTML**, not a proprietary JSON document model. A site
 that adopts OpenLeaf and later abandons it is left with content it can still
 render. Lock-in is not a retention strategy here.
 
-**Current size:** 279 KB minified, **88.4 KB gzipped** for the core bundle —
-editing engine, paste normalizers, toolbar, icons, dialogs and the table schema.
-Optional table *editing* is a further **12.8 KB**, downloaded only by sites that
-load it.
+**Current size:** 289 KB minified, **91.7 KB gzipped** for the core bundle —
+editing engine, paste normalizers, toolbar, icons, dialogs, the image upload flow
+and the table, alignment and colour schema. Optional table *editing* is a further
+**12.8 KB** and the colour picker **3.7 KB**, downloaded only by sites that load
+them.
 
-The gate fails above 90 KB gzipped for the core bundle, so there is **1.6 KB of
-headroom left**. Alignment, colours and find-and-replace have to fit in that, or
-follow tables out into opt-in bundles. The plugin mechanism now exists, so that
-is a realistic option rather than a refactor.
+**The gate was 90 KB and is now 92 KB.** Alignment, colour and image upload cost
+3.1 KB gzipped between them, and the 1.6 KB that was spare did not cover it. What
+went out to an opt-in bundle was the colour *picker* — the swatch grid, its
+keyboard model and its popover. What stayed is the part core cannot delegate:
+reading and writing the alignment and colour markup an inherited archive already
+contains, which is the same reasoning that keeps the table schema here while
+table editing is opt-in. Raising a budget to fit a feature is the move this table
+exists to make visible, so: it was raised, by 2 KB, once, and the number is in
+`scripts/bundle-budgets.mjs` with the reason next to it.
 
-OpenLeaf's own code is 65.8 KB of the 277.9 KB raw total; the other 76% is the
+Find and replace has to fit in the 0.3 KB now spare, or follow the picker out.
+
+OpenLeaf's own code is 76.1 KB of the 288.3 KB raw total; the other 74% is the
 ProseMirror engine. `node demo/build.mjs --sizes` prints the per-package
 breakdown, because an aggregate gate tells you the bundle no longer fits but not
 which feature spent the budget — so the blame lands on whatever shipped last:
 
 ```
   core bundle source breakdown (bytes in output, before gzip)
-  -------------------------------------
-  prosemirror-view             96.0 KB
-  prosemirror-model            44.1 KB
-  @openleaf-editor/ui                 34.7 KB
-  prosemirror-transform        31.0 KB
-  @openleaf-editor/core               17.6 KB
-  prosemirror-commands         12.3 KB
-  prosemirror-state            11.8 KB
-  @openleaf-editor/element             6.9 KB
-  @openleaf-editor/paste               6.6 KB
-  prosemirror-history           6.0 KB
-  prosemirror-schema-list       3.6 KB
-  -------------------------------------
-  OpenLeaf code is 65.8 KB of 277.9 KB (24%); the rest is the ProseMirror engine.
+  --------------------------------------
+  prosemirror-view              96.0 KB
+  prosemirror-model             44.1 KB
+  @openleaf-editor/ui           39.0 KB
+  prosemirror-transform         31.0 KB
+  @openleaf-editor/core         22.9 KB
+  prosemirror-commands          12.3 KB
+  prosemirror-state             11.8 KB
+  @openleaf-editor/element       7.6 KB
+  @openleaf-editor/paste         6.6 KB
+  prosemirror-history            6.0 KB
+  prosemirror-schema-list        3.6 KB
+  --------------------------------------
+  OpenLeaf code is 76.1 KB of 288.3 KB (26%); the rest is the ProseMirror engine.
 ```
 
 ## Security
@@ -1084,11 +1338,11 @@ pnpm verify                    # the whole gate. ~40 seconds.
 | | |
 |---|---|
 | typecheck | strict TypeScript across every package |
-| unit tests | 401 tests including both round-trip fidelity corpora |
-| browser tests | 138 tests across Chromium, Firefox and WebKit against the real bundle |
+| unit tests | 484 tests including both round-trip fidelity corpora |
+| browser tests | 506 tests across Chromium, Firefox and WebKit against the real bundle, including a strict-CSP harness |
 | bundle build | asserts the demo bundle never reads from a built `dist/` |
 | schema singleton | asserts nothing outside core imports a schema instance |
-| bundle size | fails above 90 KB gzipped |
+| bundle size | fails above 92 KB gzipped for core, and every opt-in bundle has its own budget |
 
 Narrower loops while working:
 
