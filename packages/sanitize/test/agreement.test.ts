@@ -49,6 +49,16 @@ describe('the default policy accepts everything the editor emits', () => {
     expect(sanitizeHtml(stored, { policy: DEFAULT_POLICY })).toBe(stored)
   })
 
+  it('allows the language class only where the schema writes it', () => {
+    // Widening `pre` as well would permit a class the editor never emits:
+    // the schema normalizes `language-*` onto <code>. A class on <pre> is
+    // preservation residue, which policyForPreserved() exists to opt into.
+    const out = sanitizeHtml('<pre class="wide"><code class="language-js">x</code></pre>', {
+      policy: DEFAULT_POLICY,
+    })
+    expect(out).toBe('<pre><code class="language-js">x</code></pre>')
+  })
+
   it('still strips what the editor would never emit', () => {
     // The guard must not have been satisfied by making the policy permissive.
     const out = sanitizeHtml('<p onclick="x()">t</p><script>y()</script>', {
