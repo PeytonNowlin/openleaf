@@ -52,7 +52,6 @@ import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
 const NEVER_PRESERVE: readonly string[] = [
   'script',
   'style',
-  'iframe',
   'frame',
   'frameset',
   'object',
@@ -73,6 +72,18 @@ const NEVER_PRESERVE: readonly string[] = [
 
 /** Parse rules that drop dangerous elements before any other rule sees them. */
 const dropRules = NEVER_PRESERVE.map((tag) => ({ tag, ignore: true, priority: 100 }))
+
+/**
+ * Media the schema declined. Priority 40 is below the schema's default (50),
+ * so an allowlisted iframe or a video with a safe `src` is claimed first;
+ * anything left is ignored rather than preserved as an atom. Preserving an
+ * arbitrary iframe would be a nested page the author never asked to keep.
+ */
+const dropDeclinedMedia = ['iframe', 'video', 'audio'].map((tag) => ({
+  tag,
+  ignore: true as const,
+  priority: 40,
+}))
 
 /**
  * Scrub markup before it is stored for preservation.
@@ -297,6 +308,7 @@ export const unknownBlock: NodeSpec = {
   },
   parseDOM: [
     ...dropRules,
+    ...dropDeclinedMedia,
     {
       tag: '*',
       // Lowest priority: every real rule in the schema gets first refusal.
@@ -332,6 +344,7 @@ export const unknownInline: NodeSpec = {
   },
   parseDOM: [
     ...dropRules,
+    ...dropDeclinedMedia,
     {
       tag: '*',
       // Higher than unknownBlock's catch-all: inline gets first refusal so

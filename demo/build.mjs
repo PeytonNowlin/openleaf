@@ -44,6 +44,7 @@ const WORKSPACE_ALIASES = {
   '@openleaf-editor/plugins-import': src('../packages/plugins-import/src/index.ts'),
   '@openleaf-editor/plugins-import-docx': src('../packages/plugins-import-docx/src/index.ts'),
   '@openleaf-editor/plugins-session': src('../packages/plugins-session/src/index.ts'),
+  '@openleaf-editor/plugins-insert': src('../packages/plugins-insert/src/index.ts'),
 }
 
 /** Modules the core bundle publishes and plugin bundles borrow. */
@@ -221,12 +222,27 @@ await build({
 })
 const sessionGz = report('openleaf-session.min.js', src('./openleaf-session.min.js'))
 
+/* ---- opt-in insert bundle ---- */
+await build({
+  entryPoints: [src('./entry-insert.ts')],
+  bundle: true,
+  format: 'iife',
+  target: ['es2020'],
+  minify: true,
+  sourcemap: true,
+  outfile: src('./openleaf-insert.min.js'),
+  alias: { '@openleaf-editor/plugins-insert': WORKSPACE_ALIASES['@openleaf-editor/plugins-insert'] },
+  plugins: [shareRuntime('OpenLeaf')],
+})
+const insertGz = report('openleaf-insert.min.js', src('./openleaf-insert.min.js'))
+
 console.log(
   `\ncore is the budgeted bundle (${(coreGz / 1024).toFixed(1)} KB gzip). ` +
     `Optional: tables ${(tablesGz / 1024).toFixed(1)} KB, colour ` +
     `${(colorGz / 1024).toFixed(1)} KB, highlighting ` +
     `${(highlightGz / 1024).toFixed(1)} KB, import ${(importGz / 1024).toFixed(1)} KB, ` +
-    `Word .docx ${(docxGz / 1024).toFixed(1)} KB, session ${(sessionGz / 1024).toFixed(1)} KB.`,
+    `Word .docx ${(docxGz / 1024).toFixed(1)} KB, session ${(sessionGz / 1024).toFixed(1)} KB, ` +
+    `insert ${(insertGz / 1024).toFixed(1)} KB.`,
 )
 
 /* ---- per-package attribution for the core bundle ---- */

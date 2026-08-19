@@ -59,6 +59,11 @@ export interface Policy {
    * colour. A version 1 consumer reading a version 2 policy sees `style` in an
    * element's attributes and no idea which declarations are meant, so it would
    * allow the lot -- which is why this is a version bump rather than an addition.
+   *
+   * 3 added modelled structure (figure, details, media, heading ids) and
+   * allowlisted iframe embeds. Iframe left `dropWithContent` because the editor
+   * now emits it; an iframe whose `src` is not an allowlisted player is still
+   * removed.
    */
   version: number
   /** Permitted elements, and the attributes each may carry. */
@@ -88,7 +93,7 @@ export interface Policy {
  * knowingly; narrowing one after content has been stored is a migration.
  */
 export const DEFAULT_POLICY: Policy = {
-  version: 2,
+  version: 3,
 
   elements: {
     /*
@@ -107,12 +112,12 @@ export const DEFAULT_POLICY: Policy = {
      * list of `text-align` whose values must be one of four keywords.
      */
     p: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h1: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h2: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h3: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h4: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h5: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h6: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
+    h1: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
+    h2: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
+    h3: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
+    h4: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
+    h5: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
+    h6: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
     /*
      * `<span>` exists in this policy only to carry colour.
      *
@@ -134,14 +139,26 @@ export const DEFAULT_POLICY: Policy = {
     ul: {},
     ol: { attributes: ['start'] },
     li: {},
-    hr: {},
+    hr: { attributes: ['class'] },
     br: {},
     strong: {},
     em: {},
     u: {},
     s: {},
-    a: { attributes: ['href', 'title', 'target', 'rel'] },
-    img: { attributes: ['src', 'alt', 'title', 'width', 'height'] },
+    a: { attributes: ['href', 'title', 'target', 'rel', 'id'] },
+    img: { attributes: ['src', 'alt', 'title', 'width', 'height', 'class'] },
+    figure: { attributes: ['class'] },
+    figcaption: {},
+    details: { attributes: ['open'] },
+    summary: {},
+    video: { attributes: ['src', 'title', 'controls', 'width', 'height', 'poster'] },
+    audio: { attributes: ['src', 'title', 'controls'] },
+    /*
+     * Iframes are allowlisted by host in sanitize.ts, not by being listed here.
+     * Listing the element without that check would store an arbitrary nested
+     * page; the host check is what makes this safe to emit.
+     */
+    iframe: { attributes: ['src', 'title', 'width', 'height', 'allow', 'allowfullscreen'] },
 
     /*
      * Tables. These mirror packages/core/src/tables.ts exactly, including the
@@ -191,7 +208,7 @@ export const DEFAULT_POLICY: Policy = {
   allowRelativeUrls: true,
 
   dropWithContent: [
-    'script', 'style', 'iframe', 'frame', 'frameset', 'object', 'embed',
+    'script', 'style', 'frame', 'frameset', 'object', 'embed',
     'applet', 'form', 'input', 'button', 'select', 'textarea', 'option',
     'link', 'meta', 'base', 'noscript', 'template', 'svg', 'math',
   ],

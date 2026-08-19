@@ -11,6 +11,7 @@
  */
 
 import { allStyleProperties, filterStyle } from './css.js'
+import { EMBED_ALLOW_TOKENS, EMBED_HOSTS, isAllowedEmbedSrc, safeAllowList } from './embed.js'
 import { allowedStyleProperties, type Policy } from './policy.js'
 
 /* ------------------------------------------------------------------ *
@@ -63,8 +64,34 @@ export interface DOMPurifyConfig {
  *
  * `styleValidationNote(policy)` returns that instruction as a string, for a
  * generator that emits setup code rather than calling this itself.
+ *
+ * ## `<iframe>` is withheld unless you say the embed hook is installed
+ *
+ * The policy permits an iframe only when its `src` is one of a closed list of
+ * player hosts, and that is a check no DOMPurify config can express:
+ * `ALLOWED_URI_REGEXP` is global across every URL attribute, so narrowing it to
+ * YouTube would also delete every ordinary link. Listing `iframe` in
+ * `ALLOWED_TAGS` regardless would let `<iframe src="https://evil.example">`
+ * through the recommended sanitizer -- a nested attacker-controlled page, which
+ * is the one thing this policy exists to refuse.
+ *
+ * So iframes are dropped here by default, and `{ embedHook: true }` is the
+ * caller's assertion that `embedHook(policy)` is installed to do the check:
+ *
+ * ```js
+ * const purify = DOMPurify(window)
+ * purify.addHook('uponSanitizeAttribute', styleAttributeHook(DEFAULT_POLICY))
+ * purify.addHook('uponSanitizeElement', embedHook(DEFAULT_POLICY))
+ * const clean = purify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY, { embedHook: true }))
+ * ```
+ *
+ * Without the flag, stored embeds are removed rather than trusted. That is
+ * content loss, and it is the safe direction of the two.
  */
-export function toDOMPurifyConfig(policy: Policy): DOMPurifyConfig {
+export function toDOMPurifyConfig(
+  policy: Policy,
+  options: { embedHook?: boolean } = {},
+): DOMPurifyConfig {
   const attributes = new Set(policy.globalAttributes)
   for (const element of Object.values(policy.elements)) {
     for (const attr of element.attributes ?? []) attributes.add(attr)
@@ -73,15 +100,20 @@ export function toDOMPurifyConfig(policy: Policy): DOMPurifyConfig {
   const schemes = policy.urlSchemes.join('|')
   const relative = policy.allowRelativeUrls ? '|[^a-z]|[a-z+.\\-]+(?:[^a-z+.\\-:]|$)' : ''
 
+  const embedsChecked = options.embedHook === true
+  const tags = Object.keys(policy.elements).filter((tag) => embedsChecked || tag !== 'iframe')
+  const forbidden = [...policy.dropWithContent]
+  if (!embedsChecked && 'iframe' in policy.elements) forbidden.push('iframe')
+
   return {
-    ALLOWED_TAGS: Object.keys(policy.elements),
+    ALLOWED_TAGS: tags,
     ALLOWED_ATTR: [...attributes],
     ALLOWED_URI_REGEXP: new RegExp(`^(?:(?:${schemes}):${relative})`, 'i'),
-    FORBID_TAGS: [...policy.dropWithContent],
+    FORBID_TAGS: forbidden,
     // KEEP_CONTENT unwraps unknown wrappers (a styling div) so their text
     // survives. dropWithContent is the exception: those elements and
     // everything in them must go. FORBID_CONTENTS is that exception.
-    FORBID_CONTENTS: [...policy.dropWithContent],
+    FORBID_CONTENTS: forbidden,
     // `on*` handlers are removed by DOMPurify unconditionally; naming them here
     // documents the intent and survives a future config change.
     // `style` is NOT forbidden here, unlike every other version of this list you
@@ -144,6 +176,68 @@ export function styleValidationNote(policy: Policy): string {
   )
 }
 
+/**
+ * A DOMPurify hook that enforces the embed rules `ALLOWED_TAGS` cannot.
+ *
+ * Install as `uponSanitizeElement`, and pass `{ embedHook: true }` to
+ * `toDOMPurifyConfig` so the element is allowed through to it. An iframe whose
+ * `src` is not an allowlisted player host is removed outright rather than left
+ * behind with the attribute stripped: an empty nested browsing context is not
+ * content anybody asked for.
+ *
+ * `allow` is filtered on the survivors. An allowlisted host is not enough on its
+ * own -- `allow` is how a frame asks to step outside the restrictions the rest of
+ * the page lives under, so a permitted player URL carrying
+ * `allow="camera; microphone"` would still be handed the camera.
+ */
+export function embedHook(policy: Policy): (node: Element) => void {
+  const checked = 'iframe' in policy.elements
+  return (node) => {
+    if (!checked) return
+    if (typeof node.nodeName !== 'string' || node.nodeName.toLowerCase() !== 'iframe') return
+    if (!isAllowedEmbedSrc(node.getAttribute?.('src'))) {
+      node.parentNode?.removeChild(node)
+      return
+    }
+    if (!node.hasAttribute?.('allow')) return
+    const kept = safeAllowList(node.getAttribute('allow'))
+    if (kept === null) node.removeAttribute('allow')
+    else if (kept !== node.getAttribute('allow')) node.setAttribute('allow', kept)
+  }
+}
+
+/** The one-line reminder about embeds, for a generator emitting setup code. */
+export function embedValidationNote(policy: Policy): string {
+  if (!('iframe' in policy.elements)) return 'This policy permits no iframes.'
+  return (
+    `This policy permits iframes only from ${EMBED_HOSTS.map((r) => r.host).join(', ')}. ` +
+    'No DOMPurify config can express a per-element host allowlist, so install ' +
+    'embedHook() as an uponSanitizeElement hook and pass { embedHook: true } to ' +
+    'toDOMPurifyConfig -- or leave both off and have stored embeds removed.'
+  )
+}
+
+/**
+ * One regular expression matching every permitted embed URL.
+ *
+ * For the sanitizers that can take one: HTMLPurifier's `URI.SafeIframeRegexp` is
+ * exactly this shape, and it is the only way to state the host allowlist in
+ * configuration rather than in code. Written to be valid in PCRE and Python's
+ * `re` as well as JavaScript, since all three consume it.
+ */
+export function embedSrcPattern(): string {
+  const alternatives = EMBED_HOSTS.map((rule) => {
+    const host = rule.host.replace(/\./g, '\\.')
+    // A host rule with no path permits the whole host, but the match still has to
+    // end at a URL boundary so `player.twitch.tv.evil.example` cannot pass.
+    // `\/` is a JavaScript regexp-literal habit and means nothing to PCRE or
+    // Python. Normalised out so one string reads correctly in all three.
+    const path = rule.path ? rule.path.source.replace(/^\^/, '').replace(/\\\//g, '/') : '(?:[/?#]|$)'
+    return `${host}${path}`
+  })
+  return `^https://(?:www\\.)?(?:${alternatives.join('|')})`
+}
+
 /* ------------------------------------------------------------------ *
  * bleach (Python)
  * ------------------------------------------------------------------ */
@@ -173,6 +267,10 @@ export function styleValidationNote(policy: Policy): string {
  * it will allow `text-align` on a `<span>` and any value tinycss2 parses. That is
  * a widening in the same direction as DOMPurify's global attributes. It does drop
  * `url(` and `expression(`, which are the parts that matter.
+ *
+ * Iframes need the emitted `filter_embeds` pre-pass. bleach can allow the element
+ * and its `src` attribute but cannot say which hosts, so config alone would keep
+ * `<iframe src="https://evil.example">`.
  */
 export function toBleachConfig(policy: Policy): string {
   const tags = Object.keys(policy.elements)
@@ -235,6 +333,51 @@ export function toBleachConfig(policy: Policy): string {
     'STRIP_DISALLOWED = True',
     '',
   )
+
+  if ('iframe' in policy.elements) {
+    lines.push(
+      '# Embeds. bleach can allow <iframe> and its src, but not say which hosts,',
+      '# so configuration alone would keep <iframe src="https://evil.example">:',
+      '# a nested attacker-controlled page. Run this pre-pass as well as',
+      '# drop_with_content, before bleach.clean.',
+      // A raw string, deliberately: JSON-escaping the backslashes would make
+      // Python read `\.` as an escaped backslash followed by any character.
+      `ALLOWED_IFRAME_SRC = r'${embedSrcPattern()}'`,
+      '',
+      '# `allow` is how a frame asks to step outside the restrictions the rest of',
+      '# the page lives under, so an allowlisted host is not enough on its own.',
+      '# Only the feature name is kept, which leaves the default origin allowlist',
+      '# -- the frame itself -- so "camera *" narrows instead of being stored.',
+      `ALLOWED_IFRAME_ALLOW_TOKENS = [${EMBED_ALLOW_TOKENS.map((t) => JSON.stringify(t)).join(', ')}]`,
+      '',
+      'def filter_embeds(html, pattern=ALLOWED_IFRAME_SRC,',
+      '                  tokens=ALLOWED_IFRAME_ALLOW_TOKENS):',
+      '    import re',
+      '    from bs4 import BeautifulSoup',
+      '    soup = BeautifulSoup(html, "html5lib")',
+      '    for frame in soup.find_all("iframe"):',
+      '        if not re.match(pattern, frame.get("src") or "", re.I):',
+      '            frame.decompose()',
+      '            continue',
+      '        raw = frame.get("allow")',
+      '        if raw is None:',
+      '            continue',
+      '        kept, seen = [], set()',
+      '        for directive in raw.split(";"):',
+      '            name = directive.strip().split(" ")[0].lower()',
+      '            if name in tokens and name not in seen:',
+      '                seen.add(name)',
+      '                kept.append(name)',
+      '        if kept:',
+      '            frame["allow"] = "; ".join(kept)',
+      '        else:',
+      '            del frame["allow"]',
+      '    body = soup.body',
+      '    return body.decode_contents() if body is not None else soup.decode()',
+      '',
+    )
+  }
+
   return lines.join('\n')
 }
 
@@ -252,6 +395,12 @@ export function toBleachConfig(policy: Policy): string {
  * require_once 'openleaf_policy.php';
  * $clean = openleaf_purifier()->purify($dirty);
  * ```
+ *
+ * HTMLPurifier is the one target that can state the embed host allowlist in
+ * configuration: `HTML.SafeIframe` plus `URI.SafeIframeRegexp` is exactly this
+ * policy's iframe rule. Note it strips `allow` -- it has no definition for the
+ * attribute -- so embeds survive without their permissions rather than with too
+ * many, which is the safe direction.
  */
 export function toHtmlPurifierConfig(policy: Policy): string {
   const allowed = Object.entries(policy.elements)
@@ -278,7 +427,17 @@ ${policy.urlSchemes.map((s) => `        ${JSON.stringify(s)} => true,`).join('\n
     $config->set('CSS.AllowedProperties', [
 ${allStyleProperties(policy.elements).map((p) => `        ${JSON.stringify(p)} => true,`).join('\n')}
     ]);
-    $config->set('Attr.AllowedFrameTargets', ['_blank', '_self', '_parent', '_top']);
+    $config->set('Attr.AllowedFrameTargets', ['_blank', '_self', '_parent', '_top']);${
+    'iframe' in policy.elements
+      ? `
+    // Without both of these HTMLPurifier drops every iframe, and listing the
+    // element in HTML.Allowed without the regexp would trust any src at all.
+    $config->set('HTML.SafeIframe', true);
+    // Single-quoted, so PHP leaves both the backslashes and the dollar sign
+    // in the pattern alone -- a double-quoted string would not promise that.
+    $config->set('URI.SafeIframeRegexp', '%${embedSrcPattern()}%i');`
+      : ''
+  }
     // HTMLPurifier adds rel="noreferrer" to target=_blank links itself.
     $config->set('HTML.TargetNoreferrer', true);
     $config->set('HTML.TargetNoopener', true);

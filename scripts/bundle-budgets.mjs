@@ -27,7 +27,10 @@ export const BUDGETS_KB = {
   // core cannot delegate -- reading the `text-align` and `color` markup an
   // inherited archive already contains, which is the same reasoning that keeps
   // the table schema here while table editing is opt-in.
-  'openleaf.min.js': 92,
+  // Raised from 92 when insert/structure nodes (figure, details, allowlisted
+  // media, heading ids) landed in the base schema. Editing chrome stays in
+  // `@openleaf-editor/plugins-insert`; this is the storage format.
+  'openleaf.min.js': 96,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
@@ -35,6 +38,7 @@ export const BUDGETS_KB = {
   // Larger than the editor, which is exactly why it is a separate file.
   'openleaf-import-docx.min.js': 140,
   'openleaf-session.min.js': 10,
+  'openleaf-insert.min.js': 20,
 }
 
 /** Short label for a bundle: `openleaf-tables.min.js` reads as `-tables`. */

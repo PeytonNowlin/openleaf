@@ -124,7 +124,8 @@ npm install \
   @openleaf-editor/plugins-highlight@beta \
   @openleaf-editor/plugins-import@beta \
   @openleaf-editor/plugins-import-docx@beta \
-  @openleaf-editor/plugins-session@beta
+  @openleaf-editor/plugins-session@beta \
+  @openleaf-editor/plugins-insert@beta
 ```
 
 ```ts
@@ -134,6 +135,7 @@ import { installSyntaxHighlighting } from '@openleaf-editor/plugins-highlight'
 import { installImport } from '@openleaf-editor/plugins-import'
 import { installDocxImport } from '@openleaf-editor/plugins-import-docx'
 import { installSessionTools } from '@openleaf-editor/plugins-session'
+import { installInsertTools } from '@openleaf-editor/plugins-insert'
 
 installTableEditing()
 installColourPicker()
@@ -141,6 +143,7 @@ installSyntaxHighlighting()
 installImport()
 installDocxImport()
 installSessionTools()
+installInsertTools()
 ```
 
 Installing a plugin registers its capabilities; it does not rearrange a custom
@@ -161,6 +164,7 @@ toolbar. Add the plugin controls to the `toolbar` attribute where you want them.
 | [`@openleaf-editor/plugins-import`](packages/plugins-import) | HTML and plain-text file import |
 | [`@openleaf-editor/plugins-import-docx`](packages/plugins-import-docx) | Microsoft Word `.docx` import via Mammoth |
 | [`@openleaf-editor/plugins-session`](packages/plugins-session) | Find and replace, word count, autosave, save, print, preview, and new document |
+| [`@openleaf-editor/plugins-insert`](packages/plugins-insert) | Media, details, anchors, character map, emoji, snippets, and image resize |
 
 For schema extensions and custom toolbar items, see
 [Authoring OpenLeaf plugins](docs/authoring-plugins.md).

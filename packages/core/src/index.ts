@@ -19,6 +19,22 @@ export {
   safeUrlOrNull,
 } from './url.js'
 export {
+  EMBED_HOSTS,
+  isAllowedEmbedSrc,
+  safeAllowList,
+  safeEmbedSrc,
+  type EmbedHostRule,
+} from './embed.js'
+export {
+  IMAGE_ALIGNMENTS,
+  IMAGE_ALIGN_CLASS,
+  IMAGE_ALIGN_CLASSES,
+  imageAlignFromClass,
+  safeClassList,
+  safeId,
+  type ImageAlign,
+} from './tokens.js'
+export {
   // predicates
   activeBackgroundColor,
   activeHeadingLevel,
@@ -51,6 +67,16 @@ export {
   toggleHeading,
   toggleTextAlign,
   wrapInBlockquote,
+  insertAudio,
+  insertDetails,
+  insertHtml,
+  insertIframe,
+  insertNamedAnchor,
+  insertNonBreakingSpace,
+  insertPageBreak,
+  insertText,
+  insertVideo,
+  setHeadingId,
   // lists
   indentListItem,
   outdentListItem,
@@ -63,6 +89,7 @@ export {
   unsetLink,
   type ImageAttrs,
   type LinkAttrs,
+  type MediaAttrs,
   // history
   redo,
   undo,
