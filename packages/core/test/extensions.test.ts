@@ -197,6 +197,34 @@ describe('carrying unmodelled attributes', () => {
     expect(out).not.toContain(CARRIED_ATTR)
     expect(out).not.toContain('__openleaf')
   })
+
+  it('does not reintroduce event handlers the spec never modelled', () => {
+    const out = serializeHtml(
+      parseHtml('<aside class="ol-callout" onclick="alert(1)"><p>t</p></aside>', { schema }),
+    )
+    expect(out).not.toMatch(/onclick/i)
+  })
+})
+
+describe('core claimed tags carry residual attributes', () => {
+  it('keeps class and data attributes on a paragraph', () => {
+    const html = '<p class="lead" data-id="7">hello</p>'
+    expect(serializeHtml(parseHtml(html))).toBe(html)
+  })
+
+  it('keeps type and reversed on an ordered list', () => {
+    const html = '<ol type="a" reversed="" start="3"><li><p>x</p></li></ol>'
+    const out = serializeHtml(parseHtml(html))
+    expect(out).toContain('start="3"')
+    expect(out).toContain('type="a"')
+    expect(out).toContain('reversed')
+  })
+
+  it('still drops event handlers on claimed tags', () => {
+    expect(serializeHtml(parseHtml('<p class="lead" onclick="alert(1)">x</p>'))).toBe(
+      '<p class="lead">x</p>',
+    )
+  })
 })
 
 describe('commands work against an extended schema', () => {
