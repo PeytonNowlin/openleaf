@@ -343,6 +343,7 @@ export class Toolbar {
   #invoke(spec: ToolbarItemSpec): void {
     const view = this.#view
     if (!view) return
+    if (this.#host.hasAttribute('readonly')) return
 
     const control = this.#controls.get(spec.id)
     if (control && control.enabled === false) return
@@ -389,11 +390,14 @@ export class Toolbar {
     for (const control of this.#controls.values()) {
       const { spec } = control
 
+      const readonly = this.#host.hasAttribute('readonly')
       const enabled =
-        control.forcedEnabled ??
-        guarded(spec.id, 'isEnabled', () =>
-          spec.isEnabled ? spec.isEnabled(state) : spec.command ? spec.command(state) : true,
-        )
+        readonly
+          ? false
+          : control.forcedEnabled ??
+            guarded(spec.id, 'isEnabled', () =>
+              spec.isEnabled ? spec.isEnabled(state) : spec.command ? spec.command(state) : true,
+            )
 
       if (enabled !== control.enabled) {
         control.enabled = enabled
