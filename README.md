@@ -322,6 +322,33 @@ registerSkin({
 })
 ```
 
+**A skin that replaces `--openleaf-color-surface` must also declare its
+`scheme`,** `'light'` or `'dark'`:
+
+```ts
+registerSkin({
+  name: 'acme-dark',
+  label: 'Acme dark',
+  scheme: 'dark',
+  tokens: '--openleaf-color-surface: #101418; --openleaf-color-text: #e8eef4;',
+})
+```
+
+Not everything the editor looks like is reachable from a custom property. The
+popup a native `<select>` opens, scrollbar chrome and the syntax palette in the
+highlighting bundle are painted from the *colour scheme*, and a skin's tokens
+cannot move them. Since a skin's palette is fixed — that is the point of it —
+those parts keep following the visitor's system unless the skin says otherwise,
+which is how a cream skin ends up with a near-black code block on a machine set
+to dark. Declaring the scheme is what stops that; forgetting it logs a warning,
+because the result looks correct on the machine the skin was written on.
+
+A declared scheme outranks `theme`, and has to: under `skin="paper"` a
+`theme="dark"` cannot actually darken the surface — the skin's token already
+owns it — so it would darken only the parts a token cannot reach. Better the
+skin wins wholly than in part. A skin that sets no surface, like `compact` or a
+brand accent, declares no scheme and changes nothing here.
+
 `compact` changes density only, so it composes with any palette — and it still
 clears the WCAG 2.2 SC 2.5.8 minimum target size, because "compact" is not a
 licence to go under it. `contrast` thickens the focus ring rather than only

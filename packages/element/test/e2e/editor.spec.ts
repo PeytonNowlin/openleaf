@@ -148,6 +148,89 @@ test.describe('content preservation in a real browser', () => {
   })
 })
 
+test.describe('source view lifecycle', () => {
+  test('closing source without an edit keeps undo', async ({ page }) => {
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' scratch text')
+    await expect(editor(page)).toContainText('scratch text')
+
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toBeVisible()
+    await page.getByRole('button', { name: 'HTML source' }).click()
+
+    await expect(editor(page)).toContainText('scratch text')
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect(editor(page)).not.toContainText('scratch text')
+  })
+
+  test('a source edit is one undoable change event', async ({ page }) => {
+    await page.evaluate(() => {
+      ;(window as Window & { __olChanges?: number }).__olChanges = 0
+      document.querySelector('openleaf-editor')!.addEventListener('openleaf:change', () => {
+        const w = window as Window & { __olChanges?: number }
+        w.__olChanges = (w.__olChanges ?? 0) + 1
+      })
+    })
+
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    const source = page.getByRole('textbox', { name: 'HTML source' })
+    await source.fill('<p>replaced in source</p>')
+    await page.getByRole('button', { name: 'HTML source' }).click()
+
+    await expect(editor(page)).toContainText('replaced in source')
+    expect(await page.evaluate(() => (window as Window & { __olChanges?: number }).__olChanges)).toBe(1)
+
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect(editor(page)).not.toContainText('replaced in source')
+    await expect(editor(page)).toContainText('A stored paragraph.')
+  })
+
+  test('assigning value while source is open updates the source box', async ({ page }) => {
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toBeVisible()
+
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<p>assigned while source open</p>'
+    })
+
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toHaveValue(
+      '<p>assigned while source open</p>',
+    )
+
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    await expect(editor(page)).toContainText('assigned while source open')
+    await expect.poll(() => submittedValue(page)).toBe('<p>assigned while source open</p>')
+  })
+
+  test('disconnecting while source is open fires close and reconnects cleanly', async ({ page }) => {
+    await page.evaluate(() => {
+      ;(window as Window & { __olSourceClosed?: boolean }).__olSourceClosed = false
+      document.querySelector('openleaf-editor')!.addEventListener('openleaf:source-close', () => {
+        ;(window as Window & { __olSourceClosed?: boolean }).__olSourceClosed = true
+      })
+    })
+
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toBeVisible()
+
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor')
+      const parent = el?.parentNode
+      if (!el || !parent) return
+      const next = el.nextSibling
+      parent.removeChild(el)
+      parent.insertBefore(el, next)
+    })
+
+    await expect.poll(() => page.evaluate(() => (window as Window & { __olSourceClosed?: boolean }).__olSourceClosed)).toBe(true)
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toHaveCount(0)
+    await expect(editor(page)).toBeVisible()
+    await expect(editor(page)).toContainText('A stored paragraph.')
+  })
+})
+
 test.describe('the CMS form contract', () => {
   test('posts the edited HTML under the textarea name', async ({ page }) => {
     // The whole point of the drop-in: server code that already reads
@@ -168,5 +251,83 @@ test.describe('the CMS form contract', () => {
     expect(decoded).toMatch(/^body=/)
     expect(decoded).toContain('via form post')
     expect(decoded).toContain('class="callout"')
+  })
+
+  test('FormData snapshots include edits made since the last transaction', async ({ page }) => {
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' via formdata')
+    const snapshot = await page.evaluate(() => {
+      const form = document.getElementById('post-form')
+      if (!(form instanceof HTMLFormElement)) return null
+      return new FormData(form).get('body')
+    })
+    expect(String(snapshot)).toContain('via formdata')
+  })
+
+  test('form reset restores the editor from the textarea default', async ({ page }) => {
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' reset-me')
+    await expect(editor(page)).toContainText('reset-me')
+    await page.locator('#post-form').evaluate((form) => {
+      if (form instanceof HTMLFormElement) form.reset()
+    })
+    await expect(editor(page)).not.toContainText('reset-me')
+    await expect.poll(() => submittedValue(page)).not.toContain('reset-me')
+  })
+
+  test('a nested textarea remains a successful form control', async ({ page }) => {
+    await page.evaluate(() => {
+      const form = document.createElement('form')
+      form.id = 'nested-form'
+      const field = document.createElement('openleaf-editor')
+      field.setAttribute('toolbar', 'none')
+      field.setAttribute('aria-label', 'Nested body')
+      const area = document.createElement('textarea')
+      area.name = 'nested'
+      area.value = '<p>seed</p>'
+      field.append(area)
+      form.append(field)
+      document.body.append(form)
+    })
+    await expect(page.getByRole('textbox', { name: 'Nested body' })).toBeVisible()
+    const posted = await page.evaluate(() => {
+      const form = document.getElementById('nested-form')
+      if (!(form instanceof HTMLFormElement)) return null
+      return new FormData(form).get('nested')
+    })
+    expect(String(posted)).toContain('seed')
+  })
+})
+
+test.describe('readonly and for attributes', () => {
+  test('adding readonly stops typing and toolbar commands', async ({ page }) => {
+    await page.locator('openleaf-editor').evaluate((el) => el.setAttribute('readonly', ''))
+    await expect(editor(page)).toHaveAttribute('contenteditable', 'false')
+
+    await editor(page).click()
+    await page.keyboard.type('should-not-land')
+    expect(await submittedValue(page)).not.toContain('should-not-land')
+
+    await expect(page.getByRole('button', { name: 'Bold' })).toHaveAttribute('aria-disabled', 'true')
+    await page.getByRole('button', { name: 'Bold' }).click({ force: true })
+    expect(await submittedValue(page)).not.toContain('<strong>')
+  })
+
+  test('changing for rebinds the textarea', async ({ page }) => {
+    await page.evaluate(() => {
+      const other = document.createElement('textarea')
+      other.id = 'other'
+      other.name = 'other'
+      other.hidden = true
+      document.querySelector('form')?.append(other)
+      document.querySelector('openleaf-editor')?.setAttribute('for', 'other')
+    })
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' rebound')
+    await expect.poll(() => page.locator('#other').inputValue()).toContain('rebound')
+    expect(await submittedValue(page)).not.toContain('rebound')
   })
 })

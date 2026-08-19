@@ -153,7 +153,28 @@ function elementFromHtml(html: string, doc: Document): Element | null {
   return tpl.content.firstElementChild
 }
 
+/**
+ * ProseMirror's `toDOM` does not receive the `document` passed to
+ * `serializeFragment`. Preserved nodes rebuild markup inside `toDOM`, so the
+ * explicit Document has to travel out of band for the duration of one
+ * serialize. Nested calls restore the previous value so a re-entrant serialize
+ * cannot leak a document across documents.
+ */
+let serializationDocument: Document | undefined
+
+/** Run `fn` with preserved-node serialization targeting this Document. */
+export function withSerializationDocument<T>(doc: Document, fn: () => T): T {
+  const previous = serializationDocument
+  serializationDocument = doc
+  try {
+    return fn()
+  } finally {
+    serializationDocument = previous
+  }
+}
+
 function ownerDocument(): Document {
+  if (serializationDocument) return serializationDocument
   if (typeof document === 'undefined') {
     throw new Error(
       '@openleaf/core: no global `document` available. Preserved content ' +

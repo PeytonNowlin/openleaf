@@ -49,6 +49,7 @@ import {
   type TagParseRule,
 } from 'prosemirror-model'
 import { coreMarks, coreNodes } from './schema.js'
+import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
 
 export interface SchemaExtension {
   /** Stable and unique. Namespace it: `openleaf/footnote`. */
@@ -146,6 +147,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Residue a spec has already encoded into a modelled attribute, and so must not
+ * carry a second copy of.
+ *
+ * `code_block` reads `language-js` from either `<pre>` or `<code>` and re-emits
+ * it on `<code>` -- read both, write one. Carrying the `<pre>`'s class verbatim
+ * writes it twice, so the language token is dropped from the residue while any
+ * other class the author put there is kept. Keyed by node name because the
+ * overlap is a property of the spec, not of the attribute.
+ */
+const CARRY_SCRUB: Record<string, (carried: Record<string, string>) => void> = {
+  code_block(carried) {
+    const cls = carried['class']
+    if (cls === undefined) return
+    const kept = cls.split(/\s+/).filter((c) => c && !/^(?:language|lang)-/i.test(c))
+    if (kept.length > 0) carried['class'] = kept.join(' ')
+    else delete carried['class']
+  },
+}
+
+/**
  * Wrap a node spec so attributes it does not model survive the round trip.
  *
  * Applied to extension nodes unconditionally: they only ever claim markup the
@@ -167,8 +188,15 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
         if (base === false || base === null || base === undefined) return base as false | null
         const carried: Record<string, string> = {}
         for (const attr of Array.from(dom.attributes ?? [])) {
-          if (!modelled.has(attr.name)) carried[attr.name] = attr.value
+          if (modelled.has(attr.name)) continue
+          // Same scrub as the preservation layer: carrying `onclick` or a
+          // `javascript:` URL would reintroduce exactly the executable content
+          // core promises to drop.
+          if (isEventHandlerAttribute(attr.name)) continue
+          if (URL_ATTRIBUTES.has(attr.name.toLowerCase()) && !isSafeUrl(attr.value)) continue
+          carried[attr.name] = attr.value
         }
+        CARRY_SCRUB[name]?.(carried)
         return {
           ...(base as Record<string, unknown>),
           [CARRIED_ATTR]: Object.keys(carried).length > 0 ? carried : null,
@@ -195,7 +223,6 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
       }
     : originalToDOM
 
-  void name
   return { ...spec, attrs, parseDOM, ...(toDOM ? { toDOM } : {}) }
 }
 
@@ -251,8 +278,26 @@ function claim(
  * would make the fidelity suite depend on whichever other test file happened to
  * register an extension first.
  */
+/**
+ * Node types whose attributes are already the whole story — wrapping them
+ * would duplicate markup (unknown_*) or add a phantom attr to nodes that
+ * never parse from the DOM (doc, text).
+ */
+const SKIP_CARRY = new Set(['doc', 'text', 'unknown_block', 'unknown_inline'])
+
+function coreNodesWithCarriedAttributes(): OrderedMap<NodeSpec> {
+  // Claimed tags used to drop every attribute they do not model. Extension
+  // nodes already carry the residue; core nodes were the remaining hole, and
+  // it is how `<p class="lead">` became `<p>` on the first save.
+  let nodes = OrderedMap.from<NodeSpec>({})
+  for (const [name, spec] of Object.entries(coreNodes)) {
+    nodes = nodes.addToEnd(name, SKIP_CARRY.has(name) ? spec : withCarriedAttributes(name, spec))
+  }
+  return nodes
+}
+
 export function createSchema(list: readonly SchemaExtension[] = []): Schema {
-  let nodes = OrderedMap.from<NodeSpec>(coreNodes)
+  let nodes = coreNodesWithCarriedAttributes()
   let marks = OrderedMap.from<MarkSpec>(coreMarks)
   const claimed = new Map<string, string>()
 
