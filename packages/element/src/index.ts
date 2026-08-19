@@ -206,14 +206,20 @@ export class OpenLeafEditor extends HTMLElement {
 
     if (this.#toolbar) this.appendChild(this.#toolbar.liveRegion)
 
+    // Held on the instance rather than built inline, because `reconfigure`
+    // has to hand the view back the *same* history() it was created with.
+    // Building a second one is what dropped undo when a plugin registered late.
     this.#basePlugins = [
       history(),
+      // Alt+F10 is bound before the shared keymap so it cannot be shadowed.
       keymap({
         'Alt-F10': () => {
           this.#toolbar?.focusToolbar()
           return true
         },
       }),
+      // The shared shortcut table, so toolbar tooltips and any help dialog
+      // render the real bindings rather than a duplicate list that drifts.
       keymap(buildKeymap()),
       keymap(baseKeymap),
     ]
@@ -223,6 +229,11 @@ export class OpenLeafEditor extends HTMLElement {
     this.#view = new EditorView(contentHost, {
       state: EditorState.create({
         doc: parseHtml(initialHtml, { schema: this.#schema }),
+        // Plugins contributed by opt-in bundles. The cache is per editor, so
+        // instances are still never shared between two editors -- each carries
+        // its own state and two editors sharing one would fight over it -- but
+        // reconfiguring this editor reuses its own, which is what stops a late
+        // registration resetting the plugin state of the ones already running.
         plugins: [...this.#basePlugins, ...createRegisteredPlugins(this.#schema, this.#pluginCache)],
       }),
       editable: () => !this.hasAttribute('readonly'),
@@ -292,7 +303,10 @@ export class OpenLeafEditor extends HTMLElement {
       if (!view) return
       view.updateState(
         view.state.reconfigure({
-            plugins: [...this.#basePlugins, ...createRegisteredPlugins(this.#schema, this.#pluginCache)],
+          plugins: [
+            ...this.#basePlugins,
+            ...createRegisteredPlugins(this.#schema, this.#pluginCache),
+          ],
         }),
       )
       this.#toolbar?.update(view.state)
