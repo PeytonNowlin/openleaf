@@ -378,6 +378,45 @@ export const CSS = `
   border-radius: 2px;
 }
 
+.ol-editor .ol-content .ol-media {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+
+.ol-editor .ol-content .ol-media img,
+.ol-editor .ol-content .ol-media video,
+.ol-editor .ol-content .ol-media audio {
+  max-width: 100%;
+  height: auto;
+}
+
+.ol-editor .ol-content figcaption {
+  display: block;
+  margin: 0.4em 0 1em;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
+.ol-editor .ol-content .ol-media-handle {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid var(--ol-focus);
+  border-radius: 1px;
+  background: var(--ol-surface);
+  cursor: nwse-resize;
+}
+
+.ol-editor .ol-content .ol-media-handle:focus-visible {
+  outline: 2px solid var(--ol-focus);
+  outline-offset: 1px;
+}
+
 .ol-editor .ol-source {
   box-sizing: border-box;
   display: block;

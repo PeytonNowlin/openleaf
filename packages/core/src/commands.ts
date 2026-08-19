@@ -23,6 +23,7 @@ import {
   wrapInList,
 } from 'prosemirror-schema-list'
 import type { Command, EditorState } from 'prosemirror-state'
+import { NodeSelection } from 'prosemirror-state'
 import { safeColor, type Align } from './css.js'
 
 /**
@@ -522,27 +523,196 @@ export interface ImageAttrs {
   title?: string | null
   width?: string | null
   height?: string | null
+  class?: string | null
+  srcset?: string | null
+  sizes?: string | null
+  /** Caption text. When set, the image is inserted inside a `<figure>`. */
+  caption?: string | null
+}
+
+function imageNodeAttrs(attrs: ImageAttrs): Record<string, unknown> {
+  return {
+    src: attrs.src,
+    alt: attrs.alt ?? null,
+    title: attrs.title ?? null,
+    width: attrs.width ?? null,
+    height: attrs.height ?? null,
+    class: attrs.class ?? null,
+    srcset: attrs.srcset ?? null,
+    sizes: attrs.sizes ?? null,
+    extra: null,
+  }
 }
 
 export function insertImage(attrs: ImageAttrs): Command {
   return (state, dispatch) => {
+    const imageType = nodeIn(state, 'image')
+    if (!imageType) return false
+    const captionText = attrs.caption?.trim() ?? ''
+    const image = imageType.create(imageNodeAttrs(attrs))
+
+    if (captionText) {
+      const figureType = nodeIn(state, 'figure')
+      const captionType = nodeIn(state, 'figcaption')
+      if (!figureType || !captionType) return false
+      if (!canInsert(state, 'figure')) return false
+      if (dispatch) {
+        const caption = captionType.create(null, state.schema.text(captionText))
+        const figure = figureType.create(null, [image, caption])
+        dispatch(state.tr.replaceSelectionWith(figure).scrollIntoView())
+      }
+      return true
+    }
+
     if (!canInsert(state, 'image')) return false
+    if (dispatch) dispatch(state.tr.replaceSelectionWith(image).scrollIntoView())
+    return true
+  }
+}
+
+export interface MediaAttrs {
+  src?: string | null
+  poster?: string | null
+  width?: string | null
+  height?: string | null
+  class?: string | null
+  controls?: string | null
+  furniture?: string | null
+  caption?: string | null
+}
+
+function insertMedia(kind: 'video' | 'audio', attrs: MediaAttrs): Command {
+  return (state, dispatch) => {
+    const type = nodeIn(state, kind)
+    if (!type) return false
+    const media = type.create({
+      src: attrs.src ?? null,
+      poster: kind === 'video' ? (attrs.poster ?? null) : null,
+      width: attrs.width ?? null,
+      height: attrs.height ?? null,
+      class: attrs.class ?? null,
+      controls: attrs.controls ?? 'controls',
+      autoplay: null,
+      loop: null,
+      muted: null,
+      playsinline: null,
+      preload: null,
+      extra: null,
+      furniture: attrs.furniture ?? null,
+    })
+    const captionText = attrs.caption?.trim() ?? ''
+    if (captionText) {
+      const figureType = nodeIn(state, 'figure')
+      const captionType = nodeIn(state, 'figcaption')
+      if (!figureType || !captionType || !canInsert(state, 'figure')) return false
+      if (dispatch) {
+        const caption = captionType.create(null, state.schema.text(captionText))
+        dispatch(state.tr.replaceSelectionWith(figureType.create(null, [media, caption])).scrollIntoView())
+      }
+      return true
+    }
+    if (!canInsert(state, kind)) return false
+    if (dispatch) dispatch(state.tr.replaceSelectionWith(media).scrollIntoView())
+    return true
+  }
+}
+
+export function insertVideo(attrs: MediaAttrs): Command {
+  return insertMedia('video', attrs)
+}
+
+export function insertAudio(attrs: MediaAttrs): Command {
+  return insertMedia('audio', attrs)
+}
+
+export interface SelectedMedia {
+  pos: number
+  node: PMNode
+  figurePos: number | null
+}
+
+/** The selected image, video, audio, or figure wrapping one. */
+export function selectedMedia(state: EditorState): SelectedMedia | null {
+  const sel = state.selection
+  if (!(sel instanceof NodeSelection)) return null
+  const node = sel.node
+  const pos = sel.from
+  if (node.type.name === 'figure') {
+    const child = node.firstChild
+    if (!child) return null
+    return { pos: pos + 1, node: child, figurePos: pos }
+  }
+  if (node.type.name === 'image' || node.type.name === 'video' || node.type.name === 'audio') {
+    const $pos = state.doc.resolve(pos)
+    const parent = $pos.parent
+    const figurePos = parent.type.name === 'figure' ? $pos.before($pos.depth) : null
+    return { pos, node, figurePos }
+  }
+  return null
+}
+
+/**
+ * Update attributes on the selected media node, and optionally its caption.
+ *
+ * Dimensions, class and caption live on this one command so the properties
+ * dialog has a single write path.
+ */
+export function updateMedia(attrs: Record<string, unknown>, caption?: string | null): Command {
+  return (state, dispatch) => {
+    const selected = selectedMedia(state)
+    if (!selected) return false
     if (dispatch) {
-      const imageType = nodeIn(state, 'image')
-      if (!imageType) return false
-      const image = imageType.create({
-        src: attrs.src,
-        // An absent alt and alt="" mean different things to a screen reader:
-        // "undescribed" versus "decorative". Never collapse them.
-        alt: attrs.alt ?? null,
-        title: attrs.title ?? null,
-        width: attrs.width ?? null,
-        height: attrs.height ?? null,
-      })
-      dispatch(state.tr.replaceSelectionWith(image).scrollIntoView())
+      let tr = state.tr.setNodeMarkup(selected.pos, undefined, { ...selected.node.attrs, ...attrs })
+      if (caption !== undefined) {
+        tr = applyCaption(tr, state, selected, caption)
+      }
+      dispatch(tr.scrollIntoView())
     }
     return true
   }
+}
+
+function applyCaption(
+  tr: import('prosemirror-state').Transaction,
+  state: EditorState,
+  selected: SelectedMedia,
+  caption: string | null,
+): import('prosemirror-state').Transaction {
+  const captionType = nodeIn(state, 'figcaption')
+  const figureType = nodeIn(state, 'figure')
+  const paragraph = nodeIn(state, 'paragraph')
+  if (!captionType || !figureType) return tr
+  const text = caption?.trim() ?? ''
+
+  if (selected.figurePos !== null) {
+    const figure = tr.doc.nodeAt(selected.figurePos)
+    if (!figure?.firstChild) return tr
+    const media = figure.firstChild
+    if (!text) {
+      const replacement =
+        media.type.name === 'image' && paragraph ? paragraph.create(null, media) : media
+      return tr.replaceWith(selected.figurePos, selected.figurePos + figure.nodeSize, replacement)
+    }
+    const existing = figure.lastChild?.type === captionType ? figure.lastChild : null
+    const nextCaption = captionType.create(existing?.attrs ?? null, state.schema.text(text))
+    return tr.replaceWith(
+      selected.figurePos,
+      selected.figurePos + figure.nodeSize,
+      figureType.create(figure.attrs, [media, nextCaption]),
+    )
+  }
+
+  if (!text) return tr
+  const media = tr.doc.nodeAt(selected.pos)
+  if (!media) return tr
+  const nextCaption = captionType.create(null, state.schema.text(text))
+  const figure = figureType.create(null, [media.copy(), nextCaption])
+  const $pos = tr.doc.resolve(selected.pos)
+  if ($pos.parent.type.name === 'paragraph' && $pos.parent.childCount === 1) {
+    const paraPos = $pos.before($pos.depth)
+    return tr.replaceWith(paraPos, paraPos + $pos.parent.nodeSize, figure)
+  }
+  return tr.replaceWith(selected.pos, selected.pos + media.nodeSize, figure)
 }
 
 /* ------------------------------------------------------------------ *

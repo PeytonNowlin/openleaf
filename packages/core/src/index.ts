@@ -59,10 +59,16 @@ export {
   toggleOrderedList,
   // links and images
   insertImage,
+  insertVideo,
+  insertAudio,
+  selectedMedia,
+  updateMedia,
   setLink,
   unsetLink,
   type ImageAttrs,
   type LinkAttrs,
+  type MediaAttrs,
+  type SelectedMedia,
   // history
   redo,
   undo,
@@ -80,6 +86,7 @@ export {
   type EditorPluginFactory,
 } from './plugins.js'
 export { table, table_cell, table_header, table_row } from './tables.js'
+export { audio, figcaption, figure, video } from './media.js'
 export {
   CARRIED_ATTR,
   clearSchemaExtensions,

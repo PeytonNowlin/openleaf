@@ -17,9 +17,11 @@ export { ensureSprite, iconElement, iconNames, registerIcons, type IconName } fr
 export {
   promptForImage,
   promptForLink,
+  promptForMedia,
   type ImagePromptOptions,
   type ImageResult,
   type LinkResult,
+  type MediaResult,
 } from './dialog.js'
 export {
   IMAGE_ACCEPT,

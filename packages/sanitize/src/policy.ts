@@ -141,7 +141,7 @@ export const DEFAULT_POLICY: Policy = {
     u: {},
     s: {},
     a: { attributes: ['href', 'title', 'target', 'rel'] },
-    img: { attributes: ['src', 'alt', 'title', 'width', 'height'] },
+    img: { attributes: ['src', 'alt', 'title', 'width', 'height', 'class', 'srcset', 'sizes'] },
 
     /*
      * Tables. These mirror packages/core/src/tables.ts exactly, including the
@@ -173,6 +173,22 @@ export const DEFAULT_POLICY: Policy = {
         'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr',
       ],
     },
+    figure: { attributes: ['class', 'role'] },
+    figcaption: { attributes: ['class'] },
+    video: {
+      attributes: [
+        'src', 'poster', 'width', 'height', 'class',
+        'controls', 'autoplay', 'loop', 'muted', 'playsinline', 'preload',
+      ],
+    },
+    audio: {
+      attributes: [
+        'src', 'width', 'height', 'class',
+        'controls', 'autoplay', 'loop', 'muted', 'preload',
+      ],
+    },
+    source: { attributes: ['src', 'type', 'media', 'sizes', 'srcset'] },
+    track: { attributes: ['src', 'kind', 'srclang', 'label', 'default'] },
   },
 
   // Empty on purpose. `class` and `id` are not globally safe: `class` lets

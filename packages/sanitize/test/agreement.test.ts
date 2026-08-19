@@ -22,7 +22,9 @@ const SCHEMA_NATIVE = [
   '<h1>H1</h1><h2 dir="rtl">H2</h2><h3>H3</h3><h4>H4</h4><h5>H5</h5><h6>H6</h6>',
   '<p dir="ltr">Text with <strong>b</strong> <em>i</em> <u>u</u> <s>s</s> <code>c</code>.</p>',
   '<p><a href="https://example.org" title="T" target="_blank" rel="noopener">link</a></p>',
-  '<p><img src="/a.png" alt="described" title="T" width="10" height="20"></p>',
+  '<p><img src="/a.png" alt="described" title="T" width="10" height="20" class="photo"></p>',
+  '<figure class="caption"><img src="/a.png" alt="chart"><figcaption>Q1</figcaption></figure>',
+  '<video src="/a.mp4" poster="/a.jpg" controls width="320"></video>',
   '<p>break<br>after</p>',
   // Alignment and colour. The policy allows `style` on these elements for these
   // declarations and nothing else, which is the narrowest widening that lets the

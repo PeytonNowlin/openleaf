@@ -42,6 +42,7 @@ const WORKSPACE_ALIASES = {
   '@openleaf-editor/plugins-highlight': src('../packages/plugins-highlight/src/index.ts'),
   '@openleaf-editor/plugins-import': src('../packages/plugins-import/src/index.ts'),
   '@openleaf-editor/plugins-import-docx': src('../packages/plugins-import-docx/src/index.ts'),
+  '@openleaf-editor/plugins-media': src('../packages/plugins-media/src/index.ts'),
 }
 
 /** Modules the core bundle publishes and plugin bundles borrow. */
@@ -145,6 +146,20 @@ await build({
 })
 const tablesGz = report('openleaf-tables.min.js', src('./openleaf-tables.min.js'))
 
+/* ---- opt-in media bundle ---- */
+await build({
+  entryPoints: [src('./entry-media.ts')],
+  bundle: true,
+  format: 'iife',
+  target: ['es2020'],
+  minify: true,
+  sourcemap: true,
+  outfile: src('./openleaf-media.min.js'),
+  alias: { '@openleaf-editor/plugins-media': WORKSPACE_ALIASES['@openleaf-editor/plugins-media'] },
+  plugins: [shareRuntime('OpenLeaf')],
+})
+const mediaGz = report('openleaf-media.min.js', src('./openleaf-media.min.js'))
+
 /* ---- opt-in colour bundle ---- */
 await build({
   entryPoints: [src('./entry-colour.ts')],
@@ -207,7 +222,8 @@ const docxGz = report('openleaf-import-docx.min.js', src('./openleaf-import-docx
 
 console.log(
   `\ncore is the budgeted bundle (${(coreGz / 1024).toFixed(1)} KB gzip). ` +
-    `Optional: tables ${(tablesGz / 1024).toFixed(1)} KB, colour ` +
+    `Optional: tables ${(tablesGz / 1024).toFixed(1)} KB, media ` +
+    `${(mediaGz / 1024).toFixed(1)} KB, colour ` +
     `${(colorGz / 1024).toFixed(1)} KB, highlighting ` +
     `${(highlightGz / 1024).toFixed(1)} KB, import ${(importGz / 1024).toFixed(1)} KB, ` +
     `Word .docx ${(docxGz / 1024).toFixed(1)} KB.`,

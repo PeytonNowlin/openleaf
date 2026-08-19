@@ -120,6 +120,7 @@ all `@openleaf-editor/*` packages on the same version.
 ```bash
 npm install \
   @openleaf-editor/plugins-table@beta \
+  @openleaf-editor/plugins-media@beta \
   @openleaf-editor/plugins-colour@beta \
   @openleaf-editor/plugins-highlight@beta \
   @openleaf-editor/plugins-import@beta \
@@ -128,12 +129,14 @@ npm install \
 
 ```ts
 import { installTableEditing } from '@openleaf-editor/plugins-table'
+import { installMediaEditing } from '@openleaf-editor/plugins-media'
 import { installColourPicker } from '@openleaf-editor/plugins-colour'
 import { installSyntaxHighlighting } from '@openleaf-editor/plugins-highlight'
 import { installImport } from '@openleaf-editor/plugins-import'
 import { installDocxImport } from '@openleaf-editor/plugins-import-docx'
 
 installTableEditing()
+installMediaEditing()
 installColourPicker()
 installSyntaxHighlighting()
 installImport()
@@ -153,6 +156,7 @@ toolbar. Add the plugin controls to the `toolbar` attribute where you want them.
 | [`@openleaf-editor/ui`](packages/ui) | Toolbar, dialogs, icons, skins, and theme tokens |
 | [`@openleaf-editor/sanitize`](packages/sanitize) | Canonical allowlist and sanitizer adapters |
 | [`@openleaf-editor/plugins-table`](packages/plugins-table) | Table editing controls and behavior |
+| [`@openleaf-editor/plugins-media`](packages/plugins-media) | Image drag-resize, captions, and video/audio insertion |
 | [`@openleaf-editor/plugins-colour`](packages/plugins-colour) | Text and highlight color pickers |
 | [`@openleaf-editor/plugins-highlight`](packages/plugins-highlight) | Code highlighting and formatted source view |
 | [`@openleaf-editor/plugins-import`](packages/plugins-import) | HTML and plain-text file import |
@@ -199,6 +203,11 @@ registerImageUploader(async (file) => {
 
 The uploader may return a URL string or an object containing `src` and optional
 `alt`, `title`, `width`, and `height` values.
+
+The image dialog also asks for width, height, CSS class, and an optional caption
+(emitted as `<figure>` / `<figcaption>`). Drag-resize handles and video/audio
+insertion, including poster frames and extra `<source>` rows, ship in the
+opt-in `@openleaf-editor/plugins-media` package.
 
 ## Security
 

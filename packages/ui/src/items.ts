@@ -15,6 +15,7 @@ import {
   isMarkActive,
   isNodeActive,
   redo,
+  selectedMedia,
   setLink,
   toggleBlockquote,
   toggleBold,
@@ -28,6 +29,7 @@ import {
   toggleUnderline,
   undo,
   unsetLink,
+  updateMedia,
   type Align,
 } from '@openleaf-editor/core'
 import type { Command } from 'prosemirror-state'
@@ -239,17 +241,49 @@ export function registerDefaultItems(): void {
         ? { upload: (file: File) => runUploader(uploader, file, host) }
         : {}
 
-      void promptForImage(host.ownerDocument, options).then((result) => {
+      const selected = selectedMedia(view.state)
+      const figure =
+        selected?.figurePos !== null && selected?.figurePos !== undefined
+          ? view.state.doc.nodeAt(selected.figurePos)
+          : null
+      const existing = selected
+        ? {
+            src: String(selected.node.attrs['src'] ?? ''),
+            alt: (selected.node.attrs['alt'] as string | null) ?? '',
+            width: (selected.node.attrs['width'] as string | null) ?? null,
+            height: (selected.node.attrs['height'] as string | null) ?? null,
+            class: (selected.node.attrs['class'] as string | null) ?? null,
+            caption: figure?.lastChild?.textContent ?? null,
+          }
+        : undefined
+
+      void promptForImage(host.ownerDocument, existing ? { ...options, existing } : options).then((result) => {
         if (!result) {
           view.focus()
           return
         }
-        insertImage({
+        const attrs = {
           src: result.src,
           alt: result.alt,
           width: result.width,
           height: result.height,
-        })(view.state, view.dispatch, view)
+          class: result.class,
+          caption: result.caption,
+        }
+        if (selected) {
+          updateMedia(
+            {
+              src: result.src,
+              alt: result.alt,
+              width: result.width,
+              height: result.height,
+              class: result.class,
+            },
+            result.caption,
+          )(view.state, view.dispatch, view)
+        } else {
+          insertImage(attrs)(view.state, view.dispatch, view)
+        }
         view.focus()
       })
     },

@@ -252,6 +252,14 @@ describe('images', () => {
     const state = cursorAt(stateFrom('<p>x</p>'), 2)
     expect(html(run(state, insertImage({ src: '/a.png' })))).not.toContain('alt=')
   })
+
+  it('wraps a captioned image in a figure', () => {
+    const state = cursorAt(stateFrom('<p>x</p>'), 2)
+    const out = html(run(state, insertImage({ src: '/a.png', alt: 'A', caption: 'A chart', class: 'wide' })))
+    expect(out).toContain('<figure>')
+    expect(out).toContain('<figcaption>A chart</figcaption>')
+    expect(out).toContain('class="wide"')
+  })
 })
 
 describe('canInsert', () => {

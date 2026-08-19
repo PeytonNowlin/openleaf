@@ -77,11 +77,14 @@ const dropRules = NEVER_PRESERVE.map((tag) => ({ tag, ignore: true, priority: 10
 /**
  * Scrub markup before it is stored for preservation.
  *
- * Preserving an element verbatim means preserving its attributes verbatim, and
- * `<div class="callout" onclick="steal()">` is not something an author needs
- * kept. Works on a clone so the live parse tree is untouched.
+ * Exported because media nodes store `<source>` and `<track>` the same way, and
+ * a second scrubber that drifted from this one would be a hole in the path that
+ * exists to close holes. Preserving an element verbatim means preserving its
+ * attributes verbatim, and `<div class="callout" onclick="steal()">` is not
+ * something an author needs kept. Works on a clone so the live parse tree is
+ * untouched.
  */
-function scrub(el: Element): string {
+export function scrub(el: Element): string {
   const clone = el.cloneNode(true) as Element
 
   const visit = (node: Element): void => {
@@ -221,6 +224,11 @@ export function withSerializationDocument<T>(doc: Document, fn: () => T): T {
  */
 export function serializationTarget(): Document {
   return ownerDocument()
+}
+
+/** True while `serializeHtml` is running, so editor-only attributes stay off stored HTML. */
+export function isSerializing(): boolean {
+  return serializationDocument !== undefined
 }
 
 function ownerDocument(): Document {

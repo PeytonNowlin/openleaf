@@ -45,7 +45,8 @@ const EXPECTED_EXPORTS = [
   'toggleBulletList', 'toggleOrderedList', 'splitListItemCommand',
   'indentListItem', 'outdentListItem',
   // links and images
-  'setLink', 'unsetLink', 'insertImage',
+  'setLink', 'unsetLink', 'insertImage', 'insertVideo', 'insertAudio',
+  'selectedMedia', 'updateMedia',
   // history
   'undo', 'redo',
   // keymap
@@ -54,6 +55,7 @@ const EXPECTED_EXPORTS = [
   'registerEditorPlugin', 'createRegisteredPlugins', 'onEditorPluginsChange',
   // table nodes
   'table', 'table_row', 'table_cell', 'table_header',
+  'figure', 'figcaption', 'video', 'audio',
 ] as const
 
 describe('the public surface', () => {
@@ -79,6 +81,7 @@ describe('the schema an integrator sees', () => {
       [
         'blockquote', 'bullet_list', 'code_block', 'doc', 'hard_break', 'heading',
         'horizontal_rule', 'image', 'list_item', 'ordered_list', 'paragraph',
+        'audio', 'figcaption', 'figure', 'video',
         'table', 'table_cell', 'table_header', 'table_row', 'text',
         'unknown_block', 'unknown_inline',
       ].sort(),

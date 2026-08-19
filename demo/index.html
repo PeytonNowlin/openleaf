@@ -144,7 +144,7 @@
   </p>
   <p class="badges">
     <span class="badge">Apache-2.0</span>
-    <span class="badge">92 KB gzipped</span>
+    <span class="badge">94 KB gzipped</span>
     <span class="badge">No framework</span>
     <span class="badge">Built on ProseMirror</span>
     <span class="badge"><a href="https://github.com/PeytonNowlin/openleaf">Source on GitHub</a></span>
@@ -172,7 +172,7 @@
 <div id="editor-wrap">
   <label for="body" class="visually-hidden">Post body</label>
   <openleaf-editor for="body" aria-label="Post body"
-    toolbar="undo redo | blockType | bold italic underline strikethrough code | textColour highlightColour | alignLeft alignCenter alignRight alignJustify | bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | insertTable addRowAfter deleteRow addColumnAfter deleteColumn toggleHeaderRow deleteTable | importFile source"></openleaf-editor>
+    toolbar="undo redo | blockType | bold italic underline strikethrough code | textColour highlightColour | alignLeft alignCenter alignRight alignJustify | bulletList orderedList blockquote codeBlock | link unlink image insertMedia horizontalRule | insertTable addRowAfter deleteRow addColumnAfter deleteColumn toggleHeaderRow deleteTable | importFile source"></openleaf-editor>
   <textarea id="body" name="body" hidden>
     <h2>Try editing this</h2>
     <p>Ordinary HTML in, ordinary HTML out — <strong>bold</strong>, <em>italic</em>,
@@ -412,6 +412,32 @@ const ratio = width / height   // division, not a regex
   a CSSOM write, which CSP does not gate.
 </p>
 
+
+<h2 id="media">Images, captions and video</h2>
+<p class="lede">
+  Beyond pasting a URL: drag-resize, a caption, dimensions and class in one
+  dialog, and alternate sources or a poster frame for video.
+</p>
+
+<p>
+  <strong>The schema is in the core bundle.</strong> A stored
+  <code>&lt;figure&gt;</code> with an image and a caption, or a
+  <code>&lt;video&gt;</code> with a poster and two <code>&lt;source&gt;</code>
+  children, has to stay a real node — otherwise the preservation layer keeps it
+  whole and nobody can recaption it. Drag-resize, the Insert media control and
+  the extra source rows are the part with weight, so they live in a 2 KB opt-in
+  bundle:
+</p>
+
+<pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
+&lt;script src="/js/openleaf-media.min.js"&gt;&lt;/script&gt;   &lt;!-- 2.0 KB, optional --&gt;</pre>
+
+<p>
+  The image dialog already collects width, height, CSS class and caption in one
+  place. Name <code>insertMedia</code> on the toolbar (or use the demo layout
+  above) after installing the bundle to insert video and audio the same way.
+</p>
+
 <h2 id="highlighting">Syntax highlighting and source formatting</h2>
 <p class="lede">
   A second opt-in bundle, 6.1 KB. It colours code blocks and it formats the HTML
@@ -581,6 +607,7 @@ const ratio = width / height   // division, not a regex
 <script src="./openleaf.min.js"></script>
 <!-- The opt-in bundle. Order matters: it borrows the runtime the first one publishes. -->
 <script src="./openleaf-tables.min.js"></script>
+<script src="./openleaf-media.min.js"></script>
 <script src="./openleaf-colour.min.js"></script>
 <script src="./openleaf-highlight.min.js"></script>
 <script src="./openleaf-import.min.js"></script>

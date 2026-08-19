@@ -22,13 +22,13 @@ import { gzipSync } from 'node:zlib'
  * while the gate stayed green -- which defeats the point of making them opt-in.
  */
 export const BUDGETS_KB = {
-  // Raised from 90 when alignment, colour and image upload landed. The colour
-  // PICKER followed tables out into an opt-in bundle; what stayed is the part
-  // core cannot delegate -- reading the `text-align` and `color` markup an
-  // inherited archive already contains, which is the same reasoning that keeps
-  // the table schema here while table editing is opt-in.
-  'openleaf.min.js': 92,
+  // Raised from 90 when alignment, colour and image upload landed; from 94
+  // when figure/video/audio joined the base schema so captioned media is
+  // editable rather than an opaque preserved atom. The colour PICKER and
+  // drag-resize stay opt-in; the schema cannot.
+  'openleaf.min.js': 95,
   'openleaf-tables.min.js': 25,
+  'openleaf-media.min.js': 12,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
   'openleaf-import.min.js': 12,

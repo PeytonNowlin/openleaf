@@ -8,6 +8,7 @@
  */
 
 import { DOMParser, DOMSerializer, type Node as PMNode, type Schema } from 'prosemirror-model'
+import { normalizeMediaFigures } from './media.js'
 import { isInsidePreserved, withSerializationDocument } from './preserve.js'
 import { coreSchema } from './extensions.js'
 
@@ -67,6 +68,7 @@ export function parseHtml(html: string, opts?: HtmlIOOptions): PMNode {
   const doc = resolveDocument(opts)
   const tpl = doc.createElement('template')
   tpl.innerHTML = html
+  normalizeMediaFigures(tpl.content)
   return parserFor(opts?.schema ?? coreSchema()).parse(tpl.content, {
     preserveWhitespace: false,
   })

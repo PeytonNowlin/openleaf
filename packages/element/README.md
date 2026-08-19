@@ -64,6 +64,9 @@ it. Register nothing and the dialog stays insert-by-URL — there is deliberatel
 `data:` URL fallback, because the schema refuses `data:` URLs and content that
 vanishes on save is worse than a missing picker.
 
+The same dialog collects width, height, CSS class, and an optional caption.
+Drag-resize and video/audio insertion live in `@openleaf-editor/plugins-media`.
+
 ```ts
 import { registerImageUploader } from '@openleaf-editor/element'
 

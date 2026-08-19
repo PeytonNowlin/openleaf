@@ -33,9 +33,11 @@ export interface ImageResult {
   src: string
   /** `''` means explicitly decorative. `null` is never returned. */
   alt: string
-  /** Intrinsic size, when an uploader reported one. */
+  /** Intrinsic size, when an uploader reported one or the author set one. */
   width: string | null
   height: string | null
+  class: string | null
+  caption: string | null
 }
 
 interface FieldSpec {
@@ -72,13 +74,15 @@ const DIALOG_CSS = `
 .ol-dialog h2 { margin: 0; font-size: 1.1em; }
 .ol-dialog label { display: grid; gap: 4px; font-weight: 500; }
 .ol-dialog .ol-hint { font-weight: 400; font-size: .9em; opacity: .75; }
-.ol-dialog input[type="text"], .ol-dialog input[type="url"], .ol-dialog input[type="file"] {
+.ol-dialog input[type="text"], .ol-dialog input[type="url"], .ol-dialog input[type="file"],
+.ol-dialog textarea {
   box-sizing: border-box; width: 100%; padding: 6px 8px;
   border: 1px solid var(--openleaf-color-border, #d1d9e0);
   border-radius: var(--openleaf-radius, 4px);
   background: var(--openleaf-color-surface, #fff);
   color: inherit; font: inherit;
 }
+.ol-dialog textarea { min-height: 4.5rem; resize: vertical; }
 .ol-dialog .ol-check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
 .ol-dialog .ol-check input { margin: 0; }
 .ol-dialog .ol-actions { display: flex; justify-content: flex-end; gap: 8px; }
@@ -169,7 +173,7 @@ function showForm<T>(
     form.appendChild(note)
   }
 
-  const inputs = new Map<string, HTMLInputElement>()
+  const inputs = new Map<string, HTMLInputElement | HTMLTextAreaElement>()
   for (const field of fields) {
     const label = doc.createElement('label')
     const text = doc.createElement('span')
@@ -181,10 +185,11 @@ function showForm<T>(
       hint.textContent = field.hint
       label.appendChild(hint)
     }
-    const input = doc.createElement('input')
-    input.type = field.type ?? 'text'
+    const input =
+      field.type === 'textarea' ? doc.createElement('textarea') : doc.createElement('input')
+    if (input instanceof HTMLInputElement) input.type = field.type ?? 'text'
     input.name = field.name
-    if (field.type === 'file') {
+    if (input instanceof HTMLInputElement && field.type === 'file') {
       if (field.accept) input.accept = field.accept
     } else {
       input.value = field.value ?? ''
@@ -289,7 +294,7 @@ function showForm<T>(
       const values: Record<string, string> = {}
       const files: Record<string, File | undefined> = {}
       for (const [name, input] of inputs) {
-        if (input.type === 'file') files[name] = input.files?.[0]
+        if (input instanceof HTMLInputElement && input.type === 'file') files[name] = input.files?.[0]
         else values[name] = input.value.trim()
       }
       if (checkbox) values[checkbox.name] = checkbox.checked ? 'on' : ''
@@ -408,6 +413,8 @@ export interface ImagePromptOptions {
   file?: File
   /** Uploads a file and reports where it landed. Absent means URL-only. */
   upload?: (file: File) => Promise<ImageUploadResult>
+  /** Prefill when editing an image already in the document. */
+  existing?: Partial<ImageResult> & { src?: string; alt?: string | null }
 }
 
 /**
@@ -425,17 +432,47 @@ export async function promptForImage(
   doc: Document,
   options: ImagePromptOptions = {},
 ): Promise<ImageResult | null> {
-  const { file, upload } = options
+  const { file, upload, existing } = options
 
   const describe: FieldSpec = {
     name: 'alt',
     label: 'Alternative text',
     type: 'text',
+    value: existing?.alt ?? '',
     hint: 'Describe what the image shows, for people who cannot see it.',
   }
 
+  const properties: FieldSpec[] = [
+    {
+      name: 'width',
+      label: 'Width',
+      type: 'text',
+      value: existing?.width ?? '',
+      hint: 'Pixels or CSS length. Leave blank to use the file’s size.',
+    },
+    {
+      name: 'height',
+      label: 'Height',
+      type: 'text',
+      value: existing?.height ?? '',
+    },
+    {
+      name: 'class',
+      label: 'CSS class',
+      type: 'text',
+      value: existing?.class ?? '',
+    },
+    {
+      name: 'caption',
+      label: 'Caption',
+      type: 'text',
+      value: existing?.caption ?? '',
+      hint: 'Shown under the image. Stored as a <figcaption>.',
+    },
+  ]
+
   const fields: FieldSpec[] = file
-    ? [describe]
+    ? [describe, ...properties]
     : [
         ...(upload
           ? [
@@ -453,18 +490,21 @@ export async function promptForImage(
           label: upload ? 'Or paste an image address' : 'Image address',
           type: 'text',
           required: !upload,
+          value: existing?.src ?? '',
         },
         describe,
+        ...properties,
       ]
 
   const decorative = {
     name: 'decorative',
     label: 'This image is decorative and needs no description',
+    checked: existing?.alt === '',
   }
 
   return showForm<ImageResult>(
     doc,
-    file ? 'Describe this image' : 'Insert image',
+    file ? 'Describe this image' : existing ? 'Edit image' : 'Insert image',
     fields,
     {
       extraCheckbox: decorative,
@@ -473,35 +513,134 @@ export async function promptForImage(
     },
     (values, files) => {
       const chosen = file ?? files['file']
-      const src = values['src'] ?? ''
+      const src = values['src'] ?? existing?.src ?? ''
 
       if (!chosen && !src) {
         return { error: upload ? 'Choose a file or enter an image address.' : 'Enter an image address.' }
       }
-      // Required unless explicitly marked decorative. The checkbox exists so
-      // that the honest answer "this needs no description" is easier than
-      // typing "image" to defeat a validator -- which is what a hard
-      // requirement actually teaches people to do.
       if (!values['alt'] && values['decorative'] !== 'on') {
         return { error: 'Add alternative text, or tick the decorative box.' }
       }
 
       const alt = values['decorative'] === 'on' ? '' : (values['alt'] ?? '')
+      const extras = {
+        class: values['class'] || null,
+        caption: values['caption'] || null,
+      }
 
       if (!chosen || !upload) {
-        return { value: { src, alt, width: null, height: null } }
+        return {
+          value: {
+            src,
+            alt,
+            width: values['width'] || null,
+            height: values['height'] || null,
+            ...extras,
+          },
+        }
       }
 
       return upload(chosen).then((result) => ({
         value: {
           src: result.src,
-          // An uploader's description only pre-fills; what the author confirmed
-          // in the dialog is what gets stored.
           alt,
-          width: dimension(result.width),
-          height: dimension(result.height),
+          width: values['width'] || dimension(result.width),
+          height: values['height'] || dimension(result.height),
+          ...extras,
         },
       }))
+    },
+  )
+}
+
+export interface MediaResult {
+  src: string
+  poster: string | null
+  width: string | null
+  height: string | null
+  class: string | null
+  caption: string | null
+  furniture: string | null
+  kind: 'video' | 'audio'
+}
+
+/** Ask for a video or audio element, including poster frames and extra sources. */
+export async function promptForMedia(
+  doc: Document,
+  options: { existing?: Partial<MediaResult>; kind?: 'video' | 'audio' } = {},
+): Promise<MediaResult | null> {
+  const kind = options.existing?.kind ?? options.kind ?? 'video'
+  const existing = options.existing ?? {}
+  return showForm<MediaResult>(
+    doc,
+    existing.src ? 'Edit media' : 'Insert media',
+    [
+      {
+        name: 'src',
+        label: kind === 'video' ? 'Video address' : 'Audio address',
+        type: 'text',
+        value: existing.src ?? '',
+        required: true,
+      },
+      ...(kind === 'video'
+        ? [
+            {
+              name: 'poster',
+              label: 'Poster image',
+              type: 'text',
+              value: existing.poster ?? '',
+              hint: 'Shown before the video plays.',
+            },
+          ]
+        : []),
+      {
+        name: 'sources',
+        label: 'Alternate sources',
+        type: 'textarea',
+        value: existing.furniture ?? '',
+        hint: 'One <source> or <track> element per line, for other formats.',
+      },
+      {
+        name: 'width',
+        label: 'Width',
+        type: 'text',
+        value: existing.width ?? '',
+      },
+      {
+        name: 'height',
+        label: 'Height',
+        type: 'text',
+        value: existing.height ?? '',
+      },
+      {
+        name: 'class',
+        label: 'CSS class',
+        type: 'text',
+        value: existing.class ?? '',
+      },
+      {
+        name: 'caption',
+        label: 'Caption',
+        type: 'text',
+        value: existing.caption ?? '',
+      },
+    ],
+    {},
+    (values) => {
+      const src = values['src'] ?? ''
+      if (!src) return { error: 'Enter an address for the media.' }
+      return {
+        value: {
+          kind,
+          src,
+          poster: values['poster'] || null,
+          width: values['width'] || null,
+          height: values['height'] || null,
+          class: values['class'] || null,
+          caption: values['caption'] || null,
+          furniture: values['sources'] || null,
+        },
+      }
     },
   )
 }

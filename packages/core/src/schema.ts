@@ -10,6 +10,14 @@
 
 import { Schema, type Attrs, type DOMOutputSpec, type MarkSpec, type NodeSpec } from 'prosemirror-model'
 import { applyStyleAttribute, parseDeclarations, safeAlign, safeColor, type Align } from './css.js'
+import {
+  audio,
+  figcaption,
+  figure,
+  imageGetAttrs,
+  imageToDOM,
+  video,
+} from './media.js'
 import { serializationTarget, unknownBlock, unknownInline } from './preserve.js'
 import { table, table_cell, table_header, table_row } from './tables.js'
 import { isSafeUrl } from './url.js'
@@ -199,37 +207,23 @@ export const coreNodes: Record<string, NodeSpec> = {
       title: { default: null },
       width: { default: null },
       height: { default: null },
+      class: { default: null },
+      srcset: { default: null },
+      sizes: { default: null },
+      extra: { default: null },
     },
-    parseDOM: [
-      {
-        tag: 'img[src]',
-        getAttrs(dom) {
-          const el = dom as Element
-          // Returning false declines the rule, so an image with a
-          // `javascript:` src is dropped rather than carried through.
-          if (!isSafeUrl(el.getAttribute('src'))) return false
-          return {
-            src: el.getAttribute('src'),
-            // An absent alt and alt="" mean different things to a screen
-            // reader: "undescribed" versus "decorative". Never conflate them.
-            alt: el.getAttribute('alt'),
-            title: el.getAttribute('title'),
-            width: el.getAttribute('width'),
-            height: el.getAttribute('height'),
-          }
-        },
-      },
-    ],
-    toDOM(node) {
-      const { src, alt, title, width, height } = node.attrs
-      const attrs: Record<string, string> = { src: src as string }
-      if (alt !== null) attrs['alt'] = alt as string
-      if (title !== null) attrs['title'] = title as string
-      if (width !== null) attrs['width'] = width as string
-      if (height !== null) attrs['height'] = height as string
-      return ['img', attrs]
-    },
+    parseDOM: [{ tag: 'img[src]', getAttrs: imageGetAttrs }],
+    toDOM: imageToDOM,
   },
+
+  // Figures, video and audio are in the BASE schema for the same reason tables
+  // are: without them a captioned photograph or a <video> with a poster frame
+  // becomes an opaque preserved atom -- faithful, uneditable. The heavy part
+  // (drag-resize, the properties dialog) is @openleaf-editor/plugins-media.
+  figure,
+  figcaption,
+  video,
+  audio,
 
   hard_break: {
     inline: true,
