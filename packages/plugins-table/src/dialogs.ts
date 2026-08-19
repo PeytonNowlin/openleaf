@@ -15,7 +15,7 @@ import {
   captionHtmlFromText,
   captionTextFromHtml,
   colorOrNull,
-  colgroupHtmlFromWidths,
+  colgroupHtmlWithWidths,
   emptyToNull,
   findCell,
   findRow,
@@ -25,6 +25,7 @@ import {
   setRowAttrs,
   setTableAttrs,
   setTableCaption,
+  styleValueOrNull,
   widthsFromColgroup,
 } from './commands.js'
 
@@ -106,7 +107,10 @@ export async function openTableProperties(view: EditorView, host: HTMLElement): 
     width: emptyToNull(result['width']),
     align: emptyToNull(result['align']),
     caption: captionHtmlFromText(result['caption'] ?? '', attrs['caption'] as string | null),
-    colgroup: colgroupHtmlFromWidths(parsed.slice(0, columns)),
+    // Patched, not rebuilt: the stored colgroup may carry a class, a span, or
+    // attributes from whatever wrote it, and a save that changes no width must
+    // not throw those away.
+    colgroup: colgroupHtmlWithWidths(attrs['colgroup'] as string | null, parsed.slice(0, columns)),
     style: mergeStyle(attrs['style'] as string | null, {
       'background-color': colorOrNull(result['background']),
       width: null,
@@ -160,7 +164,15 @@ export async function openCellProperties(view: EditorView, host: HTMLElement): P
       backgroundField(style.get('background-color')),
     ],
     {},
-    (values) => ({ value: values }),
+    // Reported rather than silently dropped: mergeStyle would refuse the value
+    // anyway, and an author who typed something is owed the reason it went.
+    (values) => {
+      const padding = emptyToNull(values['padding'])
+      if (padding !== null && styleValueOrNull('padding', padding) === null) {
+        return { error: 'Padding takes one to four lengths, for example 4px or 2px 4px.' }
+      }
+      return { value: values }
+    },
   )
   if (!result) return
 

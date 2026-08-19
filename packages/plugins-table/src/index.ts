@@ -186,16 +186,20 @@ export {
   addColumnBefore,
   addRowAfter,
   addRowBefore,
+  colgroupHtmlWithWidths,
   colgroupSyncPlugin,
   inTable,
   insertTable,
+  mergeStyle,
   setCellAttrs,
   setCellVerticalAlign,
   setRowAttrs,
   setTableAttrs,
   setTableCaption,
   setTableColgroup,
+  styleValueOrNull,
   toggleHeaderRow,
+  widthsFromColgroup,
 } from './commands.js'
 
 export { buildInsertGrid, GRID_SIZE } from './grid.js'

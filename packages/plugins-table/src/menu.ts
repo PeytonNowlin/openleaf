@@ -12,7 +12,7 @@
  */
 
 import type { Command } from 'prosemirror-state'
-import { Plugin } from 'prosemirror-state'
+import { Plugin, TextSelection } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { deleteColumn, deleteRow, deleteTable, mergeCells, splitCell } from 'prosemirror-tables'
 import {
@@ -20,6 +20,7 @@ import {
   addColumnBefore,
   addRowAfter,
   addRowBefore,
+  findTable,
   inTable,
   toggleHeaderRow,
 } from './commands.js'
@@ -169,7 +170,26 @@ export function tableContextMenu(): Plugin {
 
       const onContextMenu = (event: Event): void => {
         if (!(event instanceof MouseEvent)) return
+
+        // Every item in this menu acts on `state.selection`, and a secondary
+        // click does not always move it -- right-clicking a second table while a
+        // cell selection is live in the first leaves the old one in place. Read
+        // the position under the pointer and work from that, or Delete table
+        // deletes the table the author did not click.
+        const at = view.posAtCoords({ left: event.clientX, top: event.clientY })
+        if (!at) return
+        const $pos = view.state.doc.resolve(at.pos)
+        if (!findTable($pos)) return
+
+        // Only retargeted when the click lands outside the current selection: a
+        // right-click inside a multi-cell selection has to keep it, or "Delete
+        // row" would silently narrow to the one row under the pointer.
+        const { from, to } = view.state.selection
+        if (at.pos < from || at.pos > to) {
+          view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)))
+        }
         if (!inTable(view.state)) return
+
         event.preventDefault()
         event.stopPropagation()
         showAt(event.clientX, event.clientY)

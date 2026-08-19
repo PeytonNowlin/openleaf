@@ -5,7 +5,14 @@
  * here so a test can apply them without standing up a toolbar.
  */
 
-import { canInsert, isNodeActive, parseDeclarations, safeColor, serializeDeclarations } from '@openleaf-editor/core'
+import {
+  canInsert,
+  isNodeActive,
+  parseDeclarations,
+  safeColor,
+  safeTableStyleValue,
+  serializeDeclarations,
+} from '@openleaf-editor/core'
 import type { Node, ResolvedPos } from 'prosemirror-model'
 import type { Command, EditorState, Transaction } from 'prosemirror-state'
 import { Plugin } from 'prosemirror-state'
@@ -148,16 +155,35 @@ export function selectedCellPositions(state: EditorState): number[] {
   return cell ? [cell.pos] : []
 }
 
+/**
+ * Patch declarations onto a style attribute, validating every value written.
+ *
+ * The validation is here rather than in each caller because this is the choke
+ * point: a value reaches the stored style attribute only through this function,
+ * and `serializeDeclarations` joins on `;`, so an unchecked value carrying one
+ * becomes extra declarations. `padding: 0;position:fixed;inset:0` is a
+ * page-covering overlay, written from a property dialog and saved.
+ *
+ * `safeTableStyleValue` is core's own parse-path validator, so a dialog cannot
+ * disagree with the schema about what an acceptable value is.
+ */
 export function mergeStyle(
   existing: string | null | undefined,
   patch: Record<string, string | null>,
 ): string | null {
   const declarations = parseDeclarations(existing)
   for (const [name, value] of Object.entries(patch)) {
-    if (!value) declarations.delete(name)
-    else declarations.set(name, value)
+    const safe = value ? safeTableStyleValue(name, value) : null
+    if (!safe) declarations.delete(name)
+    else declarations.set(name, safe)
   }
   return serializeDeclarations(declarations)
+}
+
+/** A style value the schema will keep, or null. For a dialog's commit step. */
+export function styleValueOrNull(property: string, value: string | undefined): string | null {
+  const trimmed = emptyToNull(value)
+  return trimmed ? safeTableStyleValue(property, trimmed) : null
 }
 
 export function setTableAttrs(attrs: Record<string, unknown>): Command {
@@ -247,17 +273,108 @@ export function colgroupHtmlFromWidths(widths: Array<string | null | undefined>)
   return group.outerHTML
 }
 
-export function widthsFromColgroup(html: string | null | undefined, columns: number): string[] {
-  const widths = Array.from({ length: columns }, () => '')
-  if (!html) return widths
-  if (typeof document === 'undefined') return widths
+/** The `<col>` elements of a stored colgroup, or null when there is no DOM. */
+function colsOf(html: string | null | undefined): { group: Element; cols: Element[] } | null {
+  if (!html) return null
+  if (typeof document === 'undefined') return null
   const tpl = document.createElement('template')
   tpl.innerHTML = html
-  const cols = [...tpl.content.querySelectorAll('col')]
-  cols.forEach((col, index) => {
-    if (index < columns) widths[index] = col.getAttribute('width') ?? ''
-  })
+  const group = tpl.content.querySelector('colgroup')
+  if (!group) return null
+  return { group, cols: [...group.querySelectorAll('col')] }
+}
+
+/** `span` as a count of columns covered, defaulting to 1. */
+function spanOf(col: Element): number {
+  const raw = Number(col.getAttribute('span') ?? '1')
+  return Number.isInteger(raw) && raw > 0 ? raw : 1
+}
+
+/**
+ * Column widths, one per column.
+ *
+ * `span` is honoured: `<col span="2" width="120">` sets two columns to 120, not
+ * one. Reading the elements positionally would report the second column as
+ * having no width, and then saving would write that back.
+ */
+export function widthsFromColgroup(html: string | null | undefined, columns: number): string[] {
+  const widths = Array.from({ length: columns }, () => '')
+  const parsed = colsOf(html)
+  if (!parsed) return widths
+  let column = 0
+  for (const col of parsed.cols) {
+    const width = col.getAttribute('width') ?? ''
+    for (let i = 0; i < spanOf(col); i += 1) {
+      if (column < columns) widths[column] = width
+      column += 1
+    }
+  }
   return widths
+}
+
+/**
+ * Write widths into an existing colgroup rather than replacing it.
+ *
+ * Inherited markup carries more than widths -- `<colgroup class="layout">`,
+ * `<col span="2">`, whatever else a previous CMS wrote -- and the table
+ * properties dialog saves the whole table, so rebuilding the colgroup from
+ * widths alone dropped all of it on a save that changed nothing else.
+ *
+ * An unchanged set of widths returns the stored markup untouched, so saving the
+ * dialog is genuinely a no-op. When a width does change, the existing elements
+ * are patched: a spanned `<col>` keeps its span while its columns still agree,
+ * and is split into one `<col>` per column -- carrying its other attributes --
+ * only when they no longer do.
+ */
+export function colgroupHtmlWithWidths(
+  existing: string | null | undefined,
+  widths: Array<string | null | undefined>,
+): string | null {
+  const parsed = colsOf(existing)
+  if (!parsed) return colgroupHtmlFromWidths(widths)
+
+  const wanted = widths.map((width) => width ?? '')
+  const current = widthsFromColgroup(existing, wanted.length)
+  if (current.every((width, i) => width === wanted[i])) return existing ?? null
+
+  let column = 0
+  for (const col of parsed.cols) {
+    const span = spanOf(col)
+    const covered = wanted.slice(column, column + span)
+    column += span
+    if (covered.length === 0) continue
+    if (covered.every((width) => width === covered[0])) {
+      setWidth(col, covered[0] ?? '')
+      continue
+    }
+    // The columns this element covers no longer share a width, so it has to
+    // become one element per column. Its other attributes come along; `span`
+    // cannot, because each replacement now covers exactly one column.
+    const parent = col.parentNode
+    if (!parent) continue
+    for (const width of covered) {
+      const clone = col.cloneNode(false) as Element
+      clone.removeAttribute('span')
+      setWidth(clone, width)
+      parent.insertBefore(clone, col)
+    }
+    parent.removeChild(col)
+  }
+
+  // More columns than the stored colgroup described. Bare `<col>` for each, so
+  // the widths that follow land on the right column.
+  for (; column < wanted.length; column += 1) {
+    const col = parsed.group.ownerDocument.createElement('col')
+    setWidth(col, wanted[column] ?? '')
+    parsed.group.appendChild(col)
+  }
+
+  return parsed.group.outerHTML
+}
+
+function setWidth(col: Element, width: string): void {
+  if (width) col.setAttribute('width', width)
+  else col.removeAttribute('width')
 }
 
 export function setTableColgroup(widths: Array<string | null | undefined>): Command {
@@ -268,17 +385,34 @@ function colgroupFromCellWidths(table: Node): string | null {
   const map = TableMap.get(table)
   const widths: string[] = []
   let any = false
+  // A cell spanning several columns appears in the map once per column it
+  // covers, and its `colwidth` holds one entry per covered column. `offset`
+  // tracks how far into that run this column is: reading entry 0 every time
+  // wrote the first column's width to every <col> the cell spans, so resizing a
+  // later column of a merged cell corrupted the stored colgroup.
+  let previous = -1
+  let offset = 0
   for (let col = 0; col < map.width; col += 1) {
-    const cell = table.nodeAt(map.map[col] ?? 0)
+    const pos = map.map[col] ?? 0
+    if (pos === previous) offset += 1
+    else {
+      previous = pos
+      offset = 0
+    }
+    const cell = table.nodeAt(pos)
     const colwidth = cell?.attrs['colwidth'] as number[] | null
-    if (colwidth?.[0]) {
-      widths.push(String(colwidth[0]))
+    const width = colwidth?.[offset]
+    if (width) {
+      widths.push(String(width))
       any = true
     } else {
       widths.push('')
     }
   }
-  return any ? colgroupHtmlFromWidths(widths) : null
+  // Patched onto whatever the table already stored, for the same reason the
+  // properties dialog patches: a column resize must not cost an inherited
+  // colgroup its class or its other attributes.
+  return any ? colgroupHtmlWithWidths(table.attrs['colgroup'] as string | null, widths) : null
 }
 
 /**

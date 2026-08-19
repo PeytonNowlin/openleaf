@@ -83,12 +83,28 @@ function safeVAlign(value: string | null | undefined): string | null {
   return VALIGN.has(candidate) ? candidate : null
 }
 
-function safeStyleValue(property: string, value: string | undefined): string | null {
+/**
+ * The one validator for a table style declaration, on the way in or out.
+ *
+ * Exported because the property dialogs in `@openleaf-editor/plugins-table`
+ * write node attributes directly, which does not go through any parse rule. A
+ * dialog with its own idea of an acceptable padding would drift from this one,
+ * and `padding: 0;position:fixed;inset:0` is what that drift looks like: the
+ * value becomes two more declarations when the style attribute is serialized.
+ *
+ * Returns null for a property this schema does not model, so an unrecognised
+ * name is dropped rather than trusted.
+ */
+export function safeTableStyleValue(property: string, value: string | undefined): string | null {
   if (!value) return null
   if (property === 'background-color') return safeColor(value)
   if (property === 'padding') return safePadding(value)
   if (property === 'width' || property === 'height') return safeLength(value)
   return null
+}
+
+function safeStyleValue(property: string, value: string | undefined): string | null {
+  return safeTableStyleValue(property, value)
 }
 
 function readStyle(el: Element, properties: readonly string[]): string | null {
