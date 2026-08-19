@@ -25,7 +25,7 @@ const SCHEMA_NATIVE = [
   '<p><img src="/a.png" alt="described" title="T" width="10" height="20"></p>',
   '<p>break<br>after</p>',
   '<blockquote><p>quoted</p></blockquote>',
-  '<pre><code>const x = 1</code></pre>',
+  '<pre><code class="language-js">const x = 1</code></pre>',
   '<hr>',
   '<ul><li><p>one</p></li></ul>',
   '<ol start="3"><li><p>three</p></li></ol>',
@@ -47,6 +47,16 @@ describe('the default policy accepts everything the editor emits', () => {
   it('is a no-op over the whole document at once', () => {
     const stored = serializeHtml(parseHtml(SCHEMA_NATIVE.join('')))
     expect(sanitizeHtml(stored, { policy: DEFAULT_POLICY })).toBe(stored)
+  })
+
+  it('allows the language class only where the schema writes it', () => {
+    // Widening `pre` as well would permit a class the editor never emits:
+    // the schema normalizes `language-*` onto <code>. A class on <pre> is
+    // preservation residue, which policyForPreserved() exists to opt into.
+    const out = sanitizeHtml('<pre class="wide"><code class="language-js">x</code></pre>', {
+      policy: DEFAULT_POLICY,
+    })
+    expect(out).toBe('<pre><code class="language-js">x</code></pre>')
   })
 
   it('still strips what the editor would never emit', () => {
