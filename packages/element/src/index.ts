@@ -80,6 +80,8 @@ export class OpenLeafEditor extends HTMLElement {
   attributeChangedCallback(name: string): void {
     if (name === 'skin') applySkin(this, this.getAttribute('skin'))
     if (name === 'theme') applyColourScheme(this, this.#colourScheme())
+    if (name === 'readonly') this.#applyReadonly()
+    if (name === 'for') this.#rebindTextarea()
   }
 
   #colourScheme(): ColourScheme {
@@ -369,6 +371,7 @@ export class OpenLeafEditor extends HTMLElement {
       area.className = 'ol-source'
       area.setAttribute('aria-label', 'HTML source')
       area.spellcheck = false
+      area.readOnly = this.hasAttribute('readonly')
       area.value = serializeHtml(view.state.doc)
       contentHost.hidden = true
       contentHost.after(area)
@@ -393,10 +396,9 @@ export class OpenLeafEditor extends HTMLElement {
       this.dispatchEvent(
         new CustomEvent(SOURCE_CLOSE_EVENT, { bubbles: true, detail: { textarea: area } }),
       )
-      // Parsing is lenient by design: hand-edited HTML is frequently invalid,
-      // and refusing to leave source view because of a stray tag would trap the
-      // author in it.
-      this.value = area.value
+      if (!this.hasAttribute('readonly')) {
+        this.value = area.value
+      }
       area.remove()
       this.#sourceArea = null
     }
@@ -434,6 +436,21 @@ export class OpenLeafEditor extends HTMLElement {
     }
     if (!this.#view) return
     this.#textarea.value = serializeHtml(this.#view.state.doc)
+  }
+
+  #applyReadonly(): void {
+    // `editable()` already reads the attribute; the view has to be told to
+    // re-evaluate it. Without this, adding readonly after mount leaves
+    // contenteditable="true" until some unrelated transaction.
+    this.#view?.setProps({})
+    if (this.#sourceArea) this.#sourceArea.readOnly = this.hasAttribute('readonly')
+    if (this.#view) this.#toolbar?.update(this.#view.state)
+  }
+
+  #rebindTextarea(): void {
+    if (!this.#view) return
+    this.#textarea = this.#findTextarea()
+    this.#syncToTextarea()
   }
 }
 
