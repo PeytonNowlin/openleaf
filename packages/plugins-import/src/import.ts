@@ -12,7 +12,7 @@
  *     paths that normalize the same thing differently is how one of them rots.
  */
 
-import { parseHtml } from '@openleaf/core'
+import { parseHtml } from '@openleaf-editor/core'
 import { Plugin, TextSelection } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { convertFile, type ConversionResult } from './converters.js'

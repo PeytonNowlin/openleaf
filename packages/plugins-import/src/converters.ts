@@ -6,7 +6,7 @@
  * HTML and plain text convert with no dependency at all, because the paste
  * pipeline already does the hard part. That matters more than it sounds: Word's
  * own **Save as Web Page** produces exactly the `mso-list` markup
- * `@openleaf/paste` was written to reconstruct. So "import an HTML file" already
+ * `@openleaf-editor/paste` was written to reconstruct. So "import an HTML file" already
  * covers a real share of "import a Word document", for zero bytes.
  *
  * `.docx` is a different problem -- a ZIP of OOXML, not HTML -- and converting it
@@ -19,7 +19,7 @@
  * OOXML converter to avoid it would be a much worse one. So `.docx` arrives
  * through a seam, with a documented five-line recipe -- the same shape as
  * `setHighlighter` in the highlighting plugin and the sanitizer configuration in
- * `@openleaf/sanitize`. Ship the integration point, not the reimplementation.
+ * `@openleaf-editor/sanitize`. Ship the integration point, not the reimplementation.
  *
  * ## On PDF
  *
@@ -37,7 +37,7 @@
  * makes no structural claim.
  */
 
-import { normalizePastedHtml } from '@openleaf/paste'
+import { normalizePastedHtml } from '@openleaf-editor/paste'
 
 export interface ConversionResult {
   /** HTML to insert. Runs through the paste normalizer before parsing. */
@@ -62,7 +62,7 @@ const converters: FileConverter[] = []
  *
  * ```ts
  * import mammoth from 'mammoth/mammoth.browser.js'
- * import { registerFileConverter } from '@openleaf/plugins-import'
+ * import { registerFileConverter } from '@openleaf-editor/plugins-import'
  *
  * registerFileConverter(async (file) => {
  *   if (!file.name.toLowerCase().endsWith('.docx')) return null

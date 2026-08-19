@@ -9,7 +9,7 @@
  *
  *     mammoth (browser build)   492 KB min   122.3 KB gzip
  *
- * Larger than the entire editor. So it is not in `@openleaf/plugins-import`,
+ * Larger than the entire editor. So it is not in `@openleaf-editor/plugins-import`,
  * which stays 2.2 KB and handles HTML and text with no dependency at all. Sites
  * that need Word documents load one more script; sites that do not, do not pay
  * for it.
@@ -35,7 +35,7 @@
  */
 
 import mammoth from 'mammoth/mammoth.browser.js'
-import { addAcceptedExtensions, registerFileConverter, removeAcceptedExtensions } from '@openleaf/plugins-import'
+import { addAcceptedExtensions, registerFileConverter, removeAcceptedExtensions } from '@openleaf-editor/plugins-import'
 
 export interface DocxOptions {
   /**

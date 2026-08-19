@@ -77,7 +77,7 @@ unstyled toolbar and no signal an integrator can act on.
 
 **Shipped.** Two paths. Constructable stylesheet as primary; if
 `adoptedStyleSheets` is unavailable, a `console.warn` pointing at
-`@openleaf/ui/openleaf.css` rather than an injection that CSP will eat.
+`@openleaf-editor/ui/openleaf.css` rather than an injection that CSP will eat.
 
 Bonus the review supplied: adopted stylesheets are ordered *after* a document's
 regular stylesheets, so at equal specificity OpenLeaf wins ties against host CSS

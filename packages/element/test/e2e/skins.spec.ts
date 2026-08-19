@@ -115,7 +115,7 @@ test.describe('skins', () => {
     await page.evaluate(() => {
       const ui = (window as never as {
         OpenLeaf: { __runtime: Record<string, { registerSkin: (s: unknown) => void }> }
-      }).OpenLeaf.__runtime['@openleaf/ui']!
+      }).OpenLeaf.__runtime['@openleaf-editor/ui']!
       ui.registerSkin({
         name: 'acme',
         label: 'Acme',
@@ -189,7 +189,7 @@ test.describe('the scheme a skin declares', () => {
     await page.evaluate(() => {
       const ui = (window as never as {
         OpenLeaf: { __runtime: Record<string, { registerSkin: (s: unknown) => void }> }
-      }).OpenLeaf.__runtime['@openleaf/ui']!
+      }).OpenLeaf.__runtime['@openleaf-editor/ui']!
       ui.registerSkin({
         name: 'partial',
         label: 'Partial',
@@ -211,7 +211,7 @@ test.describe('the scheme a skin declares', () => {
     await page.evaluate(() => {
       const ui = (window as never as {
         OpenLeaf: { __runtime: Record<string, { registerSkin: (s: unknown) => void }> }
-      }).OpenLeaf.__runtime['@openleaf/ui']!
+      }).OpenLeaf.__runtime['@openleaf-editor/ui']!
       ui.registerSkin({
         name: 'forgetful',
         label: 'Forgetful',

@@ -58,13 +58,13 @@ export const schema = new Schema({ nodes, marks })
 
 built once from two object literals in that file, and `<openleaf-editor>` still
 calls `parseHtml(initialHtml)` and `createRegisteredPlugins(schema)` against
-that singleton. Nothing in `@openleaf/core`'s public surface accepts a
+that singleton. Nothing in `@openleaf-editor/core`'s public surface accepts a
 `NodeSpec` or a `MarkSpec` — `packages/core/test/public-api.test.ts` pins the
 whole export list and fails on additions on purpose. So there is still no
 supported way for an out-of-tree package to get a node into the schema the
 editor element builds.
 
-Until that half lands, **contributing a node type means editing `@openleaf/core` and
+Until that half lands, **contributing a node type means editing `@openleaf-editor/core` and
 shipping it in the core bundle.** That is not a workaround; it is exactly what
 tables did, and `packages/core/src/tables.ts` explains why the split ended up
 there rather than where it looked like it should be:
@@ -99,7 +99,7 @@ weaker, but the mechanism is the same one either way today.
 
 Order matters, and the reason is not load timing. `packages/element/src/global.ts`
 publishes the shared runtime on `window.OpenLeaf.__runtime`, and the second
-bundle resolves `@openleaf/core`, `@openleaf/ui` and every `prosemirror-*`
+bundle resolves `@openleaf-editor/core`, `@openleaf-editor/ui` and every `prosemirror-*`
 module from it instead of bundling its own:
 
 > Two schemas means a table node created by the plugin is a different node type
@@ -126,12 +126,12 @@ version of this exists. This is an open item for the maintainer, listed in
 ### 2.2 ESM import
 
 ```ts
-import { installTableEditing } from '@openleaf/plugins-table'
+import { installTableEditing } from '@openleaf-editor/plugins-table'
 
 installTableEditing()
 ```
 
-The bundler deduplicates `@openleaf/core` and the `prosemirror-*` packages, so
+The bundler deduplicates `@openleaf-editor/core` and the `prosemirror-*` packages, so
 there is one schema and one registry. No runtime shim is involved.
 
 Timing does not matter here either. `registerEditorPlugin` notifies listeners,
@@ -254,8 +254,8 @@ purpose — "a new export is a new promise" — so the failure is the design wor
 ### 3.2 The command — `packages/plugins-callout/src/index.ts`
 
 ```ts
-import { isNodeActive } from '@openleaf/core'
-import { registerIcons, registerToolbarItem } from '@openleaf/ui'
+import { isNodeActive } from '@openleaf-editor/core'
+import { registerIcons, registerToolbarItem } from '@openleaf-editor/ui'
 import { lift, wrapIn } from 'prosemirror-commands'
 import type { Command, EditorState } from 'prosemirror-state'
 import { CALLOUT_ICON_PATHS } from './icons.js'
@@ -413,7 +413,7 @@ every live editor, so an empty factory is not free.
 `demo/entry-callout.ts`:
 
 ```ts
-import { installCalloutEditing } from '@openleaf/plugins-callout'
+import { installCalloutEditing } from '@openleaf-editor/plugins-callout'
 
 installCalloutEditing()
 ```
@@ -542,7 +542,7 @@ returning the string, so it never reaches a customer's database. Any pass you
 add over serialized output owes the same guard:
 
 ```ts
-import { PRESERVED_MARKER } from '@openleaf/core'   // 'data-ol-preserved'
+import { PRESERVED_MARKER } from '@openleaf-editor/core'   // 'data-ol-preserved'
 
 if (el.closest(`[${PRESERVED_MARKER}]`)) continue
 ```
@@ -554,13 +554,13 @@ no fixture crossed the two features. **Write the fixture that crosses your
 feature with preservation**, not just the one that exercises it alone.
 
 > `PRESERVED_MARKER` is exported from `packages/core/src/preserve.ts` but is not
-> in `@openleaf/core`'s index barrel or in the pinned export list, so it is not
+> in `@openleaf-editor/core`'s index barrel or in the pinned export list, so it is not
 > importable from the package today. Flagged in
 > [section 6](#6-open-questions-for-the-maintainer).
 
 ### 4.2 Sanitization: a new element that nobody allowed is a new element that dies
 
-`@openleaf/sanitize` ships `DEFAULT_POLICY` as an allowlist. It does not know
+`@openleaf-editor/sanitize` ships `DEFAULT_POLICY` as an allowlist. It does not know
 about your node, and default-safe means default-strip. From `SECURITY.md`:
 
 > A default-safe sanitization policy will strip exactly that markup, destroying
@@ -621,7 +621,7 @@ integrator's decision to make in their own policy, and your README has to tell
 them exactly what to write:
 
 ```ts
-import { DEFAULT_POLICY, policyForPreserved } from '@openleaf/sanitize'
+import { DEFAULT_POLICY, policyForPreserved } from '@openleaf-editor/sanitize'
 
 const policy = policyForPreserved(DEFAULT_POLICY, {
   'drupal-media': ['data-entity-type', 'data-entity-uuid', 'data-view-mode'],

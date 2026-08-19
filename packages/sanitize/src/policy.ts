@@ -183,7 +183,7 @@ export function policyForPreserved(
     const name = tag.toLowerCase()
     if (base.dropWithContent.includes(name)) {
       throw new Error(
-        `@openleaf/sanitize: refusing to allow <${name}>, which is on the ` +
+        `@openleaf-editor/sanitize: refusing to allow <${name}>, which is on the ` +
           'dropWithContent list. If you genuinely need it, remove it from that ' +
           'list explicitly so the decision is visible in review.',
       )

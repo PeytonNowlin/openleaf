@@ -4,7 +4,7 @@
  * Scope note: table NODES are here, in the base schema, so that every
  * deployment reads and writes tables faithfully. Table EDITING -- cell
  * selection, column resizing, the row and column commands and toolbar -- is
- * the opt-in @openleaf/plugins-table. See tables.ts for why the split falls
+ * the opt-in @openleaf-editor/plugins-table. See tables.ts for why the split falls
  * there rather than at the package boundary.
  */
 
@@ -191,7 +191,7 @@ export const coreNodes: Record<string, NodeSpec> = {
   // stored content becomes an opaque preserved atom -- faithful but uneditable,
   // which is not something you can tell a CMS. The heavy part (cell selection,
   // column resizing, the row and column commands) is the opt-in
-  // @openleaf/plugins-table.
+  // @openleaf-editor/plugins-table.
   table,
   table_row,
   table_cell,

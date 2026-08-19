@@ -17,7 +17,7 @@ OpenLeaf is a client-side editor. Understanding this boundary matters:
 control.** Anything the editor strips can be re-added by a user with
 developer tools, because the editor runs entirely under their control.
 
-**You must sanitize on the server.** [`@openleaf/sanitize`](packages/sanitize)
+**You must sanitize on the server.** [`@openleaf-editor/sanitize`](packages/sanitize)
 ships the canonical allowlist as data (`allowlist.json`) precisely so that your
 server-side sanitizer can enforce the same policy in the same terms, and
 generates configuration for DOMPurify, Python's `bleach` and PHP's
@@ -46,7 +46,7 @@ worked to save -- the same bug wearing a different hat.
 If you rely on preservation, extend the policy explicitly:
 
 ```ts
-import { DEFAULT_POLICY, policyForPreserved } from '@openleaf/sanitize'
+import { DEFAULT_POLICY, policyForPreserved } from '@openleaf-editor/sanitize'
 
 const policy = policyForPreserved(DEFAULT_POLICY, {
   div: ['class', 'data-callout-id'],
@@ -65,7 +65,7 @@ pasted.
 - Executable content surviving a round trip through the editor. The
   preservation layer keeps unrecognised markup, and it must never keep markup
   that runs: `<script>`, `<iframe>`, `<object>`, `<form>`, inline `on*` handlers
-  and `javascript:` URLs are all dropped in `@openleaf/core`, with tests
+  and `javascript:` URLs are all dropped in `@openleaf-editor/core`, with tests
 - The published allowlist permitting a construct that is unsafe to render
 - Prototype pollution or code execution in the parsing path
 - Content-destroying bugs in the preservation layer (we treat silent

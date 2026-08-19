@@ -22,7 +22,7 @@
  * So the default is small and honest about its coverage, and the seam is public
  * so a project that needs real breadth can supply Prism, refractor or
  * highlight.js in about five lines. This is the same shape as
- * `@openleaf/sanitize`, which ships a policy and lets you enforce it with
+ * `@openleaf-editor/sanitize`, which ships a policy and lets you enforce it with
  * DOMPurify: the valuable thing is the integration point, not a reimplementation
  * of somebody else's decade of work.
  */
@@ -55,7 +55,7 @@ let current: Highlighter = builtIn
  * ```ts
  * import { refractor } from 'refractor/core'
  * import python from 'refractor/python'
- * import { setHighlighter, type Token } from '@openleaf/plugins-highlight'
+ * import { setHighlighter, type Token } from '@openleaf-editor/plugins-highlight'
  *
  * refractor.register(python)
  *
@@ -92,7 +92,7 @@ export function highlight(source: string, language: string): Token[] | null {
     // A third-party highlighter that throws must not take the editor with it.
     // Unhighlighted text is a cosmetic loss; a broken source view is not.
     console.error(
-      `@openleaf/plugins-highlight: the highlighter threw on language "${language}". ` +
+      `@openleaf-editor/plugins-highlight: the highlighter threw on language "${language}". ` +
         'The text is shown unhighlighted.',
       error,
     )

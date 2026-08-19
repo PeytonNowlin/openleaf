@@ -26,7 +26,7 @@
  *   1. A constructable `CSSStyleSheet` added to `document.adoptedStyleSheets`.
  *      CSP gates resources *parsed as style*; a CSSOM object attached this way
  *      never passes through that gate, by design rather than by loophole.
- *   2. The integrator links `@openleaf/ui/openleaf.css` themselves and calls
+ *   2. The integrator links `@openleaf-editor/ui/openleaf.css` themselves and calls
  *      `markStylesExternal()`.
  *
  * There is deliberately NO `<style>` injection fallback. It reads as a safety
@@ -511,9 +511,9 @@ export function registerStyles(css: string, target?: Document): 'adopted' | 'una
   if (!warned) {
     warned = true
     console.warn(
-      '@openleaf/ui: this browser has no adoptedStyleSheets support, so styles ' +
+      '@openleaf-editor/ui: this browser has no adoptedStyleSheets support, so styles ' +
         'were not injected. Link the stylesheet instead:\n' +
-        '  <link rel="stylesheet" href=".../@openleaf/ui/openleaf.css">\n' +
+        '  <link rel="stylesheet" href=".../@openleaf-editor/ui/openleaf.css">\n' +
         'then call markStylesExternal() to silence this warning.',
     )
   }

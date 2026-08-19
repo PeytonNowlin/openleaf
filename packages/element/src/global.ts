@@ -18,9 +18,9 @@
  * anything outside should import the packages properly.
  */
 
-import * as openleafCore from '@openleaf/core'
-import * as openleafPaste from '@openleaf/paste'
-import * as openleafUi from '@openleaf/ui'
+import * as openleafCore from '@openleaf-editor/core'
+import * as openleafPaste from '@openleaf-editor/paste'
+import * as openleafUi from '@openleaf-editor/ui'
 import * as pmCommands from 'prosemirror-commands'
 import * as pmHistory from 'prosemirror-history'
 import * as pmKeymap from 'prosemirror-keymap'
@@ -32,9 +32,9 @@ import * as pmView from 'prosemirror-view'
 export * from './index.js'
 
 export const __runtime = {
-  '@openleaf/core': openleafCore,
-  '@openleaf/paste': openleafPaste,
-  '@openleaf/ui': openleafUi,
+  '@openleaf-editor/core': openleafCore,
+  '@openleaf-editor/paste': openleafPaste,
+  '@openleaf-editor/ui': openleafUi,
   'prosemirror-commands': pmCommands,
   'prosemirror-history': pmHistory,
   'prosemirror-keymap': pmKeymap,

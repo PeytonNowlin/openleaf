@@ -1,5 +1,5 @@
 /**
- * @openleaf/paste -- turn foreign clipboard HTML into clean semantic markup.
+ * @openleaf-editor/paste -- turn foreign clipboard HTML into clean semantic markup.
  *
  * This is the package that decides whether the editor feels professional.
  * Paste fidelity from Word and Google Docs is the single most common reason
@@ -9,7 +9,7 @@
  *
  * Note on where this sits: pasting and *loading* are different operations with
  * opposite defaults. On load, the author's markup is authoritative and we
- * preserve everything (see @openleaf/core). On paste, the source's styling is
+ * preserve everything (see @openleaf-editor/core). On paste, the source's styling is
  * precisely what the author is trying to shed, so stripping is the goal.
  * Conflating the two is how an editor ends up either mangling stored documents
  * or importing a wall of `line-height:1.38` into them.

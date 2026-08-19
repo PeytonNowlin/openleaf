@@ -11,8 +11,8 @@
  * ```
  */
 
-import { canInsert } from '@openleaf/core'
-import { registerIcons, registerToolbarItem } from '@openleaf/ui'
+import { canInsert } from '@openleaf-editor/core'
+import { registerIcons, registerToolbarItem } from '@openleaf-editor/ui'
 import { BUILT_IN_ACCEPT } from './converters.js'
 import { importFilesIntoView } from './import.js'
 import { announce, describeOutcome } from './report.js'

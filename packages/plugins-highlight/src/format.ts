@@ -55,7 +55,7 @@ export interface FormatOptions {
 
 function resolveDocument(explicit?: Document): Document {
   const doc = explicit ?? (typeof document !== 'undefined' ? document : undefined)
-  if (!doc) throw new Error('@openleaf/plugins-highlight: no Document available')
+  if (!doc) throw new Error('@openleaf-editor/plugins-highlight: no Document available')
   return doc
 }
 

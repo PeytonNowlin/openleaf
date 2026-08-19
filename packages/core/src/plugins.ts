@@ -46,7 +46,7 @@ function notify(): void {
     try {
       listener()
     } catch (error) {
-      console.error('@openleaf/core: an editor failed to apply a plugin change', error)
+      console.error('@openleaf-editor/core: an editor failed to apply a plugin change', error)
     }
   }
 }
@@ -73,7 +73,7 @@ export function createRegisteredPlugins(
       // A throwing factory used to take EditorState.create with it, so one bad
       // script tag produced a blank editor. Contributing nothing is the right
       // failure: the editor comes up without that plugin.
-      console.error('@openleaf/core: a plugin factory threw; skipping it', error)
+      console.error('@openleaf-editor/core: a plugin factory threw; skipping it', error)
     }
   }
   if (cache) {

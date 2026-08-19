@@ -59,7 +59,7 @@ function resolveDocument(explicit?: Document): Document {
   const doc = explicit ?? (typeof document !== 'undefined' ? document : undefined)
   if (!doc) {
     throw new Error(
-      '@openleaf/sanitize: no Document available. Pass { document } when running ' +
+      '@openleaf-editor/sanitize: no Document available. Pass { document } when running ' +
         'outside a browser, or use the policy with a server-side sanitizer.',
     )
   }

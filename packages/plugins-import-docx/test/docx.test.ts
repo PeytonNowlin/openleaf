@@ -2,8 +2,8 @@ import { File } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseHtml, serializeHtml } from '@openleaf/core'
-import { clearFileConverters, convertFile } from '@openleaf/plugins-import'
+import { parseHtml, serializeHtml } from '@openleaf-editor/core'
+import { clearFileConverters, convertFile } from '@openleaf-editor/plugins-import'
 import { afterEach, describe, expect, it } from 'vitest'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -27,7 +27,7 @@ const through = (html: string): string => serializeHtml(parseHtml(html))
  */
 async function installForTest(): Promise<() => void> {
   const mammoth = (await import('mammoth')).default
-  const { registerFileConverter } = await import('@openleaf/plugins-import')
+  const { registerFileConverter } = await import('@openleaf-editor/plugins-import')
   const STYLE_MAP = [
     "p[style-name='Title'] => h1:fresh",
     "p[style-name='Subtitle'] => h2:fresh",

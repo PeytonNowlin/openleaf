@@ -177,7 +177,7 @@ function ownerDocument(): Document {
   if (serializationDocument) return serializationDocument
   if (typeof document === 'undefined') {
     throw new Error(
-      '@openleaf/core: no global `document` available. Preserved content ' +
+      '@openleaf-editor/core: no global `document` available. Preserved content ' +
         'needs a DOM to re-serialize. On the server, pass an explicit ' +
         'document to parseHtml/serializeHtml.',
     )

@@ -91,7 +91,7 @@ function notify(): void {
     try {
       listener()
     } catch (error) {
-      console.error('@openleaf/core: a schema-extension listener threw', error)
+      console.error('@openleaf-editor/core: a schema-extension listener threw', error)
     }
   }
 }
@@ -107,7 +107,7 @@ function notify(): void {
 export function registerSchemaExtension(extension: SchemaExtension): () => void {
   if (extensions.has(extension.id)) {
     console.warn(
-      `@openleaf/core: schema extension "${extension.id}" is already registered. ` +
+      `@openleaf-editor/core: schema extension "${extension.id}" is already registered. ` +
         'The second registration was ignored.',
     )
     return () => undefined
@@ -234,7 +234,7 @@ function assertRulePriorities(extensionId: string, name: string, spec: NodeSpec 
   for (const rule of (spec.parseDOM ?? []) as ParseRule[]) {
     if (rule.priority !== undefined && rule.priority <= 1) {
       throw new Error(
-        `@openleaf/core: extension "${extensionId}" gives "${name}" a parse rule at ` +
+        `@openleaf-editor/core: extension "${extensionId}" gives "${name}" a parse rule at ` +
           `priority ${rule.priority}. The preservation layer's catch-all rules sit at ` +
           'priority 0 and 1, so this rule would tie with them and the winner would be ' +
           'decided by insertion order. Remove the priority: the default already wins.',
@@ -255,7 +255,7 @@ function claim(
 
   if (previous && !replaces.has(name)) {
     throw new Error(
-      `@openleaf/core: extensions "${previous}" and "${extension.id}" both define the ` +
+      `@openleaf-editor/core: extensions "${previous}" and "${extension.id}" both define the ` +
         `${kind} "${name}". A ${kind} type is a storage format, not a preference: two ` +
         'definitions mean two serializations of the same content chosen by load order. ' +
         `If replacing it is intended, declare replaces: ['${name}'].`,
@@ -263,7 +263,7 @@ function claim(
   }
   if (existsInCore && !replaces.has(name)) {
     throw new Error(
-      `@openleaf/core: extension "${extension.id}" defines the ${kind} "${name}", which ` +
+      `@openleaf-editor/core: extension "${extension.id}" defines the ${kind} "${name}", which ` +
         `already exists in the base schema. If replacing it is intended, declare ` +
         `replaces: ['${name}'].`,
     )

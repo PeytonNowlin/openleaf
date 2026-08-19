@@ -113,7 +113,7 @@ const schemaGuardOk = step('no schema singleton outside core', () => {
       if (typeof file !== 'string' || !file.endsWith('.ts')) continue
       const text = readFileSync(new URL(`../${root}/${file}`, import.meta.url), 'utf8')
       text.split('\n').forEach((line, i) => {
-        if (/^import .*\bschema\b.*from ['"]@openleaf\/core['"]/.test(line)) {
+        if (/^import .*\bschema\b.*from ['"]@openleaf-editor\/core['"]/.test(line)) {
           offenders.push(`${root}/${file}:${i + 1}`)
         }
       })

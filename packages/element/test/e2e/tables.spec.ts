@@ -53,7 +53,7 @@ test.describe('with the table bundle loaded', () => {
       return {
         hasRuntime: !!rt,
         modules: Object.keys(rt).length,
-        oneSchema: rt['@openleaf/core'] === rt['@openleaf/core'],
+        oneSchema: rt['@openleaf-editor/core'] === rt['@openleaf-editor/core'],
       }
     })
     expect(shared.hasRuntime).toBe(true)

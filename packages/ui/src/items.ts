@@ -3,7 +3,7 @@
  *
  * Every one is a thin binding of a core command to a label and an icon. No
  * editing logic lives here -- if a button needs to know something about the
- * document, that knowledge belongs in `@openleaf/core` where a keyboard
+ * document, that knowledge belongs in `@openleaf-editor/core` where a keyboard
  * shortcut and a test can reach it too.
  */
 
@@ -26,7 +26,7 @@ import {
   toggleUnderline,
   undo,
   unsetLink,
-} from '@openleaf/core'
+} from '@openleaf-editor/core'
 import type { Command } from 'prosemirror-state'
 import { promptForImage, promptForLink } from './dialog.js'
 import type { IconName } from './icons.js'

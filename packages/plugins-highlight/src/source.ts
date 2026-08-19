@@ -24,7 +24,7 @@
  * touch it.
  */
 
-import { parseHtml, serializeHtml } from '@openleaf/core'
+import { parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { formatHtml } from './format.js'
 import { highlight } from './highlighter.js'
 

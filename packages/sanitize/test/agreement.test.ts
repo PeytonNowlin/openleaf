@@ -1,4 +1,4 @@
-import { parseHtml, serializeHtml } from '@openleaf/core'
+import { parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_POLICY, sanitizeHtml } from '../src/index.js'
 

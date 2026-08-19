@@ -37,8 +37,8 @@ import {
   parseHtml,
   serializeHtml,
   type EditorPluginFactory,
-} from '@openleaf/core'
-import { normalizePastedHtml } from '@openleaf/paste'
+} from '@openleaf-editor/core'
+import { normalizePastedHtml } from '@openleaf-editor/paste'
 import {
   SOURCE_TOGGLE_EVENT,
   Toolbar,
@@ -48,7 +48,7 @@ import {
   ensureStyles,
   registerDefaultItems,
   type ColourScheme,
-} from '@openleaf/ui'
+} from '@openleaf-editor/ui'
 import { baseKeymap } from 'prosemirror-commands'
 import { history } from 'prosemirror-history'
 import { keymap } from 'prosemirror-keymap'
@@ -270,7 +270,7 @@ export class OpenLeafEditor extends HTMLElement {
         try {
           this.#toolbar?.update(view.state, tr)
         } catch (error) {
-          console.error('@openleaf/element: toolbar update failed', error)
+          console.error('@openleaf-editor/element: toolbar update failed', error)
         }
       },
     })
@@ -291,7 +291,7 @@ export class OpenLeafEditor extends HTMLElement {
       if (!this.#view) return
       if (coreSchema() === this.#schema) return
       console.warn(
-        '@openleaf/element: a schema extension registered after this editor was ' +
+        '@openleaf-editor/element: a schema extension registered after this editor was ' +
           'built, so its node types are not available here. A document\'s schema is ' +
           'fixed when its editor is created -- load the plugin script before the ' +
           'editor, or reload the page. Editors created from now on will have it.',
@@ -522,7 +522,7 @@ export class OpenLeafEditor extends HTMLElement {
  * second script tag. Useful for custom paste handling, and for normalizing
  * clipboard HTML somewhere other than the editor.
  */
-export { normalizePastedHtml } from '@openleaf/paste'
+export { normalizePastedHtml } from '@openleaf-editor/paste'
 
 /** Idempotent: safe to import twice, or alongside a bundled copy. */
 export function defineOpenLeafEditor(tag = 'openleaf-editor'): void {

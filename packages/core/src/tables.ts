@@ -3,7 +3,7 @@
  *
  * ## Why these live in core rather than in the opt-in plugin
  *
- * The obvious design is to put tables entirely in `@openleaf/plugins-table`, so
+ * The obvious design is to put tables entirely in `@openleaf-editor/plugins-table`, so
  * a CMS that forbids tables ships none of the code. That is wrong, and the
  * fidelity harness is what shows why: without these node types, a `<table>` in
  * stored content is claimed by the preservation layer and becomes a single

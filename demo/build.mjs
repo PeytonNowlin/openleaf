@@ -33,20 +33,20 @@ for (const asset of ['openleaf-logo.png', 'openleaf-logo-dark.png', 'openleaf-ma
 
 /** Workspace packages resolved to TypeScript source, so no dist can go stale. */
 const WORKSPACE_ALIASES = {
-  '@openleaf/core': src('../packages/core/src/index.ts'),
-  '@openleaf/paste': src('../packages/paste/src/index.ts'),
-  '@openleaf/ui': src('../packages/ui/src/index.ts'),
-  '@openleaf/plugins-table': src('../packages/plugins-table/src/index.ts'),
-  '@openleaf/plugins-highlight': src('../packages/plugins-highlight/src/index.ts'),
-  '@openleaf/plugins-import': src('../packages/plugins-import/src/index.ts'),
-  '@openleaf/plugins-import-docx': src('../packages/plugins-import-docx/src/index.ts'),
+  '@openleaf-editor/core': src('../packages/core/src/index.ts'),
+  '@openleaf-editor/paste': src('../packages/paste/src/index.ts'),
+  '@openleaf-editor/ui': src('../packages/ui/src/index.ts'),
+  '@openleaf-editor/plugins-table': src('../packages/plugins-table/src/index.ts'),
+  '@openleaf-editor/plugins-highlight': src('../packages/plugins-highlight/src/index.ts'),
+  '@openleaf-editor/plugins-import': src('../packages/plugins-import/src/index.ts'),
+  '@openleaf-editor/plugins-import-docx': src('../packages/plugins-import-docx/src/index.ts'),
 }
 
 /** Modules the core bundle publishes and plugin bundles borrow. */
 const SHARED = [
-  '@openleaf/core',
-  '@openleaf/paste',
-  '@openleaf/ui',
+  '@openleaf-editor/core',
+  '@openleaf-editor/paste',
+  '@openleaf-editor/ui',
   'prosemirror-commands',
   'prosemirror-history',
   'prosemirror-keymap',
@@ -56,7 +56,7 @@ const SHARED = [
   'prosemirror-view',
   // Published by the import bundle rather than the core one, so a companion
   // bundle shares its converter registry instead of creating a second.
-  '@openleaf/plugins-import',
+  '@openleaf-editor/plugins-import',
 ]
 
 /**
@@ -138,7 +138,7 @@ await build({
   minify: true,
   sourcemap: true,
   outfile: src('./openleaf-tables.min.js'),
-  alias: { '@openleaf/plugins-table': WORKSPACE_ALIASES['@openleaf/plugins-table'] },
+  alias: { '@openleaf-editor/plugins-table': WORKSPACE_ALIASES['@openleaf-editor/plugins-table'] },
   plugins: [shareRuntime('OpenLeaf')],
 })
 const tablesGz = report('openleaf-tables.min.js', src('./openleaf-tables.min.js'))
@@ -152,7 +152,7 @@ await build({
   minify: true,
   sourcemap: true,
   outfile: src('./openleaf-highlight.min.js'),
-  alias: { '@openleaf/plugins-highlight': WORKSPACE_ALIASES['@openleaf/plugins-highlight'] },
+  alias: { '@openleaf-editor/plugins-highlight': WORKSPACE_ALIASES['@openleaf-editor/plugins-highlight'] },
   plugins: [shareRuntime('OpenLeaf')],
 })
 const highlightGz = report('openleaf-highlight.min.js', src('./openleaf-highlight.min.js'))
@@ -166,8 +166,8 @@ await build({
   minify: true,
   sourcemap: true,
   outfile: src('./openleaf-import.min.js'),
-  alias: { '@openleaf/plugins-import': WORKSPACE_ALIASES['@openleaf/plugins-import'] },
-  plugins: [shareRuntime('OpenLeaf', { except: ['@openleaf/plugins-import'] })],
+  alias: { '@openleaf-editor/plugins-import': WORKSPACE_ALIASES['@openleaf-editor/plugins-import'] },
+  plugins: [shareRuntime('OpenLeaf', { except: ['@openleaf-editor/plugins-import'] })],
 })
 const importGz = report('openleaf-import.min.js', src('./openleaf-import.min.js'))
 
@@ -184,7 +184,7 @@ await build({
   outfile: src('./openleaf-import-docx.min.js'),
   platform: 'browser',
   define: { 'process.env.NODE_ENV': '"production"' },
-  alias: { '@openleaf/plugins-import-docx': WORKSPACE_ALIASES['@openleaf/plugins-import-docx'] },
+  alias: { '@openleaf-editor/plugins-import-docx': WORKSPACE_ALIASES['@openleaf-editor/plugins-import-docx'] },
   plugins: [shareRuntime('OpenLeaf')],
 })
 const docxGz = report('openleaf-import-docx.min.js', src('./openleaf-import-docx.min.js'))
@@ -205,11 +205,11 @@ if (process.argv.includes('--sizes')) {
       /node_modules\/\.pnpm\/(?:@[^+]+\+)?([^@/]+)@/.exec(input) ??
       /node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(input)
     const own = /packages\/([^/]+)\//.exec(input)
-    const key = own ? `@openleaf/${own[1]}` : dep ? dep[1] : 'other'
+    const key = own ? `@openleaf-editor/${own[1]}` : dep ? dep[1] : 'other'
     byPackage.set(key, (byPackage.get(key) ?? 0) + meta.bytesInOutput)
   }
   const rows = [...byPackage].sort((a, b) => b[1] - a[1])
-  const ours = rows.filter(([n]) => n.startsWith('@openleaf/'))
+  const ours = rows.filter(([n]) => n.startsWith('@openleaf-editor/'))
   const total = rows.reduce((s, [, b]) => s + b, 0)
   const oursTotal = ours.reduce((s, [, b]) => s + b, 0)
   const width = Math.max(...rows.map(([n]) => n.length))

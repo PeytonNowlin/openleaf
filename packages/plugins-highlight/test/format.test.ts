@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseHtml, serializeHtml } from '@openleaf/core'
+import { parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { describe, expect, it } from 'vitest'
 import { formatHtml } from '../src/format.js'
 import { formatIfLossless } from '../src/source.js'

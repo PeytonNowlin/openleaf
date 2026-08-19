@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import * as core from '../src/index.js'
 
 /**
- * A characterization test over the public surface of @openleaf/core.
+ * A characterization test over the public surface of @openleaf-editor/core.
  *
  * Written immediately before the schema-extensibility refactor, and its whole
  * purpose is to be boring. It asserts what integrators can currently rely on, so

@@ -306,7 +306,7 @@ test.describe('source view', () => {
             >
           }
         }
-      ).OpenLeaf.__runtime['@openleaf/ui']
+      ).OpenLeaf.__runtime['@openleaf-editor/ui']
       ui!.registerToolbarItem({
         id: 'unrelatedExtra',
         type: 'button',

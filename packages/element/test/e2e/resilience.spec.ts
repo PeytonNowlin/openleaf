@@ -21,7 +21,7 @@ async function installBrokenPlugin(page: Page): Promise<void> {
     const runtime = (window as never as {
       OpenLeaf: { __runtime: Record<string, { registerToolbarItem: (s: unknown) => void }> }
     }).OpenLeaf.__runtime
-    const ui = runtime['@openleaf/ui']!
+    const ui = runtime['@openleaf-editor/ui']!
 
     ui.registerToolbarItem({
       id: 'brokenItem',

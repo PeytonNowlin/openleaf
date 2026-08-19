@@ -1,4 +1,4 @@
-import { parseHtml, serializeHtml } from '@openleaf/core'
+import { parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { EditorState, TextSelection, type Command, type Transaction } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import { addColumnAfter, addRowAfter, toggleHeaderRow } from '../src/index.js'

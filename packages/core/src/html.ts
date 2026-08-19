@@ -55,7 +55,7 @@ function resolveDocument(opts?: HtmlIOOptions): Document {
   const doc = opts?.document ?? (typeof document !== 'undefined' ? document : undefined)
   if (!doc) {
     throw new Error(
-      '@openleaf/core: no Document available. Pass { document } when ' +
+      '@openleaf-editor/core: no Document available. Pass { document } when ' +
         'running outside a browser.',
     )
   }

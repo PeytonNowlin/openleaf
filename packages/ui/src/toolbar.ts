@@ -29,7 +29,7 @@
  *    Escape leaves, matching TinyMCE and CKEditor 5 so muscle memory transfers.
  */
 
-import { activeHeadingLevel, shortcutFor, toggleHeading, setParagraph } from '@openleaf/core'
+import { activeHeadingLevel, shortcutFor, toggleHeading, setParagraph } from '@openleaf-editor/core'
 import type { EditorState, Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { ensureSprite, iconElement } from './icons.js'
@@ -85,7 +85,7 @@ function guarded(itemId: string, kind: string, run: () => boolean): boolean {
     if (!reported.has(key)) {
       reported.add(key)
       console.error(
-        `@openleaf/ui: the ${kind} predicate for toolbar item "${itemId}" threw. ` +
+        `@openleaf-editor/ui: the ${kind} predicate for toolbar item "${itemId}" threw. ` +
           'The control is shown as unavailable. This is a bug in whatever registered ' +
           'it, not in the editor.',
         error,
@@ -189,7 +189,7 @@ export class Toolbar {
       // Silently skipping an unknown id would hide a typo in an integrator's
       // `toolbar` attribute forever.
       if (!spec) {
-        console.warn(`@openleaf/ui: no toolbar item registered for "${token}"`)
+        console.warn(`@openleaf-editor/ui: no toolbar item registered for "${token}"`)
         continue
       }
       // Only `button` is implemented. The `type` discriminant exists so that
@@ -199,7 +199,7 @@ export class Toolbar {
       // control they asked for was not built.
       if (spec.type && spec.type !== 'button') {
         console.warn(
-          `@openleaf/ui: toolbar item "${spec.id}" declares type "${spec.type}", ` +
+          `@openleaf-editor/ui: toolbar item "${spec.id}" declares type "${spec.type}", ` +
             'which is not implemented yet. It is rendering as a button.',
         )
       }
@@ -396,7 +396,7 @@ export class Toolbar {
       }
     } catch (error) {
       console.error(
-        `@openleaf/ui: toolbar item "${spec.id}" threw when activated. ` +
+        `@openleaf-editor/ui: toolbar item "${spec.id}" threw when activated. ` +
           'The editor is unaffected.',
         error,
       )

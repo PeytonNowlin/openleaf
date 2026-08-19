@@ -1,8 +1,11 @@
 {
-  "name": "@openleaf/element",
+  "name": "@openleaf-editor/element",
   "version": "0.0.0",
   "description": "The <openleaf-editor> custom element: OpenLeaf's drop-in for CMS forms. HTML in, HTML out, syncs to a textarea.",
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,9 +22,9 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@openleaf/core": "workspace:*",
-    "@openleaf/paste": "workspace:*",
-    "@openleaf/ui": "workspace:*",
+    "@openleaf-editor/core": "workspace:*",
+    "@openleaf-editor/paste": "workspace:*",
+    "@openleaf-editor/ui": "workspace:*",
     "prosemirror-commands": "^1.6.2",
     "prosemirror-history": "^1.4.1",
     "prosemirror-keymap": "^1.2.2",

@@ -10,9 +10,9 @@
  *
  * Same failure as two copies of ProseMirror giving you two schemas, one level up.
  */
-import * as importApi from '@openleaf/plugins-import'
+import * as importApi from '@openleaf-editor/plugins-import'
 
 importApi.installImport()
 
 const host = (globalThis as { OpenLeaf?: { __runtime?: Record<string, unknown> } }).OpenLeaf
-if (host?.__runtime) host.__runtime['@openleaf/plugins-import'] = importApi
+if (host?.__runtime) host.__runtime['@openleaf-editor/plugins-import'] = importApi

@@ -83,7 +83,7 @@ test.describe('registering too late', () => {
     await page.evaluate(() => {
       const core = (window as never as {
         OpenLeaf: { __runtime: Record<string, { registerSchemaExtension: (e: unknown) => void }> }
-      }).OpenLeaf.__runtime['@openleaf/core']!
+      }).OpenLeaf.__runtime['@openleaf-editor/core']!
       core.registerSchemaExtension({
         id: 'test/too-late',
         nodes: {
@@ -106,7 +106,7 @@ test.describe('registering too late', () => {
     await page.evaluate(() => {
       const core = (window as never as {
         OpenLeaf: { __runtime: Record<string, { registerSchemaExtension: (e: unknown) => void }> }
-      }).OpenLeaf.__runtime['@openleaf/core']!
+      }).OpenLeaf.__runtime['@openleaf-editor/core']!
       core.registerSchemaExtension({ id: 'test/inert', nodes: {} })
     })
     await editor(page).click()

@@ -3,7 +3,7 @@
  *
  * The extension point exists now, before any plugin needs it, because
  * retrofitting one later means either a breaking change or a second parallel
- * mechanism. `@openleaf/plugins-table` will call `registerToolbarItem` at import
+ * mechanism. `@openleaf-editor/plugins-table` will call `registerToolbarItem` at import
  * time and the toolbar will pick it up without ever importing the plugin.
  *
  * Two responsibilities are deliberately split:
@@ -88,7 +88,7 @@ function notify(): void {
     try {
       listener()
     } catch (error) {
-      console.error('@openleaf/ui: a toolbar failed to re-render', error)
+      console.error('@openleaf-editor/ui: a toolbar failed to re-render', error)
     }
   }
 }

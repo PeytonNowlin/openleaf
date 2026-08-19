@@ -3,7 +3,7 @@
  *
  * ## What is and is not in this package
  *
- * The table *schema* is not here -- it lives in `@openleaf/core` and ships in
+ * The table *schema* is not here -- it lives in `@openleaf-editor/core` and ships in
  * every deployment. That split is deliberate and the fidelity harness is what
  * forced it: without table node types in the base schema, a `<table>` in stored
  * content is claimed by the preservation layer and becomes an opaque atom.
@@ -30,13 +30,13 @@
  * Or as a module:
  *
  * ```ts
- * import { installTableEditing } from '@openleaf/plugins-table'
+ * import { installTableEditing } from '@openleaf-editor/plugins-table'
  * installTableEditing()
  * ```
  */
 
-import { canInsert, isNodeActive, registerEditorPlugin } from '@openleaf/core'
-import { registerIcons, registerToolbarItem } from '@openleaf/ui'
+import { canInsert, isNodeActive, registerEditorPlugin } from '@openleaf-editor/core'
+import { registerIcons, registerToolbarItem } from '@openleaf-editor/ui'
 import { TABLE_ICON_PATHS } from './icons.js'
 import type { Command, EditorState, Transaction } from 'prosemirror-state'
 import {

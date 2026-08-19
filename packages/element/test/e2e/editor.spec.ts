@@ -343,7 +343,7 @@ test.describe('late plugin registration', () => {
       const host = globalThis as unknown as {
         OpenLeaf: { __runtime: Record<string, { registerEditorPlugin: (f: () => []) => void }> }
       }
-      host.OpenLeaf.__runtime['@openleaf/core']!.registerEditorPlugin(() => [])
+      host.OpenLeaf.__runtime['@openleaf-editor/core']!.registerEditorPlugin(() => [])
     })
 
     await page.keyboard.press('ControlOrMeta+z')

@@ -203,7 +203,7 @@ function warnIfSchemeMissing(skin: Skin): void {
   if (schemeWarned.has(skin.name)) return
   schemeWarned.add(skin.name)
   console.warn(
-    `@openleaf/ui: skin "${skin.name}" sets --openleaf-color-surface but declares ` +
+    `@openleaf-editor/ui: skin "${skin.name}" sets --openleaf-color-surface but declares ` +
       'no scheme, so syntax highlighting and native widgets inside it keep ' +
       "following the visitor's system setting and can contradict the palette. " +
       "Add scheme: 'light' or scheme: 'dark'.",
@@ -236,7 +236,7 @@ export function applySkin(host: HTMLElement, name: string | null): void {
   const skin = skins.get(name)
   if (!skin) {
     console.warn(
-      `@openleaf/ui: no skin named "${name}". Available: ` +
+      `@openleaf-editor/ui: no skin named "${name}". Available: ` +
         `${[...skins.keys()].join(', ')}. The editor keeps its current appearance.`,
     )
     return

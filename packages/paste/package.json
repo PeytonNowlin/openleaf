@@ -1,8 +1,11 @@
 {
-  "name": "@openleaf/paste",
+  "name": "@openleaf-editor/paste",
   "version": "0.0.0",
   "description": "Paste normalizers for OpenLeaf: turns Word, Google Docs and Excel debris into clean semantic HTML.",
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,6 +23,6 @@
     "build": "tsc -p tsconfig.json"
   },
   "devDependencies": {
-    "@openleaf/core": "workspace:*"
+    "@openleaf-editor/core": "workspace:*"
   }
 }

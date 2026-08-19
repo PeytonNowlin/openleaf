@@ -16,8 +16,8 @@
  * ```
  */
 
-import { registerEditorPlugin } from '@openleaf/core'
-import { registerStyles } from '@openleaf/ui'
+import { registerEditorPlugin } from '@openleaf-editor/core'
+import { registerStyles } from '@openleaf-editor/ui'
 import { codeBlockHighlighting } from './codeblock.js'
 import { HIGHLIGHT_CSS } from './theme.js'
 import { watchSourceViews } from './source.js'
@@ -51,7 +51,7 @@ export function installSyntaxHighlighting(): void {
   if (installed) return
   installed = true
 
-  // Through @openleaf/ui rather than hand-rolled: the CSP reasoning belongs in
+  // Through @openleaf-editor/ui rather than hand-rolled: the CSP reasoning belongs in
   // one place, and a copy of it here would be the copy nobody updates.
   registerStyles(HIGHLIGHT_CSS)
 

@@ -53,13 +53,13 @@ importers:
 
   packages/element:
     dependencies:
-      '@openleaf/core':
+      '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
-      '@openleaf/paste':
+      '@openleaf-editor/paste':
         specifier: workspace:*
         version: link:../paste
-      '@openleaf/ui':
+      '@openleaf-editor/ui':
         specifier: workspace:*
         version: link:../ui
       prosemirror-commands:
@@ -86,16 +86,16 @@ importers:
 
   packages/paste:
     devDependencies:
-      '@openleaf/core':
+      '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
 
   packages/plugins-highlight:
     dependencies:
-      '@openleaf/core':
+      '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
-      '@openleaf/ui':
+      '@openleaf-editor/ui':
         specifier: workspace:*
         version: link:../ui
       prosemirror-model:
@@ -114,13 +114,13 @@ importers:
 
   packages/plugins-import:
     dependencies:
-      '@openleaf/core':
+      '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
-      '@openleaf/paste':
+      '@openleaf-editor/paste':
         specifier: workspace:*
         version: link:../paste
-      '@openleaf/ui':
+      '@openleaf-editor/ui':
         specifier: workspace:*
         version: link:../ui
       prosemirror-state:
@@ -136,23 +136,23 @@ importers:
 
   packages/plugins-import-docx:
     dependencies:
-      '@openleaf/plugins-import':
+      '@openleaf-editor/plugins-import':
         specifier: workspace:*
         version: link:../plugins-import
       mammoth:
         specifier: ^1.8.0
         version: 1.12.1
     devDependencies:
-      '@openleaf/core':
+      '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
 
   packages/plugins-table:
     dependencies:
-      '@openleaf/core':
+      '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
-      '@openleaf/ui':
+      '@openleaf-editor/ui':
         specifier: workspace:*
         version: link:../ui
       prosemirror-keymap:
@@ -176,13 +176,13 @@ importers:
 
   packages/sanitize:
     devDependencies:
-      '@openleaf/core':
+      '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
 
   packages/ui:
     dependencies:
-      '@openleaf/core':
+      '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
       prosemirror-state:

@@ -12,7 +12,7 @@ export function resolveDocument(explicit?: Document): Document {
   const doc = explicit ?? (typeof document !== 'undefined' ? document : undefined)
   if (!doc) {
     throw new Error(
-      '@openleaf/paste: no Document available. Pass { document } when running ' +
+      '@openleaf-editor/paste: no Document available. Pass { document } when running ' +
         'outside a browser.',
     )
   }

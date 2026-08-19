@@ -1,4 +1,4 @@
-import { coreSchema, parseHtml, serializeHtml } from '@openleaf/core'
+import { coreSchema, parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { describe, expect, it } from 'vitest'
 import { normalizeGeneric, normalizePastedHtml } from '../src/index.js'
 

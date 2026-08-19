@@ -32,7 +32,7 @@ export interface DOMPurifyConfig {
  *
  * ```js
  * import DOMPurify from 'dompurify'
- * import { DEFAULT_POLICY, toDOMPurifyConfig } from '@openleaf/sanitize'
+ * import { DEFAULT_POLICY, toDOMPurifyConfig } from '@openleaf-editor/sanitize'
  *
  * const clean = DOMPurify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY))
  * ```
@@ -95,7 +95,7 @@ export function toDOMPurifyConfig(policy: Policy): DOMPurifyConfig {
 export function toBleachConfig(policy: Policy): string {
   const tags = Object.keys(policy.elements)
   const lines: string[] = [
-    '# Generated from @openleaf/sanitize. Do not edit by hand -- regenerate.',
+    '# Generated from @openleaf-editor/sanitize. Do not edit by hand -- regenerate.',
     `# policy version ${policy.version}`,
     '',
     'ALLOWED_TAGS = [',
@@ -173,7 +173,7 @@ export function toHtmlPurifierConfig(policy: Policy): string {
     .join(',')
 
   return `<?php
-// Generated from @openleaf/sanitize. Do not edit by hand -- regenerate.
+// Generated from @openleaf-editor/sanitize. Do not edit by hand -- regenerate.
 // policy version ${policy.version}
 
 function openleaf_purifier(): HTMLPurifier {

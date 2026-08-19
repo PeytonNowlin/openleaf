@@ -49,7 +49,7 @@
 >   pastes from Word and Google Docs, drives every toolbar control by keyboard,
 >   writes back to the textarea, posts through a real form submit, and does not
 >   alter a document that is opened and saved untouched
-> - **`@openleaf/sanitize`** — one policy as data, generating configuration for
+> - **`@openleaf-editor/sanitize`** — one policy as data, generating configuration for
 >   DOMPurify, Python `bleach` and PHP HTMLPurifier so every runtime enforces the
 >   same rules
 > - **Tables** — read and written by every deployment; editing is an opt-in
@@ -315,7 +315,7 @@ upgrades is worth more than one that can move a button.
 Registering your own is the same shape:
 
 ```ts
-import { registerSkin } from '@openleaf/ui'
+import { registerSkin } from '@openleaf-editor/ui'
 
 registerSkin({
   name: 'acme',
@@ -403,7 +403,7 @@ button; the `toolbar` attribute decides whether and where it appears. So
 installing a plugin never silently rearranges somebody's toolbar:
 
 ```js
-import { registerToolbarItem } from '@openleaf/ui'
+import { registerToolbarItem } from '@openleaf-editor/ui'
 
 registerToolbarItem({
   id: 'insertTable',
@@ -428,7 +428,7 @@ itself under `style-src 'self'` with no `'unsafe-inline'`, which is what
 government and enterprise integrators actually run. There is deliberately **no
 `<style>` injection fallback**: it is blocked by exactly the policies that would
 need it, and it fails silently. If `adoptedStyleSheets` is unavailable you get a
-console warning naming `@openleaf/ui/openleaf.css` to link instead.
+console warning naming `@openleaf-editor/ui/openleaf.css` to link instead.
 
 No `innerHTML` anywhere in the UI package either, so Trusted Types
 (`require-trusted-types-for 'script'`) does not block the icon sprite.
@@ -474,7 +474,7 @@ a failure that is very hard to read from the symptoms.
 Or as modules, where the bundler handles it:
 
 ```ts
-import { installTableEditing } from '@openleaf/plugins-table'
+import { installTableEditing } from '@openleaf-editor/plugins-table'
 installTableEditing()
 ```
 
@@ -560,11 +560,11 @@ it syntax highlighting is a poor experience for someone writing Python.
 So the default is small and honest about its coverage, and the seam is public:
 
 ```ts
-import { setHighlighter } from '@openleaf/plugins-highlight'
+import { setHighlighter } from '@openleaf-editor/plugins-highlight'
 setHighlighter((source, language) => /* Prism, refractor, highlight.js … */)
 ```
 
-Same shape as [`@openleaf/sanitize`](packages/sanitize), which ships a policy and
+Same shape as [`@openleaf-editor/sanitize`](packages/sanitize), which ships a policy and
 lets you enforce it with DOMPurify. The valuable thing is the integration point,
 not a reimplementation of somebody else's decade of work. The seam is tested by
 driving it with refractor, because an extension point nobody has run is one that
@@ -686,7 +686,7 @@ The point at which someone could actually replace TinyMCE with this.
 
 - [x] **Toolbar and UI primitives** — real buttons, roving tabindex,
   `aria-pressed` reflecting mark state, no `div onclick`. Every button is a
-  ProseMirror command plus a selection predicate from `@openleaf/core`, so the
+  ProseMirror command plus a selection predicate from `@openleaf-editor/core`, so the
   toolbar package holds no editing knowledge and a plugin, a keyboard shortcut
   and a test all drive the editor the same way a button does. See
   [the toolbar section](#the-toolbar) and
@@ -703,7 +703,7 @@ The point at which someone could actually replace TinyMCE with this.
   should be.
 - [ ] **Images** — upload hook and resize. Insert-by-URL with alt-text
   prompting already works.
-- [x] **`@openleaf/sanitize`** — the allowlist as *data*, generating config for
+- [x] **`@openleaf-editor/sanitize`** — the allowlist as *data*, generating config for
   DOMPurify, `bleach` and HTMLPurifier. Every CMS team hand-rolls this in each
   language and discovers the divergence when something gets through the weakest
   one.
@@ -809,13 +809,13 @@ which feature spent the budget — so the blame lands on whatever shipped last:
   -------------------------------------
   prosemirror-view             96.0 KB
   prosemirror-model            44.1 KB
-  @openleaf/ui                 34.7 KB
+  @openleaf-editor/ui                 34.7 KB
   prosemirror-transform        31.0 KB
-  @openleaf/core               17.6 KB
+  @openleaf-editor/core               17.6 KB
   prosemirror-commands         12.3 KB
   prosemirror-state            11.8 KB
-  @openleaf/element             6.9 KB
-  @openleaf/paste               6.6 KB
+  @openleaf-editor/element             6.9 KB
+  @openleaf-editor/paste               6.6 KB
   prosemirror-history           6.0 KB
   prosemirror-schema-list       3.6 KB
   -------------------------------------
@@ -829,7 +829,7 @@ control** — anything the editor strips can be re-added with developer tools,
 because the editor runs entirely under the user's control.
 
 **You must sanitize on the server.**
-[`@openleaf/sanitize`](packages/sanitize) ships the canonical allowlist as data
+[`@openleaf-editor/sanitize`](packages/sanitize) ships the canonical allowlist as data
 so your server enforces the same policy in the same terms, and generates
 configuration for DOMPurify, Python `bleach` and PHP HTMLPurifier from it.
 Treating editor output as trusted HTML is a vulnerability in *your* application,
@@ -883,7 +883,7 @@ weaken them.
 A plugin can contribute node and mark types:
 
 ```ts
-import { registerSchemaExtension } from '@openleaf/core'
+import { registerSchemaExtension } from '@openleaf-editor/core'
 
 registerSchemaExtension({
   id: 'acme/callout',
@@ -939,7 +939,7 @@ behaviour.
 
 ### `schema` was deleted, not deprecated
 
-`@openleaf/core` used to export a `Schema` instance. It no longer does, and that
+`@openleaf-editor/core` used to export a `Schema` instance. It no longer does, and that
 was the point of the refactor: a retained const typechecks and then fails in the
 field, because a node built from one schema instance is rejected by a document
 built from another. Use `state.schema` inside a command, or `coreSchema()`
