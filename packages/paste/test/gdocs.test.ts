@@ -103,6 +103,16 @@ describe('content that must survive', () => {
     expect(out).toContain('One')
     expect(out).toContain('Two')
   })
+
+  it('unwraps the Google Sheets origin wrapper so the table is editable', () => {
+    const html =
+      '<google-sheets-html-origin><table><tbody><tr><td>A</td></tr></tbody></table></google-sheets-html-origin>'
+    expect(detectSource(html)).toBe('gdocs')
+    const out = normalizePastedHtml(html)
+    expect(out).not.toContain('google-sheets-html-origin')
+    expect(out).toContain('<table>')
+    expect(out).toContain('A')
+  })
 })
 
 describe('idempotence', () => {

@@ -62,6 +62,12 @@ function stripGoogleJunk(container: Element): void {
     if (/^docs-internal-guid/i.test(id)) el.removeAttribute('id')
   }
 
+  // Sheets wraps the clipboard table in a custom element. Leaving it would
+  // make the whole paste one opaque atom; it is bookkeeping, like the guid.
+  for (const el of Array.from(container.querySelectorAll('google-sheets-html-origin'))) {
+    unwrap(el)
+  }
+
   // A <b> or <i> that survived semantic extraction but carries no emphasis
   // is Google's structural wrapper, not the author's intent.
   for (const el of Array.from(container.querySelectorAll('b,i'))) {
