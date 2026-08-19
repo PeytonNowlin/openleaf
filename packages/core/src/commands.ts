@@ -187,24 +187,37 @@ export const wrapInBlockquote: Command = nodeCommand('blockquote', (type) => wra
 
 export const toggleBlockquote: Command = (state, dispatch, view) => {
   if (!isNodeActive(state, 'blockquote')) return wrapInBlockquote(state, dispatch, view)
-  // Lifting out of a quote is `liftListItem`-shaped work; reuse ProseMirror's
-  // generic lift via the list helper on the enclosing paragraph.
-  return liftOut(state, dispatch)
+  return unwrapBlockquote(state, dispatch)
 }
 
-/** Lift the selection out of its immediate wrapper. */
-function liftOut(state: EditorState, dispatch?: (tr: import('prosemirror-state').Transaction) => void): boolean {
-  const { $from, $to } = state.selection
-  const range = $from.blockRange($to)
-  if (!range) return false
-  const target = range.depth > 0 ? range.depth - 1 : 0
-  if (target < 0) return false
-  if (dispatch) {
-    const tr = state.tr
-    tr.lift(range, target)
-    dispatch(tr.scrollIntoView())
+/**
+ * Unwrap the enclosing blockquote, not the innermost block.
+ *
+ * The previous implementation lifted `$from.blockRange()` by `depth - 1`.
+ * Inside `<blockquote><ul><li><p>…</p></li></ul></blockquote>` that range is
+ * the paragraph, and lifting it into the list is illegal (`bullet_list`
+ * only accepts `list_item`). The command threw `TransformError` on a toolbar
+ * click. Replacing the blockquote node with its children is valid wherever
+ * a blockquote is, because its content matches the parent content expression.
+ */
+function unwrapBlockquote(
+  state: EditorState,
+  dispatch?: (tr: import('prosemirror-state').Transaction) => void,
+): boolean {
+  const { $from } = state.selection
+  const type = nodeIn(state, 'blockquote')
+  if (!type) return false
+
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type !== type) continue
+    if (dispatch) {
+      const node = $from.node(depth)
+      const pos = $from.before(depth)
+      dispatch(state.tr.replaceWith(pos, pos + node.nodeSize, node.content).scrollIntoView())
+    }
+    return true
   }
-  return true
+  return false
 }
 
 export const insertHorizontalRule: Command = (state, dispatch) => {

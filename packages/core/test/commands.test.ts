@@ -157,6 +157,17 @@ describe('block commands', () => {
     expect(html(unquoted)).toBe('<p>quote me</p>')
   })
 
+  it('unwraps a quoted list without throwing', () => {
+    // The previous lift targeted the paragraph inside the list item, which
+    // `bullet_list` will not accept. Unwrapping has to replace the blockquote
+    // itself, leaving the list intact.
+    const state = cursorAt(
+      stateFrom('<blockquote><ul><li><p>item</p></li></ul></blockquote>'),
+      5,
+    )
+    expect(html(run(state, toggleBlockquote))).toBe('<ul><li><p>item</p></li></ul>')
+  })
+
   it('toggles a code block on and off', () => {
     const code = run(cursorAt(stateFrom('<p>const x = 1</p>'), 3), toggleCodeBlock)
     expect(html(code)).toBe('<pre><code>const x = 1</code></pre>')
