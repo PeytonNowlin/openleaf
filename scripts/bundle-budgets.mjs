@@ -27,7 +27,11 @@ export const BUDGETS_KB = {
   // core cannot delegate -- reading the `text-align` and `color` markup an
   // inherited archive already contains, which is the same reasoning that keeps
   // the table schema here while table editing is opt-in.
-  'openleaf.min.js': 92,
+  //
+  // Raised from 92 when captions, colgroup and cell style joined the schema.
+  // Those have to live in core or an inherited table degrades to an uneditable
+  // atom, and a caption it cannot read is a caption it deletes.
+  'openleaf.min.js': 94,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,

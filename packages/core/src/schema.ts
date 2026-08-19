@@ -340,11 +340,15 @@ export const coreMarks: Record<string, MarkSpec> = {
     attrs: { color: {} },
     parseDOM: [
       {
-        // The CSSOM expands the `background` shorthand, so Word's
-        // `style="background:yellow"` arrives here as well without a second rule.
-        style: 'background-color',
-        getAttrs(value) {
-          const color = safeColor(value)
+        // Restricted to span so a cell's own background is not also read as a
+        // highlight mark on every character inside it. The CSSOM still expands
+        // the `background` shorthand on the element, so Word's
+        // `style="background:yellow"` arrives here without a second rule.
+        tag: 'span',
+        getAttrs(dom) {
+          const el = dom as HTMLElement
+          const fromAttr = parseDeclarations(el.getAttribute('style')).get('background-color')
+          const color = safeColor(el.style.backgroundColor) ?? safeColor(fromAttr)
           return color ? { color } : false
         },
       },

@@ -38,7 +38,12 @@ export interface ImageResult {
   height: string | null
 }
 
-interface FieldSpec {
+export interface FieldOption {
+  value: string
+  label: string
+}
+
+export interface FieldSpec {
   name: string
   label: string
   type?: string
@@ -47,6 +52,8 @@ interface FieldSpec {
   hint?: string
   /** For `type: 'file'`: the accept list. */
   accept?: string
+  /** For `type: 'select'`. */
+  options?: readonly FieldOption[]
 }
 
 /** What a commit attempt produced: a value to resolve with, or a message to show. */
@@ -72,13 +79,15 @@ const DIALOG_CSS = `
 .ol-dialog h2 { margin: 0; font-size: 1.1em; }
 .ol-dialog label { display: grid; gap: 4px; font-weight: 500; }
 .ol-dialog .ol-hint { font-weight: 400; font-size: .9em; opacity: .75; }
-.ol-dialog input[type="text"], .ol-dialog input[type="url"], .ol-dialog input[type="file"] {
+.ol-dialog input[type="text"], .ol-dialog input[type="url"], .ol-dialog input[type="file"],
+.ol-dialog input[type="color"], .ol-dialog input[type="number"], .ol-dialog select {
   box-sizing: border-box; width: 100%; padding: 6px 8px;
   border: 1px solid var(--openleaf-color-border, #d1d9e0);
   border-radius: var(--openleaf-radius, 4px);
   background: var(--openleaf-color-surface, #fff);
   color: inherit; font: inherit;
 }
+.ol-dialog input[type="color"] { height: 2.25rem; padding: 2px; }
 .ol-dialog .ol-check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
 .ol-dialog .ol-check input { margin: 0; }
 .ol-dialog .ol-actions { display: flex; justify-content: flex-end; gap: 8px; }
@@ -169,7 +178,7 @@ function showForm<T>(
     form.appendChild(note)
   }
 
-  const inputs = new Map<string, HTMLInputElement>()
+  const inputs = new Map<string, HTMLInputElement | HTMLSelectElement>()
   for (const field of fields) {
     const label = doc.createElement('label')
     const text = doc.createElement('span')
@@ -181,20 +190,34 @@ function showForm<T>(
       hint.textContent = field.hint
       label.appendChild(hint)
     }
-    const input = doc.createElement('input')
-    input.type = field.type ?? 'text'
-    input.name = field.name
-    if (field.type === 'file') {
-      if (field.accept) input.accept = field.accept
+    if (field.type === 'select') {
+      const select = doc.createElement('select')
+      select.name = field.name
+      for (const option of field.options ?? []) {
+        const el = doc.createElement('option')
+        el.value = option.value
+        el.textContent = option.label
+        select.appendChild(el)
+      }
+      select.value = field.value ?? ''
+      label.appendChild(select)
+      inputs.set(field.name, select)
     } else {
-      input.value = field.value ?? ''
+      const input = doc.createElement('input')
+      input.type = field.type ?? 'text'
+      input.name = field.name
+      if (field.type === 'file') {
+        if (field.accept) input.accept = field.accept
+      } else {
+        input.value = field.value ?? ''
+      }
+      // `required` is deliberately not set on the element. The browser's own
+      // validation bubble cannot be read by a screen reader in every engine and
+      // cannot express "one of these two fields"; the commit step reports into a
+      // live region instead.
+      label.appendChild(input)
+      inputs.set(field.name, input)
     }
-    // `required` is deliberately not set on the element. The browser's own
-    // validation bubble cannot be read by a screen reader in every engine and
-    // cannot express "one of these two fields"; the commit step reports into a
-    // live region instead.
-    label.appendChild(input)
-    inputs.set(field.name, input)
     form.appendChild(label)
   }
 
@@ -289,7 +312,7 @@ function showForm<T>(
       const values: Record<string, string> = {}
       const files: Record<string, File | undefined> = {}
       for (const [name, input] of inputs) {
-        if (input.type === 'file') files[name] = input.files?.[0]
+        if (input instanceof HTMLInputElement && input.type === 'file') files[name] = input.files?.[0]
         else values[name] = input.value.trim()
       }
       if (checkbox) values[checkbox.name] = checkbox.checked ? 'on' : ''
@@ -338,7 +361,7 @@ function showForm<T>(
     dialog.showModal()
     focusFirst()
     const first = fields[0] ? inputs.get(fields[0].name) : undefined
-    if (first && first.type !== 'file') first.select()
+    if (first instanceof HTMLInputElement && first.type !== 'file') first.select()
   })
 }
 
@@ -352,6 +375,29 @@ function hash(value: string): number {
   let out = 0
   for (let i = 0; i < value.length; i += 1) out = (out * 31 + value.charCodeAt(i)) | 0
   return out
+}
+
+export interface PromptFormOptions {
+  extraCheckbox?: { name: string; label: string; hint?: string; checked?: boolean }
+  note?: string
+  busyLabel?: string
+}
+
+/**
+ * A generic modal form, used by table property dialogs and anything else that
+ * is a handful of labelled fields rather than a specialised prompt.
+ */
+export function promptFields<T>(
+  doc: Document,
+  title: string,
+  fields: FieldSpec[],
+  options: PromptFormOptions,
+  commit: (
+    values: Record<string, string>,
+    files: Record<string, File | undefined>,
+  ) => Promise<{ value: T } | { error: string }> | { value: T } | { error: string },
+): Promise<T | null> {
+  return showForm(doc, title, fields, options, commit)
 }
 
 export async function promptForLink(

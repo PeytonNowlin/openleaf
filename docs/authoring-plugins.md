@@ -754,24 +754,27 @@ For nodes, there is less machinery and more judgement:
   only, gated on `docChanged || storedMarksSet`. If your node needs to announce
   itself, that is new work, and per `CONTRIBUTING.md` it owes real screen reader
   testing — "we do not accept axe-core passing as evidence of accessibility".
-- **Learn from the caption bug.** `<caption>` is currently dropped from tables,
-  and `tables.ts` is explicit that this is a defect rather than a decision,
-  because "a caption is a table's accessible name". If your node has an
-  accessible-name-bearing child, model it or say plainly that you did not.
+- **Learn from the caption bug.** `<caption>` used to be dropped from tables.
+  It is now preserved as furniture on the table node and editable through the
+  table plugin's caption dialog. It is still not a child node, because
+  `prosemirror-tables` derives its cell map from `table.childCount`. If your
+  node has an accessible-name-bearing child, model it or say plainly that you
+  did not.
 
 ### 4.5 The bundle budget
 
 ```
-openleaf.min.js            289.3 KB min     91.7 KB gzip
-openleaf-tables.min.js      38.6 KB min     12.8 KB gzip
+openleaf.min.js            292.5 KB min     92.6 KB gzip
+openleaf-tables.min.js      53.3 KB min     17.1 KB gzip
 openleaf-colour.min.js        9.7 KB min      3.7 KB gzip
 ```
 
-The gate in `scripts/bundle-budgets.mjs` fails above **92 KB gzipped for the core
-bundle**, so there is about 0.3 KB of headroom. Assume you have none — and read
+The gate in `scripts/bundle-budgets.mjs` fails above **94 KB gzipped for the core
+bundle**, so there is about 1.4 KB of headroom. Assume you have none — and read
 the raise from 90 to 92 as the cautionary tale it is: alignment, colour and image
 upload cost 3.1 KB between them, the colour picker had to move out to its own
-bundle, and the budget still went up.
+bundle, and the budget still went up. Captions and cell style then cost another
+raise, for the same reason table nodes live in core.
 
 - **Icons go through `registerIcons`, from your own bundle.** Eleven table icons
   are about a kilobyte, and `icons.ts` keeps `PATHS` mutable specifically so a

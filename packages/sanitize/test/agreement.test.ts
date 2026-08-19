@@ -38,6 +38,12 @@ const SCHEMA_NATIVE = [
   '<table border="1" cellpadding="4" cellspacing="0" width="100%" class="data">' +
     '<tbody><tr class="odd"><th scope="col" abbr="Q1">Region</th></tr>' +
     '<tr><td colspan="2" rowspan="1" headers="r1">North</td></tr></tbody></table>',
+  // Caption and colgroup. The schema preserves both verbatim, so a policy that
+  // stripped them would delete a table's accessible name on the way to the
+  // database -- the same class of drift that produced `RegionNorth` above.
+  '<table><caption class="cap">Q1 <strong>results</strong></caption>' +
+    '<colgroup><col width="200"><col width="80"></colgroup>' +
+    '<tbody><tr><td style="background-color:#cc0000" valign="middle">North</td></tr></tbody></table>',
 ]
 
 describe('the default policy accepts everything the editor emits', () => {

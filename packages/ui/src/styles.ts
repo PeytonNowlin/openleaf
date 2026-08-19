@@ -337,6 +337,15 @@ export const CSS = `
   position: relative;
 }
 
+/* Presentational valign is otherwise beaten by the rule above, which would
+   make the cell-properties dialog a no-op on screen. */
+.ol-editor .ol-content .ProseMirror td[valign="middle"],
+.ol-editor .ol-content .ProseMirror th[valign="middle"] { vertical-align: middle; }
+.ol-editor .ol-content .ProseMirror td[valign="bottom"],
+.ol-editor .ol-content .ProseMirror th[valign="bottom"] { vertical-align: bottom; }
+.ol-editor .ol-content .ProseMirror td[valign="baseline"],
+.ol-editor .ol-content .ProseMirror th[valign="baseline"] { vertical-align: baseline; }
+
 .ol-editor .ol-content .ProseMirror th {
   background: var(--ol-surface-hover);
   font-weight: 600;

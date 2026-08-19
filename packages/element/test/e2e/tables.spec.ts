@@ -70,6 +70,7 @@ test.describe('with the table bundle loaded', () => {
     // problem authors rarely go back and fix.
     await editor(page).getByText('After the table.').click()
     await toolbar(page).getByRole('button', { name: 'Insert table' }).click()
+    await page.getByRole('gridcell', { name: '3 by 3 table' }).click()
 
     await expect.poll(() => value(page)).toMatch(/<th scope="col">/)
     await expect(editor(page).locator('table')).toHaveCount(2)
@@ -157,5 +158,41 @@ test.describe('with the table bundle loaded', () => {
   test('the round trip keeps legacy table attributes', async ({ page }) => {
     await expect.poll(() => value(page)).toContain('border="1"')
     await expect.poll(() => value(page)).toContain('cellpadding="4"')
+  })
+
+  test('edits a caption from the toolbar dialog', async ({ page }) => {
+    await editor(page).getByText('North').click()
+    await toolbar(page).getByRole('button', { name: 'Table caption' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Table caption' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByLabel('Caption').fill('Regional totals')
+    await dialog.getByRole('button', { name: 'Save' }).click()
+    await expect.poll(() => value(page)).toContain('<caption>Regional totals</caption>')
+  })
+
+  test('sets cell vertical alignment from cell properties', async ({ page }) => {
+    await editor(page).getByText('North').click()
+    await toolbar(page).getByRole('button', { name: 'Cell properties' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Cell properties' })
+    await dialog.getByLabel('Vertical alignment').selectOption('middle')
+    await dialog.getByRole('button', { name: 'Save' }).click()
+    await expect.poll(() => value(page)).toMatch(/<td[^>]*valign="middle"/)
+  })
+
+  test('opens a context menu on a table cell', async ({ page }) => {
+    const cell = editor(page).locator('td', { hasText: 'North' })
+    await cell.click()
+    await cell.click({ button: 'right' })
+    const menu = page.getByRole('menu', { name: 'Table' })
+    await expect(menu).toBeVisible()
+    await menu.getByRole('menuitem', { name: 'Insert row below' }).click()
+    await expect(editor(page).locator('table tr')).toHaveCount(3)
+  })
+
+  test('inserts a nested table from the size grid', async ({ page }) => {
+    await editor(page).getByText('North').click()
+    await toolbar(page).getByRole('button', { name: 'Insert table' }).click()
+    await page.getByRole('gridcell', { name: '2 by 2 table' }).click()
+    await expect(editor(page).locator('table table')).toHaveCount(1)
   })
 })
