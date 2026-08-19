@@ -13,9 +13,12 @@
 
 <p align="center">
   <a href="https://peytonnowlin.github.io/openleaf/"><strong>Try the live demo &rarr;</strong></a>
+  &nbsp;&middot;&nbsp;
+  <a href="https://www.npmjs.com/package/@openleaf-editor/element"><strong>npm @beta &rarr;</strong></a>
 </p>
 
 <p align="center">
+  <a href="#using-it">Install</a> &middot;
   <a href="#the-toolbar">Toolbar</a> &middot;
   <a href="#round-trip-fidelity">Fidelity</a> &middot;
   <a href="#paste-fidelity">Paste</a> &middot;
@@ -25,9 +28,9 @@
 
 ---
 
-> ## ⚠️ Status: pre-alpha
+> ## ⚠️ Status: beta (`0.1.0-beta.0`)
 >
-> This repository was started on **2026-08-18**. There is now a working editor
+> Packages are on npm under `@openleaf-editor/*`. There is a working editor
 > with a toolbar, but **it has not been used in production by anybody, and its
 > accessibility has never been driven by a real screen reader.** Treat it
 > accordingly.
@@ -767,9 +770,72 @@ ChromeOS — which is not optional, because K-12 is majority Chromebook.
 
 ---
 
-## What using it will look like
+## Using it
 
-No build step. A script tag and an element.
+<a id="using-it"></a>
+
+### From npm
+
+This is a **beta**. Install with the tag so you stay on the prerelease line:
+
+```bash
+npm install @openleaf-editor/element@beta
+```
+
+```ts
+import '@openleaf-editor/element'
+```
+
+```html
+<form method="post">
+  <label for="body">Post body</label>
+  <openleaf-editor for="body" aria-label="Post body"></openleaf-editor>
+  <textarea id="body" name="body" hidden><?= $post->body ?></textarea>
+  <button type="submit">Save</button>
+</form>
+```
+
+Optional plugins, each a separate package. Load them after the element, and
+keep the `@beta` tag:
+
+```bash
+npm install @openleaf-editor/plugins-table@beta \
+            @openleaf-editor/plugins-highlight@beta \
+            @openleaf-editor/plugins-import@beta \
+            @openleaf-editor/plugins-import-docx@beta
+```
+
+```ts
+import { installTableEditing } from '@openleaf-editor/plugins-table'
+import { installSyntaxHighlighting } from '@openleaf-editor/plugins-highlight'
+import { installImport } from '@openleaf-editor/plugins-import'
+import { installDocxImport } from '@openleaf-editor/plugins-import-docx'
+
+installTableEditing()
+installSyntaxHighlighting()
+installImport()
+installDocxImport()
+```
+
+Server-side sanitization is [`@openleaf-editor/sanitize`](https://www.npmjs.com/package/@openleaf-editor/sanitize).
+It is not optional: treat editor output as untrusted HTML.
+
+| Package | What it is |
+|---|---|
+| [`@openleaf-editor/element`](https://www.npmjs.com/package/@openleaf-editor/element) | `<openleaf-editor>` custom element — start here |
+| [`@openleaf-editor/core`](https://www.npmjs.com/package/@openleaf-editor/core) | Schema, HTML I/O, preservation, commands |
+| [`@openleaf-editor/paste`](https://www.npmjs.com/package/@openleaf-editor/paste) | Word / Google Docs paste normalizers |
+| [`@openleaf-editor/ui`](https://www.npmjs.com/package/@openleaf-editor/ui) | Toolbar, icons, dialogs, theme tokens |
+| [`@openleaf-editor/sanitize`](https://www.npmjs.com/package/@openleaf-editor/sanitize) | Allowlist as data + DOMPurify / bleach / HTMLPurifier |
+| [`@openleaf-editor/plugins-table`](https://www.npmjs.com/package/@openleaf-editor/plugins-table) | Opt-in table editing |
+| [`@openleaf-editor/plugins-highlight`](https://www.npmjs.com/package/@openleaf-editor/plugins-highlight) | Opt-in syntax highlighting and source formatting |
+| [`@openleaf-editor/plugins-import`](https://www.npmjs.com/package/@openleaf-editor/plugins-import) | Opt-in HTML / text file import |
+| [`@openleaf-editor/plugins-import-docx`](https://www.npmjs.com/package/@openleaf-editor/plugins-import-docx) | Opt-in Word `.docx` import |
+
+### Script tag, no build step
+
+Host the bundles from `node demo/build.mjs` yourself. A script tag and an
+element:
 
 ```html
 <form method="post">
@@ -780,16 +846,6 @@ No build step. A script tag and an element.
 </form>
 
 <script src="/js/openleaf.min.js"></script>
-```
-
-From npm, for a bundler. This is a **beta** — install with the tag:
-
-```bash
-npm install @openleaf-editor/element@beta
-```
-
-```ts
-import '@openleaf-editor/element'
 ```
 
 The element keeps the textarea in sync and writes to it before submit, so
@@ -1013,8 +1069,8 @@ The most useful contributions at this stage, in order:
    CKEditor for a specific reason, that reason should shape the roadmap. Open
    an issue.
 
-The fastest way to try it is [the hosted demo](https://peytonnowlin.github.io/openleaf/) —
-no clone, no install. To work on it:
+The fastest way to try it is [the hosted demo](https://peytonnowlin.github.io/openleaf/),
+or `npm install @openleaf-editor/element@beta`. To work on the repo:
 
 ```bash
 pnpm install

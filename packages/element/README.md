@@ -2,7 +2,8 @@
 
 The `<openleaf-editor>` custom element: OpenLeaf's drop-in for CMS forms. HTML in, HTML out, syncs to a textarea.
 
-This is a **beta**. APIs may still change.
+This is a **beta** (`0.1.0-beta.0`). APIs may still change. It has not been
+used in production, and it has not been driven by a real screen reader.
 
 ## Install
 
@@ -23,7 +24,14 @@ import '@openleaf-editor/element'
 </form>
 ```
 
-Optional plugins, each a separate package:
+Optional plugins, each a separate package. Keep the `@beta` tag:
+
+```bash
+npm install @openleaf-editor/plugins-table@beta \
+            @openleaf-editor/plugins-highlight@beta \
+            @openleaf-editor/plugins-import@beta \
+            @openleaf-editor/plugins-import-docx@beta
+```
 
 ```ts
 import { installTableEditing } from '@openleaf-editor/plugins-table'
