@@ -574,12 +574,26 @@ export class OpenLeafEditor extends HTMLElementBase {
     }
     // `onlyIfChanged` makes assignment idempotent: `el.value = el.value` is a
     // no-op instead of an undo step, a change event and a collapsed selection.
-    // The first assignment is the wrappers pushing the server's HTML into an
-    // editor that mounted empty, and undoing that is never what an author means.
+    //
+    // The mount-then-fill exception is narrow on purpose. Every wrapper renders
+    // a bare element and pushes the server's HTML in afterwards, so that fill
+    // lands on an untouched, empty document -- and making it undoable is what
+    // let an author's FIRST Ctrl-Z wipe everything. An assignment onto a
+    // document that already HAS content is a different thing entirely: it is a
+    // "load template" or "reset draft" button replacing the author's work, and
+    // that must stay undoable.
     this.#replaceDocument(html, {
       onlyIfChanged: true,
-      addToHistory: this.#docTouched,
+      addToHistory: this.#docTouched || !this.#isEmptyDocument(),
     })
+  }
+
+  /** An untouched editor holds one empty text block -- what a wrapper mounts. */
+  #isEmptyDocument(): boolean {
+    const doc = this.#view?.state.doc
+    if (!doc) return true
+    const first = doc.firstChild
+    return doc.childCount <= 1 && (!first || (first.isTextblock && first.content.size === 0))
   }
 
   /** Escape hatch for plugins and integrations that need the real view. */

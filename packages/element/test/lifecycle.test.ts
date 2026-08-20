@@ -286,6 +286,21 @@ describe('the value setter', () => {
     expect(el.value).toBe('<p>From the server</p>')
   })
 
+  // The exception is for the wrappers' empty mount, and must not spread to a
+  // "load template" or "reset draft" button, which replaces real work.
+  it('keeps a first assignment onto a document with content undoable', () => {
+    const el = makeEditor('<p>Seeded content</p>')
+    document.body.appendChild(el)
+
+    // No typing first: this is the first programmatic write after mount.
+    el.value = '<p>From a template</p>'
+    expect(el.value).toBe('<p>From a template</p>')
+
+    const view = el.view!
+    undo(view.state, view.dispatch)
+    expect(el.value).toBe('<p>Seeded content</p>')
+  })
+
   it('keeps later assignments undoable', () => {
     const el = makeEditor('')
     document.body.appendChild(el)
