@@ -171,7 +171,7 @@ test.describe('the colour picker', () => {
 
     await button(page, 'Text colour').click()
     await expect(popover(page)).toBeVisible()
-    await popover(page).getByRole('button', { name: 'Red', exact: true }).click()
+    await popover(page).getByRole('gridcell', { name: 'Red', exact: true }).click()
 
     await expect(popover(page)).toBeHidden()
     expect(await stored(page)).toContain('color:#dc2626')
@@ -179,9 +179,10 @@ test.describe('the colour picker', () => {
 
   test('names every swatch, so the grid works without seeing colour', async ({ page }) => {
     await button(page, 'Text colour').click()
-    const swatches = popover(page).getByRole('button')
-    // 32 palette swatches plus the remove-colour button.
-    await expect(swatches).toHaveCount(33)
+    // The swatches are gridcells now, so the grid can say which row and column
+    // the author is in -- the remove-colour control is the only plain button.
+    await expect(popover(page).getByRole('gridcell')).toHaveCount(32)
+    await expect(popover(page).getByRole('button')).toHaveCount(1)
     const unnamed = await popover(page)
       .locator('button')
       .evaluateAll((els) => els.filter((el) => !el.getAttribute('aria-label') && !el.textContent?.trim()).length)
@@ -189,7 +190,7 @@ test.describe('the colour picker', () => {
   })
 
   test('moves focus into the grid and navigates it with the arrow keys', async ({ page }) => {
-    const swatch = (name: string) => popover(page).getByRole('button', { name, exact: true })
+    const swatch = (name: string) => popover(page).getByRole('gridcell', { name, exact: true })
 
     await button(page, 'Text colour').click()
     await expect(swatch('Black')).toBeFocused()
@@ -255,10 +256,10 @@ test.describe('the colour picker', () => {
 
     await button(page, 'Text colour').click()
     await page.getByRole('dialog', { name: 'Text colour' })
-      .getByRole('button', { name: 'Blue', exact: true }).click()
+      .getByRole('gridcell', { name: 'Blue', exact: true }).click()
     await button(page, 'Highlight colour').click()
     await page.getByRole('dialog', { name: 'Highlight colour' })
-      .getByRole('button', { name: 'Yellow', exact: true }).click()
+      .getByRole('gridcell', { name: 'Yellow', exact: true }).click()
 
     const html = await stored(page)
     expect(html).toContain('color:#2563eb')

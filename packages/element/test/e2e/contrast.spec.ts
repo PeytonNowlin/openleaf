@@ -136,7 +136,7 @@ test.describe('colour swatches (SC 1.4.11)', () => {
     await page.locator('.ol-swatch').nth(9).click()
     await page.getByRole('button', { name: /text colour/i }).click()
 
-    const pressed = page.locator('.ol-swatch[aria-pressed="true"]').first()
+    const pressed = page.locator('.ol-swatch[aria-selected="true"]').first()
     await expect(pressed).toHaveCount(1)
 
     const both = await pressed.evaluate((el) => {

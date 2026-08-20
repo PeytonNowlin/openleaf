@@ -41,9 +41,16 @@
  * popover.
  */
 
-import { iconElement, type ToolbarContext, type ToolbarControl } from '@openleaf-editor/ui'
+import {
+  announce,
+  iconElement,
+  t,
+  withLocale,
+  type ToolbarContext,
+  type ToolbarControl,
+} from '@openleaf-editor/ui'
 import type { Command, EditorState } from 'prosemirror-state'
-import { PALETTE_COLUMNS, type Swatch } from './palette.js'
+import { PALETTE_COLUMNS, nameFor, type Swatch } from './palette.js'
 
 export interface PickerOptions {
   /** Accessible name for the trigger and the popover. */
@@ -66,6 +73,12 @@ const SUPPORTS_POPOVER =
 export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): ToolbarControl {
   const { view, host } = ctx
   const doc = host.ownerDocument
+
+  /** A UI string in this editor's own language, with `{name}` placeholders filled. */
+  const say = (source: string, values: Record<string, string> = {}): string =>
+    withLocale(host.getAttribute('lang'), () =>
+      t(source).replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole),
+    )
 
   const wrap = doc.createElement('div')
   wrap.className = 'ol-color'
@@ -114,8 +127,28 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
     popover.hidden = true
   }
 
+  /*
+   * The colour in force, in words.
+   *
+   * The bar under the trigger icon is a preview, and a preview of a colour is
+   * exactly the information a screen reader user does not receive. Named here
+   * instead -- which is what `nameFor` was written for, and what it had never
+   * been called from.
+   */
+  const status = doc.createElement('div')
+  status.className = 'ol-color-status'
+  status.setAttribute('role', 'status')
+  status.setAttribute('aria-live', 'polite')
+  popover.appendChild(status)
+
+  // A real grid, not a pile of thirty-two buttons. Without row structure a
+  // reader can say the name of the swatch under the cursor and nothing about
+  // where in the palette it sits, which is the one thing arrow keys are moving
+  // through. Follows plugins-table/src/grid.ts, the in-repo reference.
   const grid = doc.createElement('div')
   grid.className = 'ol-color-grid'
+  grid.setAttribute('role', 'grid')
+  grid.setAttribute('aria-label', say('Palette'))
   popover.appendChild(grid)
 
   /**
@@ -133,13 +166,24 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
   }
 
   const swatches: HTMLButtonElement[] = []
+  let row: HTMLDivElement | null = null
   options.palette.forEach((swatch, index) => {
+    if (index % PALETTE_COLUMNS === 0) {
+      row = doc.createElement('div')
+      row.className = 'ol-color-row'
+      row.setAttribute('role', 'row')
+      grid.appendChild(row)
+    }
     const button = doc.createElement('button')
     button.type = 'button'
     button.className = 'ol-swatch'
     keepSelection(button)
+    button.setAttribute('role', 'gridcell')
     button.setAttribute('aria-label', swatch.name)
-    button.setAttribute('aria-pressed', 'false')
+    // `aria-selected`, not `aria-pressed`: a gridcell has no pressed state, and
+    // "which colour is in force" is a selection within the grid, which is
+    // exactly what aria-selected means.
+    button.setAttribute('aria-selected', 'false')
     button.title = swatch.name
     button.dataset['olColour'] = swatch.value
     button.style.backgroundColor = swatch.value
@@ -147,7 +191,7 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
     button.tabIndex = index === 0 ? 0 : -1
     button.addEventListener('click', () => choose(swatch.value))
     swatches.push(button)
-    grid.appendChild(button)
+    row?.appendChild(button)
   })
 
   const actions = doc.createElement('div')
@@ -156,7 +200,7 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
   const customLabel = doc.createElement('label')
   customLabel.className = 'ol-color-custom'
   const customText = doc.createElement('span')
-  customText.textContent = 'Custom'
+  customText.textContent = say('Custom')
   const custom = doc.createElement('input')
   custom.type = 'color'
   customLabel.append(customText, custom)
@@ -168,10 +212,13 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
   const clear = doc.createElement('button')
   clear.type = 'button'
   clear.className = 'ol-color-clear'
-  clear.textContent = 'Remove colour'
+  clear.textContent = say('Remove colour')
   keepSelection(clear)
   clear.addEventListener('click', () => {
     options.clear(view.state, view.dispatch, view)
+    // Focus goes back to the text, so nothing the author lands on reports what
+    // just happened. Without this the change is completely silent.
+    announce(host, say('Colour removed'))
     close({ returnFocus: 'content' })
   })
 
@@ -218,7 +265,7 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
     doc.defaultView?.addEventListener('resize', onViewportChange)
     doc.defaultView?.addEventListener('scroll', onViewportChange, true)
 
-    const current = swatches.find((s) => s.getAttribute('aria-pressed') === 'true')
+    const current = swatches.find((s) => s.getAttribute('aria-selected') === 'true')
     focus(current ?? swatches[0])
   }
 
@@ -239,9 +286,12 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
 
   const choose = (color: string): void => {
     options.apply(color)(view.state, view.dispatch, view)
+    // "A colour they can see applied to their selection is the confirmation
+    // they needed" -- true, and it is confirmation only for an author who can
+    // see it. The name is the same confirmation for one who cannot.
+    announce(host, say('{colour} applied', { colour: nameFor(options.palette, color) ?? color }))
     // Back to the text, not to the trigger: the author's next act is almost
-    // always typing, and a colour they can see applied to their selection is the
-    // confirmation they needed.
+    // always typing.
     close({ returnFocus: 'content' })
   }
 
@@ -334,10 +384,13 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
       // the bar is a preview of what the author would get, and what they would
       // get is inherited.
       bar.style.backgroundColor = current ?? 'currentColor'
+      // The same fact in words, for the reader that cannot use the bar.
+      status.textContent =
+        current === null ? say('No colour') : (nameFor(options.palette, current) ?? current)
       for (const swatch of swatches) {
         const value = swatch.dataset['olColour']
-        const pressed = current !== null && value?.toLowerCase() === current.toLowerCase()
-        swatch.setAttribute('aria-pressed', pressed ? 'true' : 'false')
+        const selected = current !== null && value?.toLowerCase() === current.toLowerCase()
+        swatch.setAttribute('aria-selected', selected ? 'true' : 'false')
       }
       if (current !== null) custom.value = normalizeForInput(current)
     },

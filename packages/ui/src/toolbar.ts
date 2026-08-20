@@ -32,11 +32,12 @@
  *    Escape leaves, matching TinyMCE and CKEditor 5 so muscle memory transfers.
  */
 
-import { shortcutFor, type FormatSpec } from '@openleaf-editor/core'
+import { shortcuts, type FormatSpec } from '@openleaf-editor/core'
 import type { EditorState, Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { ensureSprite, iconElement } from './icons.js'
 import { t, onLocaleChange, withLocale } from './i18n.js'
+import { announce, liveRegion } from './live.js'
 import { ToolbarOverflow } from './overflow.js'
 import {
   DEFAULT_LAYOUT,
@@ -127,6 +128,27 @@ function guarded(itemId: string, kind: string, run: () => boolean): boolean {
   }
 }
 
+/**
+ * The `aria-keyshortcuts` spelling of an item's shortcut.
+ *
+ * Not the same string as the tooltip, and deliberately so: the tooltip is for
+ * reading ("Ctrl+B", "⌘B") while this attribute has a defined grammar that
+ * assistive technology parses -- named modifiers joined by `+`, with the
+ * platform's real modifier rather than a symbol.
+ */
+function keyShortcutFor(label: string): string | null {
+  const found = shortcuts.find((entry) => entry.label === label)
+  if (!found) return null
+  const mod =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+      ? 'Meta'
+      : 'Control'
+  return found.keys
+    .split('-')
+    .map((part) => (part === 'Mod' ? mod : part.length === 1 ? part.toUpperCase() : part))
+    .join('+')
+}
+
 export class Toolbar {
   readonly el: HTMLDivElement
 
@@ -137,13 +159,19 @@ export class Toolbar {
   #customs: MountedControl[] = []
   /** Native selects keyed by item id (block type plus any `type: 'select'`). */
   #selects = new Map<string, HTMLSelectElement>()
-  #live: HTMLDivElement
-  #liveTimer: ReturnType<typeof setTimeout> | undefined
   #layout: string
   #label: string
   #formats: readonly FormatSpec[]
   #locale: string | null
   #wantsOverflow: boolean
+  /**
+   * True while the host is showing raw HTML instead of the document.
+   *
+   * Not `setItemState`, which is what the host reaches for elsewhere: that
+   * pushes a value per item and has no way to say "and put every other item
+   * back afterwards". A mode is one flag, and clearing it is one assignment.
+   */
+  #sourceMode = false
   #overflow: ToolbarOverflow | null = null
   #unsubscribe: (() => void) | undefined
   #unlocale: (() => void) | undefined
@@ -168,13 +196,12 @@ export class Toolbar {
     this.el.setAttribute('role', 'toolbar')
     this.el.setAttribute('aria-label', t(this.#label))
 
-    this.#live = doc.createElement('div')
-    this.#live.className = 'ol-live'
-    // Polite and atomic: an assertive region would interrupt the author
-    // mid-word, and a non-atomic one can read partial updates.
-    this.#live.setAttribute('role', 'status')
-    this.#live.setAttribute('aria-live', 'polite')
-    this.#live.setAttribute('aria-atomic', 'true')
+    // Mounted on the HOST, and mounted now rather than on the first
+    // announcement: a region a screen reader has never seen may not be observed
+    // in time to read the text that appears in it. Shared with every other bar
+    // on this editor, so a secondary or floating toolbar is never the one that
+    // speaks into a detached node.
+    liveRegion(host)
 
     this.el.addEventListener('keydown', this.#onKeydown)
     // Re-render when a plugin registers late. Import-time registration races
@@ -201,6 +228,21 @@ export class Toolbar {
     if (this.#view) this.#rerenderPreservingState()
   }
 
+  /**
+   * Enter or leave source view.
+   *
+   * Every control except the one that leaves again goes unavailable. In source
+   * mode a formatting command ran against the hidden document and the textarea
+   * was then reparsed over the top of it, so pressing Bold silently discarded
+   * the edit -- a button that does nothing is better than a button that
+   * destroys work, and a button that says it is unavailable is better still.
+   */
+  setSourceMode(active: boolean): void {
+    if (active === this.#sourceMode) return
+    this.#sourceMode = active
+    if (this.#view) this.update(this.#view.state)
+  }
+
   /** Attach to a view and build the controls. */
   mount(view: EditorView): void {
     this.#view = view
@@ -220,7 +262,7 @@ export class Toolbar {
    * Detach the toolbar AND take its DOM with it.
    *
    * Removing the nodes is part of the contract, not tidiness. The host appends
-   * `el` and `liveRegion` into the editor element and reads that element's
+   * `el` into the editor element and reads that element's
    * `innerHTML` back as document content when it rebuilds -- so a toolbar left
    * behind by `destroy()` becomes the author's document on the next build, and
    * then gets posted to the server.
@@ -231,13 +273,11 @@ export class Toolbar {
     this.#unsubscribe?.()
     this.#unlocale?.()
     this.#overflow?.destroy()
-    clearTimeout(this.#liveTimer)
     this.el.removeEventListener('keydown', this.#onKeydown)
     this.#destroyCustoms()
     this.#controls.clear()
     this.#view = null
     this.el.remove()
-    this.#live.remove()
   }
 
   /**
@@ -260,9 +300,15 @@ export class Toolbar {
     this.#customs = []
   }
 
-  /** The live region element, which the host mounts once. */
+  /**
+   * The editor's live region.
+   *
+   * One per host, shared by every bar on it, and already mounted -- so a host
+   * that appends this is moving a node it already owns rather than adopting a
+   * detached one. Kept on the class because integrations reach for it.
+   */
   get liveRegion(): HTMLDivElement {
-    return this.#live
+    return liveRegion(this.#host)
   }
 
   /* -------------------------------------------------------------- *
@@ -391,9 +437,17 @@ export class Toolbar {
     // it would double up with what the platform already announces.
     button.setAttribute('aria-label', t(spec.label))
 
-    const shortcut = spec.shortcut ? shortcutFor(spec.shortcut) : null
+    // The title is the label and nothing more. Per accname `title` becomes the
+    // DESCRIPTION of an element that already has a name, so "Bold (Ctrl+B)"
+    // beside aria-label="Bold" had NVDA say "Bold, button, Bold Ctrl+B". Equal
+    // to the name, it is dropped rather than read twice; the shortcut moves to
+    // the attribute that exists to carry it.
     const label = t(spec.label)
-    button.title = shortcut ? `${label} (${shortcut})` : label
+    button.title = label
+    if (spec.shortcut) {
+      const keys = keyShortcutFor(spec.shortcut)
+      if (keys) button.setAttribute('aria-keyshortcuts', keys)
+    }
 
     if ((spec.kind ?? 'action') === 'toggle') {
       button.setAttribute('aria-pressed', 'false')
@@ -595,8 +649,11 @@ export class Toolbar {
       const { spec } = control
 
       const readonly = this.#host.hasAttribute('readonly')
+      // `source` itself stays live in source mode: it is the way back out, and
+      // disabling it would strand the author in a textarea.
+      const suspended = this.#sourceMode && spec.id !== 'source'
       const enabled =
-        readonly
+        readonly || suspended
           ? false
           : control.forcedEnabled ??
             guarded(spec.id, 'isEnabled', () =>
@@ -620,7 +677,14 @@ export class Toolbar {
           control.active = active
           control.el.setAttribute('aria-pressed', active ? 'true' : 'false')
           if (isFormattingChange && previous !== null) {
-            transitions.push(`${spec.label} ${active ? 'on' : 'off'}`)
+            // One template key per state rather than a label glued to a bare
+            // "on"/"off". The old form pushed the RAW LOOKUP KEY, so a French
+            // editor showed "Gras" and announced "Bold on" -- and the two state
+            // words had no translation path at all. A template also keeps word
+            // order translatable, which a concatenation never can.
+            transitions.push(
+              t(active ? '{label} on' : '{label} off').replace('{label}', t(spec.label)),
+            )
           }
         }
       }
@@ -631,7 +695,8 @@ export class Toolbar {
       // here means a custom control gets the same disabled treatment as a button
       // without every plugin author having to remember the attribute exists.
       const trigger = control.el.querySelector<HTMLButtonElement>('button.ol-btn')
-      trigger?.setAttribute('aria-disabled', this.#host.hasAttribute('readonly') ? 'true' : 'false')
+      const unavailable = this.#host.hasAttribute('readonly') || this.#sourceMode
+      trigger?.setAttribute('aria-disabled', unavailable ? 'true' : 'false')
       if (!control.update) continue
       guarded(id, 'update', () => {
         control.update?.(state)
@@ -640,7 +705,7 @@ export class Toolbar {
     }
 
     if (this.#selects.size > 0) {
-      const readonly = this.#host.hasAttribute('readonly')
+      const readonly = this.#host.hasAttribute('readonly') || this.#sourceMode
       // Only declared `type: 'select'` items live here. Block type is a rendered
       // control and keeps its own state in sync through its ToolbarControl.
       for (const [id, select] of this.#selects) {
@@ -720,13 +785,7 @@ export class Toolbar {
   }
 
   #announce(message: string): void {
-    // Clear then set on a timer: replacing identical text does not re-announce,
-    // and the delay coalesces a held shortcut into one utterance.
-    this.#live.textContent = ''
-    clearTimeout(this.#liveTimer)
-    this.#liveTimer = setTimeout(() => {
-      this.#live.textContent = message
-    }, 60)
+    announce(this.#host, message)
   }
 
   /* -------------------------------------------------------------- *

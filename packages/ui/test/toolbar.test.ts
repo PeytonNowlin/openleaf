@@ -237,6 +237,36 @@ describe('select controls', () => {
   })
 })
 
+describe('a button with a keyboard shortcut', () => {
+  /*
+   * Per accname, `title` becomes the DESCRIPTION when an element already has a
+   * name. `title="Bold (Ctrl+B)"` beside `aria-label="Bold"` therefore made
+   * NVDA say "Bold, button, Bold Ctrl+B" -- the label read twice, with the
+   * shortcut smuggled in as prose. `aria-keyshortcuts` is the attribute that
+   * exists to carry it.
+   */
+  it('carries the shortcut in aria-keyshortcuts, not in a doubling title', () => {
+    const { toolbar } = mount('bold')
+    const bold = toolbar.el.querySelector<HTMLButtonElement>('[data-ol-id="bold"]')
+    expect(bold?.getAttribute('aria-label')).toBe('Bold')
+    expect(bold?.getAttribute('aria-keyshortcuts')).toBe('Control+B')
+    // Identical to the name, so accname drops it rather than reading it again.
+    expect(bold?.title).toBe('Bold')
+  })
+
+  it('leaves the attribute off a control that has no shortcut', () => {
+    const { toolbar } = mount('source')
+    const source = toolbar.el.querySelector<HTMLButtonElement>('[data-ol-id="source"]')
+    expect(source?.hasAttribute('aria-keyshortcuts')).toBe(false)
+  })
+
+  it('spells a multi-modifier shortcut the way aria-keyshortcuts requires', () => {
+    const { toolbar } = mount('bulletList')
+    const list = toolbar.el.querySelector<HTMLButtonElement>('[data-ol-id="bulletList"]')
+    expect(list?.getAttribute('aria-keyshortcuts')).toBe('Control+Shift+8')
+  })
+})
+
 describe('the alignment items', () => {
   it('are registered as toggles with the alignment they apply', () => {
     const { toolbar } = mount('alignLeft alignCenter alignRight alignJustify')

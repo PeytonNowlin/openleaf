@@ -78,12 +78,17 @@ import {
   ensureSkins,
   ensureStyles,
   imageFilesFrom,
+  announce,
   imageUploaderFor,
+  disposeLiveRegion,
+  liveRegion,
   loadContentCss,
   promptForImage,
   promptHelp,
   registerDefaultItems,
   runUploader,
+  t,
+  withLocale,
   type ColourScheme,
 } from '@openleaf-editor/ui'
 import { baseKeymap } from 'prosemirror-commands'
@@ -118,7 +123,10 @@ const HTMLElementBase = (globalThis.HTMLElement ?? class {}) as typeof HTMLEleme
 
 export class OpenLeafEditor extends HTMLElementBase {
   static get observedAttributes(): string[] {
-    return ['for', 'readonly', 'skin', 'theme', 'lang']
+    // `aria-label` is observed because a framework changes it after mount far
+    // more often than it sets it once: a React editor whose label came from
+    // props never reached the editable region at all.
+    return ['for', 'readonly', 'skin', 'theme', 'lang', 'aria-label']
   }
 
   /**
@@ -130,8 +138,16 @@ export class OpenLeafEditor extends HTMLElementBase {
     if (name === 'skin') applySkin(this, this.getAttribute('skin'))
     if (name === 'theme') applyColourScheme(this, this.#colourScheme())
     if (name === 'readonly') this.#applyReadonly()
-    if (name === 'for' && this.#view) this.#formBridge.rebind()
+    if (name === 'for' && this.#view) {
+      this.#formBridge.rebind()
+      // The name may have come from the old textarea's <label>.
+      this.#view.setProps({})
+    }
     if (name === 'lang') this.#applyLocale()
+    if (name === 'aria-label') {
+      this.#applyHostRole()
+      this.#view?.setProps({})
+    }
   }
 
   #colourScheme(): ColourScheme {
@@ -147,6 +163,7 @@ export class OpenLeafEditor extends HTMLElementBase {
   #floating: FloatingToolbars | null = null
   #formBridge = new FormBridge(this, () => this.value, (html) => { this.value = html })
   #contentHost: HTMLDivElement | null = null
+  /** The Alt+F10 hint, when there is a toolbar for it to describe. */
   #hint: HTMLSpanElement | null = null
   #sourceArea: HTMLTextAreaElement | null = null
   #sourceMode = false
@@ -196,6 +213,8 @@ export class OpenLeafEditor extends HTMLElementBase {
   #unwatchSchema: (() => void) | undefined
   #resizeObserver: ResizeObserver | null = null
   #visualAids = true
+  /** Whether the aids plugin was installed at all. Build-time, like the attribute. */
+  #visualAidsAvailable = true
   #fullscreen = false
   /** True while a real fullscreen session is ours, as opposed to the fallback. */
   #nativeFullscreen = false
@@ -300,15 +319,23 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#initialHtml = initialHtml
     const nestedTextarea =
       textarea && this.contains(textarea) ? textarea : null
+    // An externally bound textarea -- the documented `for=` pattern -- stayed
+    // visible and focusable unless the integrator remembered `hidden`. Forgetting
+    // is not cosmetic: a keyboard user can tab into it, type, and have
+    // `FormBridge.sync()` overwrite every word at submit, silently, at the exact
+    // moment the work was meant to be saved. It still posts while hidden.
+    if (textarea && !nestedTextarea) textarea.hidden = true
     // Nested binding used to `innerHTML = ''` the textarea out of the document,
     // so it was no longer a successful form control. Lift it aside first, then
     // put it back hidden so the form still posts it.
     nestedTextarea?.remove()
     this.innerHTML = ''
     this.classList.add('ol-editor')
+    this.#applyHostRole()
     if (this.hasAttribute('inline')) this.classList.add('ol-inline')
     if (this.hasAttribute('autoresize')) this.classList.add('ol-autoresize')
-    this.#visualAids = this.getAttribute('visualaids') !== 'false'
+    this.#visualAidsAvailable = this.getAttribute('visualaids') !== 'false'
+    this.#visualAids = this.#visualAidsAvailable
     if (this.#visualAids) this.classList.add('ol-visual-aids')
 
     const formats = parseFormatList(this.getAttribute('formats'))
@@ -360,17 +387,25 @@ export class OpenLeafEditor extends HTMLElementBase {
     // aria-describedby. Screen reader users cannot guess the shortcut, and
     // discoverability comes from telling them rather than from choosing a
     // guessable key.
-    const hintId = `ol-hint-${(hintCounter += 1)}`
-    const hint = this.ownerDocument.createElement('span')
-    hint.id = hintId
-    hint.className = 'ol-live'
-    hint.textContent = wantsToolbar
-      ? 'Rich text editor. Press Alt plus F10 for the formatting toolbar.'
-      : 'Rich text editor.'
-    this.appendChild(hint)
-    this.#hint = hint
+    //
+    // It no longer repeats the region's own name. A description is read
+    // immediately after the name, so "Rich text editor" followed by "Rich text
+    // editor. Press Alt plus F10..." made NVDA say the phrase twice -- and with
+    // no toolbar the whole description said nothing the role had not already.
+    if (wantsToolbar) {
+      const hint = this.ownerDocument.createElement('span')
+      hint.id = `ol-hint-${(hintCounter += 1)}`
+      hint.className = 'ol-live'
+      hint.textContent = this.#localised('Press Alt plus F10 for the formatting toolbar.')
+      this.appendChild(hint)
+      this.#hint = hint
+    }
 
-    if (this.#toolbar) this.appendChild(this.#toolbar.liveRegion)
+    // Unconditionally, and not from whichever bar happens to exist. A layout of
+    // `toolbar="none" toolbar2="bold italic"` used to mount no region at all, so
+    // Ctrl+B was silent -- the failure the whole announcement design exists to
+    // prevent. One region per editor, shared by every bar on it.
+    liveRegion(this)
 
     // Held on the instance rather than built inline, because `reconfigure`
     // has to hand the view back the *same* history() it was created with.
@@ -411,12 +446,11 @@ export class OpenLeafEditor extends HTMLElementBase {
         plugins: [...this.#basePlugins, ...createRegisteredPlugins(this.#schema, this.#pluginCache)],
       }),
       editable: () => !this.hasAttribute('readonly'),
-      attributes: {
-        role: 'textbox',
-        'aria-multiline': 'true',
-        'aria-label': this.getAttribute('aria-label') ?? 'Rich text editor',
-        'aria-describedby': hintId,
-      },
+      // A function, not a literal. The literal was evaluated once at
+      // construction, so `readonly` added later never reached the region and a
+      // label changed later never reached it either -- both of which are the
+      // ordinary case, not an edge one.
+      attributes: () => this.#regionAttributes(),
       // Normalize before ProseMirror parses. Word and Google Docs express
       // structure as proprietary CSS, so without this a pasted list arrives as
       // a wall of paragraphs with stray bullet characters in the text.
@@ -518,8 +552,9 @@ export class OpenLeafEditor extends HTMLElementBase {
     // Prefer the bound textarea's form: the documented `for` binding allows
     // the editor to live outside the <form>, next to a hidden textarea inside it.
     this.#formBridge.attach()
-    this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })
-    this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
+    const aidsState = { active: this.#visualAids, enabled: this.#visualAidsAvailable }
+    this.#toolbar?.setItemState('visualAids', aidsState)
+    this.#toolbar2?.setItemState('visualAids', aidsState)
     this.#formBridge.sync()
   }
 
@@ -604,6 +639,10 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#contentHost = null
     this.#hint?.remove()
     this.#hint = null
+    // The shared announcement region is the host's, so no individual toolbar
+    // may remove it -- but it must not survive the editor either, for the same
+    // reason the chrome above does not: #build() falls back to this.innerHTML.
+    disposeLiveRegion(this)
 
     // Presentation state goes too. `ol-fullscreen` is fixed-position, inset 0,
     // at the top of the stacking order, and nothing re-applies it on a rebuild
@@ -711,7 +750,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     if (!this.#sourceMode) {
       const area = this.ownerDocument.createElement('textarea')
       area.className = 'ol-source'
-      area.setAttribute('aria-label', 'HTML source')
+      area.setAttribute('aria-label', this.#localised('HTML source'))
       area.spellcheck = false
       area.readOnly = this.hasAttribute('readonly')
       area.value = serializeHtml(view.state.doc)
@@ -721,6 +760,13 @@ export class OpenLeafEditor extends HTMLElementBase {
       this.#sourceMode = true
       this.#toolbar?.setItemState('source', { active: true })
       this.#toolbar2?.setItemState('source', { active: true })
+      // Every other control goes unavailable: a formatting command here runs
+      // against the hidden document, which `#teardownSource` then reparses over
+      // the top of. The mode change is announced because moving focus into a
+      // textarea full of angle brackets, with no explanation, is disorienting.
+      this.#toolbar?.setSourceMode(true)
+      this.#toolbar2?.setSourceMode(true)
+      announce(this, this.#localised('HTML source view'))
       // Announced before focus so an enhancer can wrap the textarea while it is
       // still inert; focusing first would move the caret and then move the
       // element out from under it.
@@ -738,6 +784,9 @@ export class OpenLeafEditor extends HTMLElementBase {
     contentHost.hidden = false
     this.#toolbar?.setItemState('source', { active: false })
     this.#toolbar2?.setItemState('source', { active: false })
+    this.#toolbar?.setSourceMode(false)
+    this.#toolbar2?.setSourceMode(false)
+    announce(this, this.#localised('Rich text view'))
     view.focus()
   }
 
@@ -880,6 +929,68 @@ export class OpenLeafEditor extends HTMLElementBase {
     view.focus()
   }
 
+  /* -------------------------------------------------------------- *
+   * Accessible semantics of the editable region
+   * -------------------------------------------------------------- */
+
+  /**
+   * The ARIA attributes ProseMirror puts on the editable region.
+   *
+   * Recomputed on every update rather than frozen at construction, which is
+   * what makes `readonly` and a changing name observable at all.
+   */
+  #regionAttributes(): Record<string, string> {
+    const attributes: Record<string, string> = {
+      role: 'textbox',
+      'aria-multiline': 'true',
+      // Always written, never omitted when false. `contenteditable="false"` is
+      // not a signal any screen reader reports, so without this a read-only
+      // editor announced "edit multiline", the author typed, and nothing
+      // happened.
+      'aria-readonly': this.hasAttribute('readonly') ? 'true' : 'false',
+      'aria-label': this.#regionName(),
+    }
+    if (this.#hint) attributes['aria-describedby'] = this.#hint.id
+    return attributes
+  }
+
+  /**
+   * What this editor is called.
+   *
+   * The documented integration is `<label for="body">` beside
+   * `<textarea id="body">`, and that label names the TEXTAREA -- the editable
+   * region is a different element entirely, so it inherited nothing. Every
+   * integrator who followed the README and did not also duplicate the text as
+   * `aria-label` shipped an editor called "Rich text editor", and two of them on
+   * one page were indistinguishable.
+   */
+  #regionName(): string {
+    const explicit = this.getAttribute('aria-label')?.trim()
+    if (explicit) return explicit
+    const inherited = this.#formBridge.textarea?.labels?.[0]?.textContent?.trim()
+    if (inherited) return inherited
+    return this.#localised('Rich text editor')
+  }
+
+  /**
+   * Give the host a role when, and only when, it carries `aria-label`.
+   *
+   * ARIA prohibits a label on a `generic` element, which is what
+   * `<openleaf-editor>` is with no role of its own -- axe reports it as
+   * `aria-prohibited-attr`. Adding the role unconditionally would instead have
+   * every editor announce its name twice, once for the group and once for the
+   * region inside it, so it is added exactly where the violation is.
+   */
+  #applyHostRole(): void {
+    if (this.getAttribute('aria-label')?.trim()) this.setAttribute('role', 'group')
+    else if (this.getAttribute('role') === 'group') this.removeAttribute('role')
+  }
+
+  /** A UI string in this editor's own `lang`, not the document-wide locale. */
+  #localised(source: string): string {
+    return withLocale(this.getAttribute('lang'), () => t(source))
+  }
+
   #applyReadonly(): void {
     // `editable()` already reads the attribute; the view has to be told to
     // re-evaluate it. Without this, adding readonly after mount leaves
@@ -903,6 +1014,15 @@ export class OpenLeafEditor extends HTMLElementBase {
     const lang = this.getAttribute('lang')
     this.#toolbar?.setLocale(lang)
     this.#toolbar2?.setLocale(lang)
+    this.#floating?.setLocale(lang)
+    if (this.#hint) {
+      this.#hint.textContent = this.#localised('Press Alt plus F10 for the formatting toolbar.')
+    }
+    if (this.#sourceArea) {
+      this.#sourceArea.setAttribute('aria-label', this.#localised('HTML source'))
+    }
+    // The region's own name may be the generic fallback, which is translated.
+    this.#view?.setProps({})
   }
 
   #mountFloating(): void {
@@ -918,6 +1038,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#floating = new FloatingToolbars(this, this.ownerDocument, {
       selectionLayout,
       insertLayout,
+      locale: this.getAttribute('lang'),
     })
     this.#floating.mount(view)
   }
@@ -1101,6 +1222,12 @@ export class OpenLeafEditor extends HTMLElementBase {
   }
 
   #onToggleVisualAids = (): void => {
+    // `visualaids="false"` is read once, at build time, and the plugin that
+    // draws the aids is never installed. The toggle still flipped aria-pressed,
+    // so the button reported a feature as on that does not exist -- a lie a
+    // screen reader repeats, and the one kind of state error ARIA cannot
+    // recover from. The control is disabled instead.
+    if (!this.#visualAidsAvailable) return
     this.#visualAids = !this.#visualAids
     this.classList.toggle('ol-visual-aids', this.#visualAids)
     this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })

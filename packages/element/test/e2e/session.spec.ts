@@ -31,7 +31,10 @@ test.describe('with the session bundle loaded', () => {
     const find = page.getByRole('search', { name: 'Find and replace' })
     await expect(find).toBeVisible()
     await find.getByRole('searchbox').fill('alpha')
-    await expect(find.getByRole('status')).toContainText('2 matches')
+    // The spoken count lives on the editor, not inside the find bar: the bar
+    // carries `hidden` until the moment it has something to say, and a region a
+    // reader has never seen is silent rather than quiet.
+    await expect(page.locator('.ol-live-region')).toContainText('2 matches')
     await find.getByRole('button', { name: 'Next' }).click()
     await find.getByRole('textbox', { name: 'Replace' }).fill('uno')
     await find.getByRole('button', { name: 'Replace all' }).click()
@@ -47,7 +50,7 @@ test.describe('with the session bundle loaded', () => {
     await find.getByRole('searchbox').fill('alpha')
     await find.getByRole('textbox', { name: 'Replace' }).fill('uno')
     await find.getByRole('button', { name: 'Replace all' }).click()
-    await expect(find.getByRole('status')).toHaveText('2 replaced')
+    await expect(find.locator('.ol-find-count')).toHaveText('2 replaced')
   })
 
   // Replace acted on `matches[-1]` and gave up before dispatching, on a button
@@ -66,7 +69,7 @@ test.describe('with the session bundle loaded', () => {
     await toolbar(page).getByRole('button', { name: 'Find and replace' }).click()
     const find = page.getByRole('search', { name: 'Find and replace' })
     await find.getByRole('searchbox').fill('nothinghere')
-    await expect(find.getByRole('status')).toHaveText('No matches')
+    await expect(find.locator('.ol-find-count')).toHaveText('No matches')
     await expect(find.getByRole('button', { name: 'Replace', exact: true })).toBeDisabled()
     await expect(find.getByRole('button', { name: 'Replace all' })).toBeDisabled()
     await expect(find.getByRole('button', { name: 'Next' })).toBeDisabled()

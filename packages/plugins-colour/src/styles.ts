@@ -47,15 +47,22 @@ export const COLOUR_CSS = `
   z-index: var(--openleaf-z-index, 1);
 }
 .ol-color-pop[hidden] { display: none; }
-/* 6px of gap, not 4, so the focus ring has surface on both sides rather than
+/* The grid holds rows and the rows hold cells, because a row role needs a real
+   element to sit on. Nested grids rather than display:contents, which has a
+   history of dropping the element out of the accessibility tree -- the one thing
+   this structure exists to add.
+
+   6px of gap, not 4, so the focus ring has surface on both sides rather than
    only its inner one; the popover widens by the same 14px so the swatches stay
    exactly the size they were (23.5px, and 29.5px centre to centre, which clears
    SC 2.5.8's 24px spacing exception). */
-.ol-color-grid {
+.ol-color-grid { display: grid; gap: 6px; }
+.ol-color-row {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   gap: 6px;
 }
+.ol-color-status { margin: 0 0 6px; font-size: .85em; opacity: .8; }
 /* The border is the only thing that makes a swatch a control: its fill is the
    value, not the affordance, and for White the fill is the popover's own
    background. An ALPHA border cannot do that job -- \`rgb(0 0 0 / 20%)\`
@@ -91,7 +98,7 @@ export const COLOUR_CSS = `
   outline: 2px solid var(--ol-focus, var(--openleaf-color-focus, #0969da));
   outline-offset: 2px;
 }
-.ol-swatch[aria-pressed="true"] {
+.ol-swatch[aria-selected="true"] {
   box-shadow:
     0 0 0 1px var(--ol-surface, var(--openleaf-color-surface, #fff)),
     0 0 0 3px var(--ol-text, var(--openleaf-color-text, #1f2328));
@@ -134,7 +141,7 @@ export const COLOUR_CSS = `
      and is re-expressed as a thicker border -- which leaves \`outline\` free for
      focus, the same separation as above. Previously both were \`outline\` and the
      selection rule won, so the focused swatch was indistinguishable. */
-  .ol-swatch[aria-pressed="true"] { border: 3px solid ButtonText; box-shadow: none; }
+  .ol-swatch[aria-selected="true"] { border: 3px solid ButtonText; box-shadow: none; }
   .ol-swatch:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {
