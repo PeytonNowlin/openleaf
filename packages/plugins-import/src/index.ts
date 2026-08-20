@@ -160,6 +160,10 @@ export function installImport(): void {
 
   const editorFor = (target: EventTarget | null): HTMLElement | null => {
     if (!(target instanceof Element)) return null
+    // Modals are mounted inside the editor host so they inherit its skin, which
+    // puts their file inputs inside `openleaf-editor` too. A file dropped on the
+    // image dialog's picker is meant for that picker, not for the importer.
+    if (target.closest('dialog')) return null
     return target.closest('openleaf-editor')
   }
 

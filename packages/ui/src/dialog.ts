@@ -21,7 +21,7 @@
  */
 
 import { isSafeUrl } from '@openleaf-editor/core'
-import { ensureStyles } from './styles.js'
+import { ensureStyles, registerStyles } from './styles.js'
 import { IMAGE_ACCEPT, dimension, type ImageUploadResult } from './upload.js'
 import {
   filePickerFor,
@@ -93,29 +93,52 @@ type Commit<T> = (
  */
 const UNSTORABLE_ADDRESS = 'That address is not one the editor can store.'
 
+/*
+ * Every colour reads the internal `--ol-*` token first and the public
+ * `--openleaf-*` name only as a fallback.
+ *
+ * That order matters because of where the dialog now lives. It used to be
+ * appended to `document.body`, outside `.ol-editor`, where none of the editor's
+ * tokens are in scope -- so `var(--openleaf-color-surface, #fff)` always took
+ * the hardcoded light fallback and `<openleaf-editor skin="midnight">` plus the
+ * Link button produced a white dialog with #1f2328 text sitting on a #0d1117
+ * editor. Mounted inside the host (see `showForm`), the skin's public tokens
+ * reach it directly.
+ *
+ * The public names alone would still not be enough, because the dark palette
+ * that `theme="dark"` installs is written in the *internal* names -- it is a set
+ * of `--ol-*` declarations whose values are `var(--openleaf-*, <dark>)`. Reading
+ * `--ol-surface` therefore resolves all four cases (light default, system dark,
+ * `theme="dark"`, and any skin) through one variable, and the `--openleaf-*`
+ * fallback still covers a dialog rendered outside a host.
+ *
+ * `.ol-error` was the one colour here that was not a token, and the one colour
+ * that has to be read: #cf222e is 5.36:1 on white but 3.53:1 on the dark
+ * surface. It is `--ol-danger` now, which resolves to #ff8182 (7.85:1) there.
+ */
 const DIALOG_CSS = `
 .ol-dialog {
   box-sizing: border-box;
   max-width: min(28rem, calc(100vw - 2rem));
   padding: 0;
-  border: 1px solid var(--openleaf-color-border, #d1d9e0);
-  border-radius: var(--openleaf-radius, 6px);
-  background: var(--openleaf-color-surface, #fff);
-  color: var(--openleaf-color-text, #1f2328);
-  font-family: var(--openleaf-font, system-ui, -apple-system, sans-serif);
-  font-size: var(--openleaf-font-size, 14px);
+  border: 1px solid var(--ol-border-strong, var(--openleaf-color-border-strong, #6e7781));
+  border-radius: var(--ol-radius, var(--openleaf-radius, 6px));
+  background: var(--ol-surface, var(--openleaf-color-surface, #fff));
+  color: var(--ol-text, var(--openleaf-color-text, #1f2328));
+  font-family: var(--ol-font, var(--openleaf-font, system-ui, -apple-system, sans-serif));
+  font-size: var(--ol-font-size, var(--openleaf-font-size, 14px));
 }
 .ol-dialog::backdrop { background: rgb(0 0 0 / 40%); }
 .ol-dialog form { display: grid; gap: 12px; padding: 16px; margin: 0; }
 .ol-dialog h2 { margin: 0; font-size: 1.1em; }
 .ol-dialog label { display: grid; gap: 4px; font-weight: 500; }
-.ol-dialog .ol-hint { font-weight: 400; font-size: .9em; opacity: .75; }
+.ol-dialog .ol-hint { font-weight: 400; font-size: .9em; opacity: .8; }
 .ol-dialog input[type="text"], .ol-dialog input[type="url"], .ol-dialog input[type="file"],
 .ol-dialog input[type="color"], .ol-dialog input[type="number"], .ol-dialog select {
   box-sizing: border-box; width: 100%; padding: 6px 8px;
-  border: 1px solid var(--openleaf-color-border, #d1d9e0);
-  border-radius: var(--openleaf-radius, 4px);
-  background: var(--openleaf-color-surface, #fff);
+  border: 1px solid var(--ol-border-strong, var(--openleaf-color-border-strong, #6e7781));
+  border-radius: var(--ol-radius, var(--openleaf-radius, 4px));
+  background: var(--ol-surface, var(--openleaf-color-surface, #fff));
   color: inherit; font: inherit;
 }
 .ol-dialog input[type="color"] { height: 2.25rem; padding: 2px; }
@@ -124,44 +147,42 @@ const DIALOG_CSS = `
 .ol-dialog .ol-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .ol-dialog button {
   box-sizing: border-box; padding: 6px 12px; margin: 0;
-  border: 1px solid var(--openleaf-color-border, #d1d9e0);
-  border-radius: var(--openleaf-radius, 4px);
+  border: 1px solid var(--ol-border-strong, var(--openleaf-color-border-strong, #6e7781));
+  border-radius: var(--ol-radius, var(--openleaf-radius, 4px));
   background: transparent; color: inherit; font: inherit; cursor: pointer;
   appearance: none; -webkit-appearance: none;
 }
 .ol-dialog button[value="ok"] {
-  border-color: var(--openleaf-color-accent, #0550ae);
-  background: var(--openleaf-color-accent, #0550ae);
-  color: #fff;
+  border-color: var(--ol-accent, var(--openleaf-color-accent, #0550ae));
+  background: var(--ol-accent, var(--openleaf-color-accent, #0550ae));
+  color: var(--ol-surface, var(--openleaf-color-surface, #fff));
 }
 .ol-dialog button:focus-visible {
-  outline: 2px solid var(--openleaf-color-focus, #0969da); outline-offset: 1px;
+  outline: var(--ol-focus-width, 2px) solid var(--ol-focus, var(--openleaf-color-focus, #0969da));
+  outline-offset: 1px;
 }
 .ol-dialog button[aria-disabled="true"] { opacity: .55; cursor: default; }
-.ol-dialog .ol-error { color: #cf222e; font-size: .9em; min-height: 1.2em; }
+.ol-dialog .ol-error { color: var(--ol-danger, #cf222e); font-size: .9em; min-height: 1.2em; }
 .ol-dialog .ol-progress { font-size: .9em; opacity: .8; min-height: 1.2em; }
 `
 
-let dialogStylesReady = false
-
+/**
+ * Install the dialog sheet.
+ *
+ * Delegates to `registerStyles` rather than repeating the constructable-sheet
+ * dance, which also removes this file's `<style>`-element fallback. That
+ * fallback contradicted the invariant argued at the top of `styles.ts`: a
+ * `<style>` element is blocked by exactly the `style-src 'self'` policies that
+ * would need it, and it fails silently. `registerStyles` warns instead, once,
+ * naming the stylesheet to link.
+ *
+ * It also deduplicates per *document* by the CSS text, where the flag this used
+ * to keep was module-global -- so a second document (an iframe, a print view)
+ * previously got the dialog markup with none of its styles.
+ */
 export function ensureDialogStyles(doc: Document): void {
   ensureStyles(doc)
-  if (dialogStylesReady) return
-  try {
-    if (typeof CSSStyleSheet !== 'undefined' && 'replaceSync' in CSSStyleSheet.prototype) {
-      const sheet = new CSSStyleSheet()
-      sheet.replaceSync(DIALOG_CSS)
-      doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
-      dialogStylesReady = true
-      return
-    }
-  } catch {
-    /* fall through */
-  }
-  const style = doc.createElement('style')
-  style.textContent = DIALOG_CSS
-  doc.head.appendChild(style)
-  dialogStylesReady = true
+  registerStyles(DIALOG_CSS, doc)
 }
 
 /**
@@ -185,6 +206,8 @@ function showForm<T>(
     busyLabel?: string
     /** A button that fills fields from a shared file picker. */
     browse?: { label: string; fill: () => Promise<Record<string, string> | null> }
+    /** The editor to mount inside. See `dialogParent`. */
+    host?: HTMLElement
   } = {},
   commit: Commit<T> = () => ({ error: 'This form has nothing to do.' }),
 ): Promise<T | null> {
@@ -342,7 +365,7 @@ function showForm<T>(
   form.appendChild(actions)
 
   dialog.appendChild(form)
-  doc.body.appendChild(dialog)
+  dialogParent(doc, options.host).appendChild(dialog)
 
   return new Promise((resolve) => {
     let busy = false
@@ -380,6 +403,13 @@ function showForm<T>(
 
     form.addEventListener('submit', (event) => {
       event.preventDefault()
+      // And stop it propagating, which `preventDefault` alone does not. Mounted
+      // inside the editor the dialog is usually inside the page's own <form>,
+      // and `submit` bubbles: without this, saving a link would reach the host
+      // page's submit listeners. In this repo that is the session plugin's,
+      // which treats a submit as "the document has been saved" and deletes the
+      // autosave draft -- from a dialog that saved nothing to the server.
+      event.stopPropagation()
       if (busy) return
 
       const values: Record<string, string> = {}
@@ -438,6 +468,23 @@ function showForm<T>(
   })
 }
 
+/**
+ * Where a modal should be mounted.
+ *
+ * Inside the editor host, so the skin's tokens reach it -- `showModal()` puts
+ * the element in the top layer regardless of where it sits in the tree, so
+ * nesting costs nothing in stacking or clipping and buys the whole palette.
+ * `document.body` remains the fallback for a caller with no host (the unit
+ * tests, and any integrator calling `promptFields` directly).
+ *
+ * The host is verified to be in the same document, because a dialog appended
+ * across documents would be adopted out of the one whose stylesheet was just
+ * installed.
+ */
+function dialogParent(doc: Document, host?: HTMLElement): HTMLElement {
+  return host && host.ownerDocument === doc ? host : doc.body
+}
+
 /** A failure message worth showing an author, from whatever was thrown. */
 function messageFrom(thrown: unknown): string {
   const message = thrown instanceof Error ? thrown.message : String(thrown)
@@ -454,6 +501,12 @@ export interface PromptFormOptions {
   extraCheckbox?: { name: string; label: string; hint?: string; checked?: boolean }
   note?: string
   busyLabel?: string
+  /**
+   * The editor the dialog belongs to. Pass it: the dialog is mounted inside
+   * this element so the skin's tokens reach it, and without it the dialog is
+   * painted in the default light palette whatever the editor looks like.
+   */
+  host?: HTMLElement
 }
 
 /**
@@ -513,6 +566,7 @@ export async function promptForLink(
     existing?.href ? 'Edit link' : 'Insert link',
     fields,
     {
+      ...(host ? { host } : {}),
       extraCheckbox: {
         name: 'newWindow',
         label: 'Open in a new window',
@@ -685,6 +739,7 @@ export async function promptForImage(
     file ? 'Describe this image' : 'Insert image',
     fields,
     {
+      ...(host ? { host } : {}),
       extraCheckbox: {
         name: 'decorative',
         label: 'This image is decorative and needs no description',

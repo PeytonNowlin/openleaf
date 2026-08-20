@@ -28,6 +28,65 @@
  * missing a line -- and the line it is missing is a colour nobody looks at until
  * it is the wrong one.
  */
+/**
+ * ## Why the accessibility reasoning lives out here
+ *
+ * The bundles are minified, which strips these comments but NOT the contents of
+ * the template literal below -- a CSS comment is string data and ships to every
+ * user. So the long-form arguments sit here and the rules carry a short marker
+ * pointing back. Ratios below are computed with the WCAG 2.x sRGB formula
+ * against all four built-in palettes: default light, midnight, paper, contrast.
+ *
+ * ### Two border tokens
+ *
+ * `--ol-border` is 1.43:1 against the default surface (1.92 midnight, 1.47
+ * paper). That is right for a table rule or a group divider and wrong for the
+ * only thing delimiting a `<select>`, where WCAG 1.4.11 wants 3:1 for the parts
+ * of a control that identify it. Rather than darken every hairline in the
+ * editor, the two jobs are split: `--ol-border-strong` takes the control
+ * boundaries -- toolbar, menubar, content frame, source view, select, menu --
+ * and the decorative one stays quiet. The fallback clears 3:1 on a white
+ * surface (4.55:1) and a dark one (4.16:1) alike, so a third-party skin that
+ * sets only `--openleaf-color-border` still gets a legible control boundary.
+ *
+ * ### Menu focus
+ *
+ * `.ol-menu-item` had `outline: none` and a background swap standing in for the
+ * ring. That swap is 1.13:1 on the default palette, 1.24 midnight, 1.13 paper,
+ * and 1.23 in the skin named "High contrast"; 1.4.11 requires 3:1. A menu item
+ * is reachable only by ArrowDown, so that swap was the author's sole position
+ * marker. The ring is back and the swap stays as hover affordance. It is inset
+ * two pixels rather than outset so it is drawn inside the item rather than over
+ * the menu's padding and its neighbour, and it lands at 4.59:1 against the
+ * item's own hovered background (7.82 midnight, 4.88 paper, 9.73 contrast).
+ *
+ * ### Disabled is not invisible
+ *
+ * `opacity: 0.4` put a 16px glyph at 2.41:1 (2.34 paper, 2.85 contrast), which
+ * is not a dimmed icon but an absent one -- and `undo`, `redo` and `link` are
+ * disabled at rest. 0.55 stays plainly quieter than an enabled control while
+ * clearing 3:1 as non-text content. A disabled control is exempt from 1.4.3
+ * either way; being exempt from a rule is not a reason to be unreadable.
+ *
+ * ### Cell selection
+ *
+ * The `.selectedCell` tint alone measured 1.06-1.18:1 depending on the palette,
+ * and a selection you cannot see is one you will destroy by typing. The ring
+ * carries the information now and the tint is the nicety. The ring goes on the
+ * cell rather than on the `::after` overlay because the overlay's own `opacity`
+ * would fade it to the same invisibility -- a 40% accent lands near 2:1. Per
+ * CSS 2.1 Appendix E an element's outline paints in step 10, after all its
+ * descendants, so the tint does not cover it.
+ *
+ * ### Forced colours
+ *
+ * The block at the end of the sheet previously stopped at `.ol-btn`. Everything
+ * added to it depends on a palette this mode discards outright, so each of them
+ * had no indicator at all: which menu is open, which menu item has focus, which
+ * cells are selected, and every one of the visual aids -- whose entire output
+ * is a colour.
+ */
+
 const DARK_TOKENS = `
   --ol-text: var(--openleaf-color-text, #e6edf3);
   --ol-text-muted: var(--openleaf-color-text-muted, #9198a1);
@@ -35,8 +94,10 @@ const DARK_TOKENS = `
   --ol-surface-hover: var(--openleaf-color-surface-hover, #21262d);
   --ol-surface-active: var(--openleaf-color-surface-active, #1f3a5f);
   --ol-border: var(--openleaf-color-border, #3d444d);
+  --ol-border-strong: var(--openleaf-color-border-strong, #8b949e);
   --ol-accent: var(--openleaf-color-accent, #79c0ff);
   --ol-focus: var(--openleaf-color-focus, #79c0ff);
+  --ol-danger: var(--openleaf-color-danger, #ff8182);
 `
 
 export const CSS = `
@@ -56,8 +117,11 @@ export const CSS = `
   --ol-surface-hover: var(--openleaf-color-surface-hover, #f0f1f3);
   --ol-surface-active: var(--openleaf-color-surface-active, #dbe9ff);
   --ol-border: var(--openleaf-color-border, #d1d9e0);
+  /* Control boundaries, not decoration. See "Two border tokens" above. */
+  --ol-border-strong: var(--openleaf-color-border-strong, #6e7781);
   --ol-accent: var(--openleaf-color-accent, #0550ae);
   --ol-focus: var(--openleaf-color-focus, #0969da);
+  --ol-danger: var(--openleaf-color-danger, #cf222e);
   --ol-button-size: var(--openleaf-button-size, 32px);
   --ol-icon-size: var(--openleaf-icon-size, 16px);
   --ol-gap: var(--openleaf-gap, 2px);
@@ -115,7 +179,7 @@ export const CSS = `
   box-sizing: border-box;
   margin: 0;
   padding: 4px;
-  border: 1px solid var(--ol-border);
+  border: 1px solid var(--ol-border-strong);
   border-bottom: 0;
   border-radius: var(--ol-radius) var(--ol-radius) 0 0;
   background: var(--ol-surface);
@@ -215,7 +279,7 @@ export const CSS = `
    removed from the roving tabindex and cannot be reached or announced, so an
    author using a screen reader cannot discover that the control exists. */
 .ol-editor .ol-btn[aria-disabled="true"] {
-  opacity: 0.4;
+  opacity: 0.55;
   cursor: default;
 }
 
@@ -241,7 +305,7 @@ export const CSS = `
   max-width: 11em;
   padding: 0 22px 0 6px;
   margin: 0;
-  border: 1px solid var(--ol-border);
+  border: 1px solid var(--ol-border-strong);
   border-radius: var(--ol-radius);
   background-color: transparent;
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
@@ -284,7 +348,7 @@ export const CSS = `
 
 .ol-editor .ol-content {
   box-sizing: border-box;
-  border: 1px solid var(--ol-border);
+  border: 1px solid var(--ol-border-strong);
   border-radius: 0 0 var(--ol-radius) var(--ol-radius);
   background: var(--ol-surface);
 }
@@ -343,7 +407,13 @@ export const CSS = `
 
 /* prosemirror-tables marks cells in a rectangular selection with this class.
    An ::after overlay rather than a background so it composes with a cell that
-   already has one, and so a header cell still reads as a header. */
+   already has one, and so a header cell still reads as a header.
+
+   The ring, not the tint, is the indicator -- see "Cell selection" above. */
+.ol-editor .ol-content .ProseMirror .selectedCell {
+  outline: 2px solid var(--ol-accent);
+  outline-offset: -2px;
+}
 .ol-editor .ol-content .ProseMirror .selectedCell::after {
   content: "";
   position: absolute;
@@ -423,7 +493,7 @@ export const CSS = `
   width: 100%;
   min-height: 12rem;
   padding: 12px;
-  border: 1px solid var(--ol-border);
+  border: 1px solid var(--ol-border-strong);
   border-radius: 0 0 var(--ol-radius) var(--ol-radius);
   background: var(--ol-surface);
   color: var(--ol-text);
@@ -466,7 +536,7 @@ export const CSS = `
   box-sizing: border-box;
   margin: 0;
   padding: 2px 4px;
-  border: 1px solid var(--ol-border);
+  border: 1px solid var(--ol-border-strong);
   border-bottom: 0;
   border-radius: var(--ol-radius) var(--ol-radius) 0 0;
   background: var(--ol-surface);
@@ -504,7 +574,7 @@ export const CSS = `
   min-width: 12rem;
   margin: 0;
   padding: 4px;
-  border: 1px solid var(--ol-border);
+  border: 1px solid var(--ol-border-strong);
   border-radius: var(--ol-radius);
   background: var(--ol-surface);
   box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
@@ -526,13 +596,18 @@ export const CSS = `
   cursor: pointer;
   appearance: none;
 }
-.ol-editor .ol-menu-item:hover,
+.ol-editor .ol-menu-item:hover {
+  background: var(--ol-surface-hover);
+}
+/* Was outline:none plus a 1.13:1 background swap. See "Menu focus" above. */
 .ol-editor .ol-menu-item:focus-visible {
   background: var(--ol-surface-hover);
-  outline: none;
+  outline: var(--ol-focus-width) solid var(--ol-focus);
+  outline-offset: -2px;
 }
+/* 0.55, not 0.4: see "Disabled is not invisible" above. */
 .ol-editor .ol-menu-item[aria-disabled="true"] {
-  opacity: 0.4;
+  opacity: 0.55;
   cursor: default;
 }
 .ol-editor .ol-menu-sep {
@@ -657,6 +732,40 @@ export const CSS = `
   .ol-editor .ol-btn[aria-disabled="true"] {
     color: GrayText;
     opacity: 1;
+  }
+  .ol-editor .ol-menu-item:focus-visible {
+    outline-color: Highlight;
+  }
+  .ol-editor .ol-menu-item[aria-disabled="true"] {
+    color: GrayText;
+    opacity: 1;
+  }
+  .ol-editor .ol-menu-trigger[aria-expanded="true"] {
+    border-color: Highlight;
+    color: Highlight;
+  }
+  .ol-editor .ol-content .ProseMirror .selectedCell {
+    outline-color: Highlight;
+  }
+  .ol-editor .ol-content .ProseMirror .selectedCell::after {
+    background: transparent;
+  }
+  .ol-editor .ol-content .ProseMirror .column-resize-handle {
+    background: Highlight;
+  }
+  .ol-editor.ol-visual-aids .ol-nbsp {
+    background: transparent;
+    box-shadow: inset 0 -2px 0 Highlight;
+  }
+  .ol-editor.ol-visual-aids .ol-hidden-structure {
+    outline-color: Highlight;
+  }
+  .ol-editor.ol-visual-aids .ol-empty-block {
+    outline-color: GrayText;
+  }
+  .ol-editor .ol-noneditable {
+    background: transparent;
+    outline: 1px dashed GrayText;
   }
 }
 `

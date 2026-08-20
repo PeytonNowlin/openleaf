@@ -34,6 +34,63 @@
  * would need it, and it fails *silently* -- an unstyled toolbar with no signal
  * an integrator can act on. A console warning naming the stylesheet is more
  * useful than a mechanism that quietly does nothing.
+ *
+ * ## Why the accessibility reasoning lives out here
+ *
+ * The bundles are minified, which strips these comments but NOT the contents of
+ * the template literal below -- a CSS comment is string data and ships to every
+ * user. So the long-form arguments sit here and the rules carry a short marker
+ * pointing back. Ratios below are computed with the WCAG 2.x sRGB formula
+ * against all four built-in palettes: default light, midnight, paper, contrast.
+ *
+ * ### Two border tokens
+ *
+ * `--ol-border` is 1.43:1 against the default surface (1.92 midnight, 1.47
+ * paper). That is right for a table rule or a group divider and wrong for the
+ * only thing delimiting a `<select>`, where WCAG 1.4.11 wants 3:1 for the parts
+ * of a control that identify it. Rather than darken every hairline in the
+ * editor, the two jobs are split: `--ol-border-strong` takes the control
+ * boundaries -- toolbar, menubar, content frame, source view, select, menu --
+ * and the decorative one stays quiet. The fallback clears 3:1 on a white
+ * surface (4.55:1) and a dark one (4.16:1) alike, so a third-party skin that
+ * sets only `--openleaf-color-border` still gets a legible control boundary.
+ *
+ * ### Menu focus
+ *
+ * `.ol-menu-item` had `outline: none` and a background swap standing in for the
+ * ring. That swap is 1.13:1 on the default palette, 1.24 midnight, 1.13 paper,
+ * and 1.23 in the skin named "High contrast"; 1.4.11 requires 3:1. A menu item
+ * is reachable only by ArrowDown, so that swap was the author's sole position
+ * marker. The ring is back and the swap stays as hover affordance. It is inset
+ * two pixels rather than outset so it is drawn inside the item rather than over
+ * the menu's padding and its neighbour, and it lands at 4.59:1 against the
+ * item's own hovered background (7.82 midnight, 4.88 paper, 9.73 contrast).
+ *
+ * ### Disabled is not invisible
+ *
+ * `opacity: 0.4` put a 16px glyph at 2.41:1 (2.34 paper, 2.85 contrast), which
+ * is not a dimmed icon but an absent one -- and `undo`, `redo` and `link` are
+ * disabled at rest. 0.55 stays plainly quieter than an enabled control while
+ * clearing 3:1 as non-text content. A disabled control is exempt from 1.4.3
+ * either way; being exempt from a rule is not a reason to be unreadable.
+ *
+ * ### Cell selection
+ *
+ * The `.selectedCell` tint alone measured 1.06-1.18:1 depending on the palette,
+ * and a selection you cannot see is one you will destroy by typing. The ring
+ * carries the information now and the tint is the nicety. The ring goes on the
+ * cell rather than on the `::after` overlay because the overlay's own `opacity`
+ * would fade it to the same invisibility -- a 40% accent lands near 2:1. Per
+ * CSS 2.1 Appendix E an element's outline paints in step 10, after all its
+ * descendants, so the tint does not cover it.
+ *
+ * ### Forced colours
+ *
+ * The block at the end of the sheet previously stopped at `.ol-btn`. Everything
+ * added to it depends on a palette this mode discards outright, so each of them
+ * had no indicator at all: which menu is open, which menu item has focus, which
+ * cells are selected, and every one of the visual aids -- whose entire output
+ * is a colour.
  */
 
 import { CSS } from './css.js'

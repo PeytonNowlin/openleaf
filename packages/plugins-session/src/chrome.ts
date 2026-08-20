@@ -319,7 +319,7 @@ async function offerRestore(
     title: 'Restore unsaved draft',
     message: `A draft from ${when} is saved in this browser. Restore it?`,
     confirmLabel: 'Restore draft',
-  })
+  }, host)
   if (!ok) return
   host.value = html
   handle.update()

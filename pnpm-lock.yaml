@@ -47,7 +47,6 @@ importers:
       orderedmap:
         specifier: ^2.1.1
         version: 2.1.1
-    devDependencies:
       prosemirror-commands:
         specifier: ^1.6.2
         version: 1.7.2

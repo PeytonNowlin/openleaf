@@ -17,7 +17,13 @@ const HELP_CHROME: Array<[string, string]> = [
   ['F1', 'Open this help dialog'],
 ]
 
-export function promptHelp(doc: Document): void {
+/**
+ * `host` is the editor to mount inside, so the dialog inherits its skin. It is
+ * optional only so the existing `promptHelp(doc)` shape keeps working; pass it
+ * whenever there is one, or the help dialog is drawn in the default light
+ * palette on top of whatever the editor actually looks like.
+ */
+export function promptHelp(doc: Document, host?: HTMLElement): void {
   ensureStyles(doc)
   ensureDialogStyles(doc)
   const previouslyFocused = doc.activeElement as HTMLElement | null
@@ -70,7 +76,15 @@ export function promptHelp(doc: Document): void {
   actions.appendChild(close)
   form.appendChild(actions)
   dialog.appendChild(form)
-  doc.body.appendChild(dialog)
+  // Inside the editor, so the skin reaches it. `showModal` promotes to the top
+  // layer regardless of where the element sits, so nesting costs nothing.
+  ;(host && host.ownerDocument === doc ? host : doc.body).appendChild(dialog)
+  // The close button is a submit button in a `method="dialog"` form, so closing
+  // fires `submit`. Mounted inside the editor that now bubbles into the host
+  // page's own form; stop it, or dismissing help looks like saving the document.
+  form.addEventListener('submit', (event) => {
+    event.stopPropagation()
+  })
   dialog.addEventListener('close', () => {
     dialog.remove()
     previouslyFocused?.focus()

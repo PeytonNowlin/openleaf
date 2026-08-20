@@ -188,7 +188,8 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
     popover.style.position = 'fixed'
     popover.style.top = `${Math.round(rect.bottom + 4)}px`
     // Clamped so a trigger near the right edge does not push the grid off-screen.
-    const width = 232
+    // Must track `.ol-color-pop { width }` in styles.ts.
+    const width = 246
     const left = Math.min(Math.round(rect.left), doc.documentElement.clientWidth - width - 8)
     popover.style.left = `${Math.max(8, left)}px`
   }
