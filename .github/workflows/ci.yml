@@ -111,18 +111,26 @@ jobs:
         with: { fetch-depth: 0 }
       - name: Every commit is signed off
         env:
-          BASE_REF: ${{ github.base_ref }}
+          # The PR's real endpoints, NOT `origin/<base>..HEAD`. On a
+          # pull_request event, actions/checkout checks out GitHub's synthetic
+          # merge commit, so HEAD is a `Merge <head> into <base>` commit that
+          # GitHub generates and nobody signs off. Walking back from it fails
+          # every pull request ever opened, however disciplined the author.
+          #
+          # That was the shape this check shipped with. It was invisible for the
+          # job's entire life because the job could never run -- the only
+          # trigger was workflow_dispatch, under which
+          # `if: github.event_name == 'pull_request'` is never true. Both bugs
+          # surfaced on the pull request that added `pull_request:` above, which
+          # is the argument for the trigger in one line.
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           # OpenLeaf uses the DCO rather than a CLA -- see GOVERNANCE.md s.2.
           # Distributed copyright is what makes a future relicense impossible,
           # so this check is load-bearing, not ceremony.
-          #
-          # It also spent its whole life unreachable: the only trigger was
-          # workflow_dispatch, under which `if: github.event_name ==
-          # 'pull_request'` is never true. It ran for the first time on the pull
-          # request that added `pull_request:` above.
           missing=0
-          for sha in $(git rev-list "origin/$BASE_REF..HEAD"); do
+          for sha in $(git rev-list "$BASE_SHA..$HEAD_SHA"); do
             if ! git log -1 --format=%B "$sha" | grep -qi '^Signed-off-by: .\+ <.\+@.\+>'; then
               echo "::error::commit $sha is missing a Signed-off-by line"
               echo "  $(git log -1 --format='%h %s' "$sha")"
