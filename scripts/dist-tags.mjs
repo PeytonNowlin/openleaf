@@ -62,16 +62,85 @@ function main() {
   }
 
   const dryRun = process.argv.includes('--dry-run')
+  const otp = process.argv.find((a) => a.startsWith('--otp='))
+
+  /*
+   * Only the tags that are actually wrong get written.
+   *
+   * Every `npm dist-tag add` is a separate authenticated call, and on an account
+   * with 2FA each one can demand a fresh one-time password -- so a run that
+   * blindly writes all 30 dies part-way through when the code expires, leaving
+   * half the registry on the old version. Reading the current tags first needs no
+   * auth at all and usually cuts the writes to a handful, which is the difference
+   * between finishing inside one code's lifetime and not.
+   *
+   * `--otp=` is passed through for the same reason: it lets one code cover the
+   * whole run instead of npm prompting per package.
+   */
+  const pending = []
   for (const { name, version } of packages) {
+    let current = {}
+    try {
+      current = JSON.parse(
+        execFileSync('npm', ['view', name, 'dist-tags', '--json'], { encoding: 'utf8' }),
+      )
+    } catch {
+      // Unpublished, or the registry is unreachable. Fall through and let the
+      // write report the real error rather than guessing here.
+    }
     for (const tag of TAGS) {
-      const args = ['dist-tag', 'add', `${name}@${version}`, tag]
-      if (dryRun) {
-        console.log(`would run: npm ${args.join(' ')}`)
-        continue
-      }
-      execFileSync('npm', args, { stdio: 'inherit' })
+      if (current[tag] === version) continue
+      pending.push({ name, version, tag, from: current[tag] ?? '(unset)' })
     }
   }
+
+  if (pending.length === 0) {
+    console.log(`every dist-tag already points at ${packages[0].version}`)
+    return
+  }
+
+  console.log(`${pending.length} dist-tag(s) to move:`)
+  for (const { name, tag, from, version } of pending) {
+    console.log(`  ${name}: ${tag} ${from} -> ${version}`)
+  }
+
+  /*
+   * One failure does not abandon the rest.
+   *
+   * On an account with 2FA, npm's browser auth grants a code good for a single
+   * operation, so the second write in a run asks again -- and if that prompt
+   * times out, throwing here would leave the remaining packages untouched with
+   * no record of which. Each write is attempted, failures are collected, and the
+   * exit code still reports them. Re-running then picks up exactly what is left,
+   * because the pending list is read from the registry each time.
+   */
+  const failed = []
+  for (const { name, version, tag } of pending) {
+    const args = ['dist-tag', 'add', `${name}@${version}`, tag]
+    if (otp) args.push(otp)
+    if (dryRun) {
+      console.log(`would run: npm ${args.join(' ')}`)
+      continue
+    }
+    try {
+      execFileSync('npm', args, { stdio: 'inherit' })
+    } catch {
+      failed.push(`${name} ${tag}`)
+    }
+  }
+
+  if (failed.length > 0) {
+    console.error(
+      `\n${failed.length} of ${pending.length} could not be moved:\n` +
+        failed.map((f) => `  ${f}`).join('\n') +
+        '\n\nRe-run to retry only these. An npm automation token in\n' +
+        '`//registry.npmjs.org/:_authToken` is exempt from 2FA and does the lot\n' +
+        'in one pass.',
+    )
+    process.exitCode = 1
+    return
+  }
+  console.log(`\nall ${pending.length} dist-tag(s) moved to ${packages[0].version}`)
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main()
