@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/ui",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "OpenLeaf toolbar and UI primitives. Plain CSS, no framework, themeable by custom properties.",
   "license": "Apache-2.0",
   "publishConfig": {

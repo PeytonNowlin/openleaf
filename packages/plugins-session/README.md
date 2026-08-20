@@ -2,7 +2,7 @@
 
 Finding, counting, and recovery for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): find and replace, word count, autosave and restore, an unsaved-change warning, save, print, preview, and new document.
 
-This is a **beta** (`0.1.0-beta.1`). Keep every `@openleaf-editor/*` package on the
+This is a **beta** (`0.1.0-beta.2`). Keep every `@openleaf-editor/*` package on the
 same version.
 
 None of this is in the core bundle. It is authoring chrome, not document

@@ -2,7 +2,7 @@
 
 Text and highlight colour controls for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): a keyboard-navigable swatch picker, in a 3.7 KB gzipped opt-in bundle.
 
-This is a **beta** (`0.1.0-beta.1`). Keep every `@openleaf-editor/*` package on the
+This is a **beta** (`0.1.0-beta.2`). Keep every `@openleaf-editor/*` package on the
 same version — they pin each other exactly, and mixing versions installs two copies
 of the schema and the toolbar registry.
 

@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/angular",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Angular wrapper for the OpenLeaf custom element. The editor itself stays framework-free.",
   "license": "Apache-2.0",
   "publishConfig": { "access": "public" },

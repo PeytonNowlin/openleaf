@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/plugins-session",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Opt-in finding, counting, and recovery for OpenLeaf: find and replace, word count, autosave and restore, unsaved-change warnings, save, print, preview, and new document.",
   "license": "Apache-2.0",
   "publishConfig": {

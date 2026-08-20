@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/plugins-colour",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Opt-in colour controls for OpenLeaf: a keyboard-navigable swatch picker for text and highlight colour. The colour marks themselves live in @openleaf-editor/core so every deployment reads coloured content faithfully.",
   "license": "Apache-2.0",
   "publishConfig": {
