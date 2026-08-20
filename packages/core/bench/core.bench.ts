@@ -91,7 +91,8 @@ describe('keystroke composite', () => {
       ['word-imported', wordDoc()],
     ] as const) {
       const state = stateFor(html)
-      time(`composite keystroke ${label}`, () => {
+      /** Filter, apply, pull decorations -- everything a keystroke still does. */
+      const keystroke = (): void => {
         const tr = state.tr.insertText('x', 1)
         for (const p of state.plugins) {
           const f = p.spec.filterTransaction
@@ -102,8 +103,15 @@ describe('keystroke composite', () => {
           const d = p.props?.decorations
           if (d) d.call(p, next)
         }
-        serializeHtml(next.doc)
+      }
+      // What the editor did before task 33: serialize the whole document too.
+      time(`composite keystroke ${label} (with serialize)`, () => {
+        keystroke()
+        serializeHtml(state.doc)
       }, 7, 2)
+      // What it does now. The textarea is written at submit, at teardown and on
+      // a trailing timer, so no keystroke pays for a serialization.
+      time(`composite keystroke ${label} (as shipped)`, keystroke, 7, 2)
     }
     void TextSelection
   })
