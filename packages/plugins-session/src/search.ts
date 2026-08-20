@@ -40,8 +40,13 @@ export interface SearchState {
    * The decorations for `matches`, built once here.
    *
    * `props.decorations` is asked on every view update, doc change or not, and
-   * rebuilding a set of tens of thousands of inline decorations each time is
-   * enough to be felt while arrowing between hits.
+   * rebuilding a set of tens of thousands of inline decorations each time was
+   * enough to be felt. Note what this does and does not save: a view update that
+   * carries no search meta -- a scroll, a focus, a plain selection change -- now
+   * costs nothing, but stepping between hits still rebuilds the set, because the
+   * current match wears a different class and every decoration is rebuilt to
+   * move it. What stepping no longer does is search the document again, which
+   * was the larger half of that cost.
    */
   decorations: DecorationSet
 }
@@ -71,18 +76,31 @@ interface TextIndex {
 /**
  * Lowercases one code point without changing how many code units it occupies.
  *
- * `String.prototype.toLowerCase` is not length-preserving. In the BMP exactly
- * one character changes length -- U+0130 `İ`, which lowercases to `i` plus a
- * combining dot above -- and folding a whole string with it slides every
- * following character one place out of step with the position table. Searching
- * "İstanbul hello" for "hello" then found nothing, and Replace All rewrote the
- * range one character to the left, eating the space and a letter with it.
+ * `String.prototype.toLowerCase` is not length-preserving. Across the whole of
+ * Unicode exactly one code point expands -- U+0130 `İ`, which lowercases to `i`
+ * plus a combining dot above -- and none contract. Folding a whole string with
+ * it slides every character after an `İ` one place out of step with the position
+ * table: searching "İstanbul hello" for "hello" found nothing, and Replace All
+ * rewrote the range one character to the left, eating the space and a letter.
  *
- * Truncating to the incoming width loses the combining dot, which is what makes
- * `İ` fold to plain `i` and match a query typed as `i`. The worst a truncation
- * can cost is a match that is not found; it can no longer misplace one.
+ * Truncating `İ` to the width it came in at drops the combining dot, so it folds
+ * to a plain `i`. That is what lets a query typed as "istanbul" find "İstanbul",
+ * which is the point, but it cuts both ways: a query of `İ` folds to `i` and so
+ * also matches every plain `i` in the document. Turkish casing does treat the
+ * two as one letter, and no other fold can misplace a match, but a one-character
+ * `İ` query replacing every `i` on the page is a surprise worth knowing about.
+ *
+ * Final sigma is mapped explicitly. Greek lowercases U+03A3 `Σ` to `ς` at the
+ * end of a word and `σ` elsewhere, a rule that needs the surrounding text and so
+ * cannot exist in a per-code-point fold: `Σ` always became `σ` while `ς` never
+ * folded, which stopped "ΜΑΘΗΤΗΣ" matching a query of "μαθητης" in either
+ * direction. Since `-ος`, `-ης` and `-ας` are the commonest Greek noun endings,
+ * that is most of the language. Folding both forms to `σ` -- which is what
+ * Unicode's own simple case folding does, `03C2; C; 03C3` -- settles it in one
+ * code unit, so the position table is untouched.
  */
 function foldCodePoint(raw: string, units: number): string {
+  if (raw === 'ς') return 'σ'
   const lower = raw.toLowerCase()
   if (lower.length === units) return lower
   if (lower.length > units) return lower.slice(0, units)
@@ -92,10 +110,10 @@ function foldCodePoint(raw: string, units: number): string {
 /**
  * Case-folds a string code point by code point, preserving its code unit length.
  *
- * Both sides of the search go through this, so the query and the document are
- * folded the same way -- a whole-string `toLowerCase()` on the query would apply
- * the context-sensitive rules (final sigma, and the `İ` expansion above) that
- * this deliberately does not.
+ * Both sides of the search go through this, so the query and the document fold
+ * the same way. That matters more than which way it folds: a whole-string
+ * `toLowerCase()` on one side and a per-code-point fold on the other would
+ * disagree about exactly the characters this file exists to get right.
  */
 function foldText(input: string): string {
   const chunks: string[] = []
@@ -145,28 +163,32 @@ function indexText(doc: PMNode, fold: boolean): TextIndex {
   // Accumulated in a list rather than with `+=`. V8 represents a `+=` chain as
   // an unflattened rope, and `endsWith` cannot run on a rope -- asking it once
   // per block flattened the entire accumulated string, making the walk
-  // O(characters x blocks). `last` answers the same question in a local.
+  // O(characters x blocks). The two locals below answer the same questions
+  // without ever looking at the accumulated text.
   const parts: string[] = []
   const pos: number[] = []
-  let last = ''
+  let emitted = false
+  let lastWasSeparator = false
 
   doc.nodesBetween(0, doc.content.size, (node, nodePos) => {
-    if (node.isBlock && last !== '' && last !== '\n') {
+    // Whether a separator was just written, rather than whether the last
+    // character is a newline. A code block is parsed with its whitespace intact,
+    // so its text can genuinely end in a newline -- reading the character could
+    // not tell that from a separator, suppressed the one before the next block,
+    // and left the two blocks adjacent in the index. A query of "a\nb" then
+    // matched across the boundary and Replace All swallowed the block after it.
+    if (node.isBlock && emitted && !lastWasSeparator) {
       parts.push('\n')
       pos.push(-1)
-      last = '\n'
+      lastWasSeparator = true
     }
 
     const text = node.isText ? node.text : undefined
     if (text !== undefined && text.length > 0) {
-      const folded = fold ? foldText(text) : text
-      // `foldText` preserves code unit length by construction. Falling back to
-      // the raw text if it ever did not keeps `pos` in lockstep, which costs a
-      // case-sensitive match here and cannot corrupt a replacement.
-      const run = folded.length === text.length ? folded : text
-      parts.push(run)
+      parts.push(fold ? foldText(text) : text)
       for (let i = 0; i < text.length; i += 1) pos.push(nodePos + i)
-      last = run.slice(-1)
+      emitted = true
+      lastWasSeparator = false
       return true
     }
 
@@ -176,7 +198,8 @@ function indexText(doc: PMNode, fold: boolean): TextIndex {
     if (node.isInline) {
       parts.push(ATOM)
       pos.push(-1)
-      last = ATOM
+      emitted = true
+      lastWasSeparator = false
     }
     return true
   })
@@ -196,9 +219,13 @@ export function findMatches(
   let needle = caseSensitive ? query : foldText(query)
 
   // Match offsets are looked up in `pos` by their offset in `text`, so the two
-  // must hold exactly one entry per code unit. They do by construction; if a
-  // change ever breaks that, fall back to an exact search rather than index into
-  // a table that no longer lines up and hand Replace the wrong range.
+  // must hold exactly one entry per code unit. `foldText` guarantees it by
+  // construction and this is the only check on it -- deliberately at the whole
+  // document, because a per-node repair would quietly make one node behave
+  // differently from the rest and this fallback would never run. If a change
+  // ever breaks the guarantee, the whole search degrades to an exact one rather
+  // than indexing into a table that no longer lines up and handing Replace a
+  // range that is off by the drift.
   if (text.length !== pos.length) {
     ;({ text, pos } = indexText(doc, false))
     needle = query

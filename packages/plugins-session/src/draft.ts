@@ -2,7 +2,10 @@
  * Local draft storage for autosave and restore.
  *
  * A key is the page path, the query string, and a suffix naming the editor
- * within the page: `prefix + pathname + search + '#' + suffix`. The query string
+ * within the page: `prefix + pathname + search + '#' + suffix`. Adding the query
+ * string changes the key for any URL that has one, so a draft written by an
+ * earlier version of this package is unreachable on such a URL after upgrading;
+ * it is deleted by the sweep once it passes the TTL. The query string
  * is part of it because a record editor addresses its row there -- without it
  * `/admin/edit?id=1` and `?id=2` are one key, and opening record 2 is offered
  * record 1's unsaved text. The suffix is a `draft-key` attribute if the page
@@ -10,7 +13,7 @@
  * the same-tag editors in the document. That position is used rather than a
  * random id because a draft nobody can find on the next page load is no draft at
  * all, and the first such editor keeps the bare `editor` suffix so records
- * written by earlier versions are still picked up.
+ * written by earlier versions are still picked up on a URL with no query.
  *
  * The payload is HTML plus a timestamp; quota failures are swallowed, because an
  * autosave that throws on a full disk would take the editor down on every
@@ -49,14 +52,23 @@ export interface DraftStorage {
 /**
  * Names an editor the page gave no id to.
  *
- * Two anonymous editors on one page both answered to the literal `editor` and
- * so shared a draft. Counting position among the same-tag editors separates them
- * and still survives a reload, which a generated id would not. A host that is
- * not in the document yet reports no position and keeps the bare name.
+ * Two anonymous editors on one page both answered to the literal `editor` and so
+ * shared a draft. Position among the same-tag editors separates them and still
+ * survives a reload, which a generated id would not.
+ *
+ * It does not survive the page changing shape. If the first of two editors stops
+ * being rendered -- collapsed behind a section, hidden by a permission -- the
+ * second one moves to index 0 and is offered the first one's text, which is the
+ * collision this is meant to prevent, one step removed. Position is the best a
+ * page that named nothing can be given; a page with more than one editor should
+ * set `draft-key` (or an id) rather than rely on it.
  */
 function ordinalId(host: HTMLElement): string {
   const peers = Array.from(host.ownerDocument.querySelectorAll(host.tagName))
   const index = peers.indexOf(host)
+  // A host outside the document has no position. `detached` keeps it away from
+  // the first attached editor's key rather than silently sharing it.
+  if (index < 0) return 'editor-detached'
   return index > 0 ? `editor-${index}` : 'editor'
 }
 
@@ -129,11 +141,20 @@ export function readDraft(storage: DraftStorage, key: string, now = Date.now()):
  * pages nobody reopens would sit there for good. Keys are collected before any
  * removal because removing during the walk renumbers the indices and would skip
  * entries. Nothing here throws: a sweep is housekeeping, and a storage that
- * denies access mid-walk must not take the editor's startup with it.
+ * denies access must not take the editor's startup with it. That includes
+ * reading `length` and `key` themselves -- `DraftStorage` is public, so those
+ * are an embedder's getters and can throw like anything else, and this runs
+ * while the editor is attaching.
  */
 export function purgeDrafts(storage: DraftStorage, now = Date.now()): void {
-  const total = storage.length
-  const keyAt = storage.key
+  let total: number | undefined
+  let keyAt: DraftStorage['key']
+  try {
+    total = storage.length
+    keyAt = storage.key
+  } catch {
+    return
+  }
   if (typeof total !== 'number' || typeof keyAt !== 'function') return
 
   const expired: string[] = []

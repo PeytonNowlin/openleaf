@@ -10,7 +10,7 @@
 import { coreSchema, parseHtml } from '@openleaf-editor/core'
 import { EditorState } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
-import { findMatches, replaceAll, searchPlugin, setSearch } from '../src/search.js'
+import { findMatches, replaceAll, searchKey, searchPlugin, setSearch } from '../src/search.js'
 
 /** A document of `blocks` paragraphs holding `chars` of text between them. */
 function documentOf(blocks: number, chars: number) {
@@ -67,30 +67,32 @@ function mappingCalls(sample: EditorState, work: () => void): number {
 }
 
 describe('findMatches cost', () => {
+  /**
+   * The same text split into more blocks used to cost more, because asking
+   * `endsWith` about a string built by `+=` flattened the whole accumulated rope
+   * once per block: 500 blocks took 5.5 ms and 8,000 took 78.7 ms for the same
+   * 260 KB. Splitting text into more paragraphs is not more text to search.
+   *
+   * The budget is 20 ms on an idle machine, where this measures about 2 ms. It
+   * is held against the 500-block reading rather than as a bare constant because
+   * vitest runs suites in parallel workers: the same search that takes 1.9 ms
+   * alone takes nearly 30 ms with the rest of the suite competing for the cores,
+   * and a bare 20 ms would fail for a busy box rather than a slow search. The
+   * reference is the identical search over the identical text under the
+   * identical conditions, so load moves both readings together. The original
+   * blows this either way -- it measured 10 to 14 times its own reference, where
+   * this measures between one and one and a half.
+   */
   it('stays under 20 ms on an 8,000 block document', () => {
+    const reference = documentOf(500, 260_000)
     const doc = documentOf(8000, 260_000)
+    const referenceMs = fastest(3, () => {
+      findMatches(reference, 'the')
+    })
     const ms = fastest(3, () => {
       findMatches(doc, 'the')
     })
-    expect(ms).toBeLessThan(20)
-  })
-
-  /**
-   * The same text split into more blocks used to cost more, because asking
-   * `endsWith` about a string built by `+=` flattened the whole rope once per
-   * block: 500 blocks took 5.5 ms and 8,000 took 78.7 ms for the same 260 KB.
-   * Splitting text into more paragraphs is not more text to search.
-   */
-  it('does not get slower as the same text is split into more blocks', () => {
-    const few = documentOf(500, 260_000)
-    const many = documentOf(8000, 260_000)
-    const fewMs = fastest(3, () => {
-      findMatches(few, 'the')
-    })
-    const manyMs = fastest(3, () => {
-      findMatches(many, 'the')
-    })
-    expect(manyMs).toBeLessThan(fewMs * 4 + 10)
+    expect(ms).toBeLessThan(Math.max(20, referenceMs * 6))
   })
 })
 
@@ -112,6 +114,10 @@ describe('replaceAll cost', () => {
   it('does not remap a position per match', () => {
     const small = searchState(200)
     const large = searchState(800)
+    // With no matches `replaceAll` returns before doing anything and both counts
+    // are zero, which would satisfy every assertion below.
+    expect(searchKey.getState(small)?.matches).toHaveLength(200)
+    expect(searchKey.getState(large)?.matches).toHaveLength(800)
     const smallCalls = mappingCalls(small, () => {
       replaceAll('cat')(small, () => {})
     })

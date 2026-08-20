@@ -218,6 +218,62 @@ describe('case folding that changes length', () => {
   })
 })
 
+/**
+ * Greek lowercases `Σ` to `ς` at the end of a word and `σ` everywhere else, a
+ * rule that needs the surrounding text. A fold that works one code point at a
+ * time cannot see that context, so folding both forms to `σ` is what keeps the
+ * two spellings finding each other. `-ος`, `-ης` and `-ας` are the commonest
+ * Greek noun endings, so getting this wrong loses most of the language.
+ */
+describe('final sigma', () => {
+  it('matches an upper case word from a query typed with a final sigma', () => {
+    const doc = parseHtml('<p>ΜΑΘΗΤΗΣ here</p>', { schema: coreSchema() })
+    expect(findMatches(doc, 'μαθητης')).toHaveLength(1)
+    expect(findMatches(doc, 'μαθητησ')).toHaveLength(1)
+  })
+
+  it('matches a word ending in a final sigma from an upper case query', () => {
+    const doc = parseHtml('<p>μαθητης here</p>', { schema: coreSchema() })
+    expect(findMatches(doc, 'ΜΑΘΗΤΗΣ')).toHaveLength(1)
+  })
+
+  it('still tells the two forms apart with match case on', () => {
+    const doc = parseHtml('<p>μαθητης</p>', { schema: coreSchema() })
+    expect(findMatches(doc, 'μαθητησ', { caseSensitive: true })).toEqual([])
+  })
+})
+
+/**
+ * A code block keeps its whitespace, so its text can genuinely end in a newline.
+ * Testing the last character for one could not tell that from the separator this
+ * index writes between blocks, so it suppressed the separator, left the two
+ * blocks adjacent, and let a match run from one into the next -- which Replace
+ * then rewrote, taking the following block with it.
+ */
+describe('block boundaries', () => {
+  it('does not match out of a code block that ends in a newline', () => {
+    const doc = parseHtml('<pre><code>a\n</code></pre><p>bc</p>', { schema: coreSchema() })
+    expect(findMatches(doc, 'a\nb')).toEqual([])
+    expect(findMatches(doc, '\nb')).toEqual([])
+  })
+
+  it('leaves the following block standing when the code block is replaced', () => {
+    let state = stateFrom('<pre><code>x\n</code></pre><p>yz</p>')
+    setSearch('\ny')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(searchKey.getState(state)?.matches).toEqual([])
+    expect(replaceAll('Q')(state, () => {})).toBe(false)
+    expect(serializeHtml(state.doc)).toBe('<pre><code>x\n</code></pre><p>yz</p>')
+  })
+
+  it('still finds a match inside the code block', () => {
+    const doc = parseHtml('<pre><code>a\n</code></pre><p>bc</p>', { schema: coreSchema() })
+    expect(findMatches(doc, 'a')).toHaveLength(1)
+    expect(findMatches(doc, 'bc')).toHaveLength(1)
+  })
+})
+
 describe('replace feedback', () => {
   // `setSearch` leaves no current match, so Replace found `matches[-1]`, gave up
   // before dispatching, and reported nothing to a button that stayed enabled.
@@ -331,6 +387,9 @@ describe('search decorations', () => {
       state = state.apply(tr)
     })
     const before = searchKey.getState(state)?.decorations
+    // Asserted before the identity check, which without it reads `undefined` is
+    // `undefined` on any build where the field stopped existing.
+    expect(before?.find()).toHaveLength(2)
     state = state.apply(state.tr)
     expect(searchKey.getState(state)?.decorations).toBe(before)
   })
