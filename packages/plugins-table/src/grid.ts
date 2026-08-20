@@ -30,7 +30,7 @@ export function buildInsertGrid(ctx: ToolbarContext): ToolbarControl {
   const trigger = doc.createElement('button')
   trigger.type = 'button'
   trigger.className = 'ol-btn'
-  trigger.dataset['olId'] = 'Insert table'
+  trigger.dataset['olId'] = ctx.id ?? 'insertTable'
   trigger.setAttribute('aria-label', 'Insert table')
   trigger.setAttribute('aria-haspopup', 'dialog')
   trigger.setAttribute('aria-expanded', 'false')
@@ -153,6 +153,10 @@ export function buildInsertGrid(ctx: ToolbarContext): ToolbarControl {
   trigger.addEventListener('mousedown', (event) => event.preventDefault())
   trigger.addEventListener('click', () => {
     if (!canInsert(view.state, 'table')) return
+    // A custom control never goes through the toolbar's own guard, so the
+    // `aria-disabled` the bar writes onto this trigger only means anything if
+    // the trigger reads it back.
+    if (host.hasAttribute('readonly') || trigger.getAttribute('aria-disabled') === 'true') return
     if (open) close({ returnFocus: 'content' })
     else show()
   })

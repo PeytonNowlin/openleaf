@@ -8,20 +8,21 @@
  * unreachable -- not merely uneditable, unreadable.
  */
 
-import { EditorState } from 'prosemirror-state'
+import { history, undo } from 'prosemirror-history'
+import { EditorState, type Plugin } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import { afterEach, describe, expect, it } from 'vitest'
 import { coreSchema, disclosurePlugin, parseHtml, serializeHtml } from '../src/index.js'
 
 let view: EditorView | undefined
 
-function mount(html: string): EditorView {
+function mount(html: string, extra: Plugin[] = []): EditorView {
   const place = document.createElement('div')
   document.body.append(place)
   view = new EditorView(place, {
     state: EditorState.create({
       doc: parseHtml(html, { schema: coreSchema() }),
-      plugins: [disclosurePlugin()],
+      plugins: [disclosurePlugin(), ...extra],
     }),
   })
   return view
@@ -89,6 +90,34 @@ describe('clicking a summary', () => {
     const before = v.state.doc.firstChild?.attrs['open']
     click(v.dom.querySelectorAll('p')[1] as Element)
     expect(v.state.doc.firstChild?.attrs['open']).toBe(before)
+  })
+
+  // Opening a section to read it is navigation, not authoring. An author who
+  // expanded a few sections looking for a paragraph, corrected it, and then
+  // pressed Ctrl+Z used to get the correction back and a section closed instead
+  // -- the edit they meant to take back sat behind their own browsing.
+  it('is not what Ctrl+Z takes back', () => {
+    const v = mount('<details><summary>More</summary><p>body</p></details><p>outside</p>', [
+      history(),
+    ])
+
+    // A real edit, so there is something on the stack worth undoing.
+    v.dispatch(v.state.tr.insertText('!', v.state.doc.content.size - 1))
+    expect(serializeHtml(v.state.doc)).toContain('outside!')
+
+    click(v.dom.querySelector('summary') as Element)
+    expect(v.state.doc.firstChild?.attrs['open']).toBe(true)
+
+    // Applied to the state rather than dispatched: undo scrolls its selection
+    // into view, and jsdom has no layout to scroll.
+    let undone = v.state
+    undo(v.state, (tr) => {
+      undone = v.state.apply(tr)
+    })
+
+    expect(undone.doc.firstChild?.attrs['open']).toBe(true)
+    expect(serializeHtml(undone.doc)).not.toContain('outside!')
+    expect(serializeHtml(undone.doc)).toContain('outside')
   })
 
   it('toggles the nearest details when they are nested', () => {

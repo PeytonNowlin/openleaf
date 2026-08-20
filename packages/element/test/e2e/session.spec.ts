@@ -41,6 +41,40 @@ test.describe('with the session bundle loaded', () => {
     await expect.poll(() => value(page)).toContain('uno beta uno')
   })
 
+  // The count is a live region, and rebuilding the matches after a replace
+  // finds none of the ones just replaced -- which reported a successful
+  // Replace all as "No matches".
+  test('reports how many were replaced', async ({ page }) => {
+    await toolbar(page).getByRole('button', { name: 'Find and replace' }).click()
+    const find = page.getByRole('search', { name: 'Find and replace' })
+    await find.getByRole('searchbox').fill('alpha')
+    await find.getByRole('textbox', { name: 'Replace' }).fill('uno')
+    await find.getByRole('button', { name: 'Replace all' }).click()
+    await expect(find.getByRole('status')).toHaveText('2 replaced')
+  })
+
+  // Replace acted on `matches[-1]` and gave up before dispatching, on a button
+  // that stayed enabled and reported nothing back.
+  test('replaces without Next having been pressed first', async ({ page }) => {
+    await toolbar(page).getByRole('button', { name: 'Find and replace' }).click()
+    const find = page.getByRole('search', { name: 'Find and replace' })
+    await find.getByRole('searchbox').fill('alpha')
+    await find.getByRole('textbox', { name: 'Replace' }).fill('uno')
+    await expect(find.getByRole('button', { name: 'Replace', exact: true })).toBeEnabled()
+    await find.getByRole('button', { name: 'Replace', exact: true }).click()
+    await expect.poll(() => value(page)).toContain('uno beta alpha')
+  })
+
+  test('disables the buttons when nothing matches', async ({ page }) => {
+    await toolbar(page).getByRole('button', { name: 'Find and replace' }).click()
+    const find = page.getByRole('search', { name: 'Find and replace' })
+    await find.getByRole('searchbox').fill('nothinghere')
+    await expect(find.getByRole('status')).toHaveText('No matches')
+    await expect(find.getByRole('button', { name: 'Replace', exact: true })).toBeDisabled()
+    await expect(find.getByRole('button', { name: 'Replace all' })).toBeDisabled()
+    await expect(find.getByRole('button', { name: 'Next' })).toBeDisabled()
+  })
+
   test('reports a word count', async ({ page }) => {
     await toolbar(page).getByRole('button', { name: 'Word count' }).click()
     const dialog = page.getByRole('dialog', { name: 'Word count' })

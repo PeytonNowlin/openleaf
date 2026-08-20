@@ -4,6 +4,12 @@
  * `showModal()` supplies the focus trap and Escape handling. These are not the
  * link/image forms; they are confirmations and read-only views, so they stay in
  * this package rather than growing the shared dialog helper.
+ *
+ * Each takes an optional `host`: the editor to mount inside. Skin tokens are
+ * scoped to `.ol-editor[data-ol-skin]`, so a dialog appended to `document.body`
+ * never sees them and is drawn in the default light palette no matter what the
+ * editor looks like. `showModal()` promotes to the top layer wherever the
+ * element sits, so nesting costs nothing in stacking or clipping.
  */
 
 /**
@@ -37,9 +43,15 @@ function attr(value: string): string {
   return value.replace(/[<>&"']/g, '')
 }
 
+/** Where to mount: the editor when there is one, `document.body` otherwise. */
+function mountPoint(doc: Document, host?: HTMLElement): HTMLElement {
+  return host && host.ownerDocument === doc ? host : doc.body
+}
+
 export async function confirmAction(
   doc: Document,
   options: { title: string; message: string; confirmLabel: string; danger?: boolean },
+  host?: HTMLElement,
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const previouslyFocused = doc.activeElement as HTMLElement | null
@@ -74,7 +86,7 @@ export async function confirmAction(
     actions.append(cancel, ok)
     form.appendChild(actions)
     dialog.appendChild(form)
-    doc.body.appendChild(dialog)
+    mountPoint(doc, host).appendChild(dialog)
 
     const finish = (value: boolean): void => {
       dialog.close()
@@ -90,15 +102,23 @@ export async function confirmAction(
     })
     form.addEventListener('submit', (event) => {
       event.preventDefault()
+      // Mounted inside the editor this is usually inside the host page's own
+      // <form>, and `submit` bubbles. Confirming "Discard draft?" must not also
+      // look to the page like the author pressed Save.
+      event.stopPropagation()
       finish(true)
     })
 
     dialog.showModal()
-    ok.focus()
+    // Never the destructive button. "Clear editor" focused by default means one
+    // reflexive Enter -- the key that opened the dialog is still under the
+    // author's finger -- discards the document.
+    if (options.danger === true) cancel.focus()
+    else ok.focus()
   })
 }
 
-export function showPreview(doc: Document, html: string): void {
+export function showPreview(doc: Document, html: string, host?: HTMLElement): void {
   const previouslyFocused = doc.activeElement as HTMLElement | null
   const dialog = doc.createElement('dialog')
   dialog.className = 'ol-dialog ol-session-dialog ol-preview-dialog'
@@ -136,7 +156,7 @@ export function showPreview(doc: Document, html: string): void {
   actions.appendChild(close)
 
   dialog.append(heading, frame, actions)
-  doc.body.appendChild(dialog)
+  mountPoint(doc, host).appendChild(dialog)
 
   const finish = (): void => {
     dialog.close()
@@ -181,6 +201,7 @@ export function printHtml(doc: Document, html: string, title: string): void {
 export function showStats(
   doc: Document,
   stats: { words: number; characters: number; charactersExcludingSpaces: number; paragraphs: number },
+  host?: HTMLElement,
 ): void {
   const previouslyFocused = doc.activeElement as HTMLElement | null
   const dialog = doc.createElement('dialog')
@@ -214,7 +235,7 @@ export function showStats(
   actions.appendChild(close)
 
   dialog.append(heading, list, actions)
-  doc.body.appendChild(dialog)
+  mountPoint(doc, host).appendChild(dialog)
 
   const finish = (): void => {
     dialog.close()

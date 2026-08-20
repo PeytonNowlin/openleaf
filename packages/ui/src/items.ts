@@ -42,7 +42,9 @@ import {
   unsetLink,
   type Align,
 } from '@openleaf-editor/core'
-import type { Command } from 'prosemirror-state'
+import type { Command, EditorState } from 'prosemirror-state'
+import { TextSelection } from 'prosemirror-state'
+import type { EditorView } from 'prosemirror-view'
 import { promptForImage, promptForLink } from './dialog.js'
 import { promptHelp } from './help.js'
 import type { IconName } from './icons.js'
@@ -56,6 +58,41 @@ export const FULLSCREEN_TOGGLE_EVENT = 'openleaf:toggle-fullscreen'
 export const VISUAL_AIDS_TOGGLE_EVENT = 'openleaf:toggle-visual-aids'
 
 /** Register the built-in items. Idempotent. */
+/**
+ * The span of the link the caret sits in, or null when it is not in one.
+ *
+ * `setLink` and `unsetLink` both refuse an empty selection, which is right --
+ * there is nothing to mark. But an author who right-clicks a link, or puts the
+ * caret in one and presses the toolbar button, means "this link", and the range
+ * of a mark is something only the document can answer.
+ */
+function linkRange(state: EditorState): { from: number; to: number } | null {
+  const type = state.schema.marks['link']
+  if (!type || !state.selection.empty) return null
+  const $pos = state.selection.$from
+  const mark = type.isInSet($pos.marks())
+  if (!mark) return null
+  const parent = $pos.parent
+  let start = $pos.index()
+  let end = $pos.indexAfter()
+  while (start > 0 && mark.isInSet(parent.child(start - 1).marks)) start -= 1
+  while (end < parent.childCount && mark.isInSet(parent.child(end).marks)) end += 1
+  let from = $pos.start()
+  for (let i = 0; i < start; i += 1) from += parent.child(i).nodeSize
+  let to = from
+  for (let i = start; i < end; i += 1) to += parent.child(i).nodeSize
+  return { from, to }
+}
+
+/** Widen a caret inside a link to cover the whole link, so a command can act. */
+function selectLink(view: EditorView): void {
+  const range = linkRange(view.state)
+  if (!range) return
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, range.from, range.to)),
+  )
+}
+
 export function registerDefaultItems(): void {
   if (getToolbarItem('undo') && getToolbarItem('blockType') && getToolbarItem('source')) return
 
@@ -286,11 +323,17 @@ export function registerDefaultItems(): void {
     kind: 'toggle',
     label: 'Link',
     icon: 'link',
-    // Enabled only with a selection: a link needs text to attach to, and
-    // silently doing nothing on an empty caret is worse than being disabled.
-    isEnabled: (state) => !state.selection.empty,
+    // A selection to attach the link to, or a caret already inside one. Those
+    // two used to disagree: `isActive` said "in a link" while `isEnabled` said
+    // "there is a selection", so right-clicking a link -- which places a
+    // COLLAPSED caret -- rendered a control that was aria-pressed and
+    // aria-disabled at once and refused the click. The context menu built for
+    // exactly that gesture could therefore never edit a link, and the "Edit
+    // link" dialog title was unreachable.
+    isEnabled: (state) => !state.selection.empty || linkRange(state) !== null,
     isActive: (state) => activeLink(state) !== null,
     run: ({ view, host }) => {
+      selectLink(view)
       const existing = activeLink(view.state)
       void promptForLink(host.ownerDocument, {
         href: (existing?.['href'] as string | undefined) ?? '',
@@ -313,7 +356,12 @@ export function registerDefaultItems(): void {
     kind: 'action',
     label: 'Remove link',
     icon: 'unlink',
-    command: unsetLink,
+    isEnabled: (state) => unsetLink(state) || linkRange(state) !== null,
+    run: ({ view }) => {
+      selectLink(view)
+      unsetLink(view.state, view.dispatch, view)
+      view.focus()
+    },
   })
 
   registerToolbarItem({
@@ -409,7 +457,7 @@ export function registerDefaultItems(): void {
     label: 'Help',
     icon: 'help',
     run: ({ host }) => {
-      promptHelp(host.ownerDocument, host.getAttribute('lang'))
+      promptHelp(host.ownerDocument, host)
     },
   })
 }

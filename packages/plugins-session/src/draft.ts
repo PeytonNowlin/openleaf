@@ -1,13 +1,35 @@
 /**
  * Local draft storage for autosave and restore.
  *
- * Keys include the page path and the bound textarea id so two editors on one
- * page, or the same form on two routes, do not overwrite each other. The payload
- * is HTML plus a timestamp; quota failures are swallowed, because an autosave
- * that throws on a full disk would take the editor down on every keystroke.
+ * A key is the page path, the query string, and a suffix naming the editor
+ * within the page: `prefix + pathname + search + '#' + suffix`. Adding the query
+ * string changes the key for any URL that has one, so a draft written by an
+ * earlier version of this package is unreachable on such a URL after upgrading;
+ * it is deleted by the sweep once it passes the TTL. The query string
+ * is part of it because a record editor addresses its row there -- without it
+ * `/admin/edit?id=1` and `?id=2` are one key, and opening record 2 is offered
+ * record 1's unsaved text. The suffix is a `draft-key` attribute if the page
+ * sets one, otherwise the bound textarea id, otherwise the host's position among
+ * the same-tag editors in the document. That position is used rather than a
+ * random id because a draft nobody can find on the next page load is no draft at
+ * all, and the first such editor keeps the bare `editor` suffix so records
+ * written by earlier versions are still picked up on a URL with no query.
+ *
+ * The payload is HTML plus a timestamp; quota failures are swallowed, because an
+ * autosave that throws on a full disk would take the editor down on every
+ * keystroke.
+ *
+ * Privacy: a draft is the whole document, held in plaintext in `localStorage`,
+ * readable by any script on the origin and by anyone with the machine. Nothing
+ * here encrypts it. Records expire after `DRAFT_TTL_MS` -- `readDraft` refuses
+ * and deletes an expired one, and `purgeDrafts` sweeps the rest -- so an
+ * abandoned draft stops sitting on disk indefinitely.
  */
 
 export const DRAFT_PREFIX = 'openleaf:draft:v1:'
+
+/** How long a draft stays offerable. Past it the record is deleted on sight. */
+export const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 export interface DraftRecord {
   html: string
@@ -18,17 +40,56 @@ export interface DraftStorage {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
   removeItem(key: string): void
+  /**
+   * Enumeration, as `localStorage` exposes it. Optional so a caller can pass a
+   * bare three-method shim; `purgeDrafts` does nothing when it is missing rather
+   * than demanding every embedder grow a key listing.
+   */
+  readonly length?: number
+  key?(index: number): string | null
 }
 
-export function draftStorageKey(host: HTMLElement, location?: { pathname: string }): string {
-  const id = host.getAttribute('for') || host.id || 'editor'
-  const path = location?.pathname ?? host.ownerDocument.defaultView?.location.pathname ?? ''
-  return `${DRAFT_PREFIX}${path}#${id}`
+/**
+ * Names an editor the page gave no id to.
+ *
+ * Two anonymous editors on one page both answered to the literal `editor` and so
+ * shared a draft. Position among the same-tag editors separates them and still
+ * survives a reload, which a generated id would not.
+ *
+ * It does not survive the page changing shape. If the first of two editors stops
+ * being rendered -- collapsed behind a section, hidden by a permission -- the
+ * second one moves to index 0 and is offered the first one's text, which is the
+ * collision this is meant to prevent, one step removed. Position is the best a
+ * page that named nothing can be given; a page with more than one editor should
+ * set `draft-key` (or an id) rather than rely on it.
+ */
+function ordinalId(host: HTMLElement): string {
+  const peers = Array.from(host.ownerDocument.querySelectorAll(host.tagName))
+  const index = peers.indexOf(host)
+  // A host outside the document has no position. `detached` keeps it away from
+  // the first attached editor's key rather than silently sharing it.
+  if (index < 0) return 'editor-detached'
+  return index > 0 ? `editor-${index}` : 'editor'
+}
+
+export function draftStorageKey(
+  host: HTMLElement,
+  location?: { pathname: string; search?: string },
+): string {
+  const here = host.ownerDocument.defaultView?.location
+  const id = host.getAttribute('draft-key') || host.getAttribute('for') || host.id || ordinalId(host)
+  const path = location?.pathname ?? here?.pathname ?? ''
+  const query = location?.search ?? here?.search ?? ''
+  return `${DRAFT_PREFIX}${path}${query}#${id}`
 }
 
 function memoryStorage(): DraftStorage {
   const data = new Map<string, string>()
   return {
+    get length() {
+      return data.size
+    },
+    key: (index) => [...data.keys()][index] ?? null,
     getItem: (key) => data.get(key) ?? null,
     setItem: (key, value) => {
       data.set(key, value)
@@ -52,16 +113,65 @@ export function defaultStorage(): DraftStorage {
   }
 }
 
-export function readDraft(storage: DraftStorage, key: string): DraftRecord | null {
+/** A clock skewed forward leaves `savedAt` in the future; that is not stale. */
+function isExpired(savedAt: number, now: number): boolean {
+  return now - savedAt > DRAFT_TTL_MS
+}
+
+export function readDraft(storage: DraftStorage, key: string, now = Date.now()): DraftRecord | null {
   const raw = storage.getItem(key)
   if (!raw) return null
   try {
     const parsed = JSON.parse(raw) as Partial<DraftRecord>
     if (typeof parsed.html !== 'string' || typeof parsed.savedAt !== 'number') return null
+    if (isExpired(parsed.savedAt, now)) {
+      clearDraft(storage, key)
+      return null
+    }
     return { html: parsed.html, savedAt: parsed.savedAt }
   } catch {
     return null
   }
+}
+
+/**
+ * Deletes every expired draft on the origin.
+ *
+ * `readDraft` only ever reaches the key the current page asks for, so drafts for
+ * pages nobody reopens would sit there for good. Keys are collected before any
+ * removal because removing during the walk renumbers the indices and would skip
+ * entries. Nothing here throws: a sweep is housekeeping, and a storage that
+ * denies access must not take the editor's startup with it. That includes
+ * reading `length` and `key` themselves -- `DraftStorage` is public, so those
+ * are an embedder's getters and can throw like anything else, and this runs
+ * while the editor is attaching.
+ */
+export function purgeDrafts(storage: DraftStorage, now = Date.now()): void {
+  let total: number | undefined
+  let keyAt: DraftStorage['key']
+  try {
+    total = storage.length
+    keyAt = storage.key
+  } catch {
+    return
+  }
+  if (typeof total !== 'number' || typeof keyAt !== 'function') return
+
+  const expired: string[] = []
+  for (let index = 0; index < total; index += 1) {
+    try {
+      const key = keyAt.call(storage, index)
+      if (key === null || !key.startsWith(DRAFT_PREFIX)) continue
+      const raw = storage.getItem(key)
+      if (!raw) continue
+      const parsed = JSON.parse(raw) as Partial<DraftRecord>
+      if (typeof parsed.savedAt === 'number' && isExpired(parsed.savedAt, now)) expired.push(key)
+    } catch {
+      /* one corrupt or unreadable entry must not stop the rest of the sweep */
+    }
+  }
+
+  for (const key of expired) clearDraft(storage, key)
 }
 
 export function writeDraft(storage: DraftStorage, key: string, html: string, at = Date.now()): void {

@@ -89,7 +89,9 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
   trigger.type = 'button'
   // `ol-btn` is load-bearing: it is what the toolbar's roving tabindex looks for.
   trigger.className = 'ol-btn ol-color-trigger'
-  trigger.dataset['olId'] = options.label
+  // The registered id, not the label: the toolbar reads this back to restore
+  // focus after a re-render, and it looks the id up.
+  trigger.dataset['olId'] = ctx.id ?? options.label
   trigger.setAttribute('aria-label', options.label)
   trigger.setAttribute('aria-haspopup', 'dialog')
   trigger.setAttribute('aria-expanded', 'false')
@@ -235,7 +237,8 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
     popover.style.position = 'fixed'
     popover.style.top = `${Math.round(rect.bottom + 4)}px`
     // Clamped so a trigger near the right edge does not push the grid off-screen.
-    const width = 232
+    // Must track `.ol-color-pop { width }` in styles.ts.
+    const width = 246
     const left = Math.min(Math.round(rect.left), doc.documentElement.clientWidth - width - 8)
     popover.style.left = `${Math.max(8, left)}px`
   }

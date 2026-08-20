@@ -1,0 +1,32 @@
+<!--
+  Unrecognised inline markup as the FIRST child of a container.
+
+  Position is the entire trigger: the identical element with one character of
+  text before it has always round-tripped. As the first child it used to be
+  claimed as a block-level atom, which tore it out of containers that cannot
+  hold one -- emptying the list, escaping the content, and changing <ol> to <ul>.
+-->
+<ol>
+  <li><ins>Revised first item</ins></li>
+  <li>Ordinary second item</li>
+</ol>
+<ul>
+  <li><ins data-revision="7">Tracked insertion</ins> followed by text</li>
+</ul>
+<details>
+  <summary><ins>Revised summary</ins></summary>
+  <p>Disclosure body.</p>
+</details>
+<figure>
+  <img src="chart.png" alt="Quarterly chart">
+  <figcaption><ins>Revised caption</ins></figcaption>
+</figure>
+<blockquote><ins>Quoted insertion</ins></blockquote>
+<table>
+  <tbody>
+    <tr>
+      <td><ins>Cell insertion</ins></td>
+      <td>Ordinary cell</td>
+    </tr>
+  </tbody>
+</table>

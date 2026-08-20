@@ -25,6 +25,7 @@ import {
   clearDraft,
   defaultStorage,
   draftStorageKey,
+  purgeDrafts,
   readDraft,
   writeDraft,
   type DraftStorage,
@@ -183,6 +184,11 @@ function attachSession(
   const key = draftStorageKey(host)
   let timer: ReturnType<typeof setTimeout> | undefined
 
+  // Only the key for this page is ever read back, so a draft for a page nobody
+  // returns to would sit in storage for good. Attaching an editor is the one
+  // moment this library reliably gets, and the sweep is a walk of the keys.
+  purgeDrafts(options.storage)
+
   /**
    * The HTML the editor is showing right now.
    *
@@ -331,7 +337,7 @@ async function offerRestore(
     title: 'Restore unsaved draft',
     message: `A draft from ${when} is saved in this browser. Restore it?`,
     confirmLabel: 'Restore draft',
-  })
+  }, host)
   if (!ok) return
   host.value = html
   handle.update()
@@ -433,14 +439,29 @@ function buildFindBar(host: EditorHost, view: EditorView): { root: HTMLElement; 
 
   const sync = (): void => {
     const search = searchKey.getState(view.state)
+    const hits = search ? search.matches.length : 0
+    // A button that does nothing when pressed is worse than one that says it
+    // cannot: Replace was reachable with no current match and silently returned.
+    prev.disabled = hits === 0
+    next.disabled = hits === 0
+    replace.disabled = hits === 0
+    replaceAllBtn.disabled = hits === 0
+
     if (!search || search.query.length === 0) {
       count.textContent = ''
       spoken = ''
       return
     }
 
+    // `replaced` is reported before the match count, because replacing rebuilds
+    // the matches against the new document and finds none of the old ones --
+    // reporting that as "No matches" made a successful Replace all read as a
+    // failure.
     let message: string
-    if (search.matches.length === 0) {
+    if (search.replaced > 0) {
+      message = say(host, '{n} replaced', { n: String(search.replaced) })
+      count.textContent = message
+    } else if (search.matches.length === 0) {
       message = say(host, 'No matches')
       count.textContent = message
     } else {
@@ -471,25 +492,25 @@ function buildFindBar(host: EditorHost, view: EditorView): { root: HTMLElement; 
 
   findInput.addEventListener('input', applyQuery)
   caseBox.addEventListener('change', applyQuery)
+  // Escape delegated on the bar, not bound to two of its eight controls. Bound
+  // per input, the author who had tabbed to Next, Replace or the case checkbox
+  // pressed Escape and nothing happened.
+  root.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    close()
+  })
   findInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       if (event.shiftKey) findPrev(view.state, view.dispatch)
       else findNext(view.state, view.dispatch)
     }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      close()
-    }
   })
   replaceInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       replaceCurrent(replaceInput.value)(view.state, view.dispatch)
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      close()
     }
   })
   prev.addEventListener('click', () => findPrev(view.state, view.dispatch))

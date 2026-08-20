@@ -92,7 +92,7 @@ export async function openTableProperties(view: EditorView, host: HTMLElement): 
         hint: 'Comma-separated, one value per column. Empty slots are omitted.',
       },
     ],
-    {},
+    { host },
     (values) => ({ value: values }),
   )
   if (!result) return
@@ -132,7 +132,7 @@ export async function openRowProperties(view: EditorView, host: HTMLElement): Pr
       select('valign', 'Vertical alignment', attrs['valign'] as string | null, VALIGN_OPTIONS),
       backgroundField(style.get('background-color')),
     ],
-    {},
+    { host },
     (values) => ({ value: values }),
   )
   if (!result) return
@@ -163,7 +163,7 @@ export async function openCellProperties(view: EditorView, host: HTMLElement): P
       select('valign', 'Vertical alignment', attrs['valign'] as string | null, VALIGN_OPTIONS),
       backgroundField(style.get('background-color')),
     ],
-    {},
+    { host },
     // Reported rather than silently dropped: mergeStyle would refuse the value
     // anyway, and an author who typed something is owed the reason it went.
     (values) => {
@@ -202,7 +202,7 @@ export async function openCaptionDialog(view: EditorView, host: HTMLElement): Pr
         hint: 'The table’s accessible name.',
       },
     ],
-    {},
+    { host },
     (values) => ({ value: { caption: values['caption'] ?? '' } }),
   )
   if (!result) return

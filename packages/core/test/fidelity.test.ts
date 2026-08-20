@@ -37,8 +37,20 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { Node as PMNode } from 'prosemirror-model'
+import { EditorState, TextSelection, type Command } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
-import { parseHtml, serializeHtml } from '../src/index.js'
+import {
+  coreSchema,
+  parseHtml,
+  serializeHtml,
+  setHeading,
+  setParagraph,
+  setTextAlign,
+  setTextColor,
+  toggleBulletList,
+  toggleCodeBlock,
+} from '../src/index.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const STORED = join(HERE, 'fixtures', 'stored')
@@ -120,7 +132,54 @@ function visibleText(html: string): string {
  * schema does NOT model has its own test in format.test.ts, and `is stable
  * after one round trip` still pins the exact output here.
  */
-function attributes(html: string): Map<string, number> {
+/**
+ * Presentational attributes the schema deliberately re-spells as CSS, and the
+ * declaration each one becomes.
+ *
+ * These are conversions, not losses, and the difference is worth being exact
+ * about because this file's whole job is refusing to accept losses. `<td
+ * bgcolor="#ff0000">` comes back as `<td style="background-color:#ff0000">`:
+ * the fact -- this cell has a red background -- is entirely intact, in the
+ * spelling that is still valid HTML. Counting that as a destroyed attribute
+ * would either force the corpus to exclude the legacy content it exists to
+ * cover, or push the schema into emitting both spellings of one fact, which is
+ * the duplication these folds were added to remove.
+ *
+ * So both spellings collapse to one key, on BOTH sides of the comparison. That
+ * is the narrow claim being made: the two are interchangeable notations. It is
+ * not an allowance and it cannot hide a dropped value -- a fact that disappears
+ * in both notations still disappears from the count.
+ *
+ * Restricted to the folds the schema genuinely performs: `readStyle` and
+ * `cellGetAttrs` in tables.ts fold `bgcolor` and `vertical-align`, and
+ * `textBlockAttrs` in schema.ts reads the legacy `align` and writes
+ * `text-align`. Anything not listed here is compared as itself.
+ */
+const EQUIVALENT_SPELLINGS: ReadonlyArray<{ attribute: string; property: string }> = [
+  { attribute: 'bgcolor', property: 'background-color' },
+  { attribute: 'valign', property: 'vertical-align' },
+  { attribute: 'align', property: 'text-align' },
+]
+
+const BY_ATTRIBUTE = new Map(EQUIVALENT_SPELLINGS.map((e) => [e.attribute, e]))
+const BY_PROPERTY = new Map(EQUIVALENT_SPELLINGS.map((e) => [e.property, e]))
+
+/**
+ * One key for a fact, whichever notation it arrived in.
+ *
+ * Values are lowercased for these three only, because the fold runs through
+ * `safeColor` and `safeVAlign`, both of which normalize case. Comparing
+ * `bgcolor="#FF0000"` against `background-color:#ff0000` as different facts
+ * would report a loss where the only change is one the validator made on
+ * purpose.
+ */
+function equivalenceKey(tag: string, name: string, value: string): string | null {
+  const found = BY_ATTRIBUTE.get(name) ?? BY_PROPERTY.get(name)
+  if (!found) return null
+  return `${tag}@=${found.attribute}:${value.toLowerCase()}`
+}
+
+function attributes(html: string, withTag = true): Map<string, number> {
   const host = document.createElement('div')
   host.innerHTML = html
   const counts = new Map<string, number>()
@@ -128,11 +187,15 @@ function attributes(html: string): Map<string, number> {
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
   for (const el of host.querySelectorAll('*')) {
-    const tag = el.nodeName.toLowerCase()
+    // The command corpus compares without the tag, because changing a block's
+    // TYPE is the whole point of the commands under test: `p@class=lead`
+    // legitimately becomes `h2@class=lead`, and keying on the tag would report
+    // every successful conversion as a destroyed attribute.
+    const tag = withTag ? el.nodeName.toLowerCase() : ''
     for (const attr of el.attributes) {
       const value = attr.value.replace(/\s+/g, ' ').trim()
       if (attr.name !== 'style') {
-        bump(`${tag}@${attr.name}=${value}`)
+        bump(equivalenceKey(tag, attr.name, value) ?? `${tag}@${attr.name}=${value}`)
         continue
       }
       for (const declaration of value.split(';')) {
@@ -141,16 +204,21 @@ function attributes(html: string): Map<string, number> {
         const property = declaration.slice(0, at).trim().toLowerCase()
         const setting = declaration.slice(at + 1).trim()
         if (property === '' || setting === '') continue
-        bump(`${tag}@style~${property}:${setting}`)
+        bump(equivalenceKey(tag, property, setting) ?? `${tag}@style~${property}:${setting}`)
       }
     }
   }
   return counts
 }
 
-function droppedAttributes(input: string, output: string, allowed: string[] = []): string[] {
-  const before = attributes(input)
-  const after = attributes(output)
+function droppedAttributes(
+  input: string,
+  output: string,
+  allowed: string[] = [],
+  withTag = true,
+): string[] {
+  const before = attributes(input, withTag)
+  const after = attributes(output, withTag)
   const lost: string[] = []
   for (const [key, n] of before) {
     const kept = after.get(key) ?? 0
@@ -261,6 +329,173 @@ describe('paste cleanup (stable and text-preserving; stripping is the goal)', ()
   }
 })
 
+/*
+ * ------------------------------------------------------------------------
+ * The same three properties, with an EDIT in the middle.
+ * ------------------------------------------------------------------------
+ *
+ * The corpora above prove that opening and saving a document changes nothing.
+ * That is half the promise, and it was the half being measured: the harness
+ * reported "11/11 fully lossless" while every block-type command in the editor
+ * was destroying `class`, every `data-*`, all unmodelled CSS and `dir` on the
+ * block it touched. Nothing here could have caught it, because nothing here
+ * ever ran a command.
+ *
+ * A user does not open a document and save it. They open it, press a toolbar
+ * button, and save it -- so "we did not damage your content" has to hold across
+ * an edit, not just across a no-op. These cases parse a fixture, apply a real
+ * command sequence to it, and then ask the same three questions.
+ *
+ * Attribute comparison drops the tag name (see `attributes`): a command that
+ * turns a `<p>` into an `<h2>` is doing its job, and the property being pinned
+ * is that everything ELSE about the block survived the trip.
+ */
+
+interface CommandCase {
+  name: string
+  html: string
+  /** Applied in order, each to the whole document. */
+  commands: Command[]
+  /**
+   * Attribute keys this sequence is allowed to remove, and why.
+   *
+   * Same standard as `ALLOWED` above: an entry is a deliberate decision to
+   * discard part of somebody's document and has to be argued for.
+   */
+  removes?: string[]
+  why?: string
+}
+
+/** Select the whole document, so a command applies to every block in it. */
+function wholeDocument(doc: PMNode): EditorState {
+  const state = EditorState.create({ doc, schema: coreSchema() })
+  return state.apply(state.tr.setSelection(TextSelection.create(doc, 1, doc.content.size - 1)))
+}
+
+function applyAll(html: string, commands: Command[]): string {
+  let state = wholeDocument(parseHtml(html))
+  for (const command of commands) {
+    const before = state
+    const ran = command(state, (tr) => {
+      state = before.apply(tr)
+    })
+    if (!ran) throw new Error('a command in the sequence declined to apply')
+  }
+  return serializeHtml(state.doc)
+}
+
+const COMMAND_CASES: CommandCase[] = [
+  {
+    name: 'setHeading keeps class, data attributes, dir and unmodelled CSS',
+    html: '<p class="lead" data-cms-block="7" dir="rtl" style="letter-spacing:0.05em">Hello</p>',
+    commands: [setHeading(2)],
+  },
+  {
+    name: 'setHeading keeps a heading its own id and level attributes',
+    html: '<h3 id="intro" class="section" dir="rtl">Introduction</h3>',
+    commands: [setHeading(2)],
+  },
+  {
+    name: 'setParagraph keeps what the heading was carrying, including its id',
+    html: '<h2 id="intro" class="section" data-anchor="top" dir="rtl">Introduction</h2>',
+    commands: [setParagraph],
+  },
+  {
+    name: 'toggleCodeBlock keeps class and data attributes',
+    html: '<p class="note" data-cms-block="9">const x = 1</p>',
+    commands: [toggleCodeBlock],
+  },
+  {
+    name: 'toggleBulletList keeps the list style and class',
+    html: '<ol class="steps" style="list-style-type:lower-alpha"><li><p>First</p></li></ol>',
+    commands: [toggleBulletList],
+  },
+  {
+    name: 'setTextAlign leaves everything it did not come for alone',
+    html: '<p class="lead" data-cms-block="7" style="letter-spacing:0.05em">Hello</p>',
+    commands: [setTextAlign('center')],
+  },
+  {
+    name: 'setTextColor leaves the block untouched',
+    html: '<p class="lead" data-cms-block="7" style="letter-spacing:0.05em">Hello</p>',
+    commands: [setTextColor('#cc0000')],
+  },
+  {
+    name: 'a heading and back again is the identity',
+    html: '<p class="lead" data-cms-block="7" dir="rtl" style="letter-spacing:0.05em">Hello</p>',
+    commands: [setHeading(2), setParagraph],
+  },
+  {
+    name: 'every block in a multi-block selection keeps its OWN attributes',
+    html:
+      '<p class="first" data-one="1">Alpha</p>' +
+      '<p class="second" data-two="2" dir="rtl">Beta</p>',
+    commands: [setHeading(3)],
+  },
+]
+
+describe('command fidelity (an edit must not damage the rest of the block)', () => {
+  for (const testCase of COMMAND_CASES) {
+    describe(testCase.name, () => {
+      const once = applyAll(testCase.html, testCase.commands)
+      const twice = roundTrip(once)
+      const lost = droppedAttributes(testCase.html, once, testCase.removes ?? [], false)
+
+      it('is stable when the result is round-tripped', () => {
+        expect(twice).toBe(once)
+      })
+
+      it('retains all visible text', () => {
+        expect(visibleText(once)).toBe(visibleText(testCase.html))
+      })
+
+      it('retains every attribute', () => {
+        expect(lost).toEqual([])
+      })
+    })
+  }
+
+  /*
+   * A table selection is several ranges, and `selection.from`/`to` describe one
+   * of them. Kept out of the table above because it is the SELECTION that is
+   * the subject here, not the command, and it needs a `CellSelection` to build.
+   */
+  it('applies a colour to every cell of a selected column, not just the last', async () => {
+    const { CellSelection } = await import('prosemirror-tables')
+    const doc = parseHtml(
+      '<table><tbody>' +
+        '<tr><td>a1</td><td>b1</td></tr>' +
+        '<tr><td>a2</td><td>b2</td></tr>' +
+        '<tr><td>a3</td><td>b3</td></tr>' +
+        '</tbody></table>',
+    )
+    const cells: number[] = []
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'table_cell') cells.push(pos)
+      return true
+    })
+
+    const base = EditorState.create({ doc, schema: coreSchema() })
+    // First column: the cell at index 0 through the cell at index 4.
+    const column = CellSelection.create(doc, cells[0] as number, cells[4] as number)
+    const state = base.apply(base.tr.setSelection(column))
+    expect(state.selection.ranges.length).toBe(3)
+
+    let next = state
+    expect(setTextColor('#cc0000')(state, (tr) => { next = state.apply(tr) })).toBe(true)
+    const out = serializeHtml(next.doc)
+
+    // Every cell of the column, and no cell outside it.
+    expect(out.match(/color:#cc0000/g)?.length).toBe(3)
+    for (const text of ['a1', 'a2', 'a3']) {
+      expect(out).toContain(`<span style="color:#cc0000">${text}</span>`)
+    }
+    for (const text of ['b1', 'b2', 'b3']) {
+      expect(out).toContain(`<td>${text}</td>`)
+    }
+  })
+})
+
 describe('fidelity report', () => {
   it('prints the rate for both corpora', () => {
     const width = Math.max(...report.map((r) => r.fixture.length), 7)
@@ -278,7 +513,23 @@ describe('fidelity report', () => {
     const lossless = stored.filter((r) => r.stable && r.textOk && r.attrs === 0)
     out.push(rule, `  stored corpus: ${lossless.length}/${stored.length} fully lossless`, '')
     console.log(out.join('\n'))
-    expect(report.length).toBeGreaterThan(0)
+
+    /*
+     * The headline number, asserted rather than printed.
+     *
+     * This used to be `expect(report.length).toBeGreaterThan(0)` -- a check that
+     * the corpus is not empty, sitting directly under a banner claiming every
+     * fixture in it is lossless. The banner was the thing anybody read and the
+     * assertion was the thing that could fail, and they were not about the same
+     * subject. Six confirmed content-destroying defects shipped under a green
+     * "11/11 fully lossless".
+     *
+     * Now the number is the test. A fixture that starts dropping attributes
+     * fails here as well as in its own block, so the summary cannot advertise a
+     * guarantee the corpus no longer meets.
+     */
+    expect(stored.length).toBeGreaterThan(0)
+    expect(lossless.length).toBe(stored.length)
   })
 })
 
