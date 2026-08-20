@@ -1,26 +1,54 @@
 name: CI
 
-# CI is MANUAL-ONLY while the project is this young.
+# CI runs on every pull request and every push to main.
 #
-# Nothing here is deleted or weakened -- the jobs below are the real gate and
-# still run on demand via `gh workflow run ci.yml` or the Actions tab. They just
-# do not fire on every push, because installing three browser engines with
-# system dependencies took longer than the entire local suite takes to run, and
-# at this stage waiting on a remote runner was costing more than it caught.
+# It did not used to. The whole workflow was `on: workflow_dispatch` -- manual
+# only -- because installing three browser engines with system dependencies took
+# longer than the entire local suite takes to run. That reasoning was sound about
+# the browsers and wrong about everything else: it took the cheap checks offline
+# along with the expensive ones, and it made the `dco` job unreachable, since a
+# job gated on `github.event_name == 'pull_request'` can never fire under a
+# trigger that is only ever `workflow_dispatch`.
 #
-# The local equivalent is `pnpm verify`, which runs the same four checks.
+# So the split is by cost, not by all-or-nothing:
 #
-# TO RE-ENABLE on every push, restore:
-#   push: { branches: [main] }
-#   pull_request:
+#   fast     every PR and every push to main. Chromium only, ~3-4 minutes.
+#   dco      every PR. No install, no browsers, seconds.
+#   browser  all three engines. Nightly, plus on demand from the Actions tab.
+#            WebKit is not optional -- it is Safari and every iOS browser, and
+#            it is historically where selection bugs live -- it just does not
+#            need to block the pull request that Chromium already covered.
+#
+# `push` is scoped to main rather than every branch: a branch is gated by its
+# pull request, and gating both doubles the runner time for the same commits.
+# Nothing reaches main ungated either way.
+#
+# The jobs shell out to `scripts/verify.mjs` instead of listing steps here. That
+# is the point: this file used to carry its own copy of the step list, and the
+# two drifted -- CI had a step named "Typecheck" that ran `pnpm -r build`, which
+# type checks no test file at all. There is one list now, and `pnpm verify` runs
+# it locally.
 on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # 04:17 UTC, off the hour so it is not queued behind everyone else's cron.
+    - cron: '17 4 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Superseded PR runs are wasted minutes; superseded main runs are history.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  verify:
+  fast:
+    name: Gate (chromium)
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,20 +58,27 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm -r build
+      - name: Install chromium
+        run: pnpm exec playwright install --with-deps chromium
 
-      - name: Round-trip fidelity and unit tests
-        run: pnpm test
+      # The same gate a contributor runs as `pnpm verify:quick`: build,
+      # typecheck (src and tests), unit and fidelity tests, chromium e2e, the
+      # dist-dependency and schema-singleton guards, SSR imports of every
+      # published entry point, and the bundle budgets.
+      - name: pnpm verify:quick
+        run: node scripts/verify.mjs --quick
 
-      # Every bundle, not just the core one: the budgets live in
-      # scripts/bundle-budgets.mjs so this and `pnpm verify` cannot drift into
-      # measuring different files against different numbers.
-      - name: Bundle size
-        run: node scripts/bundle-budgets.mjs
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-chromium
+          path: playwright-report/
+          retention-days: 14
 
   browser:
-    name: Browser tests
+    name: Gate (chromium, firefox, webkit)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,12 +89,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Install browsers
-        # All three engines. WebKit is not optional -- it is Safari and every
-        # iOS browser, and it is historically where selection bugs live.
         run: pnpm exec playwright install --with-deps chromium firefox webkit
 
-      - name: Browser tests
-        run: pnpm test:e2e
+      - name: pnpm verify
+        run: node scripts/verify.mjs
 
       - name: Upload report on failure
         if: failure()
@@ -70,24 +103,33 @@ jobs:
           retention-days: 14
 
   dco:
-    runs-on: ubuntu-latest
+    name: Sign-off
     if: github.event_name == 'pull_request'
-    # Note: only meaningful on pull_request. Under manual dispatch this is
-    # skipped, so sign-off is enforced by discipline (`git commit -s`) until
-    # push-triggered CI is restored.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - name: Every commit is signed off
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           # OpenLeaf uses the DCO rather than a CLA -- see GOVERNANCE.md s.2.
           # Distributed copyright is what makes a future relicense impossible,
           # so this check is load-bearing, not ceremony.
+          #
+          # It also spent its whole life unreachable: the only trigger was
+          # workflow_dispatch, under which `if: github.event_name ==
+          # 'pull_request'` is never true. It ran for the first time on the pull
+          # request that added `pull_request:` above.
           missing=0
-          for sha in $(git rev-list origin/${{ github.base_ref }}..HEAD); do
+          for sha in $(git rev-list "origin/$BASE_REF..HEAD"); do
             if ! git log -1 --format=%B "$sha" | grep -qi '^Signed-off-by: .\+ <.\+@.\+>'; then
               echo "::error::commit $sha is missing a Signed-off-by line"
+              echo "  $(git log -1 --format='%h %s' "$sha")"
               missing=1
             fi
           done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Sign off with 'git commit -s', or 'git rebase --signoff' for existing commits. See CONTRIBUTING.md."
+          fi
           exit $missing
