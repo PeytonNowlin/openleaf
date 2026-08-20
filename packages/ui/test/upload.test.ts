@@ -14,6 +14,7 @@ import {
   imageFilesFrom,
   imageUploaderFor,
   isUploadableImage,
+  isUploadableImageType,
   registerImageUploader,
   runUploader,
   type ImageUploader,
@@ -66,6 +67,18 @@ describe('which files are claimed', () => {
     // sanitizing its interior, which is the accepting server's job.
     expect(isUploadableImage(file('a.svg', 'image/svg+xml'))).toBe(false)
     expect(isUploadableImage(file('a.docx', 'application/vnd.openxmlformats'))).toBe(false)
+  })
+
+  it('gives the same answer for a media type with no file attached', () => {
+    // The .docx importer asks this about images inside the ZIP, where there is
+    // no File at all and the content type comes from whoever sent the document.
+    expect(isUploadableImageType('image/png')).toBe(true)
+    expect(isUploadableImageType('IMAGE/PNG')).toBe(true)
+    expect(isUploadableImageType('image/svg+xml')).toBe(false)
+    // A parameter, and a capitalised type, are both things a real file carries.
+    expect(isUploadableImageType('image/svg+xml; charset=utf-8')).toBe(false)
+    expect(isUploadableImageType('')).toBe(false)
+    expect(isUploadableImageType(null)).toBe(false)
   })
 
   it('picks the images out of a mixed drop, in order', () => {

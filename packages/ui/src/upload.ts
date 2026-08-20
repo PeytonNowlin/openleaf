@@ -102,7 +102,22 @@ export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/avi
  * accepts the upload, not for a drop handler.
  */
 export function isUploadableImage(file: File): boolean {
-  return file.type.startsWith('image/') && file.type !== 'image/svg+xml'
+  return isUploadableImageType(file.type)
+}
+
+/**
+ * The same rule, against a media type on its own.
+ *
+ * Split out because the file is not always in hand. A `.docx` carries its
+ * images inside the ZIP with a declared `contentType` and no `File` anywhere --
+ * and that content type comes from the document, which is to say from whoever
+ * sent it. The import path has to make the same decision about it that the drop
+ * handler makes about a dropped file, and two copies of "except SVG" is how one
+ * of them ends up missing.
+ */
+export function isUploadableImageType(type: string | null | undefined): boolean {
+  const media = (type ?? '').split(';')[0]!.trim().toLowerCase()
+  return media.startsWith('image/') && media !== 'image/svg+xml'
 }
 
 /** The uploadable images in a drop or a paste, in the order they arrived. */
