@@ -93,14 +93,20 @@ test.describe('the toolbar overflow panel', () => {
     expect(tabbable).toBe(1)
   })
 
-  test('does not leave its controls tabbable while it is closed', async ({ page }) => {
-    // Every clone had its tabindex REMOVED, which made each one a native tab
-    // stop the moment the panel was shown.
-    const reachable = await page.evaluate(() => {
-      const el = document.querySelector('openleaf-editor[for="body-narrow"] .ol-overflow-menu')
-      return el instanceof HTMLElement ? !el.hidden : false
+  test('holds the controls themselves, not a second copy of them', async ({ page }) => {
+    await more(page).click()
+    // The clones duplicated `data-ol-id`, `aria-label` and `aria-pressed`, so
+    // the accessibility tree carried two "Bold, toggle button" entries and the
+    // forwarding had to guess which of them owned the command.
+    const duplicated = await host(page).evaluate((el) => {
+      const seen = new Map<string, number>()
+      for (const node of el.querySelectorAll<HTMLElement>('[data-ol-id]')) {
+        const id = node.dataset['olId'] ?? ''
+        seen.set(id, (seen.get(id) ?? 0) + 1)
+      }
+      return [...seen.entries()].filter(([, count]) => count > 1).map(([id]) => id)
     })
-    expect(reachable).toBe(false)
+    expect(duplicated).toEqual([])
   })
 })
 
@@ -276,6 +282,8 @@ test.describe('focus restoration', () => {
    * back to where the author left it. It is the difference between a dialog a
    * keyboard user can use twice and one they can use once.
    */
+  // A regression guard rather than a fix: the dialog already did this, and
+  // nothing in the suite held it there.
   test('a dialog returns focus to the control that opened it', async ({ page }) => {
     await page.goto(MAIN)
     const editor = page.getByRole('textbox', { name: 'Post body' })
