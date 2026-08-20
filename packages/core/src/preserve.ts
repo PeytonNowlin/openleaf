@@ -29,7 +29,13 @@
 
 import type { NodeSpec } from 'prosemirror-model'
 import { isFullyModelledStyle, safeLang } from './css.js'
-import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
+import { DROP_WITH_CONTENT } from './elements.js'
+import {
+  URL_ATTRIBUTES,
+  isEventHandlerAttribute,
+  isNeverCarriedAttribute,
+  isSafeUrl,
+} from './url.js'
 
 /**
  * Elements that are never preserved, and whose contents are discarded with them.
@@ -48,27 +54,37 @@ import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
  * `ignore` rather than `skip`: the element AND its contents go. Skipping would
  * unwrap `<script>alert(1)</script>` into the literal text "alert(1)" appearing
  * in the document, which is a different kind of wrong.
+ *
+ * Spread from `@openleaf-editor/content-policy` rather than written out here.
+ * This list and the sanitize policy's `dropWithContent` are the same decision
+ * made in two packages, they were maintained by hand, and they drifted: `<svg>`
+ * and `<math>` were on the sanitizer's list and missing from this one, so the
+ * editor stored exactly the markup the server was configured to delete. Sharing
+ * the constant is what makes that drift impossible rather than merely unlikely.
+ *
+ * Exported so the divergence can be asserted in a test as well as prevented by
+ * construction. Not re-exported from the package index: it is an internal
+ * invariant, and the shared list itself is public in content-policy.
  */
-const NEVER_PRESERVE: readonly string[] = [
-  'script',
-  'style',
-  'frame',
-  'frameset',
-  'object',
-  'embed',
-  'applet',
-  'form',
-  'input',
-  'button',
-  'select',
-  'textarea',
-  'option',
-  'link',
-  'meta',
-  'base',
-  'noscript',
-  'template',
-]
+export const NEVER_PRESERVE: readonly string[] = [...DROP_WITH_CONTENT]
+
+/**
+ * Tags that must not survive *inside* a preserved subtree either.
+ *
+ * `iframe` is here and not in `NEVER_PRESERVE` because the two answer different
+ * questions. At the top level an iframe is claimed by the modelled embed node
+ * when its `src` is an allowlisted player, and ignored otherwise -- a
+ * priority-100 drop rule would outrank the embed node and delete legitimate
+ * players. Inside preserved markup there is no such question: the subtree is
+ * stored as an opaque string and re-emitted verbatim, so nothing re-checks the
+ * frame on the way out.
+ *
+ * That gap was the bypass. `<iframe src="https://evil.example/">` on its own was
+ * dropped; wrapped in a `<div class="c">` it round-tripped byte-identical, with
+ * `allow="camera; microphone; geolocation"` intact. One attribute on a wrapper
+ * defeated both the host allowlist and the permissions filter.
+ */
+const NEVER_INSIDE_PRESERVED: ReadonlySet<string> = new Set([...NEVER_PRESERVE, 'iframe'])
 
 /** Parse rules that drop dangerous elements before any other rule sees them. */
 const dropRules = NEVER_PRESERVE.map((tag) => ({ tag, ignore: true, priority: 100 }))
@@ -147,7 +163,7 @@ export function scrub(el: Element): string {
 
   const visit = (node: Element): void => {
     for (const child of Array.from(node.children)) {
-      if (NEVER_PRESERVE.includes(child.nodeName.toLowerCase())) {
+      if (NEVER_INSIDE_PRESERVED.has(child.nodeName.toLowerCase())) {
         child.remove()
         continue
       }
@@ -155,6 +171,13 @@ export function scrub(el: Element): string {
     }
     for (const attr of Array.from(node.attributes)) {
       if (isEventHandlerAttribute(attr.name)) {
+        node.removeAttribute(attr.name)
+        continue
+      }
+      // Before the URL question, not as a case of it: `srcdoc` is a document
+      // rather than a URL, and asking a scheme checker about a document gets
+      // "no scheme, therefore relative, therefore safe".
+      if (isNeverCarriedAttribute(attr.name)) {
         node.removeAttribute(attr.name)
         continue
       }

@@ -8,7 +8,7 @@
 
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { promptForImage, promptForLink } from '../src/dialog.js'
-import { registerImageList, registerLinkList } from '../src/pickers.js'
+import { registerFilePicker, registerImageList, registerLinkList } from '../src/pickers.js'
 
 beforeAll(() => {
   const proto = Object.getPrototypeOf(document.createElement('dialog')) as {
@@ -26,6 +26,7 @@ beforeAll(() => {
 afterEach(() => {
   registerLinkList(null)
   registerImageList(null)
+  registerFilePicker(null)
   for (const dialog of Array.from(document.querySelectorAll('dialog'))) dialog.remove()
 })
 
@@ -101,5 +102,155 @@ describe('promptForImage with an image list', () => {
     expect(control<HTMLInputElement>(form, 'src').value).toBe('/new.png')
     submit(form)
     expect((await pending)?.src).toBe('/new.png')
+  })
+})
+
+/**
+ * Addresses the editor will not store.
+ *
+ * `setLink` and `insertImage` decline these too, but a ProseMirror command that
+ * declines is silent by design -- it means "not applicable here", and the
+ * toolbar has already closed the dialog by the time it returns. Checking in the
+ * commit step is what turns a mysterious no-op into a sentence the author can
+ * act on, with the offending address still in the field.
+ */
+describe('an address the editor cannot store', () => {
+  const REFUSED = 'That address is not one the editor can store.'
+
+  function errorText(form: HTMLFormElement): string {
+    return form.querySelector('.ol-error')?.textContent ?? ''
+  }
+
+  function buttonLabelled(form: HTMLFormElement, label: string): HTMLButtonElement {
+    const found = Array.from(form.querySelectorAll('button')).find((b) => b.textContent === label)
+    if (!found) throw new Error(`no button labelled ${label}`)
+    return found
+  }
+
+  /** Let the picker promise and both handlers attached to it settle. */
+  async function settle(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+
+  it('keeps the link dialog open and says why', async () => {
+    const pending = promptForLink(document)
+    const form = openForm()
+    control<HTMLInputElement>(form, 'href').value = 'javascript:alert(document.cookie)'
+    submit(form)
+
+    expect(errorText(form)).toBe(REFUSED)
+    // Still open, with the address still in view. Closing on refusal would
+    // discard the author's typing along with the explanation.
+    expect(form.closest('dialog')?.hasAttribute('open')).toBe(true)
+    expect(control<HTMLInputElement>(form, 'href').value).toBe('javascript:alert(document.cookie)')
+
+    buttonLabelled(form, 'Cancel').click()
+    expect(await pending).toBeNull()
+  })
+
+  it('refuses every executable scheme, however it is spelled', async () => {
+    const payloads = [
+      'data:text/html,<script>alert(1)</script>',
+      'vbscript:msgbox(1)',
+      'JaVaScRiPt:alert(1)',
+      'java\tscript:alert(1)',
+      '   javascript:alert(1)',
+    ]
+    for (const href of payloads) {
+      const pending = promptForLink(document)
+      const form = openForm()
+      control<HTMLInputElement>(form, 'href').value = href
+      submit(form)
+      expect(errorText(form)).toBe(REFUSED)
+      buttonLabelled(form, 'Cancel').click()
+      expect(await pending).toBeNull()
+    }
+  })
+
+  it('still resolves for an ordinary address', async () => {
+    const pending = promptForLink(document)
+    const form = openForm()
+    control<HTMLInputElement>(form, 'href').value = 'https://example.org'
+    submit(form)
+    expect(await pending).toMatchObject({ href: 'https://example.org' })
+  })
+
+  it('keeps the image dialog open and says why', async () => {
+    const pending = promptForImage(document)
+    const form = openForm()
+    control<HTMLInputElement>(form, 'src').value = 'javascript:alert(1)'
+    control<HTMLInputElement>(form, 'alt').value = 'A chart'
+    submit(form)
+
+    expect(errorText(form)).toBe(REFUSED)
+    buttonLabelled(form, 'Cancel').click()
+    expect(await pending).toBeNull()
+  })
+
+  it('still resolves for an ordinary image address', async () => {
+    const pending = promptForImage(document)
+    const form = openForm()
+    control<HTMLInputElement>(form, 'src').value = '/a.png'
+    control<HTMLInputElement>(form, 'alt').value = 'A chart'
+    submit(form)
+    expect(await pending).toMatchObject({ src: '/a.png' })
+  })
+
+  // An integrator's file picker was trusted where an integrator's uploader was
+  // not -- `runUploader` has refused an unsafe address since it was written.
+  it('refuses a link picker that hands back an unstorable address', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    registerFilePicker(() => Promise.resolve({ url: 'javascript:alert(1)', title: 'Report' }))
+
+    const pending = promptForLink(document, undefined, host)
+    const form = openForm()
+    buttonLabelled(form, 'Browse files').click()
+    await settle()
+
+    expect(errorText(form)).toBe('The file picker returned an address the editor will not store.')
+    // The address never reaches the field, so it cannot be submitted by an
+    // author who assumes the picker gave them something valid.
+    expect(control<HTMLInputElement>(form, 'href').value).toBe('')
+
+    buttonLabelled(form, 'Cancel').click()
+    expect(await pending).toBeNull()
+    host.remove()
+  })
+
+  it('refuses an image picker that hands back an unstorable address', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    registerFilePicker(() => Promise.resolve({ url: 'javascript:alert(1)', alt: 'x' }))
+
+    const pending = promptForImage(document, { host })
+    const form = openForm()
+    buttonLabelled(form, 'Browse files').click()
+    await settle()
+
+    expect(errorText(form)).toBe('The image picker returned an address the editor will not store.')
+    expect(control<HTMLInputElement>(form, 'src').value).toBe('')
+
+    buttonLabelled(form, 'Cancel').click()
+    expect(await pending).toBeNull()
+    host.remove()
+  })
+
+  it('accepts a picker that hands back an ordinary address', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    registerFilePicker(() => Promise.resolve({ url: '/docs/report.pdf', title: 'Report' }))
+
+    const pending = promptForLink(document, undefined, host)
+    const form = openForm()
+    buttonLabelled(form, 'Browse files').click()
+    await settle()
+
+    expect(errorText(form)).toBe('')
+    expect(control<HTMLInputElement>(form, 'href').value).toBe('/docs/report.pdf')
+
+    submit(form)
+    expect(await pending).toMatchObject({ href: '/docs/report.pdf' })
+    host.remove()
   })
 })

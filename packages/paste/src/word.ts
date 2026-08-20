@@ -35,30 +35,105 @@ import {
   extractSemantics,
   stripAllStyles,
 } from './clean.js'
+import { safeLang } from '@openleaf-editor/content-policy/css'
 import {
   parseFragment,
   parseStyle,
   plainText,
   resolveDocument,
+  serializeFragment,
   stripComments,
   unwrap,
+  type Container,
 } from './dom.js'
 
 /** Namespaced junk Word emits: <o:p>, <w:sdt>, <m:oMath>, <v:shape>, <st1:place>. */
 const XML_PREFIXES = /^(o|w|m|v|st\d*|x):/i
 
+/** Presentational attributes Word sprays over ordinary text. */
+const PRESENTATIONAL_ATTRS = ['align', 'valign', 'width', 'height'] as const
+
+/**
+ * Elements where those same attributes are structure rather than noise.
+ *
+ * `packages/core/src/tables.ts` keeps `width`, `height`, `align` and `valign`
+ * on tables and cells deliberately -- "they are how HTML expressed table
+ * styling for fifteen years... and dropping them changes how a page renders" --
+ * and core's `iframe`, `video` and `img` nodes model `width` and `height` as
+ * real attributes. Stripping them here means core never gets the chance: a
+ * pasted Word table arrives with every column the same width, which is one of
+ * the first things an author notices and one of the two reasons this package
+ * exists.
+ */
+const STRUCTURAL_ATTR_ELEMENTS = new Set([
+  'IMG',
+  'IFRAME',
+  'VIDEO',
+  'AUDIO',
+  'EMBED',
+  'OBJECT',
+  'CANVAS',
+  'TABLE',
+  'THEAD',
+  'TBODY',
+  'TFOOT',
+  'TR',
+  'TD',
+  'TH',
+  'COL',
+  'COLGROUP',
+])
+
 /**
  * A marker is ordered when it ends in a delimiter after a number, letter or
  * roman numeral. A bare `o` (Word's level-2 Courier bullet) has no delimiter
  * and so correctly reads as unordered.
+ *
+ * The bracket is grouped WITH the whitespace that may follow it, rather than
+ * sitting between two independent `\s*` runs. That grouping is not cosmetic.
+ * The older shape, `^\s*[([]?\s*(...)`, is ambiguous whenever the optional
+ * bracket matches empty: two adjacent unbounded whitespace runs mean a run of
+ * N spaces can be divided N+1 ways, and a marker that then fails to end in a
+ * delimiter forces the engine to try every division. The cost is QUADRATIC,
+ * not exponential -- measured end-to-end through normalizePastedHtml at ~4x
+ * per doubling: 16 KB 205 ms, 32 KB 804 ms, 64 KB 3.7 s, 128 KB 13.3 s.
+ * Quadratic is quite bad enough on an unbounded input, and this input is
+ * unbounded: marker text is whatever an `mso-list:Ignore` span or an
+ * `[if !supportLists]` comment range in the pasted HTML happens to contain,
+ * and pasted HTML is attacker-influenceable in any CMS. Because a bracket is
+ * never whitespace, the grouped form admits exactly one division.
+ *
+ * The alternation is NOT the problem, which is worth recording because it is
+ * the part that looks suspicious. Its branches are flat -- no quantifier
+ * nested inside another, and an anchor in front -- so a long run of digits or
+ * letters backtracks linearly, once per branch. Measured, every such input
+ * stays under 0.1 ms at 32 KB even against the old pattern.
+ * Only a whitespace run is expensive. Listing `[ivxlcdm]+` ahead of `[a-z]` is
+ * therefore an intent fix, not a performance one: it lets `iv.` match on the
+ * roman branch directly instead of reaching it by backtracking out of `[a-z]`.
+ * It matches exactly the same strings either way.
+ *
+ * See also the 64-character cap in `analyze`: real markers are a handful of
+ * characters, and bounding the input is the belt to this regex's braces.
  */
-const ORDERED_MARKER = /^\s*[([]?\s*(\d+|[a-z]|[ivxlcdm]+)\s*[.)\]]/i
+const ORDERED_MARKER = /^\s*(?:[([]\s*)?(?:\d+|[ivxlcdm]+|[a-z])\s*[.)\]]/i
 
 interface ListInfo {
   el: Element
   listId: string
   level: number
   ordered: boolean
+  /**
+   * Whether a bullet or number glyph was actually found.
+   *
+   * `ordered` is read off the marker text, so a list paragraph that has no
+   * marker -- Word's continuation paragraph, a second paragraph inside one
+   * item -- reads as unordered for want of anywhere else to get an answer.
+   * That is fine while the flag is only used to pick a list type, and not fine
+   * for deciding that the list type CHANGED, which is why the two are
+   * separate.
+   */
+  hasMarker: boolean
   start: number | null
   markerNodes: Node[]
 }
@@ -104,8 +179,27 @@ function findMarker(p: Element): { text: string; nodes: Node[] } {
   return { text: '', nodes: [] }
 }
 
-/** Read Word's list metadata off a paragraph, or null if it is not a list item. */
+/**
+ * Memo for `analyze`.
+ *
+ * `reconstructLists` asks about every child twice -- once on the way down the
+ * recursion, once in the main loop -- and the answer involves a
+ * `querySelectorAll('span')` over the whole subtree. The result depends only on
+ * the element's own `mso-list` style and its marker, neither of which changes
+ * between the two questions: an element that becomes a list item is consumed by
+ * `buildNested` and never asked about again.
+ */
+const analyzed = new WeakMap<Element, ListInfo | null>()
+
 function analyze(el: Element): ListInfo | null {
+  if (analyzed.has(el)) return analyzed.get(el) ?? null
+  const info = readListInfo(el)
+  analyzed.set(el, info)
+  return info
+}
+
+/** Read Word's list metadata off a paragraph, or null if it is not a list item. */
+function readListInfo(el: Element): ListInfo | null {
   const style = parseStyle(el)
   const msoList = style.get('mso-list')
   // `class="MsoListParagraph"` alone is not sufficient: Word applies it to
@@ -116,14 +210,20 @@ function analyze(el: Element): ListInfo | null {
   const level = Number.parseInt(/\blevel(\d+)\b/i.exec(msoList)?.[1] ?? '1', 10) || 1
 
   const marker = findMarker(el)
-  const ordered = ORDERED_MARKER.test(marker.text)
-  const startMatch = ordered ? /\d+/.exec(marker.text) : null
+  // A list marker is `1.`, `a)`, `(iv)` or a single bullet glyph, plus the
+  // couple of non-breaking spaces Word pads it with. Nothing legitimate comes
+  // close to 64 characters, so the cap costs nothing and denies a hostile
+  // paste the unbounded input any backtracking search needs to be expensive.
+  const text = marker.text.slice(0, 64)
+  const ordered = ORDERED_MARKER.test(text)
+  const startMatch = ordered ? /\d+/.exec(text) : null
 
   return {
     el,
     listId,
     level,
     ordered,
+    hasMarker: marker.text.trim() !== '',
     start: startMatch ? Number.parseInt(startMatch[0], 10) : null,
     markerNodes: marker.nodes,
   }
@@ -189,7 +289,7 @@ function buildNested(run: ListInfo[], doc: Document): Element {
 }
 
 /** Replace runs of Word list paragraphs with real nested lists. */
-function reconstructLists(container: Element, doc: Document): void {
+function reconstructLists(container: Container, doc: Document): void {
   // Word wraps the body in <div class="WordSection1">. The algorithm only
   // sees direct children, so without this the whole paste becomes one
   // attributed wrapper and the lists inside it are never reconstructed.
@@ -215,6 +315,26 @@ function reconstructLists(container: Element, doc: Document): void {
       // than continuing this one.
       if (!next) break
       if (next.listId !== first.listId && next.level === 1) break
+      // So does a change of marker type at the top level. `buildNested` can
+      // only switch between <ul> and <ol> below the root, so a run that starts
+      // with a bullet and continues with numbers would otherwise put the
+      // numbered items in the <ul> -- the type change is the one signal Word
+      // gives that these are two lists.
+      //
+      // Both items must actually HAVE a marker. A continuation paragraph has
+      // none and so reads as unordered, and splitting on that would tear a
+      // numbered list into three lists around every paragraph of trailing
+      // prose inside an item -- trading a rare cosmetic bug for a common
+      // structural one, in the code this package exists for.
+      if (
+        next.level === 1 &&
+        first.level === 1 &&
+        next.hasMarker &&
+        first.hasMarker &&
+        next.ordered !== first.ordered
+      ) {
+        break
+      }
       run.push(next)
       j += 1
     }
@@ -228,8 +348,85 @@ function reconstructLists(container: Element, doc: Document): void {
   }
 }
 
+/**
+ * Keep the language markings that mean something and drop the ones that do not.
+ *
+ * Word stamps `lang` on more or less every run it emits, so the obvious move --
+ * the one this file used to make -- is to delete all of it. That also deletes
+ * the author's marking on quoted foreign text, which `packages/core`'s
+ * `language` mark models precisely (`span[lang]`, validated with `safeLang`) so
+ * that it survives, and which is what tells a screen reader to change
+ * pronunciation. Deleting it here means the schema never sees it.
+ *
+ * What separates the two is repetition. The language Word repeats across the
+ * paste is the document's own, and saying it again on every span is noise; a
+ * value that appears against that background is a deliberate contrast. So:
+ *
+ *   - a value `safeLang` does not accept is not a language tag, and goes;
+ *   - a value that only repeats an ancestor's is redundant, and goes;
+ *   - the value carried by the most elements, when more than one carries it,
+ *     is the document language, and goes;
+ *   - anything left is the author marking a quotation, and stays.
+ *
+ * A single `lang` in a short paste therefore survives -- there is no repetition
+ * to mark it as boilerplate, and keeping one correct attribute is a far smaller
+ * cost than dropping a real one.
+ */
+function normalizeLanguage(container: Container): void {
+  const kept: Array<{ el: Element; lang: string }> = []
+  const counts = new Map<string, number>()
+
+  for (const el of Array.from(container.querySelectorAll('*'))) {
+    // `xml:lang` is the XHTML spelling of the same thing and nothing
+    // downstream reads it. Fold it onto `lang` rather than dropping both.
+    const xml = el.getAttribute('xml:lang')
+    if (xml !== null) {
+      el.removeAttribute('xml:lang')
+      if (!el.hasAttribute('lang')) el.setAttribute('lang', xml)
+    }
+
+    const raw = el.getAttribute('lang')
+    if (raw === null) continue
+
+    const lang = safeLang(raw)
+    const ancestor = safeLang(el.parentElement?.closest('[lang]')?.getAttribute('lang'))
+    // A marking on an element with no text of its own applies to nothing.
+    if (!lang || plainText(el).trim() === '' || lang.toLowerCase() === ancestor?.toLowerCase()) {
+      el.removeAttribute('lang')
+      continue
+    }
+
+    el.setAttribute('lang', lang)
+    kept.push({ el, lang })
+    const key = lang.toLowerCase()
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+
+  let dominant: string | null = null
+  let best = 1
+  for (const [lang, count] of counts) {
+    if (count > best) {
+      dominant = lang
+      best = count
+    } else if (count === best) {
+      // Two languages used equally often: neither is the background, so keep
+      // both rather than guess which one the author meant as the contrast.
+      dominant = null
+    }
+  }
+  if (dominant === null) return
+
+  for (const { el, lang } of kept) {
+    if (lang.toLowerCase() === dominant) el.removeAttribute('lang')
+  }
+}
+
 /** Remove Word's proprietary elements, classes, attributes and styles. */
-function stripJunk(container: Element): void {
+function stripJunk(container: Container): void {
+  // Before the attribute sweep below, and before bare spans are collapsed: a
+  // span that keeps its `lang` is no longer bare.
+  normalizeLanguage(container)
+
   for (const el of Array.from(container.querySelectorAll('*'))) {
     // <style> and <xml> blocks carry Word's entire list definition table.
     if (el.nodeName === 'STYLE' || el.nodeName === 'XML' || el.nodeName === 'LINK') {
@@ -251,10 +448,9 @@ function stripJunk(container: Element): void {
       else el.removeAttribute('class')
     }
 
-    for (const attr of ['lang', 'xml:lang', 'align', 'valign', 'width', 'height']) {
-      if (el.nodeName !== 'IMG') el.removeAttribute(attr)
+    if (el.nodeName !== 'IMG' && !STRUCTURAL_ATTR_ELEMENTS.has(el.nodeName)) {
+      for (const attr of PRESENTATIONAL_ATTRS) el.removeAttribute(attr)
     }
-
   }
 
   stripAllStyles(container)
@@ -269,15 +465,19 @@ export function looksLikeWord(html: string): boolean {
 }
 
 export function normalizeWord(html: string, explicitDocument?: Document): string {
-  const doc = resolveDocument(explicitDocument)
-  const container = parseFragment(html, doc)
+  // Inert throughout -- see parseFragment. `doc` here is the fragment's own
+  // inert document, so the <ul>/<ol>/<li>/<p> that list reconstruction builds
+  // below are inert too, and moving the paste's own nodes into them never
+  // crosses into the live document.
+  const fragment = parseFragment(html, resolveDocument(explicitDocument))
+  const { root, doc } = fragment
 
   // Lists first: the algorithm reads conditional comments and mso- styles
   // that the later passes delete.
-  reconstructLists(container, doc)
-  extractSemantics(container, doc)
-  stripComments(container)
-  stripJunk(container)
+  reconstructLists(root, doc)
+  extractSemantics(root, doc)
+  stripComments(root)
+  stripJunk(root)
 
-  return container.innerHTML
+  return serializeFragment(fragment)
 }
