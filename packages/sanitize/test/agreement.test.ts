@@ -77,6 +77,14 @@ const SCHEMA_NATIVE = [
   '<table><caption class="cap">Q1 <strong>results</strong></caption>' +
     '<colgroup><col width="200"><col width="80"></colgroup>' +
     '<tbody><tr><td style="background-color:#cc0000" valign="middle">North</td></tr></tbody></table>',
+  // `bgcolor`. The schema reads it into `background-color` AND carries the
+  // attribute itself, so this is what the editor stores for a table an author
+  // inherited from a 2006 CMS. A policy without `bgcolor` deletes half of that
+  // on the way to the database, which is drift by the same mechanism as
+  // `RegionNorth`: the schema grew and the policy did not follow.
+  '<table bgcolor="#eeeeee"><tbody>' +
+    '<tr bgcolor="#eeeeee"><th bgcolor="#dddddd">H</th>' +
+    '<td bgcolor="#ffcc00">North</td></tr></tbody></table>',
 ]
 
 describe('the default policy accepts everything the editor emits', () => {

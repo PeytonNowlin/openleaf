@@ -18,7 +18,7 @@ registry -- and a node built by one is not a node type the other accepts.
 ```ts
 import { detectSource, normalizePastedHtml } from '@openleaf-editor/paste'
 
-detectSource(html)          // 'word' | 'gdocs' | 'html'
+detectSource(html)          // 'word' | 'gdocs' | 'openleaf' | 'unknown'
 normalizePastedHtml(html)   // cleaned
 ```
 
@@ -42,6 +42,22 @@ Word's list structure is rebuilt from `mso-list` metadata and its `<o:p>` and
 conditional-comment scaffolding is removed. Google Docs' wrapping
 `<b style="font-weight:normal">` is unwrapped rather than trusted -- reading it as
 bold turns the entire paste bold.
+
+What is *not* stripped is structure: table column widths and cell alignment, the
+dimensions of an embedded video, and a `lang` marking the source used to say
+"this quotation is in another language". Those are what the document says, not
+what it looks like, and the schema models each of them.
+
+## Copying out of one OpenLeaf document and into another
+
+That paste is detected (ProseMirror stamps `data-pm-slice` on its own clipboard
+HTML) and handled separately, by `normalizeOpenLeaf`. It keeps inline styles,
+because "shed the source's appearance" is an argument about a *foreign* source
+and the source here is the same editor and the same schema as the destination.
+Detecting it first also matters for what the editor preserves: `looksLikeWord`
+matches the substring `mso-`, so a document that has preserved a
+`<div class="MsoNormal">` would otherwise be treated as a fresh Word paste and
+stripped of exactly the markup preservation exists to keep.
 
 ## License
 
