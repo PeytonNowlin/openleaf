@@ -13,6 +13,7 @@ import { EditorState, TextSelection, type Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerDefaultItems } from '../src/items.js'
+import { ToolbarOverflow } from '../src/overflow.js'
 import { DEFAULT_LAYOUT, LAYOUT_WITH_COLOUR, registerToolbarItem } from '../src/registry.js'
 import { Toolbar } from '../src/toolbar.js'
 
@@ -266,5 +267,41 @@ describe('the alignment items', () => {
     // warning for every deployment that did not load it.
     expect(DEFAULT_LAYOUT).not.toContain('textColour')
     expect(LAYOUT_WITH_COLOUR).toContain('textColour highlightColour')
+  })
+})
+
+describe('the overflow menu', () => {
+  it('rebuilds select clones when opened so they match current state', () => {
+    const { toolbar, host } = mount('fontFamily | bold')
+    const overflow = new ToolbarOverflow(toolbar.el, host, document)
+    // Force groups into overflow without depending on jsdom layout metrics.
+    // layout() just un-hid them; hide again so fillMenu has something to clone.
+    for (const group of toolbar.el.querySelectorAll<HTMLElement>(':scope > .ol-group')) {
+      group.hidden = true
+    }
+
+    const original = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="fontFamily"]')
+    expect(original).not.toBeNull()
+    original!.value = 'Georgia'
+
+    const more = toolbar.el.querySelector<HTMLButtonElement>('.ol-overflow-more')
+    expect(more).not.toBeNull()
+    more!.hidden = false
+    more!.click()
+
+    const clone = host.querySelector<HTMLSelectElement>(
+      '.ol-overflow-menu select[data-ol-id="fontFamily"]',
+    )
+    expect(clone?.value).toBe('Georgia')
+
+    original!.value = 'Arial'
+    // Close then reopen: the clone must pick up the new value.
+    more!.click()
+    more!.click()
+    const refreshed = host.querySelector<HTMLSelectElement>(
+      '.ol-overflow-menu select[data-ol-id="fontFamily"]',
+    )
+    expect(refreshed?.value).toBe('Arial')
+    overflow.destroy()
   })
 })

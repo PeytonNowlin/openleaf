@@ -26,6 +26,8 @@ import { TextSelection, type Command, EditorState } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import {
   activeBackgroundColor,
+  activeFontFamily,
+  activeFontSize,
   activeTextAlign,
   activeTextColor,
   clearBackgroundColor,
@@ -387,6 +389,48 @@ describe('colour commands', () => {
     )
     expect(activeTextColor(mixed)).toBeNull()
     expect(activeBackgroundColor(one)).toBeNull()
+
+    // Unmarked then marked used to report the colour: null was both the
+    // "not seen" sentinel and the unmarked value, so the second run overwrote.
+    const unmarkedThenMarked = selectAll(
+      stateFrom('<p>a<span style="color:#cc0000">b</span></p>'),
+    )
+    expect(activeTextColor(unmarkedThenMarked)).toBeNull()
+    const markedThenUnmarked = selectAll(
+      stateFrom('<p><span style="color:#cc0000">a</span>b</p>'),
+    )
+    expect(activeTextColor(markedThenUnmarked)).toBeNull()
+  })
+})
+
+describe('typography active marks', () => {
+  it('reports a uniform font family and size', () => {
+    const family = selectAll(
+      stateFrom('<p><span style="font-family:Georgia">hi</span></p>'),
+    )
+    expect(activeFontFamily(family)).toBe('Georgia')
+
+    const size = selectAll(stateFrom('<p><span style="font-size:18px">hi</span></p>'))
+    expect(activeFontSize(size)).toBe('18px')
+  })
+
+  it('reports null when the selection mixes marked and unmarked text', () => {
+    const unmarkedThenMarked = selectAll(
+      stateFrom('<p>plain<span style="font-family:Georgia">set</span></p>'),
+    )
+    expect(activeFontFamily(unmarkedThenMarked)).toBeNull()
+
+    const markedThenUnmarked = selectAll(
+      stateFrom('<p><span style="font-size:18px">set</span>plain</p>'),
+    )
+    expect(activeFontSize(markedThenUnmarked)).toBeNull()
+
+    const twoFamilies = selectAll(
+      stateFrom(
+        '<p><span style="font-family:Georgia">a</span><span style="font-family:Arial">b</span></p>',
+      ),
+    )
+    expect(activeFontFamily(twoFamilies)).toBeNull()
   })
 })
 
