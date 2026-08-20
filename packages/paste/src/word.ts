@@ -372,7 +372,7 @@ function reconstructLists(container: Container, doc: Document): void {
  * to mark it as boilerplate, and keeping one correct attribute is a far smaller
  * cost than dropping a real one.
  */
-function normalizeLanguage(container: Element): void {
+function normalizeLanguage(container: Container): void {
   const kept: Array<{ el: Element; lang: string }> = []
   const counts = new Map<string, number>()
 
