@@ -1,10 +1,11 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 const PLAIN = '/packages/element/test/e2e/harness.html'
 const HIGHLIGHTED = '/packages/element/test/e2e/harness-highlight.html'
 
 const editor = (page: Page) => page.getByRole('textbox', { name: 'Post body' })
-const value = (page: Page) => page.locator('#body').inputValue()
+const value = (page: Page) => stored(page)
 
 test.describe('without the highlighting bundle', () => {
   test('code blocks still round-trip their language', async ({ page }) => {

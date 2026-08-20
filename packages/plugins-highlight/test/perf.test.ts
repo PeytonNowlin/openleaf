@@ -209,7 +209,9 @@ describe('source-view highlighting', () => {
    */
   it('falls back to plain text above the length cap', () => {
     const area = document.createElement('textarea')
-    area.value = '<p>x</p>'.repeat(8000)
+    // One long paragraph rather than thousands of small ones: the cap is on
+    // length, and the formatter that runs on attach parses whatever it is given.
+    area.value = `<p>${'x'.repeat(25_000)}</p>`
     expect(area.value.length).toBeGreaterThan(20_000)
     document.body.append(area)
 
@@ -219,7 +221,7 @@ describe('source-view highlighting', () => {
       expect(spy).not.toHaveBeenCalled()
       // The content still reaches the backdrop, just uncoloured.
       const view = area.parentElement?.querySelector('.ol-src-view')
-      expect(view?.textContent).toContain('<p>x</p>')
+      expect(view?.textContent).toContain('xxxxx')
       teardown()
     } finally {
       spy.mockRestore()

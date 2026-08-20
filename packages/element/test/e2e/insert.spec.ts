@@ -1,10 +1,11 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 const HARNESS = '/packages/element/test/e2e/harness-insert.html'
 
 const editor = (page: Page) => page.getByRole('textbox', { name: 'Post body' })
 const toolbar = (page: Page) => page.getByRole('toolbar', { name: 'Formatting' })
-const value = (page: Page) => page.locator('#body').inputValue()
+const value = (page: Page) => stored(page)
 // Located by class rather than by role on purpose. A closed popover is not in
 // the accessibility tree at all, so a role query cannot find it -- and
 // `toBeHidden()` against a locator that matches nothing passes whether the panel
