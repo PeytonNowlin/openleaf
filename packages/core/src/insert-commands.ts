@@ -38,22 +38,23 @@ export function setLink(attrs: LinkAttrs): Command {
     if (!isSafeUrl(attrs.href)) return false
     const type = markIn(state, 'link')
     if (!type) return false
-    const { from, to, empty } = state.selection
-    if (empty) return false
+    if (state.selection.empty) return false
     if (dispatch) {
       const tr = state.tr
-      tr.removeMark(from, to, type)
-      tr.addMark(
-        from,
-        to,
-        type.create({
-          href: attrs.href,
-          title: attrs.title ?? null,
-          target: attrs.target ?? null,
-          rel: attrs.rel ?? null,
-          id: safeId(attrs.id),
-        }),
-      )
+      const mark = type.create({
+        href: attrs.href,
+        title: attrs.title ?? null,
+        target: attrs.target ?? null,
+        rel: attrs.rel ?? null,
+        id: safeId(attrs.id),
+      })
+      // Per range, not across `from`..`to`: those are one range's bounds, so a
+      // table cell selection linked a single cell. See `selectedRanges` in
+      // commands.ts for the full account.
+      for (const range of state.selection.ranges) {
+        tr.removeMark(range.$from.pos, range.$to.pos, type)
+        tr.addMark(range.$from.pos, range.$to.pos, mark)
+      }
       dispatch(tr.scrollIntoView())
     }
     return true
@@ -63,9 +64,14 @@ export function setLink(attrs: LinkAttrs): Command {
 export const unsetLink: Command = (state, dispatch) => {
   const type = markIn(state, 'link')
   if (!type) return false
-  const { from, to, empty } = state.selection
-  if (empty || !state.doc.rangeHasMark(from, to, type)) return false
-  if (dispatch) dispatch(state.tr.removeMark(from, to, type).scrollIntoView())
+  const ranges = state.selection.ranges
+  if (state.selection.empty) return false
+  if (!ranges.some((r) => state.doc.rangeHasMark(r.$from.pos, r.$to.pos, type))) return false
+  if (dispatch) {
+    const tr = state.tr
+    for (const range of ranges) tr.removeMark(range.$from.pos, range.$to.pos, type)
+    dispatch(tr.scrollIntoView())
+  }
   return true
 }
 

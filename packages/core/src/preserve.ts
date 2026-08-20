@@ -416,6 +416,50 @@ export const unknownBlock: NodeSpec = {
 }
 
 /**
+ * Where the inline catch-all is allowed to fire.
+ *
+ * ProseMirror matches `context` against the parent node the content is being
+ * parsed INTO, and the naive list -- paragraph and heading -- described the
+ * wrong thing. It named the nodes that hold inline content, when what the rule
+ * needs to name is every node that can END UP holding it.
+ *
+ * `list_item` is `paragraph block*`, so its implicit paragraph does not exist
+ * until some inline content arrives to force it. An unknown element that is the
+ * FIRST child of an `<li>` therefore sees a context of `.../list_item/`, the
+ * inline rule declines, and `unknownBlock` claims a block-level atom inside a
+ * container whose content expression cannot hold one. ProseMirror's recovery is
+ * to close the list and emit the atom as a sibling, so
+ * `<ol><li><ins>a</ins></li><li>b</li></ol>` came back as an emptied `<ol>`, an
+ * escaped `<ins>`, and a `<ul>` -- the list's contents gone and its very type
+ * changed. The identical element with a single character of text before it
+ * round-tripped perfectly, which is what kept this invisible: position was the
+ * whole trigger.
+ *
+ * `summary` and `figcaption` fail the same way for the same reason, and
+ * `blockquote`, `table_cell` and `table_header` are listed so that a first-child
+ * unknown element is wrapped in a paragraph exactly as it is when text precedes
+ * it. Those three could hold the block atom legally, so they were not losing
+ * content -- but "what you get depends on whether you typed a character first"
+ * is not a rule anybody can hold in their head, and consistency here costs
+ * nothing.
+ *
+ * Naming containers explicitly rather than dropping the context altogether:
+ * without it the inline rule would outrank `unknownBlock` everywhere, and a
+ * genuinely block-level unknown element at the top of the document would become
+ * an inline atom inside a paragraph the author never had.
+ */
+const INLINE_CONTEXT = [
+  'paragraph/',
+  'heading/',
+  'summary/',
+  'figcaption/',
+  'list_item/',
+  'table_cell/',
+  'table_header/',
+  'blockquote/',
+].join('|')
+
+/**
  * Inline preserved content, for unrecognised markup appearing inside a
  * paragraph -- the `<o:p>` and `<w:sdt>` debris of a Word paste, custom
  * inline web components, legacy `<font>` runs.
@@ -439,7 +483,7 @@ export const unknownInline: NodeSpec = {
       // the block rule cannot claim inline debris and split the paragraph
       // that contained it.
       priority: 1,
-      context: 'paragraph/|heading/',
+      context: INLINE_CONTEXT,
       getAttrs(dom) {
         const el = dom as Element
         if (isLosslesslyUnwrappable(el)) return false
