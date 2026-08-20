@@ -204,7 +204,49 @@ test.describe('source view lifecycle', () => {
     await expect.poll(() => submittedValue(page)).toBe('<p>assigned while source open</p>')
   })
 
-  test('disconnecting while source is open fires close and reconnects cleanly', async ({ page }) => {
+  /*
+   * These two tests used to be one, which asserted that ANY disconnect closed
+   * the source view. That was really asserting the old bug: a move destroyed
+   * the whole editor, and closing source was a side effect of losing the
+   * session. A move is now a no-op, so the two cases have genuinely different
+   * contracts and are pinned separately -- the open/close events fire on a real
+   * teardown only, which is what `plugins-highlight`'s source overlay keys off.
+   */
+  test('a DOM move keeps the source view open and fires no close', async ({ page }) => {
+    await page.evaluate(() => {
+      ;(window as Window & { __olSourceClosed?: boolean }).__olSourceClosed = false
+      document.querySelector('openleaf-editor')!.addEventListener('openleaf:source-close', () => {
+        ;(window as Window & { __olSourceClosed?: boolean }).__olSourceClosed = true
+      })
+    })
+
+    await page.getByRole('button', { name: 'HTML source' }).click()
+    const source = page.getByRole('textbox', { name: 'HTML source' })
+    await expect(source).toBeVisible()
+    await source.fill('<p>edited in source</p>')
+
+    // Remove and reinsert in one task, the way a keyed-list reorder does.
+    await page.evaluate(async () => {
+      const el = document.querySelector('openleaf-editor')
+      const parent = el?.parentNode
+      if (!el || !parent) return
+      const next = el.nextSibling
+      parent.removeChild(el)
+      parent.insertBefore(el, next)
+      // Let the deferred teardown decide, so this proves it declined rather
+      // than merely that it had not run yet.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(
+      await page.evaluate(() => (window as Window & { __olSourceClosed?: boolean }).__olSourceClosed),
+    ).toBe(false)
+    // The author is left exactly where they were, unsaved source edit intact.
+    await expect(source).toBeVisible()
+    await expect(source).toHaveValue('<p>edited in source</p>')
+  })
+
+  test('a real removal fires source close, and reconnects cleanly', async ({ page }) => {
     await page.evaluate(() => {
       ;(window as Window & { __olSourceClosed?: boolean }).__olSourceClosed = false
       document.querySelector('openleaf-editor')!.addEventListener('openleaf:source-close', () => {
@@ -215,17 +257,32 @@ test.describe('source view lifecycle', () => {
     await page.getByRole('button', { name: 'HTML source' }).click()
     await expect(page.getByRole('textbox', { name: 'HTML source' })).toBeVisible()
 
-    await page.evaluate(() => {
+    // Removed and left out of the document: a real teardown.
+    await page.evaluate(async () => {
+      type Parked = Window & { __olParked?: Element; __olParent?: Node; __olNext?: Node | null }
       const el = document.querySelector('openleaf-editor')
-      const parent = el?.parentNode
-      if (!el || !parent) return
-      const next = el.nextSibling
-      parent.removeChild(el)
-      parent.insertBefore(el, next)
+      if (!el?.parentNode) return
+      const parked = window as Parked
+      parked.__olParked = el
+      parked.__olParent = el.parentNode
+      parked.__olNext = el.nextSibling
+      el.remove()
+      await new Promise((resolve) => setTimeout(resolve, 0))
     })
 
-    await expect.poll(() => page.evaluate(() => (window as Window & { __olSourceClosed?: boolean }).__olSourceClosed)).toBe(true)
+    expect(
+      await page.evaluate(() => (window as Window & { __olSourceClosed?: boolean }).__olSourceClosed),
+    ).toBe(true)
     await expect(page.getByRole('textbox', { name: 'HTML source' })).toHaveCount(0)
+
+    // Put it back: it rebuilds, with the document it was holding.
+    await page.evaluate(() => {
+      type Parked = Window & { __olParked?: Element; __olParent?: Node; __olNext?: Node | null }
+      const parked = window as Parked
+      if (parked.__olParent && parked.__olParked) {
+        parked.__olParent.insertBefore(parked.__olParked, parked.__olNext ?? null)
+      }
+    })
     await expect(editor(page)).toBeVisible()
     await expect(editor(page)).toContainText('A stored paragraph.')
   })

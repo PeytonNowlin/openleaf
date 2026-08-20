@@ -101,6 +101,11 @@ let hintCounter = 0
  * formatting, syntax highlighting -- without the element having to know anything
  * about it. Names are defined here rather than imported so the element keeps no
  * dependency on any plugin.
+ *
+ * These fire on a REAL teardown, not on a DOM move. Moving the element keeps
+ * the whole session -- including source mode and the same textarea node -- so
+ * an enhancer that attached on open stays correctly attached, and gets its
+ * close only when the element is actually removed for good.
  */
 export const SOURCE_OPEN_EVENT = 'openleaf:source-open'
 export const SOURCE_CLOSE_EVENT = 'openleaf:source-close'
@@ -147,6 +152,16 @@ export class OpenLeafEditor extends HTMLElementBase {
   #deferred = false
   /** True between a completed #build() and its #teardown(). Makes teardown once-only. */
   #built = false
+  /**
+   * The document the build registered its listeners on.
+   *
+   * Teardown is deferred by a microtask, and `adoptNode` both removes the
+   * element and reassigns `ownerDocument` -- so by the time teardown runs,
+   * `this.ownerDocument` can be a different document than the one holding the
+   * listeners. Toolbar and MenuBar already hold their own document for exactly
+   * this reason.
+   */
+  #boundDoc: Document | null = null
   /**
    * The last document this editor knew about, as HTML.
    *
@@ -256,12 +271,20 @@ export class OpenLeafEditor extends HTMLElementBase {
     applyColourScheme(this, this.#colourScheme())
 
     const textarea = this.#formBridge.bind()
-    // `this.innerHTML` is the LAST resort, and only ever right on a first
-    // build. After a teardown this element's children are the chrome it
-    // appended, so reading them back would replace the document with the
-    // toolbar markup -- and then post that to the server.
+    // Precedence, and the reasoning for each step:
+    //
+    //  - an explicit assignment the element could not apply yet outranks
+    //    everything, because it is the host saying so imperatively;
+    //  - then the bound textarea, which disconnect syncs before snapshotting,
+    //    so the two only disagree when the host rewrote the textarea itself;
+    //  - then whatever markup is in the element NOW, but only if there is any.
+    //    Teardown empties the subtree, so anything here on a rebuild was put
+    //    back by the host -- a server re-render, newer than any snapshot;
+    //  - then the snapshot taken at disconnect. This is what stops the element
+    //    reading its own toolbar markup back as the document.
+    const restored = this.innerHTML.trim()
     const initialHtml =
-      this.#pendingValue ?? textarea?.value ?? this.#initialHtml ?? this.innerHTML
+      this.#pendingValue ?? textarea?.value ?? (restored || this.#initialHtml) ?? ''
     this.#pendingValue = null
     this.#initialHtml = initialHtml
     const nestedTextarea =
@@ -362,6 +385,9 @@ export class OpenLeafEditor extends HTMLElementBase {
     if (this.#visualAids) this.#basePlugins.push(visualAidsPlugin())
 
     this.#schema = coreSchema()
+    // Cleared before the view exists, so a transaction dispatched during mount
+    // is counted as a real change rather than wiped by a later reset.
+    this.#docTouched = false
 
     this.#view = new EditorView(contentHost, {
       state: EditorState.create({
@@ -418,6 +444,14 @@ export class OpenLeafEditor extends HTMLElementBase {
         }
       },
     })
+
+    // Live from here on. Set as soon as there is something to tear down rather
+    // than at the end of the build: anything below this line may throw --
+    // mounting third-party chrome, serializing a document that contains a
+    // plugin's node type -- and a view that teardown refuses to touch is a
+    // permanent leak with a destroyed editor's listeners still attached.
+    this.#built = true
+    this.#boundDoc = this.ownerDocument
 
     this.#toolbar?.mount(this.#view)
     this.#toolbar2?.mount(this.#view)
@@ -476,8 +510,6 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })
     this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
     this.#formBridge.sync()
-    this.#docTouched = false
-    this.#built = true
   }
 
   /**
@@ -514,14 +546,19 @@ export class OpenLeafEditor extends HTMLElementBase {
     if (!this.#built) return
     this.#built = false
 
+    // The document the listeners went ON, which is not necessarily the one this
+    // element belongs to now -- see #boundDoc.
+    const doc = this.#boundDoc ?? this.ownerDocument
+    this.#boundDoc = null
+
     this.#teardownSource({ apply: false })
     this.#formBridge.detach()
     this.removeEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
     this.removeEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
-    this.ownerDocument.removeEventListener('fullscreenchange', this.#onFullscreenChange)
+    doc.removeEventListener('fullscreenchange', this.#onFullscreenChange)
     this.removeEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
     this.removeEventListener('contextmenu', this.#onContextMenu)
-    this.ownerDocument.removeEventListener('pointerdown', this.#onContextPointer, true)
+    doc.removeEventListener('pointerdown', this.#onContextPointer, true)
     this.removeEventListener('focusin', this.#onInlineFocus)
     this.removeEventListener('focusout', this.#onInlineBlur)
     this.#resizeObserver?.disconnect()
@@ -548,13 +585,34 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#contentHost = null
     this.#hint?.remove()
     this.#hint = null
-    this.classList.remove('ol-inline-active')
+
+    // Presentation state goes too. `ol-fullscreen` is fixed-position, inset 0,
+    // at the top of the stacking order, and nothing re-applies it on a rebuild
+    // -- so an editor removed while fullscreen used to come back as an opaque
+    // full-viewport overlay whose toolbar button showed inactive.
+    this.#fullscreen = false
+    this.#nativeFullscreen = false
+    this.classList.remove(
+      'ol-fullscreen',
+      'ol-inline-active',
+      'ol-editor',
+      'ol-inline',
+      'ol-autoresize',
+      'ol-visual-aids',
+    )
   }
 
   /** Current document as an HTML string. */
   get value(): string {
     if (this.#sourceMode && this.#sourceArea) return this.#sourceArea.value
-    if (!this.#view) return this.#pendingValue ?? this.#formBridge.textarea?.value ?? ''
+    // After a teardown there is no view, but the document is not gone: it was
+    // snapshotted on disconnect. Without `#initialHtml` here an unbound editor
+    // reports an empty document the moment it is unmounted, which is the same
+    // content loss this fix exists to stop -- just read back rather than
+    // rebuilt.
+    if (!this.#view) {
+      return this.#pendingValue ?? this.#formBridge.textarea?.value ?? this.#initialHtml ?? ''
+    }
     return serializeHtml(this.#view.state.doc)
   }
 

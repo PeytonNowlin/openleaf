@@ -185,22 +185,76 @@ describe('moving the element in the DOM', () => {
     expect(second.querySelector('.ol-content')).not.toBeNull()
   })
 
+  // Deferring teardown means a move no longer re-binds the form bridge, so the
+  // reconnect path has to re-attach the submit hooks itself. This has to be
+  // asserted through a BOUND textarea -- an unbound editor's `value` reads
+  // straight off the live view and would pass whether or not the hooks moved.
   it('follows the element into a different form', async () => {
-    const outside = document.createElement('form')
-    const inside = document.createElement('form')
-    const textarea = document.createElement('textarea')
-    textarea.name = 'body'
-    document.body.append(outside, inside)
-    outside.appendChild(textarea)
+    const first = document.createElement('form')
+    const second = document.createElement('form')
+    document.body.append(first, second)
 
-    const el = makeEditor('<p>Hello</p>')
-    outside.appendChild(el)
-    inside.appendChild(el)
+    // A NESTED textarea, which travels with the element -- so the form it
+    // belongs to genuinely changes. A `for=` binding would not exercise this:
+    // the bridge prefers the bound textarea's OWN form, which a move does not
+    // change, and the test would pass without the reconnect path existing.
+    const el = makeEditor('<textarea name="body"></textarea>')
+    first.appendChild(el)
+    await flush()
+    const area = el.querySelector('textarea')!
+
+    second.appendChild(el)
     await flush()
 
-    // Submitting the form the element now lives in still syncs it.
-    inside.dispatchEvent(new Event('submit', { cancelable: true }))
-    expect(el.value).toBe('<p>Hello</p>')
+    // Staled AFTER the move, so only the submit hook can put it right.
+    area.value = 'STALE'
+    second.dispatchEvent(new Event('submit', { cancelable: true }))
+    expect(area.value).toBe('<p></p>')
+
+    // And the form it left is no longer wired to it.
+    area.value = 'STALE AGAIN'
+    first.dispatchEvent(new Event('submit', { cancelable: true }))
+    expect(area.value).toBe('STALE AGAIN')
+  })
+
+  it('prefers markup the host re-rendered while the editor was detached', async () => {
+    const [a] = containers()
+    const el = makeEditor('<p>Original content</p>')
+    a.appendChild(el)
+    a.removeChild(el)
+    await flush()
+
+    // A server re-render into the detached element is newer than the snapshot.
+    el.innerHTML = '<p>Fresh server render</p>'
+    a.appendChild(el)
+
+    expect(el.value).toBe('<p>Fresh server render</p>')
+  })
+
+  it('still reports the document after a teardown, with no textarea bound', async () => {
+    const [a] = containers()
+    const el = makeEditor('<p>Content here</p>')
+    a.appendChild(el)
+    a.removeChild(el)
+    await flush()
+
+    expect(el.view).toBeNull()
+    expect(el.value).toBe('<p>Content here</p>')
+  })
+
+  it('drops the fullscreen class on teardown', async () => {
+    const [a] = containers()
+    const el = makeEditor('<p>Content</p>')
+    a.appendChild(el)
+
+    // Whatever put it there -- the toolbar button, the fallback path -- a
+    // fixed-position full-viewport class must not outlive the editor.
+    el.classList.add('ol-fullscreen')
+    a.removeChild(el)
+    await flush()
+
+    expect(el.classList.contains('ol-fullscreen')).toBe(false)
+    expect(el.classList.contains('ol-editor')).toBe(false)
   })
 })
 
