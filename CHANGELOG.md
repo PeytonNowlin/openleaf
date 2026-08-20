@@ -10,11 +10,11 @@ This project follows [Semantic Versioning](https://semver.org/). While the
 version is `0.x`, minor and pre-release bumps may contain breaking changes; the
 entries below say so explicitly when they do.
 
-## Unreleased
+## 0.1.0-beta.2 - 2026-08-19
 
-Everything below has landed on `main` since `0.1.0-beta.1` and is not yet
-published. Five new packages, so read the install section of the README before
-upgrading.
+The formatting and structure release. Five new packages, so read the install
+section of the README before upgrading, and keep every `@openleaf-editor/*`
+package on this version -- they pin each other exactly.
 
 ### Added
 

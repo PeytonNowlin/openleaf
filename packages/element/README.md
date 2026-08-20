@@ -2,7 +2,7 @@
 
 The `<openleaf-editor>` custom element: OpenLeaf's drop-in for CMS forms. HTML in, HTML out, syncs to a textarea.
 
-This is a **beta** (`0.1.0-beta.1`). APIs may still change. It has not been
+This is a **beta** (`0.1.0-beta.2`). APIs may still change. It has not been
 used in production, and it has not been driven by a real screen reader.
 
 ## Install
