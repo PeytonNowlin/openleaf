@@ -8,7 +8,15 @@
  * bug and therefore gets triaged as cosmetic.
  */
 
-import { isBareSpan, parseStyle, plainText, unwrap, wrapChildren, writeStyle } from './dom.js'
+import {
+  isBareSpan,
+  parseStyle,
+  plainText,
+  unwrap,
+  wrapChildren,
+  writeStyle,
+  type Container,
+} from './dom.js'
 
 export function isBoldWeight(value: string): boolean {
   const v = value.trim().toLowerCase()
@@ -25,7 +33,7 @@ export function isBoldWeight(value: string): boolean {
  * on a real `<b>` element -- a trick that produces bold text everywhere if
  * taken literally.
  */
-export function extractSemantics(container: Element, doc: Document): void {
+export function extractSemantics(container: Container, doc: Document): void {
   for (const el of Array.from(container.querySelectorAll('*'))) {
     const style = parseStyle(el)
     if (style.size === 0) continue
@@ -64,14 +72,14 @@ export function extractSemantics(container: Element, doc: Document): void {
  * database. Anything worth keeping should have been promoted to a tag by
  * `extractSemantics` first.
  */
-export function stripAllStyles(container: Element): void {
+export function stripAllStyles(container: Container): void {
   for (const el of Array.from(container.querySelectorAll('[style]'))) {
     writeStyle(el, new Map())
   }
 }
 
 /** Collapse `<span>` chains that no longer carry anything, innermost first. */
-export function collapseBareSpans(container: Element): void {
+export function collapseBareSpans(container: Container): void {
   let changed = true
   while (changed) {
     changed = false
@@ -85,7 +93,7 @@ export function collapseBareSpans(container: Element): void {
 }
 
 /** Remove elements that contain neither text nor meaningful children. */
-export function dropEmptyBlocks(container: Element, tags = ['p', 'span', 'div']): void {
+export function dropEmptyBlocks(container: Container, tags = ['p', 'span', 'div']): void {
   for (const tag of tags) {
     for (const el of Array.from(container.querySelectorAll(tag))) {
       const hasMeaning = el.querySelector('img,br,hr,table,ul,ol,input')

@@ -21,7 +21,7 @@ import {
   extractSemantics,
   stripAllStyles,
 } from './clean.js'
-import { parseFragment, resolveDocument, stripComments } from './dom.js'
+import { parseFragment, resolveDocument, serializeFragment, stripComments } from './dom.js'
 import { looksLikeGoogleDocs, normalizeGoogleDocs } from './gdocs.js'
 import { looksLikeWord, normalizeWord } from './word.js'
 
@@ -51,16 +51,19 @@ export function detectSource(html: string): PasteSource {
  * preservation guarantee the whole project rests on.
  */
 export function normalizeGeneric(html: string, explicitDocument?: Document): string {
-  const doc = resolveDocument(explicitDocument)
-  const container = parseFragment(html, doc)
+  // Inert throughout: the fragment is walked and mutated where it was parsed,
+  // every node created below is created in `fragment.doc`, and the result is
+  // serialized straight out. Nothing here ever enters the live document.
+  const fragment = parseFragment(html, resolveDocument(explicitDocument))
+  const { root, doc } = fragment
 
-  extractSemantics(container, doc)
-  stripComments(container)
-  stripAllStyles(container)
-  collapseBareSpans(container)
-  dropEmptyBlocks(container, ['span'])
+  extractSemantics(root, doc)
+  stripComments(root)
+  stripAllStyles(root)
+  collapseBareSpans(root)
+  dropEmptyBlocks(root, ['span'])
 
-  return container.innerHTML
+  return serializeFragment(fragment)
 }
 
 /**
