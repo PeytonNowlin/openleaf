@@ -28,7 +28,7 @@
  */
 
 import type { NodeSpec } from 'prosemirror-model'
-import { isFullyModelledStyle } from './css.js'
+import { isFullyModelledStyle, safeLang } from './css.js'
 import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
 
 /**
@@ -205,43 +205,36 @@ export function isLosslesslyUnwrappable(el: Element): boolean {
   const name = el.nodeName.toLowerCase()
   if (!TRANSPARENT_CONTAINERS.has(name)) return false
   if (el.attributes.length === 0) return true
+  if (name !== 'span') return false
 
   /*
-   * One exception, and it is deliberately the narrowest one that works: a
-   * `<span>` whose only attribute is a style the colour marks fully model.
+   * A `<span>` whose attributes are fully modelled as marks: colour, font, and
+   * `lang`. Without this, those runs become opaque atoms -- a grey card where a
+   * sentence used to be. Declining the catch-all lets the span unwrap so the
+   * mark rules can re-apply formatting on the text inside.
    *
-   * Without it, colour is a fidelity regression dressed as a feature. Every
-   * `<span style="color:#c00">` in an inherited archive is preserved as an
-   * opaque atom -- a grey card where a sentence used to be, its text
-   * unselectable and unspellcheckable. Declining the rule here lets the span
-   * unwrap, and ProseMirror's style rules then re-apply the colour as a mark on
-   * the text inside, which is both editable and byte-identical on the way out.
+   * Any other attribute, or a style the marks cannot fully express, and the
+   * element stays preserved exactly as it does today.
    *
-   * `text-align` is not in the accepted set, because unwrapping the element that
-   * carries it would drop it: it is a property of the block, and the block here
-   * is somebody else. Two attributes, or one attribute the marks cannot fully
-   * express, and the element stays preserved exactly as it does today.
+   * ProseMirror matches mark style rules through the CSSOM. Under a CSP with
+   * no `unsafe-inline` in `style-src`, the browser leaves the attribute in the
+   * DOM and refuses to parse it, so unwrapping would destroy the formatting.
+   * An empty CSSOM is therefore a reason to leave the element to the
+   * preservation layer.
    */
-  if (el.attributes.length !== 1 || name !== 'span') return false
-
-  /*
-   * Unwrap only if the marks will actually pick the declarations up.
-   *
-   * ProseMirror matches mark style rules through the CSSOM, and there are two
-   * situations where the CSSOM reports nothing for a style attribute that is
-   * plainly there: the declaration is invalid, and -- the one that matters -- a
-   * Content-Security-Policy with no `unsafe-inline` in `style-src`, under which
-   * the browser leaves the attribute in the DOM and refuses to parse it.
-   *
-   * Unwrapping in that case destroys the colour: the span goes, no mark replaces
-   * it, and the author's red text is black on the next save. An empty CSSOM is
-   * therefore a reason to leave the element to the preservation layer, where it
-   * stays verbatim and uneditable -- exactly what happened before colour was
-   * modelled at all. Degrading to the old behaviour is acceptable; losing content
-   * is not.
-   */
-  if ((el as HTMLElement).style?.length === 0) return false
-  return isFullyModelledStyle(el.getAttribute('style'))
+  for (const attr of Array.from(el.attributes)) {
+    if (attr.name === 'lang') {
+      if (safeLang(attr.value) === null) return false
+      continue
+    }
+    if (attr.name === 'style') {
+      if ((el as HTMLElement).style?.length === 0) return false
+      if (!isFullyModelledStyle(attr.value)) return false
+      continue
+    }
+    return false
+  }
+  return true
 }
 
 /** Rebuild a DOM element from stored markup. `<template>` is used because

@@ -37,7 +37,17 @@ export const BUDGETS_KB = {
   // Raised again for editor chrome: menubar, context menus, floating toolbars,
   // help, visual aids, autolink and i18n. The framework wrappers are separate
   // packages and do not land in this file.
-  'openleaf.min.js': 104,
+  //
+  // Raised to 108 for typography: font family and size, line height, indent,
+  // direction, language, sub/superscript and list styles. Same reasoning as
+  // every rise before it -- these are marks and attributes in the storage
+  // format, so an inherited `<font face>` or `<span style="font-family">` stays
+  // editable text instead of becoming an opaque preserved atom. The toolbar
+  // controls for them are the integrator's choice, not extra weight here.
+  //
+  // 108 against a measured 106.8: the headroom is deliberate. A budget that
+  // passes by tens of bytes fails on the next contributor's unrelated patch.
+  'openleaf.min.js': 108,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,

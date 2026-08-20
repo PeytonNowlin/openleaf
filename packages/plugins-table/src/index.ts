@@ -37,7 +37,9 @@
 
 import { registerEditorPlugin } from '@openleaf-editor/core'
 import { registerIcons, registerStyles, registerToolbarItem } from '@openleaf-editor/ui'
+import type { Node as PMNode } from 'prosemirror-model'
 import type { Command } from 'prosemirror-state'
+import type { ViewMutationRecord } from 'prosemirror-view'
 import {
   columnResizing,
   deleteColumn,
@@ -46,6 +48,7 @@ import {
   mergeCells,
   splitCell,
   tableEditing,
+  TableView,
 } from 'prosemirror-tables'
 import {
   addColumnAfter,
@@ -84,12 +87,92 @@ export const TABLE_TOOLBAR_ITEMS = [
 /** A layout string for the default toolbar plus the table controls. */
 export const TABLE_LAYOUT_SUFFIX = ` | ${TABLE_TOOLBAR_ITEMS.join(' ')}`
 
+/**
+ * `TableView`, plus the caption it does not know about.
+ *
+ * `columnResizing` installs a node view for tables, and that node view builds
+ * the element itself: a wrapper div, a `<colgroup>` it owns for resize widths,
+ * and a `<tbody>`. It never consults the table node's `toDOM`, so once this
+ * bundle loads, the caption core renders is simply absent from the editor.
+ *
+ * That produced the worst version of the bug it was meant to fix. Saving still
+ * kept the caption -- serialization goes through `toDOM` and never through a
+ * node view -- so the caption was invisible while editing and reappeared in the
+ * stored HTML. An author would reasonably conclude it had been deleted, and the
+ * only way to find out otherwise is to read the database.
+ *
+ * Only the caption is re-added. The preserved `<colgroup>` markup deliberately
+ * is not: this view's own colgroup is what drives column resizing, and a second
+ * one would fight it for the same columns. The author's colgroup is still
+ * stored and still emitted on save; it is the resize widths that win on screen,
+ * which is the same bargain the resizing feature already makes.
+ */
+class CaptionedTableView extends TableView {
+  constructor(node: PMNode, defaultCellMinWidth: number) {
+    super(node, defaultCellMinWidth)
+    this.syncCaption(node)
+  }
+
+  override update(node: PMNode): boolean {
+    const handled = super.update(node)
+    if (handled) this.syncCaption(node)
+    return handled
+  }
+
+  override ignoreMutation(record: ViewMutationRecord): boolean {
+    // The caption is ours, not content. Without this, ProseMirror treats a
+    // change inside it as an edit to the document and tries to re-read it.
+    const caption = this.currentCaption()
+    if (caption && record.target instanceof Node && caption.contains(record.target)) return true
+    return super.ignoreMutation(record)
+  }
+
+  private currentCaption(): HTMLElement | null {
+    const first = this.table.firstElementChild
+    return first && first.nodeName === 'CAPTION' ? (first as HTMLElement) : null
+  }
+
+  private syncCaption(node: PMNode): void {
+    const html = (node.attrs['caption'] as string | null) ?? null
+    const existing = this.currentCaption()
+
+    if (!html) {
+      existing?.remove()
+      return
+    }
+
+    // Rebuild only when the markup actually changed. Replacing it on every
+    // update would discard the DOM under the user's selection on every
+    // keystroke inside the table.
+    if (existing && existing.getAttribute('data-openleaf-caption') === html) return
+
+    const tpl = document.createElement('template')
+    tpl.innerHTML = html
+    const rebuilt = tpl.content.firstElementChild
+    if (!rebuilt || rebuilt.nodeName !== 'CAPTION') {
+      existing?.remove()
+      return
+    }
+
+    // Editor-only, exactly as in core's `toDOM`: the caption renders inside the
+    // editable area but is not part of `contentDOM`, so a caret must not enter
+    // it. Neither attribute reaches the stored HTML, which is produced by
+    // serialization and never by this view.
+    rebuilt.setAttribute('contenteditable', 'false')
+    rebuilt.setAttribute('data-openleaf-caption', html)
+
+    // A caption must be the table's first child for the browser to render it.
+    if (existing) existing.replaceWith(rebuilt)
+    else this.table.insertBefore(rebuilt, this.table.firstChild)
+  }
+}
+
 /** The ProseMirror plugins table editing needs. */
 export function tableEditingPlugins() {
   return [
     // Resizing must come first: it reads cell geometry that tableEditing's
     // selection handling would otherwise have already consumed.
-    columnResizing(),
+    columnResizing({ View: CaptionedTableView }),
     tableEditing({ allowTableNodeSelection: true }),
     colgroupSyncPlugin(),
     tableContextMenu(),

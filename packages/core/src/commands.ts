@@ -23,7 +23,19 @@ import {
   wrapInList,
 } from 'prosemirror-schema-list'
 import type { Command, EditorState } from 'prosemirror-state'
-import { safeColor, type Align } from './css.js'
+import {
+  MAX_INDENT,
+  safeColor,
+  safeDir,
+  safeFontFamily,
+  safeFontSize,
+  safeLang,
+  safeLineHeight,
+  safeListStyle,
+  type Align,
+  type Dir,
+  type ListStyle,
+} from './css.js'
 import { safeAllowList, safeEmbedSrc } from './embed.js'
 import { parseHtml } from './html.js'
 import { IMAGE_ALIGN_CLASSES, safeClassList, safeId, type ImageAlign } from './tokens.js'
@@ -165,6 +177,8 @@ export const toggleItalic: Command = markCommand('em', toggleMark)
 export const toggleUnderline: Command = markCommand('underline', toggleMark)
 export const toggleStrike: Command = markCommand('strike', toggleMark)
 export const toggleInlineCode: Command = markCommand('code', toggleMark)
+export const toggleSubscript: Command = markCommand('subscript', toggleMark)
+export const toggleSuperscript: Command = markCommand('superscript', toggleMark)
 
 /* ------------------------------------------------------------------ *
  * Block commands
@@ -296,6 +310,66 @@ export const splitListItemCommand: Command = nodeCommand('list_item', (t) => spl
 export const indentListItem: Command = nodeCommand('list_item', (t) => sinkListItem(t))
 export const outdentListItem: Command = nodeCommand('list_item', (t) => liftListItem(t))
 
+/**
+ * Indent: nest a list item when the selection is in a list, otherwise add a
+ * `padding-inline-start` step on the text blocks. Outdent is the reverse, and
+ * lifting a top-level list item out of its list is still how you leave a list.
+ */
+export const indent: Command = (state, dispatch, view) => {
+  if (enclosingList(state)) return indentListItem(state, dispatch, view)
+  return adjustIndent(1)(state, dispatch, view)
+}
+
+export const outdent: Command = (state, dispatch, view) => {
+  if (enclosingList(state)) return outdentListItem(state, dispatch, view)
+  return adjustIndent(-1)(state, dispatch, view)
+}
+
+function adjustIndent(delta: number): Command {
+  return (state, dispatch) => {
+    const blocks = blocksWithAttr(state, 'indent')
+    if (blocks.length === 0) return false
+    if (dispatch) {
+      const tr = state.tr
+      for (const { pos, node } of blocks) {
+        const current = (node.attrs['indent'] as number | null) ?? 0
+        const next = Math.max(0, Math.min(MAX_INDENT, current + delta))
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: next === 0 ? null : next })
+      }
+      dispatch(tr.scrollIntoView())
+    }
+    return true
+  }
+}
+
+export function activeIndent(state: EditorState): number | null {
+  return uniformBlockAttr(state, 'indent')
+}
+
+export function setListStyle(style: ListStyle | null): Command {
+  return (state, dispatch) => {
+    const enclosing = enclosingList(state)
+    if (!enclosing) return false
+    const value = style === null ? null : safeListStyle(style)
+    if (style !== null && value === null) return false
+    if (dispatch) {
+      const node = state.doc.nodeAt(enclosing.pos)
+      if (!node) return false
+      dispatch(
+        state.tr.setNodeMarkup(enclosing.pos, undefined, { ...node.attrs, listStyle: value }).scrollIntoView(),
+      )
+    }
+    return true
+  }
+}
+
+export function activeListStyle(state: EditorState): ListStyle | null {
+  const enclosing = enclosingList(state)
+  if (!enclosing) return null
+  const node = state.doc.nodeAt(enclosing.pos)
+  return (node?.attrs['listStyle'] as ListStyle | null) ?? null
+}
+
 /* ------------------------------------------------------------------ *
  * Alignment
  * ------------------------------------------------------------------ */
@@ -308,20 +382,27 @@ export const outdentListItem: Command = nodeCommand('list_item', (t) => liftList
  * alignable block -- a caption, a callout -- gets the toolbar control and the
  * keyboard shortcut for free, and this function does not have to learn its name.
  */
-function alignableBlocks(state: EditorState): Array<{ pos: number; node: PMNode }> {
+function blocksWithAttr(state: EditorState, attr: string): Array<{ pos: number; node: PMNode }> {
   const found: Array<{ pos: number; node: PMNode }> = []
   const { from, to } = state.selection
   state.doc.nodesBetween(from, to, (node, pos) => {
     if (!node.isTextblock) return true
-    // Asked of the node's resolved attributes rather than its type's spec:
-    // `spec.attrs` is optional and undeclared in the public typings, whereas
-    // every node carries every attribute its type declares.
-    if (Object.hasOwn(node.attrs, 'align')) found.push({ pos, node })
-    // Never descend into a text block: its inline children are not alignable
-    // and walking them on every keystroke is work with no result.
+    if (Object.hasOwn(node.attrs, attr)) found.push({ pos, node })
     return false
   })
   return found
+}
+
+function uniformBlockAttr<T>(state: EditorState, attr: string): T | null {
+  const blocks = blocksWithAttr(state, attr)
+  const first = blocks[0]
+  if (!first) return null
+  const value = (first.node.attrs[attr] as T | null) ?? null
+  return blocks.every((b) => (b.node.attrs[attr] ?? null) === value) ? value : null
+}
+
+function alignableBlocks(state: EditorState): Array<{ pos: number; node: PMNode }> {
+  return blocksWithAttr(state, 'align')
 }
 
 /**
@@ -385,6 +466,63 @@ export function toggleTextAlign(align: Align): Command {
   return (state, dispatch, view) => {
     const next = activeTextAlign(state) === align ? null : align
     return setTextAlign(next)(state, dispatch, view)
+  }
+}
+
+export function setLineHeight(value: string | null): Command {
+  return setBlockStringAttr('lineHeight', value, safeLineHeight)
+}
+
+export function activeLineHeight(state: EditorState): string | null {
+  return uniformBlockAttr(state, 'lineHeight')
+}
+
+export function setDir(dir: Dir | null): Command {
+  return (state, dispatch) => {
+    const blocks = blocksWithAttr(state, 'dir')
+    if (blocks.length === 0) return false
+    const value = dir === null ? null : safeDir(dir)
+    if (dir !== null && value === null) return false
+    if (dispatch) {
+      const tr = state.tr
+      for (const { pos, node } of blocks) {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, dir: value })
+      }
+      dispatch(tr.scrollIntoView())
+    }
+    return true
+  }
+}
+
+export function toggleDir(dir: Dir): Command {
+  return (state, dispatch, view) => {
+    const next = activeDir(state) === dir ? null : dir
+    return setDir(next)(state, dispatch, view)
+  }
+}
+
+export function activeDir(state: EditorState): Dir | null {
+  return uniformBlockAttr(state, 'dir')
+}
+
+function setBlockStringAttr(
+  attr: string,
+  value: string | null,
+  validate: (value: string | null | undefined) => string | null,
+): Command {
+  return (state, dispatch) => {
+    const blocks = blocksWithAttr(state, attr)
+    if (blocks.length === 0) return false
+    const next = value === null ? null : validate(value)
+    if (value !== null && next === null) return false
+    if (dispatch) {
+      const tr = state.tr
+      for (const { pos, node } of blocks) {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, [attr]: next })
+      }
+      dispatch(tr.scrollIntoView())
+    }
+    return true
   }
 }
 
@@ -486,6 +624,154 @@ export function activeTextColor(state: EditorState): string | null {
 
 export function activeBackgroundColor(state: EditorState): string | null {
   return activeColor(state, 'background_color')
+}
+
+function attrMarkCommand(
+  name: string,
+  attr: string,
+  value: string | null,
+  validate: (value: string | null | undefined) => string | null,
+): Command {
+  return (state, dispatch) => {
+    const type = markIn(state, name)
+    if (!type) return false
+    const next = value === null ? null : validate(value)
+    if (value !== null && next === null) return false
+
+    const { empty, from, to } = state.selection
+    if (empty) {
+      const current = state.storedMarks ?? state.selection.$from.marks()
+      const stripped = current.filter((mark) => mark.type !== type)
+      if (next === null && stripped.length === current.length) return false
+      if (dispatch) {
+        dispatch(
+          state.tr.setStoredMarks(next === null ? stripped : [...stripped, type.create({ [attr]: next })]),
+        )
+      }
+      return true
+    }
+
+    if (next === null && !state.doc.rangeHasMark(from, to, type)) return false
+    if (dispatch) {
+      const tr = state.tr.removeMark(from, to, type)
+      if (next !== null) tr.addMark(from, to, type.create({ [attr]: next }))
+      dispatch(tr.scrollIntoView())
+    }
+    return true
+  }
+}
+
+function activeMarkAttr(state: EditorState, name: string, attr: string): string | null {
+  const type = markIn(state, name)
+  if (!type) return null
+  const { empty, $from, from, to } = state.selection
+
+  if (empty) {
+    const found = type.isInSet(state.storedMarks ?? $from.marks())
+    return found ? (found.attrs[attr] as string) : null
+  }
+
+  let value: string | null = null
+  let uniform = true
+  state.doc.nodesBetween(from, to, (child) => {
+    if (!child.isText) return true
+    const found = type.isInSet(child.marks)
+    const current = found ? (found.attrs[attr] as string) : null
+    if (value === null && uniform) value = current
+    else if (current !== value) uniform = false
+    return true
+  })
+  return uniform ? value : null
+}
+
+export function setFontFamily(family: string | null): Command {
+  return attrMarkCommand('font_family', 'family', family, safeFontFamily)
+}
+
+export function setFontSize(size: string | null): Command {
+  return attrMarkCommand('font_size', 'size', size, safeFontSize)
+}
+
+export function setLanguage(lang: string | null): Command {
+  return attrMarkCommand('language', 'lang', lang, safeLang)
+}
+
+export function activeFontFamily(state: EditorState): string | null {
+  return activeMarkAttr(state, 'font_family', 'family')
+}
+
+export function activeFontSize(state: EditorState): string | null {
+  return activeMarkAttr(state, 'font_size', 'size')
+}
+
+export function activeLanguage(state: EditorState): string | null {
+  return activeMarkAttr(state, 'language', 'lang')
+}
+
+/**
+ * Strip character formatting and block decoration from the selection.
+ *
+ * Links stay: they are a destination, not a look. Direction stays: it is
+ * content. Headings and lists stay: they are structure. Alignment, indent,
+ * line height, fonts, colours, and the common character marks go.
+ */
+export const clearFormatting: Command = (state, dispatch) => {
+  const keep = new Set(['link'])
+  const { empty, from, to, $from } = state.selection
+  const marks = Object.values(state.schema.marks).filter((type) => !keep.has(type.name))
+
+  if (empty) {
+    const current = state.storedMarks ?? $from.marks()
+    const stripped = current.filter((mark) => keep.has(mark.type.name))
+    const blocks = blocksWithAttr(state, 'align')
+    const canClearBlocks = blocks.some(
+      (b) =>
+        b.node.attrs['align'] != null ||
+        b.node.attrs['lineHeight'] != null ||
+        b.node.attrs['indent'] != null,
+    )
+    if (stripped.length === current.length && !canClearBlocks) return false
+    if (dispatch) {
+      let tr = state.tr.setStoredMarks(stripped)
+      for (const { pos, node } of blocks) {
+        tr = tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          align: null,
+          lineHeight: null,
+          indent: null,
+        })
+      }
+      dispatch(tr.scrollIntoView())
+    }
+    return true
+  }
+
+  let hasMarks = false
+  for (const type of marks) {
+    if (state.doc.rangeHasMark(from, to, type)) hasMarks = true
+  }
+  const blocks = blocksWithAttr(state, 'align')
+  const canClearBlocks = blocks.some(
+    (b) =>
+      b.node.attrs['align'] != null ||
+      b.node.attrs['lineHeight'] != null ||
+      b.node.attrs['indent'] != null,
+  )
+  if (!hasMarks && !canClearBlocks) return false
+  if (dispatch) {
+    let tr = state.tr
+    for (const type of marks) tr = tr.removeMark(from, to, type)
+    for (const { pos, node } of blocks) {
+      tr = tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        align: null,
+        lineHeight: null,
+        indent: null,
+      })
+    }
+    dispatch(tr.scrollIntoView())
+  }
+  return true
 }
 
 /* ------------------------------------------------------------------ *

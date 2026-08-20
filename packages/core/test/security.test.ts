@@ -94,6 +94,8 @@ describe('what preservation still guarantees', () => {
   })
 
   it('keeps legacy presentational tags', () => {
-    expect(roundTrip('<p><font face="Verdana">old</font></p>')).toContain('face="Verdana"')
+    // `face` on its own is the font-family mark now, so it converts. Two
+    // attributes is the case no mark can hold, which is what preservation is for.
+    expect(roundTrip('<p><font face="Verdana" size="2">old</font></p>')).toContain('face="Verdana"')
   })
 })

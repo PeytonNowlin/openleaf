@@ -111,13 +111,13 @@ export const DEFAULT_POLICY: Policy = {
      * `position:fixed` overlays; none of those is reachable through a property
      * list of `text-align` whose values must be one of four keywords.
      */
-    p: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h1: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
-    h2: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
-    h3: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
-    h4: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
-    h5: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
-    h6: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align'] },
+    p: { attributes: ['dir', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h1: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h2: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h3: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h4: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h5: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h6: { attributes: ['dir', 'id', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
     /*
      * `<span>` exists in this policy only to carry colour.
      *
@@ -127,7 +127,7 @@ export const DEFAULT_POLICY: Policy = {
      * which is what the editor's own preservation layer does with one it cannot
      * model.
      */
-    span: { attributes: ['style'], styleProperties: ['color', 'background-color'] },
+    span: { attributes: ['style', 'lang'], styleProperties: ['color', 'background-color', 'font-family', 'font-size'] },
     blockquote: {},
     pre: {},
     // The language class and nothing else. The schema reads `language-js` from
@@ -136,8 +136,8 @@ export const DEFAULT_POLICY: Policy = {
     // policy for markup the editor does not emit. A class on <pre> is
     // preservation residue, and preservation is opt-in via policyForPreserved().
     code: { attributes: ['class'] },
-    ul: {},
-    ol: { attributes: ['start'] },
+    ul: { attributes: ['style'], styleProperties: ['list-style-type'] },
+    ol: { attributes: ['start', 'style'], styleProperties: ['list-style-type'] },
     li: {},
     hr: { attributes: ['class'] },
     br: {},
@@ -145,6 +145,8 @@ export const DEFAULT_POLICY: Policy = {
     em: {},
     u: {},
     s: {},
+    sub: {},
+    sup: {},
     a: { attributes: ['href', 'title', 'target', 'rel', 'id'] },
     img: { attributes: ['src', 'alt', 'title', 'width', 'height', 'class'] },
     figure: { attributes: ['class'] },

@@ -22,7 +22,12 @@ export function isNonEditableNode(node: PMNode): boolean {
 }
 
 /** True when a change sits *inside* a locked node, not when the node itself is deleted. */
-function editsLockedInterior(doc: PMNode, from: number, to: number): boolean {
+function editsLockedInterior(doc: PMNode, start: number, end: number): boolean {
+  // Clamped rather than trusted. A throw from here escapes `filterTransaction`
+  // and takes the whole transaction with it, so one bad range does not read as
+  // "this edit is not allowed" -- it reads as the editor ignoring the command.
+  const from = Math.max(0, Math.min(start, doc.content.size))
+  const to = Math.max(from, Math.min(end, doc.content.size))
   let blocked = false
   doc.nodesBetween(from, to, (node, pos) => {
     if (!isNonEditableNode(node)) return true
@@ -37,15 +42,35 @@ function editsLockedInterior(doc: PMNode, from: number, to: number): boolean {
 export function nonEditablePlugin(): Plugin {
   return new Plugin({
     key,
+    /**
+     * Refuse a transaction that edits the inside of a locked node.
+     *
+     * Each step's map reports positions in the document *that step* applied to,
+     * which for every step after the first is not `state.doc`. Reading the
+     * original document with those coordinates walks off the end of it as soon
+     * as a transaction has more than one step and the earlier ones grow the
+     * document -- `nodesBetween` then throws, the throw escapes here, and
+     * ProseMirror drops the transaction. The symptom was a toolbar button doing
+     * nothing at all: inserting a table column after inserting a row produces
+     * exactly that shape, and the error was swallowed by the toolbar's guard.
+     *
+     * So each range is mapped back through the steps before it first.
+     */
     filterTransaction(tr, state) {
       if (!tr.docChanged) return true
       let blocked = false
-      tr.mapping.maps.forEach((map) => {
-        if (blocked) return
-        map.forEach((oldStart, oldEnd) => {
-          if (editsLockedInterior(state.doc, oldStart, oldEnd)) blocked = true
+      for (let i = 0; i < tr.steps.length; i += 1) {
+        if (blocked) break
+        const step = tr.steps[i]
+        if (!step) continue
+        const back = tr.mapping.slice(0, i).invert()
+        step.getMap().forEach((start, end) => {
+          if (blocked) return
+          if (editsLockedInterior(state.doc, back.map(start, -1), back.map(end, 1))) {
+            blocked = true
+          }
         })
-      })
+      }
       return !blocked
     },
     props: {

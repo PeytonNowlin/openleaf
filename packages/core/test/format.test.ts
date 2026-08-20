@@ -148,9 +148,27 @@ describe('alignment round-trips', () => {
 
   it('leaves an unmodelled declaration spelled exactly as it was', () => {
     // Residue goes back verbatim, because nothing here understands it well enough
-    // to have an opinion about how it should be written.
+    // to have an opinion about how it should be written. `letter-spacing` rather
+    // than `line-height`: the latter is modelled now, and a modelled declaration
+    // is deliberately re-spelled -- see the test below.
+    expect(roundTrip('<p style="letter-spacing: 0.08em;">hi</p>')).toBe(
+      '<p style="letter-spacing: 0.08em;">hi</p>',
+    )
+  })
+
+  /*
+   * The other half of that bargain, stated so it is a decision rather than a
+   * surprise: once a property is modelled it lives in a node attribute, and the
+   * source spelling is gone by the time anything serializes. It comes back in
+   * the schema's canonical form and in the schema's order.
+   *
+   * That is the price of making a property editable, and it is the same price
+   * `text-align` has always paid. What must never happen is a declaration going
+   * missing, which the fidelity corpus checks declaration by declaration.
+   */
+  it('re-spells a modelled declaration canonically', () => {
     expect(roundTrip('<p style="line-height: 1.8;">hi</p>')).toBe(
-      '<p style="line-height: 1.8;">hi</p>',
+      '<p style="line-height:1.8">hi</p>',
     )
   })
 
@@ -179,9 +197,15 @@ describe('alignment round-trips', () => {
   it('keeps declarations it does not model alongside the one it does', () => {
     // The carry mechanism is what makes modelling `text-align` safe. Without
     // the declaration-level merge, writing the alignment back replaces the whole
-    // attribute and the line height is gone.
+    // attribute and the residue is gone.
+    expect(roundTrip('<p style="letter-spacing:0.08em;text-align:center">hi</p>')).toBe(
+      '<p style="letter-spacing:0.08em;text-align:center">hi</p>',
+    )
+  })
+
+  it('keeps both when it models both, in its own order', () => {
     expect(roundTrip('<p style="line-height:1.4;text-align:center">hi</p>')).toBe(
-      '<p style="line-height:1.4;text-align:center">hi</p>',
+      '<p style="text-align:center;line-height:1.4">hi</p>',
     )
   })
 

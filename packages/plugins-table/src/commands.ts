@@ -15,7 +15,7 @@ import {
 } from '@openleaf-editor/core'
 import type { Node, ResolvedPos } from 'prosemirror-model'
 import type { Command, EditorState, Transaction } from 'prosemirror-state'
-import { Plugin } from 'prosemirror-state'
+import { Plugin, TextSelection } from 'prosemirror-state'
 import {
   addColumnAfter as addColumnAfterRaw,
   addColumnBefore as addColumnBeforeRaw,
@@ -86,6 +86,16 @@ export function insertTable(rows = 3, cols = 3): Command {
   }
 }
 
+/**
+ * Rewrite header cell `scope` for the table the selection is in.
+ *
+ * The selection is captured and restored around the rewrite. Every change here
+ * is a `setNodeMarkup`, which replaces the cell node, and mapping a text
+ * selection through a replacement can drag it to the node boundary. The symptom
+ * was not a broken caret but a broken command: inserting a row moved the caret
+ * out of the cell the author was editing, so the next table command found no
+ * cell and did nothing at all.
+ */
 function applyCellScope(tr: Transaction): Transaction {
   const header = tr.doc.type.schema.nodes['table_header']
   const cell = tr.doc.type.schema.nodes['table_cell']
@@ -102,6 +112,11 @@ function applyCellScope(tr: Transaction): Transaction {
 
   const table = tr.doc.nodeAt(tablePos)
   if (!table) return tr
+
+  // Only a plain text selection needs restoring: CellSelection maps itself and
+  // stays a CellSelection, which is what multi-cell commands act on.
+  const restore = tr.selection instanceof TextSelection ? tr.selection.from : null
+  const stepsBefore = tr.steps.length
 
   table.forEach((row, rowOffset, rowIndex) => {
     const rowPos = tablePos + 1 + rowOffset
@@ -120,6 +135,13 @@ function applyCellScope(tr: Transaction): Transaction {
       })
     })
   })
+
+  // Mapped through only the steps this pass added, so the caret lands where it
+  // was rather than where the last replacement pushed it.
+  if (restore !== null && tr.steps.length > stepsBefore) {
+    const at = tr.mapping.slice(stepsBefore).map(restore)
+    tr.setSelection(TextSelection.near(tr.doc.resolve(at)))
+  }
   return tr
 }
 

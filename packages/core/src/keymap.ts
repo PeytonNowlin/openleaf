@@ -25,9 +25,9 @@ import { baseKeymap, chainCommands, exitCode } from 'prosemirror-commands'
 import { redo, undo } from 'prosemirror-history'
 import type { Command } from 'prosemirror-state'
 import {
-  indentListItem,
+  indent,
   insertHorizontalRule,
-  outdentListItem,
+  outdent,
   setParagraph,
   toggleTextAlign,
   splitListItemCommand,
@@ -40,7 +40,10 @@ import {
   toggleItalic,
   toggleOrderedList,
   toggleStrike,
+  toggleSubscript,
+  toggleSuperscript,
   toggleUnderline,
+  clearFormatting,
 } from './commands.js'
 
 /** A shortcut, its command, and a human label for the help surface. */
@@ -67,6 +70,9 @@ export const shortcuts: Shortcut[] = [
   { keys: 'Mod-u', command: toggleUnderline, label: 'Underline' },
   { keys: 'Mod-Shift-x', command: toggleStrike, label: 'Strikethrough' },
   { keys: 'Mod-e', command: toggleInlineCode, label: 'Inline code' },
+  { keys: 'Mod-=', command: toggleSubscript, label: 'Subscript' },
+  { keys: 'Mod-Shift-=', command: toggleSuperscript, label: 'Superscript' },
+  { keys: 'Mod-\\', command: clearFormatting, label: 'Clear formatting' },
 
   // Blocks. Mod-Alt-N for headings matches Google Docs.
   { keys: 'Mod-Alt-0', command: setParagraph, label: 'Paragraph' },
@@ -92,8 +98,8 @@ export const shortcuts: Shortcut[] = [
   // Lists. Mod-Shift-7/8 matches Word and Google Docs.
   { keys: 'Mod-Shift-7', command: toggleOrderedList, label: 'Numbered list' },
   { keys: 'Mod-Shift-8', command: toggleBulletList, label: 'Bulleted list' },
-  { keys: 'Mod-]', command: indentListItem, label: 'Indent list item' },
-  { keys: 'Mod-[', command: outdentListItem, label: 'Outdent list item' },
+  { keys: 'Mod-]', command: indent, label: 'Indent' },
+  { keys: 'Mod-[', command: outdent, label: 'Outdent' },
 
   // History.
   { keys: 'Mod-z', command: undo, label: 'Undo' },

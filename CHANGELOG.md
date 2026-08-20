@@ -12,39 +12,103 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+Everything below has landed on `main` since `0.1.0-beta.1` and is not yet
+published. Five new packages, so read the install section of the README before
+upgrading.
+
 ### Added
 
-- Table, row and cell property dialogs in `@openleaf-editor/plugins-table`
-  (border, padding, background, alignment, width).
-- Captions and `<colgroup>` column widths as editing features: a caption dialog,
-  column-width fields on the table dialog, and a sync from column resize onto
-  stored `<col>` elements. They still round-trip as furniture attributes rather
-  than child nodes, because `prosemirror-tables` derives its cell map from
-  `table.childCount`; in-place caption typing needs that upstream fix.
-- A table context menu (right-click / Shift+F10) and an insert-size grid on
-  Insert table.
-- Nested tables, including insert from a cell.
-- Cell vertical alignment (`valign`), including folding inherited
-  `style="vertical-align:…"` into the attribute the dialog edits.
+- **`@openleaf-editor/plugins-session`** — find and replace, word count, autosave
+  with restore, an unsaved-changes warning, and save, print, preview and new
+  document. Save prefers an integrator callback, then a form submission, then a
+  cancelable `openleaf:save` event; it never invents a server.
+- **`@openleaf-editor/plugins-insert`** — insert media, details/summary, anchors,
+  a character map and emoji grid, snippets, and in-editor image resize. The
+  storage format for all of it is in core, so stored `<figure>`, `<details>`,
+  `<video>` and allowlisted `<iframe>` embeds stay editable rather than becoming
+  opaque preserved atoms; the plugin is the editing chrome.
+- **Editor chrome in `@openleaf-editor/ui` and the element** — a menubar,
+  context menus for links, images and tables, floating selection and insert
+  toolbars, a keyboard-shortcut dialog on F1, visual aids for empty blocks and
+  non-breaking spaces, autolinking on space or Enter, `content-css` for loading
+  the host's own stylesheet into the editor, `inline` and `autoresize`, UI
+  translations via `lang` plus `registerTranslations`, and honouring
+  `contenteditable="false"` in stored markup.
+- **Framework wrappers** — `@openleaf-editor/react`, `@openleaf-editor/vue` and
+  `@openleaf-editor/angular`. Each is a thin host that forwards attributes and
+  re-emits `openleaf:change`; the custom element remains the editor, so no
+  framework tree can fork the schema.
+- **Typography, in the schema rather than in a plugin** — font family and size,
+  line height, first-line indent, text direction, per-run language, subscript and
+  superscript, and list styles, with `clearFormatting` to remove them. Same
+  reasoning as the colour marks: without them an inherited
+  `<span style="font-family:Georgia">` or a `<font face="Verdana">` is claimed by
+  the preservation layer and becomes an uneditable atom.
+- **Table editing** — table, row and cell property dialogs (border, padding,
+  background, alignment, width), a caption dialog, column-width fields with a
+  sync from column resize onto stored `<col>` elements, a context menu
+  (right-click / Shift+F10), an insert-size grid, nested tables, and cell
+  vertical alignment including folding inherited `style="vertical-align:…"` into
+  the attribute the dialog edits.
+- **`<source>` and `<track>` on video and audio**, stored as scrubbed markup on
+  the media node.
 
 ### Fixed
 
 - **Tables no longer discard `<caption>`, `<colgroup>` and `<col>`.** These were
-  dropped on parse, so opening and saving a captioned table destroyed its
-  caption text permanently. A caption is a table's accessible name, which made
-  this both a content-fidelity and an accessibility defect. All three now
-  round-trip byte-identically.
-- `@openleaf-editor/sanitize` allows `caption`, `colgroup`, `col`, cell/row
-  `valign`, and the modelled table style properties so the shared policy no
-  longer strips markup the schema preserves.
+  dropped on parse, so opening and saving a captioned table destroyed its caption
+  text permanently. A caption is a table's accessible name, which made this an
+  accessibility defect as much as a fidelity one. All three now round-trip
+  byte-identically. They render but are not editable in place: a caption has to
+  be a child node for that, and `prosemirror-tables` derives its cell map from
+  `table.childCount`, so it needs an upstream fix first.
+- **Source-only media was destroyed, not merely uneditable.**
+  `<video controls><source src="clip.webm"></video>` has no `src` of its own, so
+  the schema declined it and the preservation layer's drop rule then deleted the
+  element and every address in it. It saved as `<p></p>`. Media carrying fallback
+  content -- a download link for browsers that cannot play the file -- is now
+  preserved whole rather than having the fallback deleted.
+- **A locked region could silently swallow a command.** The transaction filter
+  for `contenteditable="false"` read the state's document using coordinates from
+  each step's own map, which for any step after the first addresses a different
+  document. Once an earlier step grew the document the read ran off the end,
+  threw, and ProseMirror dropped the whole transaction. What an author saw was a
+  toolbar button doing nothing: inserting a table column after inserting a row
+  produced exactly that shape.
+- **The character map and emoji pickers were open on page load**, floating over
+  the middle of the page and following the scroll. The plugin's own
+  `display: grid` is an author declaration and so overrode the user-agent rules
+  that keep both `[hidden]` and a closed `[popover]` hidden.
+- `@openleaf-editor/sanitize` allows `caption`, `colgroup`, `col`, `source`,
+  `track`, cell and row `valign`, `sub`, `sup`, heading `id`, and the modelled
+  style properties, so the shared policy no longer strips markup the schema
+  preserves. `toDOMPurifyConfig` now withholds `iframe` unless told the embed
+  hook is installed: the host allowlist is a per-element check no DOMPurify
+  config can express, and listing the element without it let an arbitrary nested
+  page through the sanitizer SECURITY.md recommends.
 
 ### Changed
 
-- Insert table is a size grid rather than an immediate 3×3 insert. The
+- **`<font face="Verdana">` converts to `<span style="font-family:Verdana">`.**
+  A legacy tag whose every attribute a mark can hold is now modelled rather than
+  preserved, which is what makes the run editable. `<font>` carrying anything a
+  single mark cannot hold -- `face` plus `color`, say -- is still preserved whole.
+  The same applies to `type="a"` on a list, which becomes `list-style-type`.
+- **A modelled style declaration comes back in the schema's canonical spelling
+  and order.** Once a property lives in a node attribute the source spelling is
+  gone before anything serializes; this has always been true of `text-align` and
+  now applies to the typography properties too. Declarations the schema does not
+  model still go back verbatim, and the fidelity corpus checks declaration by
+  declaration so a re-spelling cannot hide a loss.
+- Insert table is a size grid rather than an immediate 3x3 insert. The
   `insertTable(rows, cols)` command is unchanged for programmatic use.
-- The core bundle's gzip budget rises from 92 KB to 94 KB. The caption fix
-  measured 91.955 KB against 92, a pass by 45 bytes, which leaves the next
-  contributor's build failing for reasons unrelated to their patch.
+- The core bundle's gzip budget rises from 92 KB to 108 KB across these changes,
+  measured at 106.8 KB. Every rise is storage format -- schema, commands,
+  preservation, sanitizer vocabulary -- with the editing chrome staying in opt-in
+  bundles.
+- `pnpm typecheck` works. It runs `tsc -b`, which needs a root `tsconfig.json`
+  that did not exist, so it failed with TS5083 before checking anything. It now
+  also type checks the tests, which nothing did before.
 
 ## 0.1.0-beta.1 - 2026-08-19
 

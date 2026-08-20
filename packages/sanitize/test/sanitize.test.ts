@@ -196,7 +196,7 @@ describe('adapters keep the runtimes in agreement', () => {
   it('bleach config keeps per-element attribute precision', () => {
     const python = toBleachConfig(DEFAULT_POLICY)
     expect(python).toContain('ALLOWED_TAGS')
-    expect(python).toContain('"ol": ["start"]')
+    expect(python).toContain('"ol": ["start", "style"]')
     expect(python).toContain('"a": ["href", "title", "target", "rel", "id"]')
     expect(python).toContain('ALLOWED_PROTOCOLS = ["http", "https"')
     expect(python).toContain('DROP_WITH_CONTENT')
@@ -213,7 +213,7 @@ describe('adapters keep the runtimes in agreement', () => {
   it('HTMLPurifier config encodes tag[attr] pairs', () => {
     const php = toHtmlPurifierConfig(DEFAULT_POLICY)
     expect(php).toContain('HTML.Allowed')
-    expect(php).toContain('ol[start]')
+    expect(php).toContain('ol[start|style]')
     expect(php).toContain('a[href|title|target|rel|id]')
     expect(php).toContain('"https" => true')
     expect(php).toContain('TargetNoopener')

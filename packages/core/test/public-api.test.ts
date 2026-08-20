@@ -32,6 +32,14 @@ const EXPECTED_EXPORTS = [
   // @openleaf-editor/sanitize mirrors in its policy and pins with a test
   'ALIGNMENTS', 'MODELLED_PROPERTIES', 'COLOUR_PROPERTIES', 'safeAlign', 'safeColor',
   'parseDeclarations', 'serializeDeclarations', 'isFullyModelledStyle',
+  // typography vocabulary. The presets are what a toolbar offers; the `safe*`
+  // functions are what the schema, the commands, the preservation layer and the
+  // sanitizer all validate against, so there is one answer per property rather
+  // than four that drift.
+  'FONT_FAMILIES', 'FONT_SIZE_PRESETS', 'LINE_HEIGHT_PRESETS', 'LIST_STYLES',
+  'INLINE_STYLE_PROPERTIES', 'INDENT_EM', 'MAX_INDENT', 'indentCss', 'indentLevels',
+  'modelledValue', 'safeDir', 'safeFontFamily', 'safeFontSize', 'safeLang',
+  'safeLineHeight', 'safeListStyle',
   // embed allowlist and class/id tokens
   'EMBED_HOSTS', 'isAllowedEmbedSrc', 'safeAllowList', 'safeEmbedSrc',
   'IMAGE_ALIGNMENTS', 'IMAGE_ALIGN_CLASS', 'IMAGE_ALIGN_CLASSES', 'imageAlignFromClass',
@@ -39,12 +47,17 @@ const EXPECTED_EXPORTS = [
   // predicates
   'isMarkActive', 'isNodeActive', 'canInsert', 'activeHeadingLevel', 'activeLink',
   'canUndo', 'canRedo', 'activeTextAlign', 'activeTextColor', 'activeBackgroundColor',
+  'activeDir', 'activeFontFamily', 'activeFontSize', 'activeIndent', 'activeLanguage',
+  'activeLineHeight', 'activeListStyle',
   // mark commands
   'toggleBold', 'toggleItalic', 'toggleUnderline', 'toggleStrike', 'toggleInlineCode',
   'setTextColor', 'setBackgroundColor', 'clearTextColor', 'clearBackgroundColor',
+  'toggleSubscript', 'toggleSuperscript', 'setFontFamily', 'setFontSize', 'setLanguage',
+  'clearFormatting',
   // block commands
   'setParagraph', 'setHeading', 'toggleHeading', 'toggleCodeBlock', 'toggleBlockquote',
   'wrapInBlockquote', 'insertHorizontalRule', 'setTextAlign', 'toggleTextAlign',
+  'setDir', 'toggleDir', 'setLineHeight', 'indent', 'outdent', 'setListStyle',
   // lists
   'toggleBulletList', 'toggleOrderedList', 'splitListItemCommand',
   'indentListItem', 'outdentListItem',
@@ -112,6 +125,16 @@ describe('the schema an integrator sees', () => {
         // independently, and a single mark holding both would have each command
         // reset the other's value.
         'text_color', 'background_color',
+        // Typography, for the same reason the colour marks are here rather than
+        // in an optional bundle: without them an inherited
+        // `<span style="font-family:Georgia">` or a `<font face>` is claimed by
+        // the preservation layer and becomes an uneditable atom. One mark per
+        // property, so setting a size does not reset the family.
+        'font_family', 'font_size',
+        'subscript', 'superscript',
+        // `lang` on a run. A mark rather than an attribute because a language
+        // change is inline and can overlap other formatting.
+        'language',
       ].sort(),
     )
   })
@@ -157,7 +180,9 @@ describe('round-trip behaviour', () => {
     ['horizontal rule', '<hr>'],
     ['preserved wrapper', '<div class="callout" data-id="7"><p>p</p></div>'],
     ['custom element', '<drupal-media data-entity-uuid="abc"></drupal-media>'],
-    ['legacy font', '<p><font face="Verdana">old</font></p>'],
+    // Two attributes: no single mark can hold it, so it round-trips untouched.
+    // `<font face>` alone is the font-family mark and converts to a span.
+    ['legacy font', '<p><font face="Verdana" size="2">old</font></p>'],
     ['table with legacy attrs', '<table border="1"><tbody><tr><th scope="col">H</th></tr></tbody></table>'],
     ['bare cell text', '<table><tbody><tr><td>A</td></tr></tbody></table>'],
   ]
