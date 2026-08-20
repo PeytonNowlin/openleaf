@@ -128,24 +128,77 @@ export function collapseBareSpans(container: Element): void {
 }
 
 /**
- * Remove elements that contain neither text nor any element at all.
+ * Inline formatting that carries nothing once it has nothing inside it.
  *
- * The test is deliberately inverted from the obvious one. Listing the children
- * that count as meaningful -- `img`, `br`, `table` and friends -- reads as
- * cautious and is the opposite: every element absent from the list becomes
- * grounds for deleting a block *and its contents*. That list left out `video`,
- * `audio`, `iframe`, `svg`, `object` and `embed`, so a paragraph holding an
- * embedded video, one of the most ordinary things in a Word or Google Doc,
- * was silently deleted along with the video.
+ * This is the *other* kind of list from the one `dropEmptyBlocks` used to
+ * keep, and the direction matters. Naming the children that count as
+ * meaningful makes every unlisted element grounds for deleting a block; naming
+ * the elements that are meaningless when empty makes an unlisted element
+ * grounds for keeping one. Only the second is safe, because the set of markup
+ * a normalizer has never heard of is unbounded and the set of inline
+ * formatting tags is not.
+ */
+const VACUOUS_INLINE = new Set([
+  'A', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPAN', 'FONT', 'SUB', 'SUP', 'SMALL', 'MARK',
+])
+
+/**
+ * An empty `<strong>`, `<em>` or bookmark anchor: formatting around nothing.
+ *
+ * Word's empty paragraph is a styled span wrapping an `<o:p>`, so once the
+ * `<o:p>` goes and `extractSemantics` has promoted the span's styling, what is
+ * left is `<p><strong></strong></p>` -- a paragraph that looks non-empty to any
+ * test that counts element children, and is not.
+ *
+ * An attribute makes an element non-vacuous, because an attribute is
+ * information. The exception is an `<a>` whose only attribute is `name`: that
+ * is a Word bookmark, `_Ref41`/`_Toc9`/`_GoBack`, invisible by construction.
+ * Keeping it is worse than dropping it, and measurably so -- core has no node
+ * for a nameless anchor, so it lands in the preservation layer, and the author
+ * gets an inert grey card in an otherwise empty paragraph standing in for
+ * something that was never visible. This package's stated quality bar is zero
+ * preserved atoms out of a paste. The cost is a cross-reference in the same
+ * document losing its target, which is the cost the pass has always paid: the
+ * old emptiness test deleted these paragraphs outright.
+ */
+function isVacuousInline(el: Element): boolean {
+  if (!VACUOUS_INLINE.has(el.nodeName)) return false
+  if (el.firstElementChild) return false
+  if (plainText(el).trim() !== '') return false
+  for (const attr of Array.from(el.attributes)) {
+    if (el.nodeName === 'A' && attr.name === 'name') continue
+    return false
+  }
+  return true
+}
+
+/**
+ * Remove elements that contain neither text nor any element that means
+ * something.
+ *
+ * The block test is deliberately inverted from the obvious one. Listing the
+ * children that count as meaningful -- `img`, `br`, `table` and friends --
+ * reads as cautious and is the opposite: every element absent from the list
+ * becomes grounds for deleting a block *and its contents*. That list left out
+ * `video`, `audio`, `iframe`, `svg`, `object` and `embed`, so a paragraph
+ * holding an embedded video, one of the most ordinary things in a Word or
+ * Google Doc, was silently deleted along with the video.
  *
  * An unknown-but-present child is never grounds for deletion. What is left to
  * remove is what Word and Google leave behind once their bookkeeping elements
- * are gone: a genuinely empty wrapper.
+ * are gone: a genuinely empty wrapper, and the empty inline formatting that
+ * wrapper used to hold.
  */
 export function dropEmptyBlocks(container: Element, tags = ['p', 'span', 'div']): void {
+  // Reverse document order is innermost first, so `<strong><em></em></strong>`
+  // collapses from the inside out in a single pass.
+  for (const el of Array.from(container.querySelectorAll('*')).reverse()) {
+    if (isVacuousInline(el)) el.remove()
+  }
+
   for (const tag of tags) {
-    // Innermost first, so an empty wrapper inside an empty wrapper still takes
-    // its parent with it once the child has gone.
+    // Innermost first here too, so an empty wrapper inside an empty wrapper
+    // still takes its parent with it once the child has gone.
     for (const el of Array.from(container.querySelectorAll(tag)).reverse()) {
       if (el.firstElementChild) continue
       if (plainText(el).trim() !== '') continue

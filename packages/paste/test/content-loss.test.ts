@@ -61,6 +61,63 @@ describe('embedded media survives the empty-block pass', () => {
   })
 })
 
+describe('the inversion does not leave empty formatting behind', () => {
+  /*
+   * The other half of task 89. Widening what counts as meaningful keeps the
+   * video -- and would keep `<p><strong></strong></p>` too, which is what
+   * Word's empty paragraph becomes once its <o:p> is removed and its span's
+   * styling has been promoted. Deleting videos must not be traded for a trail
+   * of empty shells.
+   */
+  it('drops a Word paragraph that held only a styled <o:p>', () => {
+    const html =
+      '<p class="MsoNormal">Real text<o:p></o:p></p>' +
+      '<p class="MsoNormal"><span style="font-weight:bold;font-family:Calibri"><o:p></o:p></span></p>'
+    expect(normalizeWord(html)).toBe('<p>Real text</p>')
+  })
+
+  it('drops an italic shell', () => {
+    const html =
+      '<p class="MsoNormal">Real<o:p></o:p></p>' +
+      '<p class="MsoNormal"><span style="font-style:italic"><o:p></o:p></span></p>'
+    expect(normalizeWord(html)).toBe('<p>Real</p>')
+  })
+
+  it('drops a shell holding nothing but a non-breaking space', () => {
+    const html =
+      '<p class="MsoNormal">Real<o:p></o:p></p>' +
+      '<p class="MsoNormal"><span style="text-decoration:underline">&nbsp;</span></p>'
+    expect(normalizeWord(html)).toBe('<p>Real</p>')
+  })
+
+  it('drops a bookmark-only anchor rather than leaving a preserved atom', () => {
+    // <a name="_Ref1"> is a Word bookmark: invisible by construction, and with
+    // no node in core, so keeping it puts a grey card in an empty paragraph.
+    const html =
+      '<p class="MsoNormal">Real<o:p></o:p></p>' +
+      '<p class="MsoNormal"><a name="_Ref1"></a><span style="font-weight:bold"><o:p></o:p></span></p>'
+    expect(normalizeWord(html)).toBe('<p>Real</p>')
+  })
+
+  it('keeps an anchor that has a destination', () => {
+    const html = '<p class="MsoNormal">See <a href="https://example.org/">the spec</a>.</p>'
+    expect(normalizeWord(html)).toContain('href="https://example.org/"')
+  })
+
+  it('drops a Google Docs shell', () => {
+    const html = asGoogleDocs(
+      '<p dir="ltr"><span style="font-size:11pt">Real</span></p>' +
+        '<p dir="ltr"><span style="font-weight:700;font-size:11pt"></span></p>',
+    )
+    expect(normalizeGoogleDocs(html)).toBe('<p dir="ltr">Real</p>')
+  })
+
+  it('still keeps the paragraph when the shell is not empty', () => {
+    const html = '<p class="MsoNormal"><span style="font-weight:bold">Kept</span></p>'
+    expect(normalizeWord(html)).toBe('<p><strong>Kept</strong></p>')
+  })
+})
+
 describe('Word tables keep their structural attributes', () => {
   const TABLE =
     '<table class="MsoTableGrid" width="600" style="border-collapse:collapse">' +
@@ -278,11 +335,27 @@ describe('a Word list that changes type at the top level', () => {
     )
   }
 
+  /** A continuation paragraph: carries mso-list, but has no marker glyph. */
+  function continuation(text: string, level = 1, listId = 'l0'): string {
+    return `<p class="MsoListParagraph" style="mso-list:${listId} level${level} lfo1">${text}</p>`
+  }
+
   it('starts a new list when the marker type changes at level 1', () => {
     const out = normalizeWord(item('Bullet', '·') + item('First', '1.') + item('Second', '2.'))
     expect(out).toContain('<ul>')
     expect(out).toMatch(/<ol[ >]/)
     expect(out).toMatch(/<\/ul><ol/)
     expect(out.match(/<li>/g)).toHaveLength(3)
+  })
+
+  it('does NOT split on a continuation paragraph, which has no marker at all', () => {
+    // A markerless item reads as unordered for want of anywhere else to get an
+    // answer. Splitting on that tears one <ol> into three lists around every
+    // paragraph of trailing prose inside an item.
+    const out = normalizeWord(item('One', '1.') + continuation('continuation text') + item('Two', '2.'))
+    expect(out).not.toContain('<ul>')
+    expect(out.match(/<ol[ >]/g)).toHaveLength(1)
+    expect(out.match(/<li>/g)).toHaveLength(3)
+    expect(out).toContain('continuation text')
   })
 })

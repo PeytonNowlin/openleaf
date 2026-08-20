@@ -94,6 +94,17 @@ interface ListInfo {
   listId: string
   level: number
   ordered: boolean
+  /**
+   * Whether a bullet or number glyph was actually found.
+   *
+   * `ordered` is read off the marker text, so a list paragraph that has no
+   * marker -- Word's continuation paragraph, a second paragraph inside one
+   * item -- reads as unordered for want of anywhere else to get an answer.
+   * That is fine while the flag is only used to pick a list type, and not fine
+   * for deciding that the list type CHANGED, which is why the two are
+   * separate.
+   */
+  hasMarker: boolean
   start: number | null
   markerNodes: Node[]
 }
@@ -178,6 +189,7 @@ function readListInfo(el: Element): ListInfo | null {
     listId,
     level,
     ordered,
+    hasMarker: marker.text.trim() !== '',
     start: startMatch ? Number.parseInt(startMatch[0], 10) : null,
     markerNodes: marker.nodes,
   }
@@ -274,7 +286,21 @@ function reconstructLists(container: Element, doc: Document): void {
       // with a bullet and continues with numbers would otherwise put the
       // numbered items in the <ul> -- the type change is the one signal Word
       // gives that these are two lists.
-      if (next.level === 1 && first.level === 1 && next.ordered !== first.ordered) break
+      //
+      // Both items must actually HAVE a marker. A continuation paragraph has
+      // none and so reads as unordered, and splitting on that would tear a
+      // numbered list into three lists around every paragraph of trailing
+      // prose inside an item -- trading a rare cosmetic bug for a common
+      // structural one, in the code this package exists for.
+      if (
+        next.level === 1 &&
+        first.level === 1 &&
+        next.hasMarker &&
+        first.hasMarker &&
+        next.ordered !== first.ordered
+      ) {
+        break
+      }
       run.push(next)
       j += 1
     }
