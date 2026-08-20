@@ -22,7 +22,6 @@ import {
   collapseBareSpans,
   dropEmptyBlocks,
   extractSemantics,
-  isBoldWeight,
   stripAllStyles,
 } from './clean.js'
 import { parseFragment, parseStyle, resolveDocument, stripComments, unwrap, writeStyle } from './dom.js'
@@ -35,18 +34,24 @@ export function looksLikeGoogleDocs(html: string): boolean {
 /**
  * Drop `text-decoration:underline` on anything inside a link, so the
  * redundant `<u>` is never created in the first place.
+ *
+ * Both spellings, because `extractSemantics` now reads both: leaving the
+ * longhand here would put the `<u>` back inside every link.
  */
 function dropRedundantLinkUnderlines(container: Element): void {
   for (const anchor of Array.from(container.querySelectorAll('a'))) {
     for (const el of [anchor, ...Array.from(anchor.querySelectorAll('*'))]) {
       const style = parseStyle(el)
-      const decoration = style.get('text-decoration')
-      if (decoration && /\bunderline\b/.test(decoration)) {
+      let changed = false
+      for (const property of ['text-decoration', 'text-decoration-line']) {
+        const decoration = style.get(property)
+        if (!decoration || !/\bunderline\b/.test(decoration)) continue
         const rest = decoration.replace(/\bunderline\b/g, '').trim()
-        if (rest) style.set('text-decoration', rest)
-        else style.delete('text-decoration')
-        writeStyle(el, style)
+        if (rest) style.set(property, rest)
+        else style.delete(property)
+        changed = true
       }
+      if (changed) writeStyle(el, style)
     }
   }
 }
@@ -68,12 +73,14 @@ function stripGoogleJunk(container: Element): void {
     unwrap(el)
   }
 
-  // A <b> or <i> that survived semantic extraction but carries no emphasis
-  // is Google's structural wrapper, not the author's intent.
-  for (const el of Array.from(container.querySelectorAll('b,i'))) {
-    const weight = parseStyle(el).get('font-weight')
-    if (weight && !isBoldWeight(weight)) unwrap(el)
-  }
+  // There was a pass here that unwrapped any <b> or <i> whose font-weight was
+  // not bold. The <b> half never ran -- extractSemantics does exactly that,
+  // under the same condition, and runs first. The <i> half judged an italic by
+  // its *weight*, so `<i style="font-weight:normal">` lost its emphasis: the
+  // opposite of removing "Google's structural wrapper, not the author's
+  // intent". Deleted rather than repaired, because the case it aimed at is
+  // already handled: `<b style="font-weight:normal"><i>x</i></b>` comes out of
+  // extractSemantics as `<i>x</i>`.
 }
 
 export function normalizeGoogleDocs(html: string, explicitDocument?: Document): string {

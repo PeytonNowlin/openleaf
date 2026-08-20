@@ -49,39 +49,100 @@ export function stripComments(root: Node): void {
   for (const c of doomed) c.parentNode?.removeChild(c)
 }
 
+/**
+ * Split a `style` attribute on the semicolons that actually separate
+ * declarations.
+ *
+ * Three things are not separators: a semicolon inside a quoted value, a
+ * semicolon inside a CSS comment, and a quote character that has been
+ * backslash-escaped inside a quoted value. Word writes values like
+ * `font:7.0pt "Times New Roman"` which contain none of them, but a naive split
+ * mangles `font-family` lists, and getting `content:"a\";b"` wrong silently
+ * turns one declaration into two nonsense ones.
+ */
+function splitDeclarations(raw: string): string[] {
+  const decls: string[] = []
+  let quote: '"' | "'" | null = null
+  let current = ''
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]!
+    if (quote) {
+      if (ch === '\\' && i + 1 < raw.length) {
+        // An escaped character is never a closing quote, whatever it is.
+        current += ch + raw[i + 1]!
+        i += 1
+        continue
+      }
+      if (ch === quote) quote = null
+      current += ch
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      current += ch
+      continue
+    }
+    if (ch === '/' && raw[i + 1] === '*') {
+      const end = raw.indexOf('*/', i + 2)
+      i = end < 0 ? raw.length : end + 1
+      continue
+    }
+    if (ch === ';') {
+      decls.push(current)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  decls.push(current)
+  return decls
+}
+
 /** Parse a `style` attribute into a lowercase-keyed map. */
 export function parseStyle(el: Element): Map<string, string> {
   const out = new Map<string, string>()
   const raw = el.getAttribute('style')
   if (!raw) return out
-  // Split on semicolons that are not inside quotes -- Word writes values like
-  // `font:7.0pt "Times New Roman"` which contain no semicolons, but
-  // `font-family` lists can, and splitting naively mangles them.
-  let depth: '"' | "'" | null = null
-  let current = ''
-  const decls: string[] = []
-  for (const ch of raw) {
-    if (depth) {
-      if (ch === depth) depth = null
-      current += ch
-    } else if (ch === '"' || ch === "'") {
-      depth = ch
-      current += ch
-    } else if (ch === ';') {
-      decls.push(current)
-      current = ''
-    } else {
-      current += ch
-    }
-  }
-  decls.push(current)
 
-  for (const decl of decls) {
+  for (const decl of splitDeclarations(raw)) {
     const idx = decl.indexOf(':')
     if (idx < 0) continue
     const name = decl.slice(0, idx).trim().toLowerCase()
     const value = decl.slice(idx + 1).trim()
     if (name) out.set(name, value)
+  }
+  return out
+}
+
+/** A `<font-size>`, which is where the `font` shorthand's prefix ends. */
+const FONT_SIZE_TOKEN =
+  /^(?:[0-9.]+(?:px|pt|em|rem|ex|ch|%|vw|vh|vmin|vmax|cm|mm|q|in|pc)?|xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger)\b/
+
+/**
+ * Read weight and style out of the `font` shorthand.
+ *
+ * The shorthand is `[ style || variant || weight || stretch ]? size [ /
+ * line-height ]? family`, so emphasis can hide in front of the size -- and it
+ * does: `font:bold 12px Arial` is bold text whose boldness is invisible to a
+ * normalizer that only reads `font-weight`. Word emits the shorthand routinely
+ * (`font:7.0pt "Times New Roman"`), which is why the scan stops at the size
+ * rather than searching the whole value: a family called `Bold Type` is not a
+ * weight, and `7.0pt` is not one either.
+ */
+export function parseFontShorthand(value: string): { weight?: string; style?: string } {
+  const out: { weight?: string; style?: string } = {}
+  for (const token of value.trim().split(/\s+/)) {
+    const t = token.toLowerCase()
+    // A bare hundred is a weight: a font-size needs a unit unless it is `0`.
+    if (/^[1-9]00$/.test(t)) {
+      out.weight = t
+      continue
+    }
+    if (FONT_SIZE_TOKEN.test(t)) break
+    if (t === 'italic' || t === 'oblique') out.style = t
+    else if (t === 'bold' || t === 'bolder' || t === 'lighter') out.weight = t
+    else if (t !== 'normal' && t !== 'small-caps') break
   }
   return out
 }
