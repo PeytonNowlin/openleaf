@@ -421,7 +421,7 @@ export class Toolbar {
     if (!view) return null
 
     try {
-      const control = spec.render({ view, host: this.#host, formats: this.#formats })
+      const control = spec.render({ view, id: spec.id, host: this.#host, formats: this.#formats })
       this.#customs.push({ id: spec.id, control })
       return control.el
     } catch (error) {
@@ -811,14 +811,9 @@ export class Toolbar {
       this.#focusables[this.#rovingIndex]?.focus()
       return
     }
-    // A toolbar of only selects or custom controls has no roving buttons. The
+    // A bar of nothing but custom controls has no roving stop of its own. The
     // shortcut is still documented; swallowing it with nowhere to go would make
     // a valid `toolbar` attribute a silent no-op.
-    const declared = this.#selects.values().next().value
-    if (declared) {
-      declared.focus()
-      return
-    }
     this.#customs.find(({ control }) => control.focusable)?.control.focusable?.focus()
   }
 
