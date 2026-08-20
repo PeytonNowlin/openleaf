@@ -29,6 +29,7 @@
 
 import { isAllowedEmbedSrc, safeAllowList } from './embed.js'
 import { filterStyle } from './css.js'
+import { isEventHandlerAttribute } from './url.js'
 import {
   DEFAULT_POLICY,
   allowedAttributes,
@@ -36,6 +37,28 @@ import {
   isAllowedElement,
   type Policy,
 } from './policy.js'
+
+/**
+ * Attributes no policy may re-enable, whatever it says.
+ *
+ * Until now `onclick` was stripped only as an emergent property of the
+ * allowlist: nothing in `DEFAULT_POLICY` named it, so nothing kept it. That is
+ * true of the default and not of a policy in general. `policyForPreserved` and
+ * the `policy` option both let a caller name attributes per element, so
+ * `policyForPreserved(DEFAULT_POLICY, { div: ['class', 'onclick'] })` produced a
+ * policy under which this function happily kept `onclick` -- the caller widening
+ * one element's attribute list almost certainly did not mean to re-enable script
+ * execution, and nothing told them they had.
+ *
+ * So the check is now independent of the policy, matching what the DOMPurify
+ * adapter already forbids. A denial that only holds while the allowlist happens
+ * to stay narrow is not a security property.
+ */
+const NEVER_ALLOWED = new Set(['srcdoc', 'formaction', 'ping', 'xlink:href'])
+
+function isNeverAllowed(name: string): boolean {
+  return isEventHandlerAttribute(name) || NEVER_ALLOWED.has(name)
+}
 
 export interface SanitizeOptions {
   policy?: Policy
@@ -56,6 +79,23 @@ export function isUrlAllowed(value: string, policy: Policy): boolean {
   const match = SCHEME.exec(candidate)
   if (!match) return policy.allowRelativeUrls
   return policy.urlSchemes.includes(match[1] as string)
+}
+
+/**
+ * Delete every comment node under `root`.
+ *
+ * Written as an explicit recursion over `childNodes` rather than a `TreeWalker`
+ * because `Document.createTreeWalker` is the one part of this file that a
+ * minimal server-side DOM shim is likely not to implement, and the whole point
+ * of accepting a `{ document }` is to work against those.
+ */
+function removeComments(root: Node): void {
+  for (const child of Array.from(root.childNodes)) {
+    // 8 is Node.COMMENT_NODE, spelled numerically because the `Node` constant
+    // is not guaranteed to be a global outside a browser.
+    if (child.nodeType === 8) child.parentNode?.removeChild(child)
+    else if (child.nodeType === 1) removeComments(child)
+  }
 }
 
 function resolveDocument(explicit?: Document): Document {
@@ -94,6 +134,21 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
     }
   }
 
+  // Comments, everywhere, before anything else looks at the tree.
+  //
+  // The walk below iterates `children`, which is elements only, so a comment
+  // node was never visited and `innerHTML` re-emitted it verbatim. That made
+  // `<!--<img src=x onerror=alert(1)>-->` a pass-through: inert as parsed here,
+  // and live the moment any downstream consumer unwraps or regex-strips
+  // comments, which is a routine thing for a template layer to do. It is also a
+  // divergence from the DOMPurify configuration this same package emits, which
+  // drops comments by default -- two paths the docs present as equivalent are
+  // not allowed to disagree about what survives.
+  //
+  // Nothing in the editor's output needs comments, so there is no content-loss
+  // trade here: conditional comments are IE furniture, not authored text.
+  removeComments(root)
+
   const visit = (node: Element): void => {
     for (const child of Array.from(node.children)) visit(child)
 
@@ -113,6 +168,12 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
     for (const attr of Array.from(node.attributes)) {
       const name = attr.name.toLowerCase()
 
+      // Checked before the allowlist, not after, so that a policy naming one of
+      // these cannot reach the branch that would keep it.
+      if (isNeverAllowed(name)) {
+        node.removeAttribute(attr.name)
+        continue
+      }
       if (!permitted.has(name)) {
         node.removeAttribute(attr.name)
         continue

@@ -29,7 +29,12 @@ export {
   type ListStyle,
 } from './css.js'
 export { parseHtml, serializeHtml, roundTrip, type HtmlIOOptions } from './html.js'
-export { isLosslesslyUnwrappable, unknownBlock, unknownInline } from './preserve.js'
+export {
+  isInsidePreserved,
+  isLosslesslyUnwrappable,
+  unknownBlock,
+  unknownInline,
+} from './preserve.js'
 export {
   URL_ATTRIBUTES,
   isEventHandlerAttribute,

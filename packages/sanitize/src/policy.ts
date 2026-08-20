@@ -37,6 +37,8 @@
  * emitted" mode, because that is not a policy, it is a wish.
  */
 
+import { deepFreeze } from './freeze.js'
+
 export interface ElementPolicy {
   /** Attribute names permitted on this element, beyond the global ones. */
   attributes?: string[]
@@ -86,13 +88,28 @@ export interface Policy {
 }
 
 /**
- * The default policy: exactly what OpenLeaf's own schema can emit, and nothing
- * else.
+ * The default policy: what OpenLeaf's own schema can emit, plus the markup the
+ * preservation layer keeps -- see the note on `policyForPreserved`.
  *
  * Kept deliberately narrow. Widening a policy is a decision an integrator makes
  * knowingly; narrowing one after content has been stored is a migration.
+ *
+ * ## Frozen, deeply, and why that is not decoration
+ *
+ * This is a module-level singleton that every `sanitizeHtml()` call in the
+ * process reads by default. Unfrozen, one line anywhere on the page --
+ * `DEFAULT_POLICY.globalAttributes.push('onclick')`, or
+ * `DEFAULT_POLICY.dropWithContent.length = 0` -- silently reconfigures the
+ * sanitizer for every subsequent call, with nothing in any call site changed and
+ * nothing to see in review. On a Node server that is a gadget: a single
+ * write primitive anywhere in the process turns the shared allowlist off for
+ * every request that follows, for the lifetime of the process.
+ *
+ * Freezing turns that from a silent, permanent, process-wide reconfiguration
+ * into a `TypeError` at the line that tried it. An integrator who genuinely
+ * wants a different policy has `policyForPreserved`, which returns a new one.
  */
-export const DEFAULT_POLICY: Policy = {
+export const DEFAULT_POLICY: Policy = deepFreeze({
   version: 3,
 
   elements: {
@@ -238,7 +255,7 @@ export const DEFAULT_POLICY: Policy = {
     'applet', 'form', 'input', 'button', 'select', 'textarea', 'option',
     'link', 'meta', 'base', 'noscript', 'template', 'svg', 'math',
   ],
-}
+})
 
 /**
  * Extend a policy to cover markup kept by the preservation layer.
@@ -262,12 +279,29 @@ export const DEFAULT_POLICY: Policy = {
  * A property named here still has to have a checker in css.ts, and there is
  * deliberately no "allow any value" mode: `styleProperties: ['background']`
  * without one permits nothing, rather than permitting `url(...)`.
+ *
+ * The result is a deep copy. It used to be `{ ...base, elements }`, which
+ * copied `elements` one level and shared `dropWithContent`, `urlSchemes`,
+ * `urlAttributes` and `globalAttributes` **by reference** -- so a caller who
+ * adjusted the "extended" policy was reaching into `DEFAULT_POLICY` and
+ * changing it for every other consumer in the process. Deriving a policy is
+ * supposed to leave the one you derived it from alone.
  */
 export function policyForPreserved(
   base: Policy,
   additions: Record<string, string[] | ElementPolicy>,
 ): Policy {
-  const elements: Record<string, ElementPolicy> = { ...base.elements }
+  // Copy every element entry, not just the map: the entries this call does not
+  // touch would otherwise still be the base policy's own objects, holding the
+  // base policy's own `attributes` array.
+  const elements: Record<string, ElementPolicy> = {}
+  for (const [name, element] of Object.entries(base.elements)) {
+    elements[name] = {
+      ...element,
+      ...(element.attributes ? { attributes: [...element.attributes] } : {}),
+      ...(element.styleProperties ? { styleProperties: [...element.styleProperties] } : {}),
+    }
+  }
 
   for (const [tag, addition] of Object.entries(additions)) {
     const name = tag.toLowerCase()
@@ -296,7 +330,14 @@ export function policyForPreserved(
     }
   }
 
-  return { ...base, elements }
+  return {
+    ...base,
+    elements,
+    globalAttributes: [...base.globalAttributes],
+    urlAttributes: [...base.urlAttributes],
+    urlSchemes: [...base.urlSchemes],
+    dropWithContent: [...base.dropWithContent],
+  }
 }
 
 /** Every attribute permitted on an element under a policy. */

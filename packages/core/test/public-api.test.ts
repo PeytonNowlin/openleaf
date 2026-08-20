@@ -24,8 +24,11 @@ const EXPECTED_EXPORTS = [
   // schema extensions
   'createSchema', 'coreSchema', 'registerSchemaExtension', 'registeredSchemaExtensions',
   'onSchemaExtensionsChange', 'CARRIED_ATTR',
-  // preservation
-  'isLosslesslyUnwrappable', 'unknownBlock', 'unknownInline',
+  // preservation. `isInsidePreserved` is the guard a plugin needs before any
+  // normalization pass it adds over serialized output: reaching inside markup
+  // the editor undertook to return byte-identical is the one bug this layer
+  // exists to prevent, and an author cannot avoid it without being able to ask.
+  'isInsidePreserved', 'isLosslesslyUnwrappable', 'unknownBlock', 'unknownInline',
   // url safety
   'isSafeUrl', 'safeUrlOrNull', 'isEventHandlerAttribute', 'URL_ATTRIBUTES',
   // css safety -- the vocabulary alignment and colour are allowed to write, which

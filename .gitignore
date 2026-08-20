@@ -3,6 +3,14 @@ dist/
 coverage/
 *.tsbuildinfo
 .DS_Store
+
+# Secrets. Prophylactic: no .env is tracked today, and the point of the rule is
+# that the first one never is. `.env.example` is the documented template and is
+# meant to be committed, so it is excepted rather than left to a memorable name.
+.env
+.env.*
+!.env.example
+*.pem
 test-results/
 playwright-report/
 demo/openleaf.min.js

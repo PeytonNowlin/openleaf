@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseHtml, serializeHtml } from '../src/index.js'
+import { EMBED_HOSTS, parseHtml, serializeHtml } from '../src/index.js'
 
 /**
  * What the preservation layer does with dangerous markup.
@@ -97,5 +97,29 @@ describe('what preservation still guarantees', () => {
     // `face` on its own is the font-family mark now, so it converts. Two
     // attributes is the case no mark can hold, which is what preservation is for.
     expect(roundTrip('<p><font face="Verdana" size="2">old</font></p>')).toContain('face="Verdana"')
+  })
+})
+
+describe('the embed allowlist is immutable at runtime', () => {
+  /*
+   * `EMBED_HOSTS` is the entire difference between an iframe the editor renders
+   * and an attacker-controlled page nested inside the document. It was declared
+   * `readonly EmbedHostRule[]`, which is a compile-time annotation: erased at
+   * build time, so it stops a TypeScript consumer and nobody else -- not plain
+   * JavaScript, not a cast, and not the compromised transitive dependency that
+   * is the reason to care in the first place.
+   */
+  it('refuses a pushed host', () => {
+    expect(Object.isFrozen(EMBED_HOSTS)).toBe(true)
+    expect(() => {
+      ;(EMBED_HOSTS as unknown as { push(rule: unknown): void }).push({ host: 'evil.example' })
+    }).toThrow(TypeError)
+    expect(EMBED_HOSTS.some((rule) => rule.host === 'evil.example')).toBe(false)
+  })
+
+  it('refuses an edit to an existing rule', () => {
+    expect(() => {
+      ;(EMBED_HOSTS[0] as { host: string }).host = 'evil.example'
+    }).toThrow(TypeError)
   })
 })
