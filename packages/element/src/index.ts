@@ -141,9 +141,35 @@ export class OpenLeafEditor extends HTMLElementBase {
   #floating: FloatingToolbars | null = null
   #formBridge = new FormBridge(this, () => this.value, (html) => { this.value = html })
   #contentHost: HTMLDivElement | null = null
+  #hint: HTMLSpanElement | null = null
   #sourceArea: HTMLTextAreaElement | null = null
   #sourceMode = false
   #deferred = false
+  /** True between a completed #build() and its #teardown(). Makes teardown once-only. */
+  #built = false
+  /**
+   * The last document this editor knew about, as HTML.
+   *
+   * Captured at the first build and refreshed on teardown, so that a rebuild
+   * after a real removal never falls back to `this.innerHTML` -- which by then
+   * holds the toolbar markup this element appended, not the author's content.
+   */
+  #initialHtml: string | null = null
+  /**
+   * A `value` assignment made while there was no view to receive it: before the
+   * build (pre-upgrade, or while waiting for DOMContentLoaded) or after a
+   * teardown. Consumed by the next build.
+   */
+  #pendingValue: string | null = null
+  /**
+   * False until the document changes at all after a build.
+   *
+   * Every wrapper mounts an empty editor and then pushes the server's HTML in
+   * through `value`. That first fill is not an edit, and making it undoable is
+   * why an author's FIRST Ctrl-Z used to empty the document. Any later
+   * assignment -- or any keystroke -- is a real change, and undoable.
+   */
+  #docTouched = false
   /** The schema this editor was built with. Fixed for its lifetime. */
   #schema = coreSchema()
   #basePlugins: Plugin[] = []
@@ -174,7 +200,22 @@ export class OpenLeafEditor extends HTMLElementBase {
    * nothing about this is visible to an author.
    */
   connectedCallback(): void {
-    if (this.#view || this.#deferred) return
+    // Before anything else: a property assigned to this element BEFORE its
+    // definition loaded is an own data property, and an own data property
+    // shadows the prototype accessor for good. `defer`, code splitting and SSR
+    // hydration all set `.value` before the element upgrades, and without this
+    // the author sees an empty editor while `el.value` reports their content.
+    this.#upgradeProperty('value')
+    this.#upgradeProperty('imageUploader')
+
+    if (this.#view || this.#deferred) {
+      // Reconnection with the session still alive -- a move. Nothing is
+      // rebuilt, but the element may have landed in a different <form>, and the
+      // submit hooks have to follow it. `attach()` detaches first, so this
+      // cannot double-register.
+      if (this.#view) this.#formBridge.attach()
+      return
+    }
 
     if (this.ownerDocument.readyState === 'loading') {
       this.#deferred = true
@@ -191,6 +232,22 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#build()
   }
 
+  /**
+   * Re-apply a property that was set before this element upgraded.
+   *
+   * Deleting the own data property uncovers the prototype accessor again;
+   * assigning the saved value then actually runs it. This is the standard
+   * custom-element "lazy property" dance, and the element is unusable under
+   * every asynchronous loading strategy without it.
+   */
+  #upgradeProperty(name: 'value' | 'imageUploader'): void {
+    if (!Object.prototype.hasOwnProperty.call(this, name)) return
+    const self = this as unknown as Record<string, unknown>
+    const pending = self[name]
+    delete self[name]
+    self[name] = pending
+  }
+
   #build(): void {
     registerDefaultItems()
     ensureStyles(this.ownerDocument)
@@ -199,7 +256,14 @@ export class OpenLeafEditor extends HTMLElementBase {
     applyColourScheme(this, this.#colourScheme())
 
     const textarea = this.#formBridge.bind()
-    const initialHtml = textarea?.value ?? this.innerHTML
+    // `this.innerHTML` is the LAST resort, and only ever right on a first
+    // build. After a teardown this element's children are the chrome it
+    // appended, so reading them back would replace the document with the
+    // toolbar markup -- and then post that to the server.
+    const initialHtml =
+      this.#pendingValue ?? textarea?.value ?? this.#initialHtml ?? this.innerHTML
+    this.#pendingValue = null
+    this.#initialHtml = initialHtml
     const nestedTextarea =
       textarea && this.contains(textarea) ? textarea : null
     // Nested binding used to `innerHTML = ''` the textarea out of the document,
@@ -270,6 +334,7 @@ export class OpenLeafEditor extends HTMLElementBase {
       ? 'Rich text editor. Press Alt plus F10 for the formatting toolbar.'
       : 'Rich text editor.'
     this.appendChild(hint)
+    this.#hint = hint
 
     if (this.#toolbar) this.appendChild(this.#toolbar.liveRegion)
 
@@ -336,6 +401,7 @@ export class OpenLeafEditor extends HTMLElementBase {
         // ran again for the rest of the session -- an autosave listening here
         // would stop silently and the author would lose work.
         if (tr.docChanged) {
+          this.#docTouched = true
           this.#formBridge.sync()
           this.dispatchEvent(new CustomEvent('openleaf:change', { bubbles: true }))
         }
@@ -410,12 +476,44 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })
     this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
     this.#formBridge.sync()
+    this.#docTouched = false
+    this.#built = true
   }
 
+  /**
+   * Tear down -- but only once the element is really gone.
+   *
+   * Moving a node fires disconnect and then connect SYNCHRONOUSLY, so a guard
+   * in `connectedCallback` can never help: by the time it runs the view has
+   * already been destroyed. Deferring the decision by one microtask makes a
+   * move a no-op, which is what keeps undo history, selection and every
+   * plugin's state alive across a keyed-list reorder or a `<KeepAlive>`.
+   */
   disconnectedCallback(): void {
     // Persist whatever is in the source box before tearing it down, so a
-    // framework that moves the element does not drop unsaved HTML.
+    // framework that moves the element does not drop unsaved HTML. This part
+    // stays synchronous: the value has to be in the textarea even if the
+    // element is removed on the way into a form submission.
     this.#formBridge.sync()
+    // Snapshot the document HERE rather than in the microtask below. A
+    // reconnection rebuilds from this instead of from the chrome left in the
+    // subtree -- and serializing needs a live document, which is not
+    // guaranteed by the time a deferred callback runs (a closing page, or a
+    // test environment being torn down). Guarded on `#built` so a disconnect
+    // before the first build cannot record an empty document over the
+    // element's real markup.
+    if (this.#built) this.#initialHtml = this.value
+    queueMicrotask(() => {
+      if (this.isConnected) return
+      this.#teardown()
+    })
+  }
+
+  /** Idempotent: two queued teardowns, or a teardown after one, do nothing. */
+  #teardown(): void {
+    if (!this.#built) return
+    this.#built = false
+
     this.#teardownSource({ apply: false })
     this.#formBridge.detach()
     this.removeEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
@@ -442,12 +540,21 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#toolbar = null
     this.#view?.destroy()
     this.#view = null
+
+    // Everything this element appended goes with it. Chrome left behind is not
+    // just a leak: `#build()` reads `this.innerHTML` as a last resort, so
+    // leftovers become the next document.
+    this.#contentHost?.remove()
+    this.#contentHost = null
+    this.#hint?.remove()
+    this.#hint = null
+    this.classList.remove('ol-inline-active')
   }
 
   /** Current document as an HTML string. */
   get value(): string {
     if (this.#sourceMode && this.#sourceArea) return this.#sourceArea.value
-    if (!this.#view) return this.#formBridge.textarea?.value ?? ''
+    if (!this.#view) return this.#pendingValue ?? this.#formBridge.textarea?.value ?? ''
     return serializeHtml(this.#view.state.doc)
   }
 
@@ -458,10 +565,21 @@ export class OpenLeafEditor extends HTMLElementBase {
       return
     }
     if (!this.#view) {
+      // No view to receive it: either the build has not happened yet (an
+      // assignment before upgrade, or while waiting for DOMContentLoaded) or it
+      // has been torn down. Hold it for the next build rather than dropping it.
+      this.#pendingValue = html
       if (this.#formBridge.textarea) this.#formBridge.textarea.value = html
       return
     }
-    this.#replaceDocument(html)
+    // `onlyIfChanged` makes assignment idempotent: `el.value = el.value` is a
+    // no-op instead of an undo step, a change event and a collapsed selection.
+    // The first assignment is the wrappers pushing the server's HTML into an
+    // editor that mounted empty, and undoing that is never what an author means.
+    this.#replaceDocument(html, {
+      onlyIfChanged: true,
+      addToHistory: this.#docTouched,
+    })
   }
 
   /** Escape hatch for plugins and integrations that need the real view. */
@@ -567,14 +685,26 @@ export class OpenLeafEditor extends HTMLElementBase {
    * Replace the document with a transaction, so undo and change events survive.
    *
    * `onlyIfChanged` skips the dispatch when the HTML parses to the document
-   * already on screen.
+   * already on screen. `addToHistory: false` keeps the replacement out of the
+   * undo stack, for the mount-then-fill sequence every wrapper performs.
    */
-  #replaceDocument(html: string, options?: { onlyIfChanged?: boolean }): void {
+  #replaceDocument(
+    html: string,
+    options?: { onlyIfChanged?: boolean; addToHistory?: boolean },
+  ): void {
     const view = this.#view
     if (!view) return
     const next = parseHtml(html, { schema: this.#schema })
     if (options?.onlyIfChanged && next.eq(view.state.doc)) return
-    view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, next.content))
+
+    const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, next.content)
+    // Replacing the whole document maps every old position onto the boundary,
+    // so the caret would jump to the top on any programmatic assignment. Put it
+    // back where the author left it, clamped to the new document.
+    const at = Math.min(view.state.selection.from, tr.doc.content.size)
+    tr.setSelection(TextSelection.near(tr.doc.resolve(at)))
+    if (options?.addToHistory === false) tr.setMeta('addToHistory', false)
+    view.dispatch(tr)
   }
 
   /* -------------------------------------------------------------- *
