@@ -73,6 +73,10 @@ const EXPECTED_EXPORTS = [
   'autolinkPlugin', 'hrefFromTypedUrl',
   'visualAidsPlugin',
   'nonEditablePlugin', 'isNonEditableNode',
+  // Clicking a <summary> toggles the node's `open`. A contenteditable spends the
+  // click on placing a caret, so the browser's own disclosure toggle never fires
+  // and a collapsed <details> had no gesture that could open it.
+  'disclosurePlugin',
   // `formatParts` splits a format token into the element and the class it names.
   // The element half used to be parsed and discarded, so `h2=Section` set
   // class="h2" on a paragraph rather than making it a heading.

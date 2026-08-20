@@ -140,6 +140,7 @@ export {
 } from './keymap.js'
 export { autolinkPlugin, hrefFromTypedUrl } from './autolink.js'
 export { visualAidsPlugin } from './visual-aids.js'
+export { disclosurePlugin } from './disclosure.js'
 export { isNonEditableNode, nonEditablePlugin } from './noneditable.js'
 export {
   activeBlockClass,
