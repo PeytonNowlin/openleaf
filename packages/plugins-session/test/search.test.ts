@@ -1,10 +1,12 @@
 import { coreSchema, parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { EditorState, TextSelection } from 'prosemirror-state'
+import type { Decoration, DecorationSet } from 'prosemirror-view'
 import { describe, expect, it } from 'vitest'
 import { countWords, documentStats } from '../src/count.js'
 import {
   findMatches,
   findNext,
+  findPrev,
   replaceAll,
   replaceCurrent,
   searchKey,
@@ -151,5 +153,239 @@ describe('find and replace commands', () => {
       state = state.apply(tr)
     })
     expect(serializeHtml(state.doc)).toBe('<p>x<strong>uno</strong></p>')
+  })
+})
+
+/**
+ * `İ` (U+0130) is the one BMP character whose lowercase is longer than itself:
+ * `i` plus a combining dot above. Folding the whole document text with
+ * `toLowerCase()` therefore slid every later character one place out of step
+ * with the table mapping offsets back to document positions, and Turkish place
+ * names are ordinary content.
+ */
+describe('case folding that changes length', () => {
+  it('finds a match that follows a dotted capital I', () => {
+    const doc = parseHtml('<p>İstanbul hello</p>', { schema: coreSchema() })
+    const matches = findMatches(doc, 'hello')
+    expect(matches).toHaveLength(1)
+    expect(doc.textBetween(matches[0]!.from, matches[0]!.to)).toBe('hello')
+  })
+
+  it('replaces the matched text and nothing either side of it', () => {
+    let state = stateFrom('<p>İstanbul hello world</p>')
+    setSearch('hello')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    replaceAll('X')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(serializeHtml(state.doc)).toBe('<p>İstanbul X world</p>')
+  })
+
+  it('folds the dotted capital I itself, in the document and in the query', () => {
+    const doc = parseHtml('<p>İstanbul</p>', { schema: coreSchema() })
+    expect(findMatches(doc, 'istanbul')).toHaveLength(1)
+    expect(findMatches(doc, 'İSTANBUL')).toHaveLength(1)
+    expect(findMatches(doc, 'istanbul', { caseSensitive: true })).toEqual([])
+  })
+
+  it('reports positions that survive a round trip through the document', () => {
+    const doc = parseHtml('<p>İİİ needle İİİ</p>', { schema: coreSchema() })
+    const matches = findMatches(doc, 'NEEDLE')
+    expect(matches).toHaveLength(1)
+    expect(doc.textBetween(matches[0]!.from, matches[0]!.to)).toBe('needle')
+  })
+
+  // Folded per code unit, each half of a surrogate pair is unchanged and the
+  // character never folds at all. The pair has to be folded as one.
+  it('folds a character outside the BMP', () => {
+    const doc = parseHtml('<p>\u{10400} hello</p>', { schema: coreSchema() })
+    expect(findMatches(doc, '\u{10428}')).toHaveLength(1)
+    const matches = findMatches(doc, 'hello')
+    expect(matches).toHaveLength(1)
+    expect(doc.textBetween(matches[0]!.from, matches[0]!.to)).toBe('hello')
+  })
+
+  it('keeps positions in step through an astral character', () => {
+    let state = stateFrom('<p>\u{1F600} hello world</p>')
+    setSearch('HELLO')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    replaceAll('X')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(serializeHtml(state.doc)).toBe('<p>\u{1F600} X world</p>')
+  })
+})
+
+describe('replace feedback', () => {
+  // `setSearch` leaves no current match, so Replace found `matches[-1]`, gave up
+  // before dispatching, and reported nothing to a button that stayed enabled.
+  it('replaces without Next having been pressed first', () => {
+    let state = stateFrom('<p>one two one</p>')
+    setSearch('one')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(searchKey.getState(state)?.index).toBe(-1)
+    const handled = replaceCurrent('uno')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(handled).toBe(true)
+    expect(serializeHtml(state.doc)).toBe('<p>uno two one</p>')
+  })
+
+  it('replaces the match Next would have selected', () => {
+    let state = stateFrom('<p>one two one</p>')
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 9)))
+    setSearch('one')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    replaceCurrent('uno')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(serializeHtml(state.doc)).toBe('<p>one two uno</p>')
+  })
+
+  it('reports nothing to replace when there are no matches', () => {
+    let state = stateFrom('<p>one two one</p>')
+    setSearch('zzz')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(replaceCurrent('uno')(state, () => {})).toBe(false)
+    expect(replaceAll('uno')(state, () => {})).toBe(false)
+  })
+
+  // Replacing rebuilds the matches against the new document and finds none of
+  // the old ones, so the count of what was done has to come out of the command.
+  it('carries the number replaced out of Replace all', () => {
+    let state = stateFrom('<p>one two one</p><p>one</p>')
+    setSearch('one')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(searchKey.getState(state)?.matches).toHaveLength(3)
+    replaceAll('uno')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    const search = searchKey.getState(state)
+    expect(search?.replaced).toBe(3)
+    expect(search?.matches).toHaveLength(0)
+  })
+
+  it('carries a count out of a single Replace', () => {
+    let state = stateFrom('<p>one two one</p>')
+    setSearch('one')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    replaceCurrent('uno')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(searchKey.getState(state)?.replaced).toBe(1)
+  })
+
+  // The count is feedback for one transaction. Left standing it would still be
+  // on screen after the next keystroke, describing something that already ended.
+  it('forgets the count on the next transaction', () => {
+    let state = stateFrom('<p>one two one</p>')
+    setSearch('one')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    replaceAll('uno')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)))
+    expect(searchKey.getState(state)?.replaced).toBe(0)
+  })
+})
+
+/** The rendered attributes of an inline decoration are not on its public type. */
+function classOf(decoration: Decoration): string {
+  const inline = decoration as unknown as { type?: { attrs?: { class?: string } } }
+  return inline.type?.attrs?.class ?? ''
+}
+
+describe('search decorations', () => {
+  it('serves one cached set rather than rebuilding per view update', () => {
+    const plugin = searchPlugin()
+    let state = EditorState.create({
+      doc: parseHtml('<p>one two one</p>', { schema: coreSchema() }),
+      plugins: [plugin],
+    })
+    setSearch('one')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    const decorations = plugin.props.decorations
+    expect(decorations).toBeTypeOf('function')
+    const first = decorations!.call(plugin, state) as DecorationSet
+    const second = decorations!.call(plugin, state) as DecorationSet
+    expect(first).toBe(second)
+    expect(first.find()).toHaveLength(2)
+  })
+
+  it('keeps the set across a transaction that changes neither doc nor matches', () => {
+    const plugin = searchPlugin()
+    let state = EditorState.create({
+      doc: parseHtml('<p>one two one</p>', { schema: coreSchema() }),
+      plugins: [plugin],
+    })
+    setSearch('one')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    const before = searchKey.getState(state)?.decorations
+    state = state.apply(state.tr)
+    expect(searchKey.getState(state)?.decorations).toBe(before)
+  })
+
+  it('marks the current match and moves the mark with it', () => {
+    let state = stateFrom('<p>one two one</p>')
+    setSearch('one')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    findNext(state, (tr) => {
+      state = state.apply(tr)
+    })
+    const current = () =>
+      searchKey
+        .getState(state)!
+        .decorations.find()
+        .findIndex((decoration) => classOf(decoration).includes('ol-find-hit-current'))
+    expect(current()).toBe(0)
+    findNext(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(current()).toBe(1)
+  })
+
+  it('rebuilds the set when the document changes', () => {
+    let state = stateFrom('<p>one two one</p>')
+    setSearch('one')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    state = state.apply(state.tr.insertText('one ', 1))
+    expect(searchKey.getState(state)?.decorations.find()).toHaveLength(3)
+  })
+})
+
+describe('match geometry', () => {
+  // `replaceAll` rewrites matches back to front using the positions as found,
+  // which is only sound because no match can overlap another.
+  it('returns disjoint matches in ascending order', () => {
+    const doc = parseHtml('<p>aaaa aaaa</p>', { schema: coreSchema() })
+    const matches = findMatches(doc, 'aa')
+    expect(matches.length).toBeGreaterThan(1)
+    for (let i = 1; i < matches.length; i += 1) {
+      expect(matches[i]!.from).toBeGreaterThanOrEqual(matches[i - 1]!.to)
+    }
+  })
+
+  it('walks backwards from the caret', () => {
+    let state = stateFrom('<p>one two one</p>')
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 12)))
+    setSearch('one')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    findPrev(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(searchKey.getState(state)?.index).toBe(1)
   })
 })
