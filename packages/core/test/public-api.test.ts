@@ -23,7 +23,7 @@ const EXPECTED_EXPORTS = [
   'baseSchema', 'coreNodes', 'coreMarks', 'parseHtml', 'serializeHtml', 'roundTrip',
   // schema extensions
   'createSchema', 'coreSchema', 'registerSchemaExtension', 'registeredSchemaExtensions',
-  'onSchemaExtensionsChange', 'clearSchemaExtensions', 'CARRIED_ATTR',
+  'onSchemaExtensionsChange', 'CARRIED_ATTR',
   // preservation
   'isLosslesslyUnwrappable', 'unknownBlock', 'unknownInline',
   // url safety

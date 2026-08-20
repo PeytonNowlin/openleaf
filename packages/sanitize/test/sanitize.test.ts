@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  configureDOMPurify,
   DEFAULT_POLICY,
   policyForPreserved,
   sanitizeHtml,
@@ -182,7 +183,23 @@ describe('adapters keep the runtimes in agreement', () => {
     expect(config.FORBID_TAGS).toContain('script')
     expect(config.FORBID_CONTENTS).toContain('form')
     expect(config.ALLOWED_ATTR).toContain('href')
+    expect(config.ALLOWED_ATTR).not.toContain('style')
+    expect(config.FORBID_ATTR).toContain('style')
     expect(config.ALLOW_DATA_ATTR).toBe(false)
+  })
+
+  it('installs required hooks before enabling styles and embeds', () => {
+    const hooks: string[] = []
+    const purify = {
+      addHook(name: string): void {
+        hooks.push(name)
+      },
+    }
+    const config = configureDOMPurify(purify, DEFAULT_POLICY)
+    expect(hooks).toEqual(['uponSanitizeAttribute', 'uponSanitizeElement'])
+    expect(config.ALLOWED_ATTR).toContain('style')
+    expect(config.FORBID_ATTR).not.toContain('style')
+    expect(config.ALLOWED_TAGS).toContain('iframe')
   })
 
   it('the DOMPurify URI pattern accepts safe schemes and rejects javascript:', () => {

@@ -29,14 +29,22 @@ export interface DOMPurifyConfig {
   KEEP_CONTENT: boolean
 }
 
+/** The small DOMPurify surface needed to install OpenLeaf's policy hooks. */
+export interface DOMPurifyHooks {
+  addHook(name: 'uponSanitizeAttribute', hook: (node: Element, data: DOMPurifyAttributeEvent) => void): void
+  addHook(name: 'uponSanitizeElement', hook: (node: Element) => void): void
+}
+
 /**
  * Configuration for DOMPurify.
  *
  * ```js
  * import DOMPurify from 'dompurify'
- * import { DEFAULT_POLICY, toDOMPurifyConfig } from '@openleaf-editor/sanitize'
+ * import { configureDOMPurify, DEFAULT_POLICY } from '@openleaf-editor/sanitize'
  *
- * const clean = DOMPurify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY))
+ * const purify = DOMPurify(window)
+ * const config = configureDOMPurify(purify, DEFAULT_POLICY)
+ * const clean = purify.sanitize(dirty, config)
  * ```
  *
  * Note the loss of precision, and it is worth understanding: DOMPurify's
@@ -46,24 +54,14 @@ export interface DOMPurifyConfig {
  * per-element precision matters to you, use DOMPurify's `uponSanitizeAttribute`
  * hook with `allowedAttributes()` from this package.
  *
- * ## `style` is the one where the imprecision matters -- install the hook
+ * ## `style` is the one where the imprecision matters
  *
- * `style` has to be allowed, because the editor writes `text-align` and colour
- * into it and a config that strips it deletes the alignment from every document
- * it touches. But a GLOBAL `style` allowance is not the same kind of widening as
- * a stray `start`: DOMPurify performs no CSS property filtering of its own, so
- * without the hook below, stored content may carry
- * `style="position:fixed;inset:0"` -- an overlay covering the page with something
- * that looks like your UI.
- *
- * ```js
- * const purify = DOMPurify(window)
- * purify.addHook('uponSanitizeAttribute', styleAttributeHook(DEFAULT_POLICY))
- * const clean = purify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY))
- * ```
- *
- * `styleValidationNote(policy)` returns that instruction as a string, for a
- * generator that emits setup code rather than calling this itself.
+ * The editor writes alignment and colour into `style`, but DOMPurify performs
+ * no CSS property filtering of its own. Consequently this low-level config
+ * strips `style` unless `{ styleHook: true }` is passed. Prefer
+ * `configureDOMPurify()`, which installs the filter and enables the attribute
+ * as one operation. The explicit flag exists for integrations that manage
+ * hooks themselves.
  *
  * ## `<iframe>` is withheld unless you say the embed hook is installed
  *
@@ -75,26 +73,22 @@ export interface DOMPurifyConfig {
  * through the recommended sanitizer -- a nested attacker-controlled page, which
  * is the one thing this policy exists to refuse.
  *
- * So iframes are dropped here by default, and `{ embedHook: true }` is the
- * caller's assertion that `embedHook(policy)` is installed to do the check:
- *
- * ```js
- * const purify = DOMPurify(window)
- * purify.addHook('uponSanitizeAttribute', styleAttributeHook(DEFAULT_POLICY))
- * purify.addHook('uponSanitizeElement', embedHook(DEFAULT_POLICY))
- * const clean = purify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY, { embedHook: true }))
- * ```
+ * So iframes are dropped here by default. Prefer `configureDOMPurify()`, which
+ * installs the host check and enables iframes atomically. `{ embedHook: true }`
+ * remains available for integrations that install `embedHook(policy)` directly.
  *
  * Without the flag, stored embeds are removed rather than trusted. That is
  * content loss, and it is the safe direction of the two.
  */
 export function toDOMPurifyConfig(
   policy: Policy,
-  options: { embedHook?: boolean } = {},
+  options: { embedHook?: boolean; styleHook?: boolean } = {},
 ): DOMPurifyConfig {
   const attributes = new Set(policy.globalAttributes)
   for (const element of Object.values(policy.elements)) {
-    for (const attr of element.attributes ?? []) attributes.add(attr)
+    for (const attr of element.attributes ?? []) {
+      if (attr !== 'style' || options.styleHook === true) attributes.add(attr)
+    }
   }
 
   const schemes = policy.urlSchemes.join('|')
@@ -116,15 +110,33 @@ export function toDOMPurifyConfig(
     FORBID_CONTENTS: forbidden,
     // `on*` handlers are removed by DOMPurify unconditionally; naming them here
     // documents the intent and survives a future config change.
-    // `style` is NOT forbidden here, unlike every other version of this list you
-    // will have seen. It is what carries alignment and colour, and the property
-    // filtering is delegated to styleAttributeHook -- which you must install.
-    FORBID_ATTR: ['srcdoc', 'formaction', 'ping'],
+    // Style carries alignment and colour, but is forbidden unless the caller
+    // confirms the property-filtering hook is installed.
+    FORBID_ATTR: options.styleHook === true
+      ? ['srcdoc', 'formaction', 'ping']
+      : ['srcdoc', 'formaction', 'ping', 'style'],
     // `data-` attributes are not blanket-allowed: `data-` is where component
     // frameworks put behaviour, and pasted content should not get to address it.
     ALLOW_DATA_ATTR: false,
     KEEP_CONTENT: true,
   }
+}
+
+/**
+ * Install every hook required by the policy and return the matching config.
+ *
+ * This is the primary DOMPurify integration. It makes the safe setup atomic:
+ * callers cannot accidentally enable style or iframe support without installing
+ * the value and host checks that make those features safe.
+ */
+export function configureDOMPurify(
+  purify: DOMPurifyHooks,
+  policy: Policy,
+): DOMPurifyConfig {
+  purify.addHook('uponSanitizeAttribute', styleAttributeHook(policy))
+  const embeds = 'iframe' in policy.elements
+  if (embeds) purify.addHook('uponSanitizeElement', embedHook(policy))
+  return toDOMPurifyConfig(policy, { styleHook: true, embedHook: embeds })
 }
 
 /** What DOMPurify hands an `uponSanitizeAttribute` hook. */

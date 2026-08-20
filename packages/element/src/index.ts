@@ -90,6 +90,7 @@ import { history } from 'prosemirror-history'
 import { keymap } from 'prosemirror-keymap'
 import { EditorState, Plugin, TextSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
+import { FormBridge } from './form-bridge.js'
 
 let hintCounter = 0
 
@@ -104,7 +105,12 @@ let hintCounter = 0
 export const SOURCE_OPEN_EVENT = 'openleaf:source-open'
 export const SOURCE_CLOSE_EVENT = 'openleaf:source-close'
 
-export class OpenLeafEditor extends HTMLElement {
+// Evaluating a custom-element module must be safe during SSR. Registration and
+// construction still happen only in a browser, but framework servers routinely
+// import their component modules while rendering a route.
+const HTMLElementBase = (globalThis.HTMLElement ?? class {}) as typeof HTMLElement
+
+export class OpenLeafEditor extends HTMLElementBase {
   static get observedAttributes(): string[] {
     return ['for', 'readonly', 'skin', 'theme', 'lang']
   }
@@ -118,7 +124,7 @@ export class OpenLeafEditor extends HTMLElement {
     if (name === 'skin') applySkin(this, this.getAttribute('skin'))
     if (name === 'theme') applyColourScheme(this, this.#colourScheme())
     if (name === 'readonly') this.#applyReadonly()
-    if (name === 'for') this.#rebindTextarea()
+    if (name === 'for' && this.#view) this.#formBridge.rebind()
     if (name === 'lang') this.#applyLocale()
   }
 
@@ -133,8 +139,7 @@ export class OpenLeafEditor extends HTMLElement {
   #menubar: MenuBar | null = null
   #contextMenu: PopupMenu | null = null
   #floating: FloatingToolbars | null = null
-  #textarea: HTMLTextAreaElement | null = null
-  #form: HTMLFormElement | null = null
+  #formBridge = new FormBridge(this, () => this.value, (html) => { this.value = html })
   #contentHost: HTMLDivElement | null = null
   #sourceArea: HTMLTextAreaElement | null = null
   #sourceMode = false
@@ -150,24 +155,6 @@ export class OpenLeafEditor extends HTMLElement {
   #fullscreen = false
   /** True while a real fullscreen session is ours, as opposed to the fallback. */
   #nativeFullscreen = false
-  #onSubmit = (): void => this.#syncToTextarea()
-  #onFormData = (event: FormDataEvent): void => {
-    this.#syncToTextarea()
-    // formdata fires after the browser has already built event.formData from
-    // the current controls. Updating textarea.value does not change that
-    // snapshot; the entry has to be written onto the FormData itself.
-    if (this.#textarea?.name) event.formData.set(this.#textarea.name, this.#textarea.value)
-  }
-  #onReset = (): void => {
-    // The reset event fires *before* the controls are restored -- read
-    // textarea.value in the handler and it is still the edited text. The
-    // microtask runs after the reset algorithm finishes, which is the first
-    // point the default is actually readable. Removing it re-loads the
-    // editor with the content the reset was meant to discard.
-    queueMicrotask(() => {
-      if (this.#textarea) this.value = this.#textarea.value
-    })
-  }
 
   /**
    * Build the editor -- but not before the document's scripts have run.
@@ -211,10 +198,10 @@ export class OpenLeafEditor extends HTMLElement {
     applySkin(this, this.getAttribute('skin'))
     applyColourScheme(this, this.#colourScheme())
 
-    this.#textarea = this.#findTextarea()
-    const initialHtml = this.#textarea?.value ?? this.innerHTML
+    const textarea = this.#formBridge.bind()
+    const initialHtml = textarea?.value ?? this.innerHTML
     const nestedTextarea =
-      this.#textarea && this.contains(this.#textarea) ? this.#textarea : null
+      textarea && this.contains(textarea) ? textarea : null
     // Nested binding used to `innerHTML = ''` the textarea out of the document,
     // so it was no longer a successful form control. Lift it aside first, then
     // put it back hidden so the form still posts it.
@@ -349,7 +336,7 @@ export class OpenLeafEditor extends HTMLElement {
         // ran again for the rest of the session -- an autosave listening here
         // would stop silently and the author would lose work.
         if (tr.docChanged) {
-          this.#syncToTextarea()
+          this.#formBridge.sync()
           this.dispatchEvent(new CustomEvent('openleaf:change', { bubbles: true }))
         }
 
@@ -419,23 +406,18 @@ export class OpenLeafEditor extends HTMLElement {
     // fetch-based submissions built from a FormData snapshot.
     // Prefer the bound textarea's form: the documented `for` binding allows
     // the editor to live outside the <form>, next to a hidden textarea inside it.
-    this.#form = this.#textarea?.form ?? this.closest('form')
-    this.#form?.addEventListener('submit', this.#onSubmit)
-    this.#form?.addEventListener('formdata', this.#onFormData)
-    this.#form?.addEventListener('reset', this.#onReset)
+    this.#formBridge.attach()
     this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })
     this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
-    this.#syncToTextarea()
+    this.#formBridge.sync()
   }
 
   disconnectedCallback(): void {
     // Persist whatever is in the source box before tearing it down, so a
     // framework that moves the element does not drop unsaved HTML.
-    this.#syncToTextarea()
+    this.#formBridge.sync()
     this.#teardownSource({ apply: false })
-    this.#form?.removeEventListener('submit', this.#onSubmit)
-    this.#form?.removeEventListener('formdata', this.#onFormData)
-    this.#form?.removeEventListener('reset', this.#onReset)
+    this.#formBridge.detach()
     this.removeEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
     this.removeEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
     this.ownerDocument.removeEventListener('fullscreenchange', this.#onFullscreenChange)
@@ -465,18 +447,18 @@ export class OpenLeafEditor extends HTMLElement {
   /** Current document as an HTML string. */
   get value(): string {
     if (this.#sourceMode && this.#sourceArea) return this.#sourceArea.value
-    if (!this.#view) return this.#textarea?.value ?? ''
+    if (!this.#view) return this.#formBridge.textarea?.value ?? ''
     return serializeHtml(this.#view.state.doc)
   }
 
   set value(html: string) {
     if (this.#sourceMode && this.#sourceArea) {
       this.#sourceArea.value = html
-      this.#syncToTextarea()
+      this.#formBridge.sync()
       return
     }
     if (!this.#view) {
-      if (this.#textarea) this.#textarea.value = html
+      if (this.#formBridge.textarea) this.#formBridge.textarea.value = html
       return
     }
     this.#replaceDocument(html)
@@ -598,32 +580,6 @@ export class OpenLeafEditor extends HTMLElement {
   /* -------------------------------------------------------------- *
    * Textarea binding
    * -------------------------------------------------------------- */
-
-  #findTextarea(): HTMLTextAreaElement | null {
-    const id = this.getAttribute('for')
-    if (id) {
-      const el = (this.getRootNode() as Document | ShadowRoot).getElementById?.(id)
-      if (el instanceof HTMLTextAreaElement) return el
-      // A `for` that resolves to nothing is a silent data-loss bug waiting to
-      // happen, so say so loudly rather than falling back.
-      console.error(
-        `<openleaf-editor for="${id}">: no <textarea id="${id}"> found. ` +
-          'Content will not be submitted with the form.',
-      )
-      return null
-    }
-    return this.querySelector('textarea')
-  }
-
-  #syncToTextarea(): void {
-    if (!this.#textarea) return
-    if (this.#sourceMode && this.#sourceArea) {
-      this.#textarea.value = this.#sourceArea.value
-      return
-    }
-    if (!this.#view) return
-    this.#textarea.value = serializeHtml(this.#view.state.doc)
-  }
 
   /**
    * Claim a drop or paste that carries image files.
@@ -865,11 +821,6 @@ export class OpenLeafEditor extends HTMLElement {
     this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
   }
 
-  #rebindTextarea(): void {
-    if (!this.#view) return
-    this.#textarea = this.#findTextarea()
-    this.#syncToTextarea()
-  }
 }
 
 /**

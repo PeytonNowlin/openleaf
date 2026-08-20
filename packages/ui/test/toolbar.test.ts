@@ -14,17 +14,12 @@ import type { EditorView } from 'prosemirror-view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerDefaultItems } from '../src/items.js'
 import { DEFAULT_LAYOUT, LAYOUT_WITH_COLOUR, registerToolbarItem } from '../src/registry.js'
+import { clearToolbarItems } from '../src/testing.js'
 import { Toolbar } from '../src/toolbar.js'
 
 /*
  * Two sharp edges this fixture is shaped around, both worth knowing about before
  * writing another test here.
- *
- * `clearToolbarItems()` is not usable between tests in this file. It notifies
- * every live toolbar, which re-renders and warns about the ids it can no longer
- * find -- and `registerDefaultItems` is idempotent, so it will not repopulate what
- * was cleared. So the defaults are registered once and the registry is left
- * alone; registration is last-wins, which makes reusing an id across tests safe.
  *
  * Toolbars are destroyed after each test for the same reason: a live one is a
  * registry subscriber, and leaving twelve of them attached makes every later
@@ -181,7 +176,7 @@ describe('custom controls', () => {
     expect(error).toHaveBeenCalledOnce()
   })
 
-  it('still warns that `select` is not implemented', () => {
+  it('requires select controls to provide a renderer', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     registerToolbarItem({ id: 'dropdown', type: 'select', label: 'Dropdown' })
     mount('dropdown')
@@ -212,5 +207,15 @@ describe('the alignment items', () => {
     // warning for every deployment that did not load it.
     expect(DEFAULT_LAYOUT).not.toContain('textColour')
     expect(LAYOUT_WITH_COLOUR).toContain('textColour highlightColour')
+  })
+})
+
+describe('registry reset', () => {
+  it('can repopulate defaults after tests clear the registry', () => {
+    for (const toolbar of mounted.splice(0)) toolbar.destroy()
+    clearToolbarItems()
+    registerDefaultItems()
+    const { toolbar } = mount('undo blockType source')
+    expect(toolbar.el.querySelectorAll('button, select')).toHaveLength(3)
   })
 })

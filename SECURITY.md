@@ -58,7 +58,7 @@ There is deliberately no "allow whatever the editor emitted" mode. That is not a
 policy, it is a wish -- the editor faithfully preserves whatever an author
 pasted.
 
-### The `style` attribute, and the DOMPurify hook you have to install
+### The `style` attribute and atomic DOMPurify setup
 
 Since alignment and colour landed, the policy permits a `style` attribute on
 paragraphs, headings and `<span>` -- for `text-align`, `color` and
@@ -73,23 +73,18 @@ DOMPurify performs no CSS property filtering of its own. Install the hook:
 
 ```js
 import DOMPurify from 'dompurify'
-import {
-  DEFAULT_POLICY, embedHook, styleAttributeHook, toDOMPurifyConfig,
-} from '@openleaf-editor/sanitize'
+import { configureDOMPurify, DEFAULT_POLICY } from '@openleaf-editor/sanitize'
 
 const purify = DOMPurify(window)
-purify.addHook('uponSanitizeAttribute', styleAttributeHook(DEFAULT_POLICY))
-purify.addHook('uponSanitizeElement', embedHook(DEFAULT_POLICY))
-const clean = purify.sanitize(dirty, toDOMPurifyConfig(DEFAULT_POLICY, { embedHook: true }))
+const config = configureDOMPurify(purify, DEFAULT_POLICY)
+const clean = purify.sanitize(dirty, config)
 ```
 
-Without it, stored content may carry any declaration at all on any element
-DOMPurify keeps -- `position:fixed;inset:0` being the one that matters, since it
-covers the page with something that looks like your own UI. That is a
-UI-redress vector rather than script execution, and it is still not something to
-leave open. The `bleach` and HTMLPurifier configs filter by property but not by
-element or value, which is a narrower version of the same gap, documented where
-each is emitted.
+The lower-level `toDOMPurifyConfig(DEFAULT_POLICY)` fails closed by stripping
+styles and iframes. Use `configureDOMPurify` to keep them: it installs the value
+and host checks before returning a config that permits either feature. The
+`bleach` and HTMLPurifier configs filter by property but not by element or value,
+which is a narrower gap documented where each is emitted.
 
 ### `<iframe>`, and why the DOMPurify config withholds it
 
@@ -98,9 +93,9 @@ player hosts. That is a per-element host check, and no DOMPurify config can
 express it: `ALLOWED_URI_REGEXP` applies to every URL attribute at once, so
 narrowing it to YouTube would delete every ordinary link in the document.
 
-So `toDOMPurifyConfig(DEFAULT_POLICY)` **drops iframes**, and
-`{ embedHook: true }` above is your assertion that `embedHook(DEFAULT_POLICY)` is
-installed to make the check. Listing the element without that check would let
+So `toDOMPurifyConfig(DEFAULT_POLICY)` **drops iframes**. The recommended
+`configureDOMPurify` call above installs `embedHook(DEFAULT_POLICY)` before it
+enables them. Listing the element without that check would let
 `<iframe src="https://evil.example">` through the sanitizer this file
 recommends -- a nested attacker-controlled page, which is the single thing the
 embed allowlist exists to refuse. Omitting both is safe and loses stored embeds;

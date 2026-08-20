@@ -29,17 +29,7 @@
  *    Escape leaves, matching TinyMCE and CKEditor 5 so muscle memory transfers.
  */
 
-import {
-  activeBlockClass,
-  activeHeadingLevel,
-  formatParts,
-  setBlockClass,
-  setHeading,
-  setParagraph,
-  shortcutFor,
-  toggleHeading,
-  type FormatSpec,
-} from '@openleaf-editor/core'
+import { shortcutFor, type FormatSpec } from '@openleaf-editor/core'
 import type { EditorState, Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { ensureSprite, iconElement } from './icons.js'
@@ -83,8 +73,6 @@ interface Control {
   forcedActive?: boolean
   forcedEnabled?: boolean
 }
-
-const BLOCK_TYPE_ID = 'blockType'
 
 /** A `custom` item's control, and the id it was built for. */
 interface MountedControl {
@@ -134,7 +122,6 @@ export class Toolbar {
   #view: EditorView | null = null
   #controls = new Map<string, Control>()
   #customs: MountedControl[] = []
-  #select: HTMLSelectElement | null = null
   #live: HTMLDivElement
   #liveTimer: ReturnType<typeof setTimeout> | undefined
   #layout: string
@@ -261,7 +248,6 @@ export class Toolbar {
     this.#destroyCustoms()
     this.el.replaceChildren()
     this.#controls.clear()
-    this.#select = null
 
     let group = this.#newGroup()
 
@@ -273,11 +259,6 @@ export class Toolbar {
         continue
       }
 
-      if (token === BLOCK_TYPE_ID) {
-        group.appendChild(this.#buildBlockTypeSelect())
-        continue
-      }
-
       const spec = getToolbarItem(token)
       // Silently skipping an unknown id would hide a typo in an integrator's
       // `toolbar` attribute forever.
@@ -285,20 +266,10 @@ export class Toolbar {
         console.warn(`@openleaf-editor/ui: no toolbar item registered for "${token}"`)
         continue
       }
-      if (spec.type === 'custom') {
+      if (spec.type === 'custom' || spec.type === 'select') {
         const el = this.#buildCustom(spec)
         if (el) group.appendChild(el)
         continue
-      }
-      // `select` is still unimplemented -- the block-type control is special-cased
-      // by id, not by type. A declared-and-inert variant is worse than an absent
-      // one, because the author sees a plausible button and no signal that the
-      // control they asked for was not built.
-      if (spec.type && spec.type !== 'button') {
-        console.warn(
-          `@openleaf-editor/ui: toolbar item "${spec.id}" declares type "${spec.type}", ` +
-            'which is not implemented yet. It is rendering as a button.',
-        )
       }
       group.appendChild(this.#buildButton(spec))
     }
@@ -337,18 +308,17 @@ export class Toolbar {
     if (this.#view) this.update(this.#view.state)
 
     if (!focusedId) return
-    if (focusedId === BLOCK_TYPE_ID) {
-      this.#select?.focus()
+    const control = this.#controls.get(focusedId)
+    if (control) {
+      const index = this.#focusables.indexOf(control.el)
+      if (index >= 0) {
+        this.#rovingIndex = index
+        this.#applyRoving()
+      }
+      control.el.focus()
       return
     }
-    const control = this.#controls.get(focusedId)
-    if (!control) return
-    const index = this.#focusables.indexOf(control.el)
-    if (index >= 0) {
-      this.#rovingIndex = index
-      this.#applyRoving()
-    }
-    control.el.focus()
+    this.#customs.find(({ id }) => id === focusedId)?.control.focusable?.focus()
   }
 
   #newGroup(): HTMLDivElement {
@@ -418,7 +388,7 @@ export class Toolbar {
     if (!view) return null
 
     try {
-      const control = spec.render({ view, host: this.#host })
+      const control = spec.render({ view, host: this.#host, formats: this.#formats })
       this.#customs.push({ id: spec.id, control })
       return control.el
     } catch (error) {
@@ -429,106 +399,6 @@ export class Toolbar {
       )
       return null
     }
-  }
-
-  /**
-   * The block-type control.
-   *
-   * A native `<select>`. A custom listbox would be several hundred lines of
-   * ARIA that would then owe real screen reader testing to be worth anything,
-   * and the native control is already tested by the browser vendors. It carries
-   * its own accessible name because the toolbar's own label does not describe it.
-   */
-  #buildBlockTypeSelect(): HTMLSelectElement {
-    const select = this.#doc.createElement('select')
-    select.className = 'ol-select'
-    select.setAttribute('aria-label', t('Paragraph style'))
-    select.dataset['olId'] = BLOCK_TYPE_ID
-
-    const options: Array<[string, string]> = [
-      ['p', t('Paragraph')],
-      ['1', t('Heading 1')],
-      ['2', t('Heading 2')],
-      ['3', t('Heading 3')],
-      ['4', t('Heading 4')],
-      ['5', t('Heading 5')],
-      ['6', t('Heading 6')],
-    ]
-    for (const [value, label] of options) {
-      const option = this.#doc.createElement('option')
-      option.value = value
-      option.textContent = label
-      select.appendChild(option)
-    }
-    for (const format of this.#formats) {
-      const option = this.#doc.createElement('option')
-      option.value = `format:${format.token}`
-      option.textContent = t(format.label)
-      select.appendChild(option)
-    }
-
-    select.addEventListener('mousedown', (event) => event.stopPropagation())
-
-    /**
-     * Whether the pending change came from a pointer rather than the keyboard.
-     *
-     * This distinction is load-bearing. In Firefox, and on macOS generally,
-     * arrow keys on a closed `<select>` change its value on every press. If the
-     * change handler returned focus to the content unconditionally, a keyboard
-     * user arrowing through the options would be thrown back into the document
-     * on the first press -- making the control unusable by keyboard while
-     * working perfectly with a mouse. Caught by a cross-browser test that
-     * passed in Chromium and failed in Firefox.
-     */
-    let pointerDriven = false
-    select.addEventListener('pointerdown', () => {
-      pointerDriven = true
-    })
-
-    select.addEventListener('keydown', (event) => {
-      pointerDriven = false
-      if (event.key === 'Enter') {
-        // A <select> inside a <form> submits it on Enter. The editor almost
-        // always sits inside the host's form, so this would post a half-written
-        // article.
-        event.preventDefault()
-        this.returnFocusToContent()
-      }
-    })
-
-    select.addEventListener('change', () => {
-      const view = this.#view
-      if (!view) return
-      const value = select.value
-      if (value.startsWith('format:')) {
-        const { element, className } = formatParts(value.slice('format:'.length))
-        // Element first: changing the block type replaces the node, so a class
-        // written before that would go with the node it was written on.
-        // `setHeading` rather than `toggleHeading` -- picking "Section" twice
-        // must not turn the heading back into a paragraph.
-        if (element === 'p') setParagraph(view.state, view.dispatch, view)
-        else if (element !== null && /^h[1-6]$/.test(element)) {
-          setHeading(Number(element.slice(1)))(view.state, view.dispatch, view)
-        }
-        // Null clears, which is what a token naming only an element means: the
-        // author picked "Section", not "Section, keeping whatever class was on
-        // the paragraph before".
-        setBlockClass(className)(view.state, view.dispatch, view)
-      } else {
-        const command = value === 'p' ? setParagraph : toggleHeading(Number(value))
-        command(view.state, view.dispatch, view)
-      }
-      // Return the caret to the content only when the author committed the
-      // choice by pointer. Keyboard users keep focus and leave with Tab or
-      // Escape.
-      if (pointerDriven) {
-        pointerDriven = false
-        view.focus()
-      }
-    })
-
-    this.#select = select
-    return select
   }
 
   /* -------------------------------------------------------------- *
@@ -545,7 +415,7 @@ export class Toolbar {
 
     try {
       if (spec.run) {
-        spec.run({ view, host: this.#host })
+        spec.run({ view, host: this.#host, formats: this.#formats })
         return
       }
       if (spec.command) {
@@ -634,25 +504,6 @@ export class Toolbar {
       })
     }
 
-    if (this.#select) {
-      const formatClass = activeBlockClass(state)
-      const level = activeHeadingLevel(state)
-      const activeElement = level === null ? 'p' : `h${level}`
-      // Both halves have to agree, or `p.lead` would look active on an
-      // `<h2 class="lead">` and picking it again would appear to do nothing.
-      const matching = this.#formats.find((format) => {
-        const { element, className } = formatParts(format.token)
-        if (className !== formatClass) return false
-        return element === null || element === activeElement
-      })
-      if (matching) {
-        const next = `format:${matching.token}`
-        if (this.#select.value !== next) this.#select.value = next
-      } else {
-        const value = level === null ? 'p' : String(level)
-        if (this.#select.value !== value) this.#select.value = value
-      }
-    }
 
     if (transitions.length > 0) this.#announce(transitions.join(', '))
   }
@@ -766,10 +617,8 @@ export class Toolbar {
       this.#focusables[this.#rovingIndex]?.focus()
       return
     }
-    // A toolbar that is only the block-type select has no roving buttons.
-    // The shortcut is still documented; swallowing it with nowhere to go
-    // would make a valid `toolbar` attribute a silent no-op.
-    this.#select?.focus()
+    // A toolbar containing only a select/custom control has no roving buttons.
+    this.#customs.find(({ control }) => control.focusable)?.control.focusable?.focus()
   }
 
   /** Return focus and the prior selection to the editable region. */

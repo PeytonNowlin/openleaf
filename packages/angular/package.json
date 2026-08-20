@@ -24,5 +24,8 @@
   },
   "dependencies": {
     "@openleaf-editor/element": "workspace:*"
+  },
+  "devDependencies": {
+    "@angular/core": "^20.0.0"
   }
 }
