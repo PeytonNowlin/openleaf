@@ -149,11 +149,32 @@ export const BUILT_IN_SKINS: readonly Skin[] = [
   },
 ]
 
-const skins = new Map<string, Skin>(BUILT_IN_SKINS.map((skin) => [skin.name, skin]))
+/*
+ * Built lazily, and that is a bundling decision rather than a performance one.
+ *
+ * `new Map(BUILT_IN_SKINS.map(...))` at module scope is a constructor call a
+ * tree-shaker cannot prove is pure, so the statement is retained -- and with it
+ * this whole module, and `styles.js` which it imports from. The cost landed on
+ * every consumer of the barrel: `import { t }` from `@openleaf-editor/ui` -- a
+ * 183-byte function with no imports of its own -- dragged the skin table and the
+ * stylesheet machinery in behind it.
+ *
+ * Deferring the construction to first use makes every top-level binding in this
+ * module a plain literal, so a bundler can drop the module entirely when nothing
+ * reaches for a skin. Nothing observable changes: `registry()` is called by every
+ * entry point below before it touches the table.
+ */
+let skins: Map<string, Skin> | null = null
+
+function registry(): Map<string, Skin> {
+  if (!skins) skins = new Map<string, Skin>(BUILT_IN_SKINS.map((skin) => [skin.name, skin]))
+  return skins
+}
+
 let installedSheet = ''
 
 function css(): string {
-  return [...skins.values()]
+  return [...registry().values()]
     .map((skin) => `.ol-editor[data-ol-skin="${skin.name}"] {${skin.tokens}}`)
     .join('\n')
 }
@@ -193,7 +214,7 @@ function sync(doc?: Document): void {
  */
 export function registerSkin(skin: Skin, doc?: Document): void {
   warnIfSchemeMissing(skin)
-  skins.set(skin.name, skin)
+  registry().set(skin.name, skin)
   sync(doc)
 }
 
@@ -204,10 +225,11 @@ export function registerSkin(skin: Skin, doc?: Document): void {
  * worth a console message, because nothing about the result looks like a
  * mistake locally.
  */
-const schemeWarned = new Set<string>()
+let schemeWarned: Set<string> | null = null
 
 function warnIfSchemeMissing(skin: Skin): void {
   if (skin.scheme || !skin.tokens.includes('--openleaf-color-surface:')) return
+  schemeWarned ??= new Set<string>()
   if (schemeWarned.has(skin.name)) return
   schemeWarned.add(skin.name)
   console.warn(
@@ -219,7 +241,7 @@ function warnIfSchemeMissing(skin: Skin): void {
 }
 
 export function availableSkins(): readonly Skin[] {
-  return [...skins.values()]
+  return [...registry().values()]
 }
 
 /** Ensure the built-in skins are available. Idempotent. */
@@ -241,11 +263,11 @@ export function applySkin(host: HTMLElement, name: string | null): void {
     host.removeAttribute('data-ol-scheme')
     return
   }
-  const skin = skins.get(name)
+  const skin = registry().get(name)
   if (!skin) {
     console.warn(
       `@openleaf-editor/ui: no skin named "${name}". Available: ` +
-        `${[...skins.keys()].join(', ')}. The editor keeps its current appearance.`,
+        `${[...registry().keys()].join(', ')}. The editor keeps its current appearance.`,
     )
     return
   }
