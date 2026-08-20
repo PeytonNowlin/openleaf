@@ -1,6 +1,7 @@
 import { DROP_WITH_CONTENT } from '@openleaf-editor/content-policy'
+import { EditorState, TextSelection, type Command } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
-import { parseHtml, serializeHtml } from '../src/index.js'
+import { coreSchema, insertImage, parseHtml, serializeHtml, setLink } from '../src/index.js'
 import { NEVER_PRESERVE } from '../src/preserve.js'
 
 /**
@@ -274,6 +275,123 @@ describe('the drop list cannot diverge from the published policy', () => {
   it('covers the elements each fix in this file depends on', () => {
     for (const tag of ['svg', 'math', 'plaintext', 'xmp', 'noembed', 'noframes']) {
       expect(NEVER_PRESERVE, tag).toContain(tag)
+    }
+  })
+})
+
+/**
+ * The write path: the commands that put a URL into the document.
+ *
+ * Every test above starts from `parseHtml`, and that is exactly what made this
+ * gap comfortable to miss. `setLink` and `insertImage` write straight into the
+ * live document, and the parse rule that drops `javascript:` does not run again
+ * until the document is loaded back -- one HTTP round trip after the server
+ * stored it. By then the bytes are in the database, and any consumer rendering
+ * that stored HTML has a click-to-execute XSS no matter what the editor does on
+ * the way back in.
+ *
+ * `insertVideo` and `insertAudio`, in the same module, always checked. These
+ * tests exist so the two halves cannot drift apart again.
+ */
+
+function docState(html: string): EditorState {
+  return EditorState.create({ doc: parseHtml(html), schema: coreSchema() })
+}
+
+/** Select the whole document's text, which is what `setLink` requires. */
+function withTextSelected(state: EditorState): EditorState {
+  const { doc } = state
+  return state.apply(state.tr.setSelection(TextSelection.create(doc, 1, doc.content.size - 1)))
+}
+
+/** Run a command: the serialized result, or null when the command declined. */
+function runCommand(state: EditorState, command: Command): string | null {
+  let next: EditorState | null = null
+  const applied = command(state, (tr) => {
+    next = state.apply(tr)
+  })
+  return applied && next !== null ? serializeHtml((next as EditorState).doc) : null
+}
+
+function linkOn(href: string): string | null {
+  return runCommand(withTextSelected(docState('<p>hello</p>')), setLink({ href }))
+}
+
+function imageWith(src: string): string | null {
+  return runCommand(docState('<p>x</p>'), insertImage({ src }))
+}
+
+/**
+ * Schemes that execute, and the ways they get past a naive string check.
+ *
+ * `isSafeUrl` strips ASCII whitespace and control characters before reading the
+ * scheme, because browsers do the same while parsing one. So every entry here
+ * is the *same* payload as far as navigation is concerned and must be refused
+ * identically. They are listed rather than generated so a regression names the
+ * variant that broke.
+ */
+const EXECUTABLE_URLS: ReadonlyArray<readonly [name: string, url: string]> = [
+  ['plain javascript:', 'javascript:alert(document.cookie)'],
+  ['data:text/html', 'data:text/html,<script>alert(1)</script>'],
+  ['data:text/html;base64', 'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=='],
+  ['vbscript:', 'vbscript:msgbox(1)'],
+  ['mixed case', 'JaVaScRiPt:alert(1)'],
+  ['embedded tab', 'java\tscript:alert(1)'],
+  ['embedded newline', 'java\nscript:alert(1)'],
+  ['embedded carriage return', 'java\rscript:alert(1)'],
+  ['embedded NUL', 'java\u0000script:alert(1)'],
+  ['leading whitespace', '   javascript:alert(1)'],
+  ['leading control character', '\u0001javascript:alert(1)'],
+  ['non-breaking space', 'java\u00a0script:alert(1)'],
+]
+
+describe('dangerous URLs must not reach the document in the first place', () => {
+  for (const [name, url] of EXECUTABLE_URLS) {
+    it(`setLink declines ${name}`, () => {
+      expect(linkOn(url)).toBeNull()
+    })
+
+    it(`insertImage declines ${name}`, () => {
+      expect(imageWith(url)).toBeNull()
+    })
+  }
+
+  it('declines a captioned image, not only a bare one', () => {
+    // The caption branch builds a different node and returns early, so it needs
+    // its own assertion rather than trusting the shared guard by inspection.
+    expect(runCommand(docState('<p>x</p>'), insertImage({ src: 'javascript:alert(1)', caption: 'Fig 1' }))).toBeNull()
+  })
+
+  it('declines an empty address instead of writing one', () => {
+    expect(linkOn('')).toBeNull()
+    expect(imageWith('')).toBeNull()
+  })
+
+  it('still accepts the addresses authors actually use', () => {
+    expect(linkOn('https://example.org')).toContain('href="https://example.org"')
+    expect(linkOn('/about')).toContain('href="/about"')
+    expect(linkOn('#section')).toContain('href="#section"')
+    expect(linkOn('mailto:a@example.org')).toContain('mailto:')
+    expect(linkOn('//cdn.example.org/x')).toContain('//cdn.example.org/x')
+    expect(imageWith('/a.png')).toContain('src="/a.png"')
+  })
+
+  it('stores an entity-encoded payload as the relative URL it actually is', () => {
+    // `&#106;avascript:` carries no scheme -- `&` cannot begin one -- so it is a
+    // relative URL and `isSafeUrl` allows it. That is only correct because
+    // serialization escapes the ampersand, so the stored bytes never decode
+    // back into `javascript:`. Entity decoding happens in `getAttribute`,
+    // upstream of every check, which is why the escaping is the load-bearing
+    // half and gets asserted here rather than the scheme test.
+    for (const entity of ['&#106;avascript:alert(1)', '&#x6a;avascript:alert(1)', '&NewLine;javascript:alert(1)']) {
+      const out = linkOn(entity)
+      expect(out).not.toBeNull()
+      expect(out).toContain('&amp;')
+      expect(out).not.toContain('href="javascript:')
+      // Reparsing is the real proof: the schema, which is the authority on what
+      // may execute, reads the stored bytes as an ordinary relative URL and
+      // keeps the link rather than dropping it as a dangerous scheme.
+      expect(roundTrip(out as string)).toContain('&amp;')
     }
   })
 })
