@@ -165,9 +165,11 @@ export class OpenLeafEditor extends HTMLElementBase {
   /**
    * The last document this editor knew about, as HTML.
    *
-   * Captured at the first build and refreshed on teardown, so that a rebuild
-   * after a real removal never falls back to `this.innerHTML` -- which by then
-   * holds the toolbar markup this element appended, not the author's content.
+   * Written by every build and refreshed on disconnect. It exists so a rebuild
+   * has something better than `this.innerHTML` to fall back to -- by then the
+   * subtree has held the toolbar markup this element appended, and reading that
+   * back made it the author's document and posted it to the server. It also
+   * backs `get value` once the view is gone.
    */
   #initialHtml: string | null = null
   /**
