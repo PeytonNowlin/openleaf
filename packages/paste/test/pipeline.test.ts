@@ -131,4 +131,70 @@ describe('copying between OpenLeaf documents', () => {
     const out = normalizeGeneric('<p><span style="font-weight:bold">Bold</span></p>')
     expect(out).toContain('<strong>Bold</strong>')
   })
+
+  /**
+   * The same document copied out of the editor rather than typed into the test.
+   *
+   * ProseMirror stamps `data-pm-slice` on the HTML it puts on the clipboard, and
+   * the class on this div is `MsoNormal` -- preserved Word residue, which is the
+   * canonical thing preservation keeps. Routing on content alone sends this to
+   * the Word stripper, which is how the guarantee above used to fail on the one
+   * input it was written for.
+   */
+  const INTERNAL =
+    '<p data-pm-slice="1 1 []">Intro.</p>' +
+    '<div class="MsoNormal" data-callout-id="7"><p>Preserved.</p></div>'
+
+  it('survives a copy out of the editor and back in', () => {
+    const out = normalizePastedHtml(INTERNAL)
+    expect(out).toContain('class="MsoNormal"')
+    expect(out).toContain('data-callout-id="7"')
+    expect(preservedAtoms(out)).toEqual([
+      '<div class="MsoNormal" data-callout-id="7"><p>Preserved.</p></div>',
+    ])
+  })
+})
+
+describe('content the cleanup pipeline used to delete', () => {
+  /**
+   * The end-to-end version of the empty-block and table-attribute fixes: not
+   * "did the normalizer keep it" but "does the schema get something it can
+   * model". A pasted video that arrives as a preserved atom is a grey card
+   * where the author expected a video, which is only marginally better than
+   * the deletion it replaced.
+   */
+  const WORD_EMBED =
+    '<p class="MsoNormal">Watch this:<o:p></o:p></p>' +
+    '<p class="MsoNormal"><iframe src="https://www.youtube.com/embed/abc" ' +
+    'width="560" height="315" title="Clip"></iframe></p>'
+
+  it('keeps a Word-pasted embed and gives the schema a real iframe node', () => {
+    const out = through(WORD_EMBED)
+    expect(out).toContain('src="https://www.youtube.com/embed/abc"')
+    expect(out).toContain('width="560"')
+    expect(out).toContain('height="315"')
+    expect(preservedAtoms(normalizePastedHtml(WORD_EMBED))).toEqual([])
+  })
+
+  const WORD_TABLE =
+    '<table class="MsoTableGrid" width="600" style="border-collapse:collapse">' +
+    '<tr><td width="200" valign="top">North</td>' +
+    '<td width="400" valign="top">12%</td></tr></table>'
+
+  it('keeps Word table geometry and gives the schema a real table', () => {
+    const out = through(WORD_TABLE)
+    expect(out).toContain('width="600"')
+    expect(out).toContain('width="200"')
+    expect(out).toContain('valign="top"')
+    expect(preservedAtoms(normalizePastedHtml(WORD_TABLE))).toEqual([])
+  })
+
+  const WORD_QUOTE =
+    '<p class="MsoNormal">He said <span lang="fr">bonjour</span> to me.<o:p></o:p></p>'
+
+  it('keeps a language marking as the language mark the schema models', () => {
+    const out = through(WORD_QUOTE)
+    expect(out).toBe('<p>He said <span lang="fr">bonjour</span> to me.</p>')
+    expect(preservedAtoms(normalizePastedHtml(WORD_QUOTE))).toEqual([])
+  })
 })

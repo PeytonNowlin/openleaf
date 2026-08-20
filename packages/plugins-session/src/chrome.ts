@@ -24,6 +24,7 @@ import {
   clearDraft,
   defaultStorage,
   draftStorageKey,
+  purgeDrafts,
   readDraft,
   writeDraft,
   type DraftStorage,
@@ -166,6 +167,11 @@ function attachSession(
   const win = doc.defaultView
   const key = draftStorageKey(host)
   let timer: ReturnType<typeof setTimeout> | undefined
+
+  // Only the key for this page is ever read back, so a draft for a page nobody
+  // returns to would sit in storage for good. Attaching an editor is the one
+  // moment this library reliably gets, and the sweep is a walk of the keys.
+  purgeDrafts(options.storage)
 
   /**
    * The HTML the editor is showing right now.
@@ -386,17 +392,31 @@ function buildFindBar(host: EditorHost, view: EditorView): { root: HTMLElement; 
 
   const sync = (): void => {
     const search = searchKey.getState(view.state)
+    const hits = search ? search.matches.length : 0
+    // A button that does nothing when pressed is worse than one that says it
+    // cannot: Replace was reachable with no current match and silently returned.
+    prev.disabled = hits === 0
+    next.disabled = hits === 0
+    replace.disabled = hits === 0
+    replaceAllBtn.disabled = hits === 0
+
     if (!search || search.query.length === 0) {
       count.textContent = ''
       return
     }
-    if (search.matches.length === 0) {
+    // Announced before the match count, because replacing rebuilds the matches
+    // against the new document and finds none of the old ones -- reporting that
+    // as "No matches" made a successful Replace all read as a failure.
+    if (search.replaced > 0) {
+      count.textContent = `${search.replaced} replaced`
+      return
+    }
+    if (hits === 0) {
       count.textContent = 'No matches'
       return
     }
     const current = search.index >= 0 ? search.index + 1 : 0
-    count.textContent =
-      current > 0 ? `${current} of ${search.matches.length}` : `${search.matches.length} matches`
+    count.textContent = current > 0 ? `${current} of ${hits}` : `${hits} matches`
   }
 
   findInput.addEventListener('input', applyQuery)

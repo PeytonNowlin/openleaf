@@ -32,40 +32,20 @@
  * reported to the author. Someone importing a report needs to know its charts
  * did not come with it while they still have the original open. An integrator
  * who wants real image import supplies `convertImage` and uploads them.
+ *
+ * ## Where the code is
+ *
+ * The conversion lives in `converter.ts`, with mammoth passed to it rather than
+ * imported. Only this file names the browser build, which is what keeps the
+ * converter reachable from a test -- see the note there.
  */
 
 import mammoth from 'mammoth/mammoth.browser.js'
 import { addAcceptedExtensions, registerFileConverter, removeAcceptedExtensions } from '@openleaf-editor/plugins-import'
+import { createDocxConverter, type DocxOptions } from './converter.js'
 
-export interface DocxOptions {
-  /**
-   * Handle an embedded image, returning attributes for an `<img>`.
-   *
-   * Left unset, images are dropped and counted. Set it to upload each image and
-   * return the stored URL.
-   */
-  convertImage?: (image: {
-    contentType: string
-    read: (encoding?: string) => Promise<string | Buffer>
-  }) => Promise<{ src: string; alt?: string }>
-  /** Extra mammoth style mappings, appended to the defaults. */
-  styleMap?: string[]
-}
-
-/**
- * Style mappings beyond mammoth's defaults.
- *
- * Word's built-in Title and Subtitle styles map to nothing useful otherwise, and
- * a document whose title arrives as an unstyled paragraph reads as though the
- * import lost something -- which, in the way that matters to an author, it did.
- */
-const DEFAULT_STYLE_MAP = [
-  "p[style-name='Title'] => h1:fresh",
-  "p[style-name='Subtitle'] => h2:fresh",
-  "p[style-name='Quote'] => blockquote > p:fresh",
-  "p[style-name='Intense Quote'] => blockquote > p:fresh",
-  "r[style-name='Code'] => code",
-]
+export { createDocxConverter, DEFAULT_STYLE_MAP, type DocxMammoth, type DocxOptions } from './converter.js'
+export { DEFAULT_DOCX_LIMITS, type DocxLimits } from './guards.js'
 
 let installed = false
 
@@ -78,44 +58,7 @@ export function installDocxImport(options: DocxOptions = {}): () => void {
   installed = true
 
   addAcceptedExtensions(DOCX_ACCEPT)
-
-  const unregister = registerFileConverter(async (file) => {
-    if (!/\.docx$/i.test(file.name)) return null
-
-    let droppedImages = 0
-
-    const convertImage = options.convertImage
-      ? mammoth.images.imgElement(options.convertImage)
-      : mammoth.images.imgElement(async () => {
-          // Counted, not silently discarded. See the note on data: URIs above.
-          droppedImages += 1
-          return { src: '' }
-        })
-
-    const { value, messages } = await mammoth.convertToHtml(
-      { arrayBuffer: await file.arrayBuffer() },
-      {
-        styleMap: [...DEFAULT_STYLE_MAP, ...(options.styleMap ?? [])],
-        // Spread conditionally: with exactOptionalPropertyTypes, passing an
-        // explicit undefined is not the same as omitting the key.
-        ...(convertImage ? { convertImage } : {}),
-      },
-    )
-
-    const warnings = messages
-      .filter((message: { type: string }) => message.type === 'warning')
-      .map((message: { message: string }) => message.message)
-
-    if (droppedImages > 0) {
-      warnings.push(
-        `${droppedImages} image${droppedImages === 1 ? '' : 's'} could not be imported. ` +
-          'Word embeds images in the file; add them to the page separately, or ' +
-          'configure an image handler on this site.',
-      )
-    }
-
-    return { html: value, warnings }
-  })
+  const unregister = registerFileConverter(createDocxConverter(mammoth, options))
 
   return () => {
     unregister()

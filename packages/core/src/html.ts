@@ -10,6 +10,7 @@
 import { DOMParser, DOMSerializer, type Node as PMNode, type Schema } from 'prosemirror-model'
 import { isInsidePreserved, withSerializationDocument } from './preserve.js'
 import { coreSchema } from './extensions.js'
+import { tableSectionRowCounts } from './tables.js'
 
 /**
  * Parsers and serializers are resolved per schema rather than built once.
@@ -107,6 +108,53 @@ function unwrapSoleCellParagraph(host: Element): void {
   }
 }
 
+/**
+ * Put a table's rows back into the `<thead>` and `<tfoot>` they came from.
+ *
+ * A table node holds nothing but rows -- `prosemirror-tables` requires that, see
+ * tables.ts -- and a node renders through a single `contentDOM`, so `toDOM` can
+ * emit one section and no more. The grouping is therefore restored here, from
+ * the row counts tables.ts recorded against the element it built.
+ *
+ * Only for tables that HAD a section. Deriving a `<thead>` from the presence of
+ * `<th>` cells would look like an improvement and would rewrite every table in
+ * an archive that never used one, which is the change `unwrapSoleCellParagraph`
+ * argues at length this project does not get to make quietly.
+ *
+ * The counts are clamped rather than trusted, because the document can have
+ * changed since it was parsed: an author who deletes the header row of a table
+ * whose node still says `headerRows: 1` gets a table with one fewer section, not
+ * a `<thead>` built out of their first data row and not a thrown error. The
+ * `<tbody>` goes away entirely if every row left it, so a table that was all
+ * `<thead>` does not come back with an empty body it never had.
+ */
+function restoreTableSections(host: Element, doc: Document): void {
+  for (const table of Array.from(host.querySelectorAll('table'))) {
+    // Same rule as the cell pass: a table inside preserved markup is content we
+    // undertook to hand back byte-identical, and its sections are already in the
+    // preserved string. Restructuring there would be a broken promise.
+    if (isInsidePreserved(table)) continue
+    const counts = tableSectionRowCounts(table)
+    if (!counts) continue
+    const tbody = Array.from(table.children).find((child) => child.nodeName === 'TBODY')
+    if (!tbody) continue
+    const rows = Array.from(tbody.children).filter((child) => child.nodeName === 'TR')
+    const header = Math.min(counts.header, rows.length)
+    const footer = Math.min(counts.footer, rows.length - header)
+    if (header > 0) {
+      const thead = doc.createElement('thead')
+      for (const row of rows.slice(0, header)) thead.appendChild(row)
+      table.insertBefore(thead, tbody)
+    }
+    if (footer > 0) {
+      const tfoot = doc.createElement('tfoot')
+      for (const row of rows.slice(rows.length - footer)) tfoot.appendChild(row)
+      table.insertBefore(tfoot, tbody.nextSibling)
+    }
+    if (!tbody.hasChildNodes()) table.removeChild(tbody)
+  }
+}
+
 /** Serialize an OpenLeaf document back to an HTML string. */
 export function serializeHtml(node: PMNode, opts?: HtmlIOOptions): string {
   const doc = resolveDocument(opts)
@@ -119,6 +167,7 @@ export function serializeHtml(node: PMNode, opts?: HtmlIOOptions): string {
     const host = doc.createElement('div')
     host.appendChild(fragment)
     unwrapSoleCellParagraph(host)
+    restoreTableSections(host, doc)
     return host.innerHTML
   })
 }

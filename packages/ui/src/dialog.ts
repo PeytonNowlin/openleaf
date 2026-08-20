@@ -20,6 +20,7 @@
  * retry a whole new dialog.
  */
 
+import { isSafeUrl } from '@openleaf-editor/core'
 import { ensureStyles, registerStyles } from './styles.js'
 import { IMAGE_ACCEPT, dimension, type ImageUploadResult } from './upload.js'
 import {
@@ -82,6 +83,15 @@ type Commit<T> = (
   values: Record<string, string>,
   files: Record<string, File | undefined>,
 ) => Promise<{ value: T } | { error: string }> | { value: T } | { error: string }
+
+/**
+ * Shown when an address fails `isSafeUrl` -- `javascript:`, `data:`, `vbscript:`
+ * and anything else outside the scheme allowlist.
+ *
+ * It names the editor's own limit rather than accusing the author, because the
+ * common case is a pasted tracking link or an intranet scheme, not an attack.
+ */
+const UNSTORABLE_ADDRESS = 'That address is not one the editor can store.'
 
 /*
  * Every colour reads the internal `--ol-*` token first and the public
@@ -284,17 +294,25 @@ function showForm<T>(
     browse.type = 'button'
     browse.textContent = options.browse.label
     browse.addEventListener('click', () => {
-      void options.browse?.fill().then((filled) => {
-        if (!filled) return
-        for (const [name, value] of Object.entries(filled)) {
-          const control = inputs.get(name)
-          if (control && control instanceof HTMLInputElement && control.type !== 'file') {
-            control.value = value
-          } else if (control) {
-            control.value = value
+      void options.browse
+        ?.fill()
+        .then((filled) => {
+          if (!filled) return
+          for (const [name, value] of Object.entries(filled)) {
+            const control = inputs.get(name)
+            if (control && control instanceof HTMLInputElement && control.type !== 'file') {
+              control.value = value
+            } else if (control) {
+              control.value = value
+            }
           }
-        }
-      })
+        })
+        // A picker is integrator code, so it can reject -- and it does when it
+        // hands back an address the editor will not store. Without this the
+        // failure was an unhandled rejection and the author saw nothing happen.
+        .catch((thrown: unknown) => {
+          error.textContent = messageFrom(thrown)
+        })
     })
     form.appendChild(browse)
   }
@@ -564,6 +582,9 @@ export async function promptForLink(
               fill: async () => {
                 const picked = await picker({ kind: 'file', host })
                 if (!picked) return null
+                if (!isSafeUrl(picked.url)) {
+                  throw new Error('The file picker returned an address the editor will not store.')
+                }
                 return { href: picked.url, title: picked.title ?? '' }
               },
             },
@@ -575,6 +596,10 @@ export async function promptForLink(
       // is no second place a destination can hide.
       const href = values['href'] || ''
       if (!href) return { error: 'Enter an address for the link.' }
+      // `setLink` declines this too, but a command that declines closes the
+      // dialog and does nothing visible. Reporting here keeps the dialog open
+      // with the address still in the field, so the author can see and fix it.
+      if (!isSafeUrl(href)) return { error: UNSTORABLE_ADDRESS }
       const newWindow = values['newWindow'] === 'on'
       return {
         value: {
@@ -728,6 +753,9 @@ export async function promptForImage(
               fill: async () => {
                 const picked = await picker({ kind: 'image', host })
                 if (!picked) return null
+                if (!isSafeUrl(picked.url)) {
+                  throw new Error('The image picker returned an address the editor will not store.')
+                }
                 return { src: picked.url, alt: picked.alt ?? '', title: picked.title ?? '' }
               },
             },
@@ -741,6 +769,9 @@ export async function promptForImage(
       if (!chosen && !src) {
         return { error: upload ? 'Choose a file or enter an image address.' : 'Enter an image address.' }
       }
+      // Only a typed or picked address needs checking here; a file goes through
+      // `runUploader`, which already refuses what the editor will not store.
+      if (src !== '' && !isSafeUrl(src)) return { error: UNSTORABLE_ADDRESS }
       if (!values['alt'] && values['decorative'] !== 'on') {
         return { error: 'Add alternative text, or tick the decorative box.' }
       }

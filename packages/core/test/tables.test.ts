@@ -245,6 +245,119 @@ describe('caption and colgroup survive the round trip', () => {
   })
 })
 
+describe('thead and tfoot grouping survives the round trip', () => {
+  /*
+   * The grouping was skipped on parse and never written back, so every save
+   * flattened a grouped table into one `<tbody>`. `<thead>` is what repeats a
+   * header across printed pages, what sticky-header CSS and `thead th`
+   * selectors hook onto, and what tells assistive technology which rows label
+   * the data -- losing it changes how the page renders.
+   */
+
+  it('keeps a thead and its rows', () => {
+    const html =
+      '<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>a</td></tr></tbody></table>'
+    expect(roundTrip(html)).toBe(html)
+  })
+
+  it('keeps a two-row thead', () => {
+    const html =
+      '<table><thead><tr><th>h1</th></tr><tr><th>h2</th></tr></thead><tbody><tr><td>a</td></tr></tbody></table>'
+    expect(roundTrip(html)).toBe(html)
+  })
+
+  it('keeps a tfoot', () => {
+    const html =
+      '<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>a</td></tr></tbody><tfoot><tr><td>f</td></tr></tfoot></table>'
+    expect(roundTrip(html)).toBe(html)
+  })
+
+  it('keeps a tfoot with no thead', () => {
+    const html =
+      '<table><tbody><tr><td>a</td></tr></tbody><tfoot><tr><td>f</td></tr></tfoot></table>'
+    expect(roundTrip(html)).toBe(html)
+  })
+
+  it('does not invent a thead for header cells that never had one', () => {
+    // Deriving `<thead>` from the presence of `<th>` would rewrite every table
+    // in an archive that never used one. Same rule as the caption.
+    const html = '<table><tbody><tr><th>h</th></tr><tr><td>a</td></tr></tbody></table>'
+    expect(roundTrip(html)).toBe(html)
+    expect(roundTrip(html)).not.toContain('thead')
+  })
+
+  it('is stable across repeated round trips', () => {
+    const html =
+      '<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>a</td></tr></tbody><tfoot><tr><td>f</td></tr></tfoot></table>'
+    const once = roundTrip(html)
+    expect(roundTrip(once)).toBe(once)
+  })
+
+  it('attributes a nested table thead to the nested table', () => {
+    // Direct children only, at both levels. Counting with querySelectorAll
+    // would credit the inner table's header to the outer one and lift the
+    // wrong row out of the outer body -- silently, and permanently.
+    const html =
+      '<table><tbody><tr><td><table><thead><tr><th>inner</th></tr></thead>' +
+      '<tbody><tr><td>x</td></tr></tbody></table></td></tr></tbody></table>'
+    const out = roundTrip(html)
+    expect(out).toBe(html)
+    expect(out.match(/<thead>/g)).toHaveLength(1)
+  })
+
+  it('keeps the rows direct children of the table node', () => {
+    // The reason the grouping is a count and not a node: prosemirror-tables
+    // reads height as table.childCount and every child as a row.
+    const doc = parseHtml(
+      '<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>a</td></tr></tbody></table>',
+    )
+    let table: unknown = null
+    doc.descendants((node) => {
+      if (node.type.name === 'table') table = node
+      return true
+    })
+    const found = table as unknown as {
+      childCount: number
+      child: (i: number) => { type: { name: string } }
+      attrs: Record<string, unknown>
+    }
+    expect(found.childCount).toBe(2)
+    expect(found.child(0).type.name).toBe('table_row')
+    expect(found.child(1).type.name).toBe('table_row')
+    expect(found.attrs['headerRows']).toBe(1)
+  })
+
+  it('degrades cleanly when the header rows were deleted in the editor', () => {
+    // The document can change after it was parsed, so the count is clamped to
+    // the rows actually present rather than trusted: a table whose header row
+    // was deleted loses a section, it does not throw and it does not leave an
+    // empty `<tbody>` behind.
+    const schema = coreSchema()
+    const cell = schema.nodes['table_cell']?.create(null, schema.nodes['paragraph']?.create(null, schema.text('a')))
+    const row = schema.nodes['table_row']?.create(null, cell)
+    const table = schema.nodes['table']?.create({ headerRows: 4 }, row)
+    const doc = schema.nodes['doc']?.create(null, table)
+    const out = serializeHtml(doc as never)
+    expect(out).toBe('<table><thead><tr><td>a</td></tr></thead></table>')
+  })
+
+  it('leaves a tfoot written before its tbody alone rather than moving rows', () => {
+    // HTML 4 required tfoot before tbody. The counts describe a leading and a
+    // trailing run of rows, and those rows are neither; taking the last row
+    // regardless would move a data row into a tfoot it never belonged to.
+    const out = roundTrip(
+      '<table><tfoot><tr><td>f</td></tr></tfoot><tbody><tr><td>a</td></tr></tbody></table>',
+    )
+    expect(out).toBe('<table><tbody><tr><td>f</td></tr><tr><td>a</td></tr></tbody></table>')
+  })
+
+  it('does not restructure a table inside preserved markup', () => {
+    const html =
+      '<div class="wrapper"><table><thead><tr><th>h</th></tr></thead><tbody><tr><td>a</td></tr></tbody></table></div>'
+    expect(roundTrip(html)).toBe(html)
+  })
+})
+
 describe('tables and the security rules interact correctly', () => {
   it('drops a script inside a cell but keeps the cell', () => {
     const out = roundTrip('<table><tr><td>ok<script>alert(1)</script></td></tr></table>')

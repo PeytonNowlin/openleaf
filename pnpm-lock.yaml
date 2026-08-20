@@ -68,6 +68,10 @@ importers:
       prosemirror-view:
         specifier: ^1.37.0
         version: 1.42.2
+    devDependencies:
+      prosemirror-tables:
+        specifier: ^1.6.4
+        version: 1.8.5
 
   packages/element:
     dependencies:
@@ -103,6 +107,10 @@ importers:
         version: 1.42.2
 
   packages/paste:
+    dependencies:
+      '@openleaf-editor/content-policy':
+        specifier: workspace:*
+        version: link:../content-policy
     devDependencies:
       '@openleaf-editor/core':
         specifier: workspace:*

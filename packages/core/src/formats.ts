@@ -79,14 +79,26 @@ export function carriedClass(node: PMNode): string | null {
   return value && value.trim() !== '' ? value : null
 }
 
+/**
+ * Every text block in the selection, over every selected RANGE.
+ *
+ * `selection.from`/`to` are one range's bounds, so a table column selection --
+ * which is one range per cell -- reported a single cell's paragraph and the
+ * format was applied to just that one. See `selectedRanges` in commands.ts.
+ */
 function textBlocks(state: EditorState): Array<{ pos: number; node: PMNode }> {
   const found: Array<{ pos: number; node: PMNode }> = []
-  const { from, to } = state.selection
-  state.doc.nodesBetween(from, to, (node, pos) => {
-    if (!node.isTextblock) return true
-    found.push({ pos, node })
-    return false
-  })
+  const seen = new Set<number>()
+  for (const range of state.selection.ranges) {
+    state.doc.nodesBetween(range.$from.pos, range.$to.pos, (node, pos) => {
+      if (!node.isTextblock) return true
+      if (!seen.has(pos)) {
+        seen.add(pos)
+        found.push({ pos, node })
+      }
+      return false
+    })
+  }
   return found
 }
 

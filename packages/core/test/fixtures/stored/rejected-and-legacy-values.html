@@ -1,0 +1,19 @@
+<!--
+  Values a modelled reader refuses, and legacy attributes it rewrites.
+
+  When a reader like `safeId` or the `start` parser declines a value, the
+  modelled attribute is left null -- and the carry loop had already skipped the
+  name as "modelled", so the attribute vanished from both places at once. That
+  is how validating a value turned into deleting it: <h2 id="Bad Id"> lost its
+  id, and <ol start="abc"> was stored as NaN and written back as start="NaN".
+-->
+<h2 id="Bad Id">A heading whose id the schema will not store</h2>
+<ol start="abc">
+  <li>A list with an unparsable start</li>
+</ol>
+<ol start="5">
+  <li>A list with a real start</li>
+</ol>
+<hr class="section-rule" id="rule-1">
+<p><span class="hl" style="background-color:#ffff00">Highlighted text carrying a class</span></p>
+<p><span style="background-color:#ffff00;letter-spacing:1px">Highlighted text carrying unmodelled CSS</span></p>
