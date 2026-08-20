@@ -20,37 +20,66 @@
  *     reads `$_POST['body']` keeps working untouched.
  *
  * Attributes:
- *   for          id of the textarea to bind to
- *   skin         named appearance: midnight, paper, contrast, compact
- *   theme        light | dark | auto (default: follow the visitor's system)
- *   toolbar      space-separated item ids, `|` for a separator; `none` to omit
- *   readonly     render but do not allow editing
- *   aria-label   accessible name for the editable region
+ *   for              id of the textarea to bind to
+ *   skin             named appearance: midnight, paper, contrast, compact
+ *   theme            light | dark | auto (default: follow the visitor's system)
+ *   toolbar          space-separated item ids, `|` for a separator; `none` to omit
+ *   toolbar2         a second toolbar, same grammar
+ *   menubar          space-separated menu ids, or omit to hide; `none` also hides
+ *   contextmenu      `none` to disable; default is link, image and table menus
+ *   selection-toolbar floating bar for a non-empty selection; `none` disables
+ *   insert-toolbar    floating bar for an empty block; `none` disables
+ *   formats          `p.lead=Lead|h2=Section` entries for the formats dropdown
+ *   content-css      comma-separated URLs scoped onto the canvas
+ *   lang             UI locale, matched against registerTranslations()
+ *   inline           hide chrome until the editor is focused
+ *   autoresize       grow the canvas with the document
+ *   toolbar-overflow collapse overflowing groups into a More menu
+ *   readonly         render but do not allow editing
+ *   aria-label       accessible name for the editable region
  */
 
 import {
+  autolinkPlugin,
   buildKeymap,
   coreSchema,
   createRegisteredPlugins,
   insertImage,
+  nonEditablePlugin,
   onEditorPluginsChange,
   onSchemaExtensionsChange,
+  parseFormatList,
   parseHtml,
   serializeHtml,
+  visualAidsPlugin,
   type EditorPluginFactory,
 } from '@openleaf-editor/core'
 import { normalizePastedHtml } from '@openleaf-editor/paste'
 import {
+  DEFAULT_INSERT_LAYOUT,
+  DEFAULT_SELECTION_LAYOUT,
+  FULLSCREEN_TOGGLE_EVENT,
+  FloatingToolbars,
+  IMAGE_CONTEXT_ITEMS,
+  LINK_CONTEXT_ITEMS,
+  MenuBar,
+  PopupMenu,
   SOURCE_TOGGLE_EVENT,
+  selectMenus,
+  TABLE_CONTEXT_ITEMS,
   Toolbar,
+  VISUAL_AIDS_TOGGLE_EVENT,
   applyColourScheme,
   applySkin,
   canUploadImages,
+  contentCssUrls,
   ensureSkins,
   ensureStyles,
   imageFilesFrom,
   imageUploaderFor,
+  loadContentCss,
   promptForImage,
+  promptHelp,
   registerDefaultItems,
   runUploader,
   type ColourScheme,
@@ -76,7 +105,7 @@ export const SOURCE_CLOSE_EVENT = 'openleaf:source-close'
 
 export class OpenLeafEditor extends HTMLElement {
   static get observedAttributes(): string[] {
-    return ['for', 'readonly', 'skin', 'theme']
+    return ['for', 'readonly', 'skin', 'theme', 'lang']
   }
 
   /**
@@ -89,6 +118,7 @@ export class OpenLeafEditor extends HTMLElement {
     if (name === 'theme') applyColourScheme(this, this.#colourScheme())
     if (name === 'readonly') this.#applyReadonly()
     if (name === 'for') this.#rebindTextarea()
+    if (name === 'lang') this.#applyLocale()
   }
 
   #colourScheme(): ColourScheme {
@@ -98,6 +128,10 @@ export class OpenLeafEditor extends HTMLElement {
 
   #view: EditorView | null = null
   #toolbar: Toolbar | null = null
+  #toolbar2: Toolbar | null = null
+  #menubar: MenuBar | null = null
+  #contextMenu: PopupMenu | null = null
+  #floating: FloatingToolbars | null = null
   #textarea: HTMLTextAreaElement | null = null
   #form: HTMLFormElement | null = null
   #contentHost: HTMLDivElement | null = null
@@ -110,6 +144,11 @@ export class OpenLeafEditor extends HTMLElement {
   #pluginCache = new Map<EditorPluginFactory, Plugin[]>()
   #unwatchPlugins: (() => void) | undefined
   #unwatchSchema: (() => void) | undefined
+  #resizeObserver: ResizeObserver | null = null
+  #visualAids = true
+  #fullscreen = false
+  /** True while a real fullscreen session is ours, as opposed to the fallback. */
+  #nativeFullscreen = false
   #onSubmit = (): void => this.#syncToTextarea()
   #onFormData = (event: FormDataEvent): void => {
     this.#syncToTextarea()
@@ -181,15 +220,49 @@ export class OpenLeafEditor extends HTMLElement {
     nestedTextarea?.remove()
     this.innerHTML = ''
     this.classList.add('ol-editor')
+    if (this.hasAttribute('inline')) this.classList.add('ol-inline')
+    if (this.hasAttribute('autoresize')) this.classList.add('ol-autoresize')
+    this.#visualAids = this.getAttribute('visualaids') !== 'false'
+    if (this.#visualAids) this.classList.add('ol-visual-aids')
 
+    const formats = parseFormatList(this.getAttribute('formats'))
+    const overflow = this.hasAttribute('toolbar-overflow')
     const layout = this.getAttribute('toolbar')
     const wantsToolbar = layout !== 'none'
+    const menubarAttr = this.getAttribute('menubar')
+    const wantsMenubar = menubarAttr !== null && menubarAttr !== 'none'
+
+    if (wantsMenubar) {
+      // The attribute is a list, not a flag: `menubar="edit help"` asks for those
+      // two menus in that order. An unrecognised list leaves no menubar rather
+      // than an empty one with nothing in it.
+      const menus = selectMenus(menubarAttr)
+      if (menus.length > 0) {
+        this.#menubar = new MenuBar(this, this.ownerDocument, menus, this.getAttribute('lang'))
+        this.appendChild(this.#menubar.el)
+      }
+    }
 
     if (wantsToolbar) {
       this.#toolbar = new Toolbar(this, this.ownerDocument, {
         ...(layout ? { layout } : {}),
+        overflow,
+        formats,
+        locale: this.getAttribute('lang'),
       })
       this.appendChild(this.#toolbar.el)
+    }
+
+    const toolbar2 = this.getAttribute('toolbar2')
+    if (toolbar2 && toolbar2 !== 'none') {
+      this.#toolbar2 = new Toolbar(this, this.ownerDocument, {
+        layout: toolbar2,
+        label: 'More formatting',
+        overflow,
+        formats,
+        locale: this.getAttribute('lang'),
+      })
+      this.appendChild(this.#toolbar2.el)
     }
 
     const contentHost = this.ownerDocument.createElement('div')
@@ -217,18 +290,22 @@ export class OpenLeafEditor extends HTMLElement {
     // Building a second one is what dropped undo when a plugin registered late.
     this.#basePlugins = [
       history(),
-      // Alt+F10 is bound before the shared keymap so it cannot be shadowed.
       keymap({
         'Alt-F10': () => {
           this.#toolbar?.focusToolbar()
           return true
         },
+        F1: () => {
+          promptHelp(this.ownerDocument)
+          return true
+        },
       }),
-      // The shared shortcut table, so toolbar tooltips and any help dialog
-      // render the real bindings rather than a duplicate list that drifts.
       keymap(buildKeymap()),
       keymap(baseKeymap),
+      nonEditablePlugin(),
     ]
+    if (this.getAttribute('autolink') !== 'false') this.#basePlugins.push(autolinkPlugin())
+    if (this.#visualAids) this.#basePlugins.push(visualAidsPlugin())
 
     this.#schema = coreSchema()
 
@@ -279,6 +356,8 @@ export class OpenLeafEditor extends HTMLElement {
         // chatty. Guarded because everything it calls may be third-party code.
         try {
           this.#toolbar?.update(view.state, tr)
+          this.#toolbar2?.update(view.state, tr)
+          this.#floating?.update(view.state)
         } catch (error) {
           console.error('@openleaf-editor/element: toolbar update failed', error)
         }
@@ -286,7 +365,17 @@ export class OpenLeafEditor extends HTMLElement {
     })
 
     this.#toolbar?.mount(this.#view)
+    this.#toolbar2?.mount(this.#view)
+    this.#menubar?.mount(this.#view)
+    this.#mountFloating()
+    this.#mountContextMenu()
+    this.#mountInline()
+    this.#mountAutoresize()
+    void this.#mountContentCss()
     this.addEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
+    this.addEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
+    this.ownerDocument.addEventListener('fullscreenchange', this.#onFullscreenChange)
+    this.addEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
 
     if (nestedTextarea) {
       nestedTextarea.hidden = true
@@ -320,6 +409,8 @@ export class OpenLeafEditor extends HTMLElement {
         }),
       )
       this.#toolbar?.update(view.state)
+      this.#toolbar2?.update(view.state)
+      this.#floating?.update(view.state)
     })
 
     // Belt and braces: `submit` covers ordinary posts, `formdata` covers
@@ -330,6 +421,8 @@ export class OpenLeafEditor extends HTMLElement {
     this.#form?.addEventListener('submit', this.#onSubmit)
     this.#form?.addEventListener('formdata', this.#onFormData)
     this.#form?.addEventListener('reset', this.#onReset)
+    this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })
+    this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
     this.#syncToTextarea()
   }
 
@@ -342,8 +435,25 @@ export class OpenLeafEditor extends HTMLElement {
     this.#form?.removeEventListener('formdata', this.#onFormData)
     this.#form?.removeEventListener('reset', this.#onReset)
     this.removeEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
+    this.removeEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
+    this.ownerDocument.removeEventListener('fullscreenchange', this.#onFullscreenChange)
+    this.removeEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
+    this.removeEventListener('contextmenu', this.#onContextMenu)
+    this.ownerDocument.removeEventListener('pointerdown', this.#onContextPointer, true)
+    this.removeEventListener('focusin', this.#onInlineFocus)
+    this.removeEventListener('focusout', this.#onInlineBlur)
+    this.#resizeObserver?.disconnect()
+    this.#resizeObserver = null
     this.#unwatchPlugins?.()
     this.#unwatchSchema?.()
+    this.#floating?.destroy()
+    this.#floating = null
+    this.#contextMenu?.destroy()
+    this.#contextMenu = null
+    this.#menubar?.destroy()
+    this.#menubar = null
+    this.#toolbar2?.destroy()
+    this.#toolbar2 = null
     this.#toolbar?.destroy()
     this.#toolbar = null
     this.#view?.destroy()
@@ -417,6 +527,7 @@ export class OpenLeafEditor extends HTMLElement {
       this.#sourceArea = area
       this.#sourceMode = true
       this.#toolbar?.setItemState('source', { active: true })
+      this.#toolbar2?.setItemState('source', { active: true })
       // Announced before focus so an enhancer can wrap the textarea while it is
       // still inert; focusing first would move the caret and then move the
       // element out from under it.
@@ -433,6 +544,7 @@ export class OpenLeafEditor extends HTMLElement {
     this.#teardownSource({ apply: !this.hasAttribute('readonly') })
     contentHost.hidden = false
     this.#toolbar?.setItemState('source', { active: false })
+    this.#toolbar2?.setItemState('source', { active: false })
     view.focus()
   }
 
@@ -570,6 +682,7 @@ export class OpenLeafEditor extends HTMLElement {
       const result = await promptForImage(this.ownerDocument, {
         file,
         upload: (chosen) => runUploader(uploader, chosen, this),
+        host: this,
       })
       // A cancelled description skips this file and moves to the next, rather
       // than abandoning the rest of a multi-file drop.
@@ -577,8 +690,12 @@ export class OpenLeafEditor extends HTMLElement {
       insertImage({
         src: result.src,
         alt: result.alt,
+        title: result.title,
         width: result.width,
         height: result.height,
+        align: result.align,
+        className: result.className,
+        ...(result.caption ? { caption: result.caption } : {}),
       })(view.state, view.dispatch, view)
     }
     view.focus()
@@ -590,7 +707,160 @@ export class OpenLeafEditor extends HTMLElement {
     // contenteditable="true" until some unrelated transaction.
     this.#view?.setProps({})
     if (this.#sourceArea) this.#sourceArea.readOnly = this.hasAttribute('readonly')
-    if (this.#view) this.#toolbar?.update(this.#view.state)
+    if (this.#view) {
+      this.#toolbar?.update(this.#view.state)
+      this.#toolbar2?.update(this.#view.state)
+    }
+  }
+
+  /**
+   * Relabel this editor's chrome for its own `lang`.
+   *
+   * Deliberately not `setUiLocale`, which is the document-wide default: two
+   * editors with different `lang` values on one page both ended up in whichever
+   * built last, because every subscribed toolbar re-rendered on the change.
+   */
+  #applyLocale(): void {
+    const lang = this.getAttribute('lang')
+    this.#toolbar?.setLocale(lang)
+    this.#toolbar2?.setLocale(lang)
+  }
+
+  #mountFloating(): void {
+    const view = this.#view
+    if (!view) return
+    const selection = this.getAttribute('selection-toolbar')
+    const insert = this.getAttribute('insert-toolbar')
+    const selectionLayout =
+      selection === null ? null : selection === 'none' ? null : selection || DEFAULT_SELECTION_LAYOUT
+    const insertLayout =
+      insert === null ? null : insert === 'none' ? null : insert || DEFAULT_INSERT_LAYOUT
+    if (!selectionLayout && !insertLayout) return
+    this.#floating = new FloatingToolbars(this, this.ownerDocument, {
+      selectionLayout,
+      insertLayout,
+    })
+    this.#floating.mount(view)
+  }
+
+  #mountContextMenu(): void {
+    if (this.getAttribute('contextmenu') === 'none') return
+    this.#contextMenu = new PopupMenu(this, this.ownerDocument)
+    if (this.#view) this.#contextMenu.attach(this.#view)
+    this.appendChild(this.#contextMenu.el)
+    this.addEventListener('contextmenu', this.#onContextMenu)
+    this.ownerDocument.addEventListener('pointerdown', this.#onContextPointer, true)
+  }
+
+  #onContextPointer = (event: PointerEvent): void => {
+    const menu = this.#contextMenu
+    if (!menu?.open) return
+    if (event.target instanceof Node && menu.el.contains(event.target)) return
+    menu.close()
+  }
+
+  #onContextMenu = (event: MouseEvent): void => {
+    const view = this.#view
+    const menu = this.#contextMenu
+    if (!view || !menu) return
+    const target = event.target
+    if (!(target instanceof Element) || !this.#contentHost?.contains(target)) return
+
+    const items = target.closest('a')
+      ? LINK_CONTEXT_ITEMS
+      : target.closest('img')
+        ? IMAGE_CONTEXT_ITEMS
+        : target.closest('table')
+          ? TABLE_CONTEXT_ITEMS
+          : null
+    if (!items) return
+    event.preventDefault()
+    menu.show(items, event.clientX, event.clientY, () => view.focus())
+  }
+
+  #mountInline(): void {
+    if (!this.hasAttribute('inline')) return
+    this.addEventListener('focusin', this.#onInlineFocus)
+    this.addEventListener('focusout', this.#onInlineBlur)
+  }
+
+  #onInlineFocus = (): void => {
+    this.classList.add('ol-inline-active')
+  }
+
+  #onInlineBlur = (event: FocusEvent): void => {
+    const next = event.relatedTarget
+    if (next instanceof Node && this.contains(next)) return
+    this.classList.remove('ol-inline-active')
+  }
+
+  #mountAutoresize(): void {
+    const host = this.#contentHost
+    const view = this.#view
+    if (!host || !view || !this.hasAttribute('autoresize')) return
+    const apply = (): void => {
+      const pm = host.querySelector<HTMLElement>('.ProseMirror')
+      if (!pm) return
+      pm.style.height = 'auto'
+      pm.style.height = `${pm.scrollHeight}px`
+    }
+    apply()
+    if (typeof ResizeObserver !== 'undefined') {
+      this.#resizeObserver = new ResizeObserver(apply)
+      this.#resizeObserver.observe(host)
+    }
+  }
+
+  async #mountContentCss(): Promise<void> {
+    const urls = contentCssUrls(this.getAttribute('content-css'))
+    if (urls.length === 0) return
+    await loadContentCss(this.ownerDocument, urls)
+  }
+
+  #applyFullscreen(active: boolean): void {
+    this.#fullscreen = active
+    this.classList.toggle('ol-fullscreen', active)
+    this.#toolbar?.setItemState('fullscreen', { active })
+    this.#toolbar2?.setItemState('fullscreen', { active })
+  }
+
+  /**
+   * Reconcile with a fullscreen session that ended somewhere else.
+   *
+   * Escape and the browser's own control leave fullscreen without going through
+   * the toolbar. The `ol-fullscreen` class carries the fixed-position fallback,
+   * so left set it kept the editor covering the page, and the next press of the
+   * button only cleared the stale state instead of entering fullscreen.
+   *
+   * Guarded on `#nativeFullscreen`, because no `fullscreenchange` fires when
+   * `requestFullscreen` is unavailable and the class-based fallback is all there
+   * is -- an event about some other element must not tear that down.
+   */
+  #onFullscreenChange = (): void => {
+    const native = this.ownerDocument.fullscreenElement === this
+    if (native) this.#applyFullscreen(true)
+    else if (this.#nativeFullscreen) this.#applyFullscreen(false)
+    this.#nativeFullscreen = native
+  }
+
+  #onToggleFullscreen = (): void => {
+    const next = !this.#fullscreen
+    this.#applyFullscreen(next)
+    if (next) {
+      void Promise.resolve(this.requestFullscreen?.()).catch(() => {
+        /* class-based fallback already applied */
+      })
+    } else if (this.ownerDocument.fullscreenElement === this) {
+      void this.ownerDocument.exitFullscreen?.()
+    }
+    this.#view?.focus()
+  }
+
+  #onToggleVisualAids = (): void => {
+    this.#visualAids = !this.#visualAids
+    this.classList.toggle('ol-visual-aids', this.#visualAids)
+    this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })
+    this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
   }
 
   #rebindTextarea(): void {
@@ -613,9 +883,19 @@ export { normalizePastedHtml } from '@openleaf-editor/paste'
  * `element.imageUploader` overrides it for one editor.
  */
 export {
+  registerFilePicker,
+  registerImageClasses,
+  registerImageList,
   registerImageUploader,
+  registerLinkList,
+  registerTranslations,
+  setUiLocale,
+  type FilePicker,
+  type FilePickerKind,
   type ImageUploadResult,
   type ImageUploader,
+  type ListedResource,
+  type PickedResource,
 } from '@openleaf-editor/ui'
 
 /** Idempotent: safe to import twice, or alongside a bundled copy. */

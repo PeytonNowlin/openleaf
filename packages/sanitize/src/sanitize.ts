@@ -27,6 +27,7 @@
  * under the attacker's control.
  */
 
+import { isAllowedEmbedSrc, safeAllowList } from './embed.js'
 import { filterStyle } from './css.js'
 import {
   DEFAULT_POLICY,
@@ -128,6 +129,33 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
       }
       if (policy.urlAttributes.includes(name) && !isUrlAllowed(attr.value, policy)) {
         node.removeAttribute(attr.name)
+      }
+    }
+
+    if (tag === 'iframe') {
+      const src = node.getAttribute('src')
+      if (!isAllowedEmbedSrc(src)) {
+        node.remove()
+        return
+      }
+      // An allowlisted host is not enough on its own. `allow` is the attribute
+      // that lets a frame step outside the page's restrictions, so a permitted
+      // player URL carrying `allow="camera; microphone"` would still be handed
+      // the camera.
+      if (node.hasAttribute('allow')) {
+        const kept = safeAllowList(node.getAttribute('allow'))
+        if (kept === null) node.removeAttribute('allow')
+        else if (kept !== node.getAttribute('allow')) node.setAttribute('allow', kept)
+      }
+    }
+    // A player with nothing to play. `<source>` children count: source-only
+    // media is what the editor emits for `<video><source src="clip.webm">`, and
+    // removing it for having no `src` attribute would delete a working player.
+    if (tag === 'video' || tag === 'audio') {
+      const hasSource = node.getAttribute('src') !== null || node.querySelector('source') !== null
+      if (!hasSource) {
+        node.remove()
+        return
       }
     }
 

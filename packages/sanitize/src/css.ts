@@ -39,6 +39,9 @@ const LINE_HEIGHT = /^(?:normal|\d+(?:\.\d+)?(?:px|em|rem|%)?)$/i
 const INDENT = /^(?:\d+(?:\.\d+)?em|\d+(?:\.\d+)?px)$/i
 
 /** How a declaration's value is checked, by property. */
+const LENGTH = /^-?\d+(?:\.\d+)?(?:px|em|rem|%|pt|ex|ch)?$/i
+const VALIGN = new Set(['top', 'middle', 'bottom', 'baseline'])
+
 const CHECKS: Record<string, (value: string) => boolean> = {
   'text-align': (value) => ALIGN.has(value.toLowerCase()),
   color: isColor,
@@ -48,6 +51,13 @@ const CHECKS: Record<string, (value: string) => boolean> = {
   'line-height': (value) => LINE_HEIGHT.test(value.trim().toLowerCase().replace(/\s+/g, '')),
   'padding-inline-start': (value) => INDENT.test(value.trim().toLowerCase().replace(/\s+/g, '')),
   'list-style-type': (value) => LIST_STYLE.has(value.trim().toLowerCase()),
+  padding: (value) => {
+    const parts = value.trim().split(/\s+/)
+    return parts.length >= 1 && parts.length <= 4 && parts.every((part) => LENGTH.test(part))
+  },
+  width: (value) => LENGTH.test(value.trim()),
+  height: (value) => LENGTH.test(value.trim()),
+  'vertical-align': (value) => VALIGN.has(value.trim().toLowerCase()),
 }
 
 function isColor(value: string): boolean {

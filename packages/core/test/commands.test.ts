@@ -4,12 +4,12 @@ import {
   activeHeadingLevel,
   activeLink,
   canInsert,
+  coreSchema,
   insertHorizontalRule,
   insertImage,
   isMarkActive,
   isNodeActive,
   parseHtml,
-  schema,
   serializeHtml,
   setLink,
   toggleBlockquote,
@@ -23,7 +23,7 @@ import {
 } from '../src/index.js'
 
 function stateFrom(html: string): EditorState {
-  return EditorState.create({ doc: parseHtml(html), schema })
+  return EditorState.create({ doc: parseHtml(html), schema: coreSchema() })
 }
 
 /** Select the whole document's text content. */

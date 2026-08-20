@@ -29,10 +29,22 @@
  *    Escape leaves, matching TinyMCE and CKEditor 5 so muscle memory transfers.
  */
 
-import { activeHeadingLevel, shortcutFor, toggleHeading, setParagraph } from '@openleaf-editor/core'
+import {
+  activeBlockClass,
+  activeHeadingLevel,
+  formatParts,
+  setBlockClass,
+  setHeading,
+  setParagraph,
+  shortcutFor,
+  toggleHeading,
+  type FormatSpec,
+} from '@openleaf-editor/core'
 import type { EditorState, Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { ensureSprite, iconElement } from './icons.js'
+import { t, onLocaleChange, withLocale } from './i18n.js'
+import { ToolbarOverflow } from './overflow.js'
 import {
   DEFAULT_LAYOUT,
   getToolbarItem,
@@ -47,6 +59,18 @@ export interface ToolbarOptions {
   label?: string
   /** Space-separated item ids, `|` for a separator. */
   layout?: string
+  /**
+   * Collapse groups that do not fit into a More menu. Off by default: wrapping
+   * keeps every control visible, which is the safer accessibility default.
+   */
+  overflow?: boolean
+  /** Extra block formats, typically classes from the host's content CSS. */
+  formats?: readonly FormatSpec[]
+  /**
+   * Language for this toolbar's labels, independent of every other editor's.
+   * Absent means the document-wide locale.
+   */
+  locale?: string | null
 }
 
 interface Control {
@@ -114,7 +138,13 @@ export class Toolbar {
   #live: HTMLDivElement
   #liveTimer: ReturnType<typeof setTimeout> | undefined
   #layout: string
+  #label: string
+  #formats: readonly FormatSpec[]
+  #locale: string | null
+  #wantsOverflow: boolean
+  #overflow: ToolbarOverflow | null = null
   #unsubscribe: (() => void) | undefined
+  #unlocale: (() => void) | undefined
   /** Focusable buttons in DOM order; the roving tabindex walks this. */
   #focusables: HTMLButtonElement[] = []
   #rovingIndex = 0
@@ -123,6 +153,10 @@ export class Toolbar {
     this.#host = host
     this.#doc = doc
     this.#layout = options.layout ?? DEFAULT_LAYOUT
+    this.#label = options.label ?? 'Formatting'
+    this.#formats = options.formats ?? []
+    this.#locale = options.locale ?? null
+    this.#wantsOverflow = options.overflow === true
 
     ensureStyles(doc)
     ensureSprite(doc)
@@ -130,7 +164,7 @@ export class Toolbar {
     this.el = doc.createElement('div')
     this.el.className = 'ol-toolbar'
     this.el.setAttribute('role', 'toolbar')
-    this.el.setAttribute('aria-label', options.label ?? 'Formatting')
+    this.el.setAttribute('aria-label', t(this.#label))
 
     this.#live = doc.createElement('div')
     this.#live.className = 'ol-live'
@@ -147,17 +181,38 @@ export class Toolbar {
     this.#unsubscribe = onRegistryChange(() => {
       this.#rerenderPreservingState()
     })
+    this.#unlocale = onLocaleChange(() => {
+      this.#rerenderPreservingState()
+    })
+  }
+
+  /**
+   * Change this toolbar's language and rebuild its labels.
+   *
+   * Per toolbar rather than per document, so one editor switching language does
+   * not relabel every other editor on the page.
+   */
+  setLocale(next: string | null): void {
+    const value = next ?? null
+    if (value === this.#locale) return
+    this.#locale = value
+    if (this.#view) this.#rerenderPreservingState()
   }
 
   /** Attach to a view and build the controls. */
   mount(view: EditorView): void {
     this.#view = view
     this.#render()
+    if (this.#wantsOverflow && !this.#overflow) {
+      this.#overflow = new ToolbarOverflow(this.el, this.#host, this.#doc)
+    }
     this.update(view.state)
   }
 
   destroy(): void {
     this.#unsubscribe?.()
+    this.#unlocale?.()
+    this.#overflow?.destroy()
     clearTimeout(this.#liveTimer)
     this.el.removeEventListener('keydown', this.#onKeydown)
     this.#destroyCustoms()
@@ -194,7 +249,15 @@ export class Toolbar {
    * Rendering
    * -------------------------------------------------------------- */
 
+  /**
+   * Labels are produced inside this toolbar's own locale scope, so two editors
+   * with different `lang` values on one page do not overwrite each other.
+   */
   #render(): void {
+    withLocale(this.#locale, () => this.#renderScoped())
+  }
+
+  #renderScoped(): void {
     this.#destroyCustoms()
     this.el.replaceChildren()
     this.#controls.clear()
@@ -242,7 +305,9 @@ export class Toolbar {
 
     if (group.childElementCount > 0) this.el.appendChild(group)
 
+    this.el.setAttribute('aria-label', t(this.#label))
     this.#refreshFocusables()
+    this.#overflow?.reattach()
   }
 
   /**
@@ -308,10 +373,11 @@ export class Toolbar {
 
     // The accessible name stays constant across states. Baking "pressed" into
     // it would double up with what the platform already announces.
-    button.setAttribute('aria-label', spec.label)
+    button.setAttribute('aria-label', t(spec.label))
 
     const shortcut = spec.shortcut ? shortcutFor(spec.shortcut) : null
-    button.title = shortcut ? `${spec.label} (${shortcut})` : spec.label
+    const label = t(spec.label)
+    button.title = shortcut ? `${label} (${shortcut})` : label
 
     if ((spec.kind ?? 'action') === 'toggle') {
       button.setAttribute('aria-pressed', 'false')
@@ -376,22 +442,28 @@ export class Toolbar {
   #buildBlockTypeSelect(): HTMLSelectElement {
     const select = this.#doc.createElement('select')
     select.className = 'ol-select'
-    select.setAttribute('aria-label', 'Paragraph style')
+    select.setAttribute('aria-label', t('Paragraph style'))
     select.dataset['olId'] = BLOCK_TYPE_ID
 
     const options: Array<[string, string]> = [
-      ['p', 'Paragraph'],
-      ['1', 'Heading 1'],
-      ['2', 'Heading 2'],
-      ['3', 'Heading 3'],
-      ['4', 'Heading 4'],
-      ['5', 'Heading 5'],
-      ['6', 'Heading 6'],
+      ['p', t('Paragraph')],
+      ['1', t('Heading 1')],
+      ['2', t('Heading 2')],
+      ['3', t('Heading 3')],
+      ['4', t('Heading 4')],
+      ['5', t('Heading 5')],
+      ['6', t('Heading 6')],
     ]
     for (const [value, label] of options) {
       const option = this.#doc.createElement('option')
       option.value = value
       option.textContent = label
+      select.appendChild(option)
+    }
+    for (const format of this.#formats) {
+      const option = this.#doc.createElement('option')
+      option.value = `format:${format.token}`
+      option.textContent = t(format.label)
       select.appendChild(option)
     }
 
@@ -428,8 +500,24 @@ export class Toolbar {
       const view = this.#view
       if (!view) return
       const value = select.value
-      const command = value === 'p' ? setParagraph : toggleHeading(Number(value))
-      command(view.state, view.dispatch, view)
+      if (value.startsWith('format:')) {
+        const { element, className } = formatParts(value.slice('format:'.length))
+        // Element first: changing the block type replaces the node, so a class
+        // written before that would go with the node it was written on.
+        // `setHeading` rather than `toggleHeading` -- picking "Section" twice
+        // must not turn the heading back into a paragraph.
+        if (element === 'p') setParagraph(view.state, view.dispatch, view)
+        else if (element !== null && /^h[1-6]$/.test(element)) {
+          setHeading(Number(element.slice(1)))(view.state, view.dispatch, view)
+        }
+        // Null clears, which is what a token naming only an element means: the
+        // author picked "Section", not "Section, keeping whatever class was on
+        // the paragraph before".
+        setBlockClass(className)(view.state, view.dispatch, view)
+      } else {
+        const command = value === 'p' ? setParagraph : toggleHeading(Number(value))
+        command(view.state, view.dispatch, view)
+      }
       // Return the caret to the content only when the author committed the
       // choice by pointer. Keyboard users keep focus and leave with Tab or
       // Escape.
@@ -488,6 +576,10 @@ export class Toolbar {
    * `tr` is passed so announcements can be gated on a real formatting change.
    */
   update(state: EditorState, tr?: Transaction): void {
+    withLocale(this.#locale, () => this.#updateScoped(state, tr))
+  }
+
+  #updateScoped(state: EditorState, tr?: Transaction): void {
     // Announce only on a discrete formatting transition, never on cursor
     // movement through already-formatted text. That gate is the whole
     // difference between a useful announcement and a chatty one.
@@ -543,9 +635,23 @@ export class Toolbar {
     }
 
     if (this.#select) {
+      const formatClass = activeBlockClass(state)
       const level = activeHeadingLevel(state)
-      const value = level === null ? 'p' : String(level)
-      if (this.#select.value !== value) this.#select.value = value
+      const activeElement = level === null ? 'p' : `h${level}`
+      // Both halves have to agree, or `p.lead` would look active on an
+      // `<h2 class="lead">` and picking it again would appear to do nothing.
+      const matching = this.#formats.find((format) => {
+        const { element, className } = formatParts(format.token)
+        if (className !== formatClass) return false
+        return element === null || element === activeElement
+      })
+      if (matching) {
+        const next = `format:${matching.token}`
+        if (this.#select.value !== next) this.#select.value = next
+      } else {
+        const value = level === null ? 'p' : String(level)
+        if (this.#select.value !== value) this.#select.value = value
+      }
     }
 
     if (transitions.length > 0) this.#announce(transitions.join(', '))

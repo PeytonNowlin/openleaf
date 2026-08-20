@@ -28,22 +28,34 @@ export const BUDGETS_KB = {
   // inherited archive already contains, which is the same reasoning that keeps
   // the table schema here while table editing is opt-in.
   //
-  // Raised again from 92 when `<caption>` and `<colgroup>` stopped being
-  // discarded. That change measured 91.955 KB against a 92 KB budget: a pass by
-  // 45 bytes, which is not a pass -- it is the next contributor's build failing
-  // for a reason that has nothing to do with their patch. The headroom is the
-  // point of the number, so it is restored rather than shaved.
+  // Raised from 92 when insert/structure nodes (figure, details, allowlisted
+  // media, heading ids) landed in the base schema, and again when table
+  // captions, colgroup and cell style joined it. All of them have to live in
+  // core or inherited markup degrades to an uneditable atom -- a caption core
+  // cannot read is a caption it deletes.
   //
-  // This is core rather than the table plugin for the reason stated in
-  // tables.ts: the schema has to be present or an inherited table degrades to an
-  // uneditable atom, and a caption it cannot read is a caption it deletes.
-  'openleaf.min.js': 94,
+  // Raised again for editor chrome: menubar, context menus, floating toolbars,
+  // help, visual aids, autolink and i18n. The framework wrappers are separate
+  // packages and do not land in this file.
+  //
+  // Raised to 108 for typography: font family and size, line height, indent,
+  // direction, language, sub/superscript and list styles. Same reasoning as
+  // every rise before it -- these are marks and attributes in the storage
+  // format, so an inherited `<font face>` or `<span style="font-family">` stays
+  // editable text instead of becoming an opaque preserved atom. The toolbar
+  // controls for them are the integrator's choice, not extra weight here.
+  //
+  // 108 against a measured 106.8: the headroom is deliberate. A budget that
+  // passes by tens of bytes fails on the next contributor's unrelated patch.
+  'openleaf.min.js': 108,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
   'openleaf-import.min.js': 12,
   // Larger than the editor, which is exactly why it is a separate file.
   'openleaf-import-docx.min.js': 140,
+  'openleaf-session.min.js': 10,
+  'openleaf-insert.min.js': 20,
 }
 
 /** Short label for a bundle: `openleaf-tables.min.js` reads as `-tables`. */

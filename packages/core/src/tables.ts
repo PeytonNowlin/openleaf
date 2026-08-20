@@ -36,7 +36,13 @@
  * a navigable table into a grid of unrelated values.
  */
 
-import type { NodeSpec } from 'prosemirror-model'
+import type { DOMOutputSpec, NodeSpec } from 'prosemirror-model'
+import {
+  applyStyleAttribute,
+  parseDeclarations,
+  safeColor,
+  serializeDeclarations,
+} from './css.js'
 import { isSerializing, scrub, serializationTarget } from './preserve.js'
 
 /** Presentational attributes legacy CMS content puts on `<table>`. */
@@ -44,6 +50,76 @@ const TABLE_LEGACY_ATTRS = ['border', 'cellpadding', 'cellspacing', 'width', 'al
 
 /** Attributes legacy content puts on cells, plus the accessibility-critical ones. */
 const CELL_LEGACY_ATTRS = ['align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr'] as const
+
+const ROW_ATTRS = ['class', 'align', 'valign'] as const
+
+/**
+ * Style properties the table schema models. Kept here rather than in
+ * `MODELLED_PROPERTIES` because those drive span-unwrapping; a span with
+ * `padding` is still an opaque atom, a cell with `padding` is a cell.
+ */
+const TABLE_STYLE_PROPS = ['background-color', 'width', 'height'] as const
+const ROW_STYLE_PROPS = ['background-color', 'height'] as const
+const CELL_STYLE_PROPS = ['background-color', 'padding'] as const
+
+const LENGTH = /^-?\d+(?:\.\d+)?(?:px|em|rem|%|pt|ex|ch)?$/i
+const VALIGN = new Set(['top', 'middle', 'bottom', 'baseline'])
+
+function safeLength(value: string): string | null {
+  const candidate = value.trim()
+  return LENGTH.test(candidate) ? candidate : null
+}
+
+function safePadding(value: string): string | null {
+  const parts = value.trim().split(/\s+/)
+  if (parts.length < 1 || parts.length > 4) return null
+  const safe = parts.map(safeLength)
+  return safe.every((part): part is string => part !== null) ? safe.join(' ') : null
+}
+
+function safeVAlign(value: string | null | undefined): string | null {
+  if (!value) return null
+  const candidate = value.trim().toLowerCase()
+  return VALIGN.has(candidate) ? candidate : null
+}
+
+/**
+ * The one validator for a table style declaration, on the way in or out.
+ *
+ * Exported because the property dialogs in `@openleaf-editor/plugins-table`
+ * write node attributes directly, which does not go through any parse rule. A
+ * dialog with its own idea of an acceptable padding would drift from this one,
+ * and `padding: 0;position:fixed;inset:0` is what that drift looks like: the
+ * value becomes two more declarations when the style attribute is serialized.
+ *
+ * Returns null for a property this schema does not model, so an unrecognised
+ * name is dropped rather than trusted.
+ */
+export function safeTableStyleValue(property: string, value: string | undefined): string | null {
+  if (!value) return null
+  if (property === 'background-color') return safeColor(value)
+  if (property === 'padding') return safePadding(value)
+  if (property === 'width' || property === 'height') return safeLength(value)
+  return null
+}
+
+function safeStyleValue(property: string, value: string | undefined): string | null {
+  return safeTableStyleValue(property, value)
+}
+
+function readStyle(el: Element, properties: readonly string[]): string | null {
+  const declarations = parseDeclarations(el.getAttribute('style'))
+  const out = new Map<string, string>()
+  for (const name of properties) {
+    const safe = safeStyleValue(name, declarations.get(name))
+    if (safe) out.set(name, safe)
+  }
+  if (!out.has('background-color')) {
+    const bg = safeColor(el.getAttribute('bgcolor'))
+    if (bg) out.set('background-color', bg)
+  }
+  return serializeDeclarations(out)
+}
 
 function readAttrs(el: Element, names: readonly string[]): Record<string, string | null> {
   const out: Record<string, string | null> = {}
@@ -87,20 +163,41 @@ const cellAttrs = {
   rowspan: { default: 1 },
   colwidth: { default: null },
   ...legacyDefaults(CELL_LEGACY_ATTRS),
+  style: { default: null },
 }
 
 function cellGetAttrs(dom: Node): Record<string, unknown> {
   const el = dom as Element
-  return {
+  const attrs: Record<string, unknown> = {
     colspan: Number.parseInt(el.getAttribute('colspan') ?? '1', 10) || 1,
     rowspan: Number.parseInt(el.getAttribute('rowspan') ?? '1', 10) || 1,
     colwidth: readColwidth(el),
     ...readAttrs(el, CELL_LEGACY_ATTRS),
+    style: readStyle(el, CELL_STYLE_PROPS),
   }
+  // Fold CSS vertical-align into the HTML attribute the commands already edit,
+  // so an inherited `style="vertical-align:middle"` is not a second, uneditable
+  // spelling of the same fact.
+  if (!attrs['valign']) {
+    const fromStyle = safeVAlign(parseDeclarations(el.getAttribute('style')).get('vertical-align'))
+    if (fromStyle) attrs['valign'] = fromStyle
+  }
+  return attrs
+}
+
+function styledElement(
+  tag: string,
+  attrs: Record<string, string>,
+  style: string | null,
+): DOMOutputSpec {
+  const el = serializationTarget().createElement(tag)
+  for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value)
+  if (style) applyStyleAttribute(el, style)
+  return { dom: el, contentDOM: el }
 }
 
 function cellToDOM(tag: 'td' | 'th') {
-  return (node: { attrs: Record<string, unknown> }): [string, Record<string, string>, 0] => {
+  return (node: { attrs: Record<string, unknown> }): DOMOutputSpec => {
     const attrs = writeAttrs(node.attrs, CELL_LEGACY_ATTRS)
     const colspan = node.attrs['colspan'] as number
     const rowspan = node.attrs['rowspan'] as number
@@ -108,6 +205,8 @@ function cellToDOM(tag: 'td' | 'th') {
     if (rowspan !== 1) attrs['rowspan'] = String(rowspan)
     const colwidth = node.attrs['colwidth'] as number[] | null
     if (colwidth) attrs['data-colwidth'] = colwidth.join(',')
+    const style = node.attrs['style'] as string | null
+    if (style) return styledElement(tag, attrs, style)
     return [tag, attrs, 0]
   }
 }
@@ -186,6 +285,7 @@ export const table: NodeSpec = {
     ...legacyDefaults(TABLE_LEGACY_ATTRS),
     caption: { default: null },
     colgroup: { default: null },
+    style: { default: null },
   },
   parseDOM: [
     {
@@ -194,6 +294,7 @@ export const table: NodeSpec = {
         ...readAttrs(dom as Element, TABLE_LEGACY_ATTRS),
         caption: readFurniture(dom as Element, ['caption']),
         colgroup: readFurniture(dom as Element, ['colgroup', 'col']),
+        style: readStyle(dom as Element, TABLE_STYLE_PROPS),
       }),
     },
     /*
@@ -225,7 +326,8 @@ export const table: NodeSpec = {
     const attrs = writeAttrs(node.attrs, TABLE_LEGACY_ATTRS)
     const caption = node.attrs['caption'] as string | null
     const colgroup = node.attrs['colgroup'] as string | null
-    if (!caption && !colgroup) return ['table', attrs, ['tbody', 0]]
+    const style = node.attrs['style'] as string | null
+    if (!caption && !colgroup && !style) return ['table', attrs, ['tbody', 0]]
 
     /*
      * Furniture forces a real element rather than an output-spec array, because
@@ -236,6 +338,7 @@ export const table: NodeSpec = {
     const doc = serializationTarget()
     const table = doc.createElement('table')
     for (const [name, value] of Object.entries(attrs)) table.setAttribute(name, value)
+    if (style) applyStyleAttribute(table, style)
 
     // Document order is fixed by HTML: caption first, then colgroup, then rows.
     // Emitting them in any other order produces markup browsers reshuffle, which
@@ -252,10 +355,21 @@ export const table: NodeSpec = {
 export const table_row: NodeSpec = {
   content: '(table_cell | table_header)*',
   tableRole: 'row',
-  attrs: { class: { default: null }, align: { default: null } },
-  parseDOM: [{ tag: 'tr', getAttrs: (dom) => readAttrs(dom as Element, ['class', 'align']) }],
+  attrs: { ...legacyDefaults(ROW_ATTRS), style: { default: null } },
+  parseDOM: [
+    {
+      tag: 'tr',
+      getAttrs: (dom) => ({
+        ...readAttrs(dom as Element, ROW_ATTRS),
+        style: readStyle(dom as Element, ROW_STYLE_PROPS),
+      }),
+    },
+  ],
   toDOM(node) {
-    return ['tr', writeAttrs(node.attrs, ['class', 'align']), 0]
+    const attrs = writeAttrs(node.attrs, ROW_ATTRS)
+    const style = node.attrs['style'] as string | null
+    if (style) return styledElement('tr', attrs, style)
+    return ['tr', attrs, 0]
   },
 }
 

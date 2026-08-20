@@ -216,8 +216,13 @@ describe('core claimed tags carry residual attributes', () => {
     const html = '<ol type="a" reversed="" start="3"><li><p>x</p></li></ol>'
     const out = serializeHtml(parseHtml(html))
     expect(out).toContain('start="3"')
-    expect(out).toContain('type="a"')
+    // `reversed` is not modelled, so the carry mechanism is what keeps it.
     expect(out).toContain('reversed')
+    // The legacy `type` attribute is read into the modelled list style and
+    // written back as the declaration, the same modernization `align="center"`
+    // gets. Emitting both spellings would be the bug.
+    expect(out).toContain('list-style-type:lower-alpha')
+    expect(out).not.toContain('type="a"')
   })
 
   it('does not emit the language class twice for a code block', () => {

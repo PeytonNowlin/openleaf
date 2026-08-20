@@ -15,7 +15,7 @@
     "test:e2e:quick": "playwright test --project=chromium",
     "test:e2e:ui": "playwright test --ui",
     "test:watch": "vitest",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.tests.json",
     "verify": "node scripts/verify.mjs",
     "verify:quick": "node scripts/verify.mjs --quick",
     "publish:beta": "pnpm -r --filter \"./packages/**\" publish --access public --tag beta && node scripts/dist-tags.mjs",

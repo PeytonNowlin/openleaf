@@ -25,8 +25,11 @@ describe('executable content must not survive the round trip', () => {
     expect(out).toContain('<p>ok</p>')
   })
 
-  it('drops <iframe>', () => {
+  it('drops a hostile iframe and keeps an allowlisted player', () => {
     expect(roundTrip('<p>ok</p><iframe src="https://evil.example"></iframe>')).not.toContain('iframe')
+    expect(roundTrip('<iframe src="https://www.youtube.com/embed/abc" title="Clip"></iframe>')).toContain(
+      'youtube.com/embed/abc',
+    )
   })
 
   it('drops <object> and <embed>', () => {
@@ -91,6 +94,8 @@ describe('what preservation still guarantees', () => {
   })
 
   it('keeps legacy presentational tags', () => {
-    expect(roundTrip('<p><font face="Verdana">old</font></p>')).toContain('face="Verdana"')
+    // `face` on its own is the font-family mark now, so it converts. Two
+    // attributes is the case no mark can hold, which is what preservation is for.
+    expect(roundTrip('<p><font face="Verdana" size="2">old</font></p>')).toContain('face="Verdana"')
   })
 })

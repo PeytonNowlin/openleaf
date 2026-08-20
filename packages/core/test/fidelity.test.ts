@@ -79,6 +79,7 @@ const BLOCK_SELECTOR = [
   'p', 'div', 'section', 'article', 'aside', 'header', 'footer', 'nav', 'main',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'li', 'ul', 'ol',
   'table', 'caption', 'thead', 'tbody', 'tr', 'td', 'th', 'figure', 'figcaption',
+  'details', 'summary',
   'center', 'hr', 'dl', 'dt', 'dd',
 ].join(',')
 
@@ -100,16 +101,48 @@ function visibleText(html: string): string {
     .join('\n')
 }
 
-/** Multiset of `tag@name=value` for every attribute in the tree. */
+/**
+ * Multiset of `tag@name=value` for every attribute in the tree.
+ *
+ * `style` is counted one declaration at a time rather than as a whole string,
+ * because the schema legitimately rewrites the attribute without losing
+ * anything from it. Two things it does:
+ *
+ *   - A modelled property comes back in the schema's canonical order and
+ *     spelling. `line-height:1.8;text-align:center` is stored as two node
+ *     attributes and re-emitted as `text-align:center;line-height:1.8`.
+ *   - One `<span>` carrying two modelled declarations round-trips as two nested
+ *     spans, because ProseMirror serializes one element per mark.
+ *
+ * Comparing whole strings called both of those a loss. Comparing declarations
+ * asks the question the corpus is actually for -- did any styling disappear --
+ * and still fails if one does. The byte-level guarantee for declarations the
+ * schema does NOT model has its own test in format.test.ts, and `is stable
+ * after one round trip` still pins the exact output here.
+ */
 function attributes(html: string): Map<string, number> {
   const host = document.createElement('div')
   host.innerHTML = html
   const counts = new Map<string, number>()
+  const bump = (key: string): void => {
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
   for (const el of host.querySelectorAll('*')) {
     const tag = el.nodeName.toLowerCase()
     for (const attr of el.attributes) {
-      const key = `${tag}@${attr.name}=${attr.value.replace(/\s+/g, ' ').trim()}`
-      counts.set(key, (counts.get(key) ?? 0) + 1)
+      const value = attr.value.replace(/\s+/g, ' ').trim()
+      if (attr.name !== 'style') {
+        bump(`${tag}@${attr.name}=${value}`)
+        continue
+      }
+      for (const declaration of value.split(';')) {
+        const at = declaration.indexOf(':')
+        if (at === -1) continue
+        const property = declaration.slice(0, at).trim().toLowerCase()
+        const setting = declaration.slice(at + 1).trim()
+        if (property === '' || setting === '') continue
+        bump(`${tag}@style~${property}:${setting}`)
+      }
     }
   }
   return counts
@@ -206,9 +239,21 @@ describe('paste cleanup (stable and text-preserving; stripping is the goal)', ()
         expect(stripped.length).toBeGreaterThan(0)
       })
 
+      /*
+       * This block round-trips the fixture through the SCHEMA alone, with no
+       * paste normalizer, as a backstop: nothing here should be able to import
+       * a vendor artefact even if the normalizer were bypassed.
+       *
+       * `line-height:1.38` used to be on this list and is not any more, because
+       * line-height became a modelled property. The schema reads it for the same
+       * reason it reads `text-align` -- an author can set it deliberately, and it
+       * cannot tell that value apart from Google Docs' default. Stripping vendor
+       * styling is the paste pipeline's job, which strips every declaration
+       * rather than allowlisting; `gdocs.test.ts` pins that it still does.
+       */
       it('leaves no vendor styling behind', () => {
         const survived = [...attributes(once).keys()].filter((key) =>
-          /mso-|line-height:1\.38|docs-internal-guid/.test(key),
+          /mso-|docs-internal-guid/.test(key),
         )
         expect(survived).toEqual([])
       })
@@ -256,7 +301,21 @@ describe('preservation layer', () => {
   })
 
   it('preserves presentational legacy tags instead of flattening them', () => {
-    expect(roundTrip('<p><font face="Verdana">old</font></p>')).toContain('face="Verdana"')
+    // Two attributes, so no single mark can hold the element: the preservation
+    // layer keeps it whole rather than a mark silently dropping the rest.
+    expect(roundTrip('<p><font face="Verdana" size="2">old</font></p>')).toContain('face="Verdana"')
+  })
+
+  // Face alone is now the font-family mark, so it converts rather than being
+  // preserved -- the same bargain `<font color>` has always had. The point of
+  // modelling it is that the run stays editable text instead of becoming an
+  // opaque atom; the styling has to survive the conversion, which is what this
+  // asserts.
+  it('converts a font element a mark can hold completely', () => {
+    const out = roundTrip('<p><font face="Verdana">old</font></p>')
+    expect(out).not.toContain('<font')
+    expect(out).toContain('font-family:Verdana')
+    expect(out).toContain('old')
   })
 })
 

@@ -32,12 +32,15 @@ import {
 } from '@openleaf-editor/core'
 import type { Command } from 'prosemirror-state'
 import { promptForImage, promptForLink } from './dialog.js'
+import { promptHelp } from './help.js'
 import type { IconName } from './icons.js'
 import { registerToolbarItem } from './registry.js'
 import { imageUploaderFor, runUploader } from './upload.js'
 
 /** Event the host listens for to switch between rich and source views. */
 export const SOURCE_TOGGLE_EVENT = 'openleaf:toggle-source'
+export const FULLSCREEN_TOGGLE_EVENT = 'openleaf:toggle-fullscreen'
+export const VISUAL_AIDS_TOGGLE_EVENT = 'openleaf:toggle-visual-aids'
 
 let registered = false
 
@@ -203,8 +206,9 @@ export function registerDefaultItems(): void {
       const existing = activeLink(view.state)
       void promptForLink(host.ownerDocument, {
         href: (existing?.['href'] as string | undefined) ?? '',
+        title: (existing?.['title'] as string | undefined) ?? null,
         target: (existing?.['target'] as string | undefined) ?? null,
-      }).then((result) => {
+      }, host).then((result) => {
         if (!result) {
           view.focus()
           return
@@ -236,8 +240,8 @@ export function registerDefaultItems(): void {
       // worse than no picker: the author has already chosen the file.
       const uploader = imageUploaderFor(host)
       const options = uploader
-        ? { upload: (file: File) => runUploader(uploader, file, host) }
-        : {}
+        ? { upload: (file: File) => runUploader(uploader, file, host), host }
+        : { host }
 
       void promptForImage(host.ownerDocument, options).then((result) => {
         if (!result) {
@@ -247,8 +251,12 @@ export function registerDefaultItems(): void {
         insertImage({
           src: result.src,
           alt: result.alt,
+          title: result.title,
           width: result.width,
           height: result.height,
+          align: result.align,
+          className: result.className,
+          ...(result.caption ? { caption: result.caption } : {}),
         })(view.state, view.dispatch, view)
         view.focus()
       })
@@ -279,6 +287,41 @@ export function registerDefaultItems(): void {
     isActive: () => false,
     run: ({ host }) => {
       host.dispatchEvent(new CustomEvent(SOURCE_TOGGLE_EVENT, { bubbles: true }))
+    },
+  })
+
+  registerToolbarItem({
+    id: 'fullscreen',
+    type: 'button',
+    kind: 'toggle',
+    label: 'Fullscreen',
+    icon: 'fullscreen',
+    isActive: () => false,
+    run: ({ host }) => {
+      host.dispatchEvent(new CustomEvent(FULLSCREEN_TOGGLE_EVENT, { bubbles: true }))
+    },
+  })
+
+  registerToolbarItem({
+    id: 'visualAids',
+    type: 'button',
+    kind: 'toggle',
+    label: 'Visual aids',
+    icon: 'visualAids',
+    isActive: () => false,
+    run: ({ host }) => {
+      host.dispatchEvent(new CustomEvent(VISUAL_AIDS_TOGGLE_EVENT, { bubbles: true }))
+    },
+  })
+
+  registerToolbarItem({
+    id: 'help',
+    type: 'button',
+    kind: 'action',
+    label: 'Help',
+    icon: 'help',
+    run: ({ host }) => {
+      promptHelp(host.ownerDocument)
     },
   })
 }

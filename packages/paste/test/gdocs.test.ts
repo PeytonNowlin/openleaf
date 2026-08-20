@@ -115,6 +115,35 @@ describe('content that must survive', () => {
   })
 })
 
+describe('vendor styling', () => {
+  /*
+   * The guarantee moved here from the schema-level backstop in
+   * fidelity.test.ts. `line-height` became a modelled property, so the schema
+   * now reads it -- correctly, since an author can set it deliberately and the
+   * schema cannot tell that apart from Google Docs' 1.38 default. Which makes
+   * this the only place the promise still holds: a paste is the one moment the
+   * author has asked for the source's appearance NOT to come along.
+   */
+  it('brings none of the source styling with it', () => {
+    const out = normalizePastedHtml(GDOCS)
+    for (const artefact of ['line-height', 'font-size', 'font-family', 'white-space', 'vertical-align']) {
+      expect(out, artefact).not.toContain(artefact)
+    }
+  })
+
+  it('keeps no style attribute at all', () => {
+    expect(normalizePastedHtml(GDOCS)).not.toContain('style=')
+  })
+
+  // Stripping styles must not cost the formatting they encoded: Google Docs
+  // spells bold as `font-weight:700` on a span, so a normalizer that stripped
+  // first and promoted second would flatten the whole paste to plain text.
+  it('promotes the formatting those styles encoded before dropping them', () => {
+    const out = normalizePastedHtml(GDOCS)
+    expect(out).toContain('<strong>bold text</strong>')
+  })
+})
+
 describe('idempotence', () => {
   it('normalizing already-clean output changes nothing', () => {
     const once = normalizePastedHtml(GDOCS)

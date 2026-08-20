@@ -52,7 +52,6 @@ import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
 const NEVER_PRESERVE: readonly string[] = [
   'script',
   'style',
-  'iframe',
   'frame',
   'frameset',
   'object',
@@ -75,7 +74,65 @@ const NEVER_PRESERVE: readonly string[] = [
 const dropRules = NEVER_PRESERVE.map((tag) => ({ tag, ignore: true, priority: 100 }))
 
 /**
- * Scrub markup before it is stored verbatim.
+ * `<source>` and `<track>`: media children the schema stores as markup rather
+ * than as nodes, so they do not count as content when deciding what to keep.
+ *
+ * Lives here because this module owns the "keep it whole or claim it" decision,
+ * and `structure.ts` asks the same question when it reads a media element.
+ */
+export const MEDIA_FURNITURE_TAGS: ReadonlySet<string> = new Set(['source', 'track'])
+
+/**
+ * True when a media element holds content its node cannot carry.
+ *
+ * Video and audio are atoms whose only modelled children are `<source>` and
+ * `<track>`, so fallback content -- "Download <a href=...>the video</a>", shown
+ * by a browser that cannot play the file -- has nowhere to live on the node.
+ */
+export function hasMediaFallback(el: Element): boolean {
+  for (const child of Array.from(el.childNodes)) {
+    if (child.nodeType === 1) {
+      if (!MEDIA_FURNITURE_TAGS.has(child.nodeName.toLowerCase())) return true
+      continue
+    }
+    // Whitespace between the <source> children is layout, not fallback: the
+    // element still models cleanly and still round-trips.
+    if (child.nodeType === 3 && (child.textContent ?? '').trim() !== '') return true
+  }
+  return false
+}
+
+/**
+ * Media whose fallback content the node cannot hold, kept whole.
+ *
+ * Priority 45 sits below the schema's own rules (50) and above the drop rule
+ * (40): a video with a safe `src` is still claimed as a node first, and an
+ * unsafe iframe is still dropped rather than preserved, but a `<video>` carrying
+ * a download link is preserved instead of being deleted along with it.
+ */
+const preserveMediaWithFallback = ['video', 'audio'].map((tag) => ({
+  tag,
+  priority: 45,
+  getAttrs(dom: HTMLElement) {
+    if (!hasMediaFallback(dom)) return false
+    return { html: scrub(dom), tag: dom.nodeName.toLowerCase() }
+  },
+}))
+
+/**
+ * Media the schema declined. Priority 40 is below the schema's default (50),
+ * so an allowlisted iframe or a video with a safe `src` is claimed first;
+ * anything left is ignored rather than preserved as an atom. Preserving an
+ * arbitrary iframe would be a nested page the author never asked to keep.
+ */
+const dropDeclinedMedia = ['iframe', 'video', 'audio'].map((tag) => ({
+  tag,
+  ignore: true as const,
+  priority: 40,
+}))
+
+/**
+ * Scrub markup before it is stored for preservation.
  *
  * Preserving an element verbatim means preserving its attributes verbatim, and
  * `<div class="callout" onclick="steal()">` is not something an author needs
@@ -314,6 +371,8 @@ export const unknownBlock: NodeSpec = {
   },
   parseDOM: [
     ...dropRules,
+    ...preserveMediaWithFallback,
+    ...dropDeclinedMedia,
     {
       tag: '*',
       // Lowest priority: every real rule in the schema gets first refusal.
@@ -349,6 +408,8 @@ export const unknownInline: NodeSpec = {
   },
   parseDOM: [
     ...dropRules,
+    ...preserveMediaWithFallback,
+    ...dropDeclinedMedia,
     {
       tag: '*',
       // Higher than unknownBlock's catch-all: inline gets first refusal so

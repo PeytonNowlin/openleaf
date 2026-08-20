@@ -1,0 +1,24 @@
+// Type checking for the tests, which the package projects do not cover.
+//
+// Each package's tsconfig has `include: ["src"]`, because its job is to emit the
+// published `dist` and a test file has no business in there. The effect was that
+// no test file was ever type checked -- vitest and Playwright transpile without
+// checking, so a broken type in a test surfaced as a confusing runtime failure
+// or not at all.
+//
+// A separate non-composite project instead: `noEmit` because there is nothing to
+// build, and `composite: false` because a composite project may not disable
+// emit. It reads the packages' `dist` types the same way an integrator would,
+// which is why `tsc -b` runs first in the `typecheck` script.
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": ["packages/*/test/**/*.ts"]
+}

@@ -46,6 +46,20 @@ describe('tables are real nodes, not preserved atoms', () => {
     expect(out).toContain('<ul>')
     expect(out).toContain('Two')
   })
+
+  it('parses a nested table as a table, not a preserved atom', () => {
+    const types = nodeTypes(
+      '<table><tr><td><table><tr><td>inner</td></tr></table></td></tr></table>',
+    )
+    expect(types.filter((name) => name === 'table')).toHaveLength(2)
+    expect(types).not.toContain('unknown_block')
+  })
+
+  it('round-trips a nested table', () => {
+    const html =
+      '<table><tbody><tr><td><table><tbody><tr><td>inner</td></tr></tbody></table></td></tr></tbody></table>'
+    expect(roundTrip(html)).toBe(html)
+  })
 })
 
 describe('legacy and accessibility attributes survive', () => {
@@ -79,6 +93,25 @@ describe('legacy and accessibility attributes survive', () => {
 
   it('keeps class on tables, rows and cells', () => {
     const html = '<table class="data"><tbody><tr class="odd"><td class="num">1</td></tr></tbody></table>'
+    expect(roundTrip(html)).toBe(html)
+  })
+
+  it('keeps cell vertical alignment', () => {
+    const html = '<table><tbody><tr><td valign="middle">A</td></tr></tbody></table>'
+    expect(roundTrip(html)).toBe(html)
+  })
+
+  it('folds CSS vertical-align into valign so it is editable', () => {
+    const out = roundTrip(
+      '<table><tbody><tr><td style="vertical-align:bottom">A</td></tr></tbody></table>',
+    )
+    expect(out).toContain('valign="bottom"')
+    expect(out).not.toContain('vertical-align')
+  })
+
+  it('keeps a cell background as modelled style', () => {
+    const html =
+      '<table><tbody><tr><td style="background-color:#cc0000">A</td></tr></tbody></table>'
     expect(roundTrip(html)).toBe(html)
   })
 })
