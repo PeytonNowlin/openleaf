@@ -38,7 +38,8 @@ export {
   DEFAULT_INSERT_LAYOUT,
 } from './floating.js'
 export { loadContentCss, contentCssUrls, scopeContentCss } from './content-css.js'
-export { CSS, ensureStyles, markStylesExternal, registerStyles } from './styles.js'
+export { CSS } from './css.js'
+export { ensureStyles, markStylesExternal, registerStyles } from './styles.js'
 export { ensureSprite, iconElement, iconNames, registerIcons, type IconName } from './icons.js'
 export {
   promptFields,

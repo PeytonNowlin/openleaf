@@ -155,14 +155,111 @@ const schemaGuardOk = step('no schema singleton outside core', () => {
   return `${scanned} files across every package's src and test`
 })
 
-// 7. Every published entry point still imports with no DOM present, by package
+// 6. Package boundaries: peer ranges, one ProseMirror version, honest
+//    `sideEffects`.
+//
+//    Every extension point in this system is a module-level mutable singleton --
+//    the schema memo in core, the toolbar registry in ui, the i18n catalogs --
+//    and ProseMirror compares NodeType, MarkType and Schema by *identity*. Two
+//    copies of core in a consumer's tree means a plugin's table node is not the
+//    node type the editor accepts; two copies of ui means the plugin registers
+//    into one Map while the toolbar reads another, and the only symptom is
+//    `no toolbar item registered for "insertTable"` -- which reads like an
+//    integrator typo, not a dependency-graph bug.
+//
+//    The script-tag channel has been protected against this twice (element's
+//    `__runtime`, demo/build.mjs's shareRuntime, the guard above). These three
+//    assertions are the npm channel's equivalent, and they are mechanical
+//    because the manual instruction in the README is not.
+const boundariesOk = step('package boundaries (peers, one ProseMirror, sideEffects)', () => {
+  // Packages whose module state must be shared. A consumer that ends up with two
+  // copies of any of these has a broken editor, so nothing may pull one in as a
+  // private dependency -- it has to bind to whatever the consumer already has.
+  const SHARED = new Set([
+    '@openleaf-editor/core',
+    '@openleaf-editor/ui',
+    '@openleaf-editor/paste',
+    '@openleaf-editor/plugins-import',
+  ])
+
+  // Packages allowed to omit `sideEffects`, each because it genuinely has one.
+  const SIDE_EFFECT_EXEMPT = {
+    element: 'defineOpenLeafEditor() at module scope -- registering the custom element is the point',
+    react: 're-exports element, whose import registers the custom element',
+    vue: 're-exports element, whose import registers the custom element',
+    angular: 're-exports element; Angular decorators are applied at module scope',
+  }
+
+  const names = readdirSync(new URL('../packages', import.meta.url))
+  const pmRanges = new Map() // prosemirror-x -> Map<range, string[]>
+  const privateShared = []
+  const missingFlag = []
+
+  for (const name of names) {
+    let manifest
+    try {
+      manifest = JSON.parse(readFileSync(new URL(`../packages/${name}/package.json`, import.meta.url), 'utf8'))
+    } catch {
+      continue
+    }
+
+    for (const dep of Object.keys(manifest.dependencies ?? {})) {
+      if (SHARED.has(dep)) privateShared.push(`${name} -> ${dep}`)
+    }
+
+    for (const block of ['dependencies', 'peerDependencies', 'devDependencies']) {
+      for (const [dep, range] of Object.entries(manifest[block] ?? {})) {
+        if (!dep.startsWith('prosemirror-')) continue
+        if (!pmRanges.has(dep)) pmRanges.set(dep, new Map())
+        const byRange = pmRanges.get(dep)
+        if (!byRange.has(range)) byRange.set(range, [])
+        byRange.get(range).push(`${name}/${block}`)
+      }
+    }
+
+    if (!('sideEffects' in manifest) && !(name in SIDE_EFFECT_EXEMPT)) missingFlag.push(name)
+  }
+
+  if (privateShared.length > 0) {
+    throw new Error(
+      'these declare a shared-runtime package under "dependencies", which lets a ' +
+        'consumer end up with two copies of a module-level singleton; move it to ' +
+        `peerDependencies ("workspace:^") with a matching devDependency: ${privateShared.join(', ')}`,
+    )
+  }
+
+  const divergent = [...pmRanges]
+    .filter(([, byRange]) => byRange.size > 1)
+    .map(([dep, byRange]) =>
+      `${dep} (${[...byRange].map(([range, who]) => `${range} in ${who.join(' + ')}`).join(' vs ')})`,
+    )
+  if (divergent.length > 0) {
+    throw new Error(
+      'these ProseMirror packages are declared at more than one range, so a ' +
+        'consumer can resolve two copies and node types stop comparing equal: ' +
+        divergent.join('; '),
+    )
+  }
+
+  if (missingFlag.length > 0) {
+    throw new Error(
+      'these declare no "sideEffects", so webpack and rollup consumers get no ' +
+        'tree-shaking at all; add `false`, or `["**/*.css"]` where a .css subpath ' +
+        `is exported, or add the package to SIDE_EFFECT_EXEMPT with a reason: ${missingFlag.join(', ')}`,
+    )
+  }
+
+  return `${names.length} packages, ${pmRanges.size} ProseMirror packages at one range each`
+})
+
+// 8. Every published entry point still imports with no DOM present, by package
 //    specifier rather than by file path, so the exports map is exercised too.
 //    See scripts/ssr-imports.mjs for why both halves of that matter.
 const ssrOk = step('SSR imports (every published entry point)', () => {
   run('node', ['scripts/ssr-imports.mjs'])
 })
 
-// 8. Bundle size. The "no build step" promise means integrators load this over
+// 9. Bundle size. The "no build step" promise means integrators load this over
 //    the wire, so the number is a feature and regressions should hurt.
 const sizeOk = step(`bundle size budgets (${describeBudgets()})`, () => checkBundleSizes())
 
@@ -177,7 +274,15 @@ for (const r of results) {
 console.log(`  ${'-'.repeat(width + 26)}`)
 
 const allOk =
-  buildOk && typecheckOk && unitOk && browserOk && cleanBuildOk && schemaGuardOk && ssrOk && sizeOk
+  buildOk &&
+  typecheckOk &&
+  unitOk &&
+  browserOk &&
+  cleanBuildOk &&
+  schemaGuardOk &&
+  boundariesOk &&
+  ssrOk &&
+  sizeOk
 if (quick) {
   console.log(
     `  ${yellow('note')} --quick ran chromium only. Run plain \`pnpm verify\` before pushing.`,

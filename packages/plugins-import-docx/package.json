@@ -32,10 +32,13 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@openleaf-editor/plugins-import": "workspace:*",
     "mammoth": "^1.8.0"
   },
+  "peerDependencies": {
+    "@openleaf-editor/plugins-import": "workspace:^"
+  },
   "devDependencies": {
-    "@openleaf-editor/core": "workspace:*"
+    "@openleaf-editor/core": "workspace:*",
+    "@openleaf-editor/plugins-import": "workspace:*"
   }
 }

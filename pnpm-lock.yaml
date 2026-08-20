@@ -47,6 +47,7 @@ importers:
       orderedmap:
         specifier: ^2.1.1
         version: 2.1.1
+    devDependencies:
       prosemirror-commands:
         specifier: ^1.6.2
         version: 1.7.2
@@ -62,9 +63,6 @@ importers:
       prosemirror-state:
         specifier: ^1.4.3
         version: 1.4.4
-      prosemirror-transform:
-        specifier: ^1.10.2
-        version: 1.12.0
       prosemirror-view:
         specifier: ^1.37.0
         version: 1.42.2
@@ -74,7 +72,7 @@ importers:
         version: 1.8.5
 
   packages/element:
-    dependencies:
+    devDependencies:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
@@ -117,7 +115,7 @@ importers:
         version: link:../core
 
   packages/plugins-colour:
-    dependencies:
+    devDependencies:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
@@ -132,7 +130,7 @@ importers:
         version: 1.42.2
 
   packages/plugins-highlight:
-    dependencies:
+    devDependencies:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
@@ -148,13 +146,12 @@ importers:
       prosemirror-view:
         specifier: ^1.37.0
         version: 1.42.2
-    devDependencies:
       refractor:
         specifier: ^5.0.0
         version: 5.0.0
 
   packages/plugins-import:
-    dependencies:
+    devDependencies:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
@@ -164,22 +161,18 @@ importers:
       '@openleaf-editor/ui':
         specifier: workspace:*
         version: link:../ui
+      mammoth:
+        specifier: ^1.8.0
+        version: 1.12.1
       prosemirror-state:
         specifier: ^1.4.3
         version: 1.4.4
       prosemirror-view:
         specifier: ^1.37.0
         version: 1.42.2
-    devDependencies:
-      mammoth:
-        specifier: ^1.8.0
-        version: 1.12.1
 
   packages/plugins-import-docx:
     dependencies:
-      '@openleaf-editor/plugins-import':
-        specifier: workspace:*
-        version: link:../plugins-import
       mammoth:
         specifier: ^1.8.0
         version: 1.12.1
@@ -187,9 +180,12 @@ importers:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
+      '@openleaf-editor/plugins-import':
+        specifier: workspace:*
+        version: link:../plugins-import
 
   packages/plugins-insert:
-    dependencies:
+    devDependencies:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
@@ -197,7 +193,7 @@ importers:
         specifier: workspace:*
         version: link:../ui
       prosemirror-model:
-        specifier: ^1.25.11
+        specifier: ^1.24.1
         version: 1.25.11
       prosemirror-state:
         specifier: ^1.4.3
@@ -207,7 +203,7 @@ importers:
         version: 1.42.2
 
   packages/plugins-session:
-    dependencies:
+    devDependencies:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
@@ -228,16 +224,13 @@ importers:
         version: 1.42.2
 
   packages/plugins-table:
-    dependencies:
+    devDependencies:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
       '@openleaf-editor/ui':
         specifier: workspace:*
         version: link:../ui
-      prosemirror-keymap:
-        specifier: ^1.2.2
-        version: 1.2.3
       prosemirror-model:
         specifier: ^1.24.1
         version: 1.25.11
@@ -247,9 +240,6 @@ importers:
       prosemirror-tables:
         specifier: ^1.6.4
         version: 1.8.5
-      prosemirror-transform:
-        specifier: ^1.10.2
-        version: 1.12.0
       prosemirror-view:
         specifier: ^1.37.0
         version: 1.42.2
@@ -278,7 +268,7 @@ importers:
         version: link:../core
 
   packages/ui:
-    dependencies:
+    devDependencies:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
