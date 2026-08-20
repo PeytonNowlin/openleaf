@@ -40,8 +40,10 @@ import {
   parseStyle,
   plainText,
   resolveDocument,
+  serializeFragment,
   stripComments,
   unwrap,
+  type Container,
 } from './dom.js'
 
 /** Namespaced junk Word emits: <o:p>, <w:sdt>, <m:oMath>, <v:shape>, <st1:place>. */
@@ -221,7 +223,7 @@ function buildNested(run: ListInfo[], doc: Document): Element {
 }
 
 /** Replace runs of Word list paragraphs with real nested lists. */
-function reconstructLists(container: Element, doc: Document): void {
+function reconstructLists(container: Container, doc: Document): void {
   // Word wraps the body in <div class="WordSection1">. The algorithm only
   // sees direct children, so without this the whole paste becomes one
   // attributed wrapper and the lists inside it are never reconstructed.
@@ -261,7 +263,7 @@ function reconstructLists(container: Element, doc: Document): void {
 }
 
 /** Remove Word's proprietary elements, classes, attributes and styles. */
-function stripJunk(container: Element): void {
+function stripJunk(container: Container): void {
   for (const el of Array.from(container.querySelectorAll('*'))) {
     // <style> and <xml> blocks carry Word's entire list definition table.
     if (el.nodeName === 'STYLE' || el.nodeName === 'XML' || el.nodeName === 'LINK') {
@@ -301,15 +303,19 @@ export function looksLikeWord(html: string): boolean {
 }
 
 export function normalizeWord(html: string, explicitDocument?: Document): string {
-  const doc = resolveDocument(explicitDocument)
-  const container = parseFragment(html, doc)
+  // Inert throughout -- see parseFragment. `doc` here is the fragment's own
+  // inert document, so the <ul>/<ol>/<li>/<p> that list reconstruction builds
+  // below are inert too, and moving the paste's own nodes into them never
+  // crosses into the live document.
+  const fragment = parseFragment(html, resolveDocument(explicitDocument))
+  const { root, doc } = fragment
 
   // Lists first: the algorithm reads conditional comments and mso- styles
   // that the later passes delete.
-  reconstructLists(container, doc)
-  extractSemantics(container, doc)
-  stripComments(container)
-  stripJunk(container)
+  reconstructLists(root, doc)
+  extractSemantics(root, doc)
+  stripComments(root)
+  stripJunk(root)
 
-  return container.innerHTML
+  return serializeFragment(fragment)
 }
