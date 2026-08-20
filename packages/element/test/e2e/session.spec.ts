@@ -50,7 +50,7 @@ test.describe('with the session bundle loaded', () => {
     await find.getByRole('searchbox').fill('alpha')
     await find.getByRole('textbox', { name: 'Replace' }).fill('uno')
     await find.getByRole('button', { name: 'Replace all' }).click()
-    await expect(find.getByRole('status')).toHaveText('2 replaced')
+    await expect(find.locator('.ol-find-count')).toHaveText('2 replaced')
   })
 
   // Replace acted on `matches[-1]` and gave up before dispatching, on a button
@@ -69,7 +69,7 @@ test.describe('with the session bundle loaded', () => {
     await toolbar(page).getByRole('button', { name: 'Find and replace' }).click()
     const find = page.getByRole('search', { name: 'Find and replace' })
     await find.getByRole('searchbox').fill('nothinghere')
-    await expect(find.getByRole('status')).toHaveText('No matches')
+    await expect(find.locator('.ol-find-count')).toHaveText('No matches')
     await expect(find.getByRole('button', { name: 'Replace', exact: true })).toBeDisabled()
     await expect(find.getByRole('button', { name: 'Replace all' })).toBeDisabled()
     await expect(find.getByRole('button', { name: 'Next' })).toBeDisabled()

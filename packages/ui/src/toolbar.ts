@@ -262,7 +262,7 @@ export class Toolbar {
    * Detach the toolbar AND take its DOM with it.
    *
    * Removing the nodes is part of the contract, not tidiness. The host appends
-   * `el` and `liveRegion` into the editor element and reads that element's
+   * `el` into the editor element and reads that element's
    * `innerHTML` back as document content when it rebuilds -- so a toolbar left
    * behind by `destroy()` becomes the author's document on the next build, and
    * then gets posted to the server.
@@ -278,7 +278,6 @@ export class Toolbar {
     this.#controls.clear()
     this.#view = null
     this.el.remove()
-    this.#live.remove()
   }
 
   /**

@@ -80,6 +80,7 @@ import {
   imageFilesFrom,
   announce,
   imageUploaderFor,
+  disposeLiveRegion,
   liveRegion,
   loadContentCss,
   promptForImage,
@@ -163,6 +164,242 @@ export class OpenLeafEditor extends HTMLElementBase {
   #formBridge = new FormBridge(this, () => this.value, (html) => { this.value = html })
   #contentHost: HTMLDivElement | null = null
   /** The Alt+F10 hint, when there is a toolbar for it to describe. */
+  #hint: HTMLSpanElement | null = null
+  #sourceArea: HTMLTextAreaElement | null = null
+  #sourceMode = false
+  #deferred = false
+  /** True between a completed #build() and its #teardown(). Makes teardown once-only. */
+  #built = false
+  /**
+   * The document the build registered its listeners on.
+   *
+   * Teardown is deferred by a microtask, and `adoptNode` both removes the
+   * element and reassigns `ownerDocument` -- so by the time teardown runs,
+   * `this.ownerDocument` can be a different document than the one holding the
+   * listeners. Toolbar and MenuBar already hold their own document for exactly
+   * this reason.
+   */
+  #boundDoc: Document | null = null
+  /**
+   * The last document this editor knew about, as HTML.
+   *
+   * Written by every build and refreshed on disconnect. It exists so a rebuild
+   * has something better than `this.innerHTML` to fall back to -- by then the
+   * subtree has held the toolbar markup this element appended, and reading that
+   * back made it the author's document and posted it to the server. It also
+   * backs `get value` once the view is gone.
+   */
+  #initialHtml: string | null = null
+  /**
+   * A `value` assignment made while there was no view to receive it: before the
+   * build (pre-upgrade, or while waiting for DOMContentLoaded) or after a
+   * teardown. Consumed by the next build.
+   */
+  #pendingValue: string | null = null
+  /**
+   * False until the document changes at all after a build.
+   *
+   * Every wrapper mounts an empty editor and then pushes the server's HTML in
+   * through `value`. That first fill is not an edit, and making it undoable is
+   * why an author's FIRST Ctrl-Z used to empty the document. Any later
+   * assignment -- or any keystroke -- is a real change, and undoable.
+   */
+  #docTouched = false
+  /** The schema this editor was built with. Fixed for its lifetime. */
+  #schema = coreSchema()
+  #basePlugins: Plugin[] = []
+  #pluginCache = new Map<EditorPluginFactory, Plugin[]>()
+  #unwatchPlugins: (() => void) | undefined
+  #unwatchSchema: (() => void) | undefined
+  #resizeObserver: ResizeObserver | null = null
+  #visualAids = true
+  /** Whether the aids plugin was installed at all. Build-time, like the attribute. */
+  #visualAidsAvailable = true
+  #fullscreen = false
+  /** True while a real fullscreen session is ours, as opposed to the fallback. */
+  #nativeFullscreen = false
+
+  /**
+   * Build the editor -- but not before the document's scripts have run.
+   *
+   * A custom element upgrades at the microtask checkpoint that ends the script
+   * defining it, so `connectedCallback` fires BEFORE the next `<script>` tag
+   * executes. Every documented integration loads plugin bundles as later script
+   * tags, which means they register after this point.
+   *
+   * ProseMirror plugins survive that, because `state.reconfigure` can swap them
+   * into a live editor. A schema cannot: `reconfigure` keeps the old schema by
+   * construction. So an editor built at upgrade time could never contain a
+   * plugin's node types -- not as an edge case, but in every shipped layout.
+   *
+   * Waiting for `DOMContentLoaded` closes that gap for the whole two-script-tag
+   * model. The editor already appears asynchronously via element upgrade, so
+   * nothing about this is visible to an author.
+   */
+  connectedCallback(): void {
+    // Before anything else: a property assigned to this element BEFORE its
+    // definition loaded is an own data property, and an own data property
+    // shadows the prototype accessor for good. `defer`, code splitting and SSR
+    // hydration all set `.value` before the element upgrades, and without this
+    // the author sees an empty editor while `el.value` reports their content.
+    this.#upgradeProperty('value')
+    this.#upgradeProperty('imageUploader')
+
+    if (this.#view || this.#deferred) {
+      // Reconnection with the session still alive -- a move. Nothing is
+      // rebuilt, but the element may have landed in a different <form>, and the
+      // submit hooks have to follow it. `attach()` detaches first, so this
+      // cannot double-register.
+      //
+      // `attach()` and not `rebind()`, deliberately. Re-resolving the textarea
+      // would be wrong more often than right: `bind()`'s nested branch is
+      // `querySelector('textarea')`, which in source mode matches the
+      // `.ol-source` box ahead of the real one. The residual gap -- a host that
+      // REPLACES the bound textarea while the element is moved leaves the
+      // bridge writing into a detached node -- is left open knowingly; closing
+      // it means teaching `bind()` to skip the source box first.
+      if (this.#view) this.#formBridge.attach()
+      return
+    }
+
+    if (this.ownerDocument.readyState === 'loading') {
+      this.#deferred = true
+      this.ownerDocument.addEventListener(
+        'DOMContentLoaded',
+        () => {
+          this.#deferred = false
+          if (this.isConnected && !this.#view) this.#build()
+        },
+        { once: true },
+      )
+      return
+    }
+    this.#build()
+  }
+
+  /**
+   * Re-apply a property that was set before this element upgraded.
+   *
+   * Deleting the own data property uncovers the prototype accessor again;
+   * assigning the saved value then actually runs it. This is the standard
+   * custom-element "lazy property" dance, and the element is unusable under
+   * every asynchronous loading strategy without it.
+   */
+  #upgradeProperty(name: 'value' | 'imageUploader'): void {
+    if (!Object.prototype.hasOwnProperty.call(this, name)) return
+    const self = this as unknown as Record<string, unknown>
+    const pending = self[name]
+    delete self[name]
+    self[name] = pending
+  }
+
+  #build(): void {
+    registerDefaultItems()
+    ensureStyles(this.ownerDocument)
+    ensureSkins(this.ownerDocument)
+    applySkin(this, this.getAttribute('skin'))
+    applyColourScheme(this, this.#colourScheme())
+
+    const textarea = this.#formBridge.bind()
+    // Precedence, and the reasoning for each step:
+    //
+    //  - an explicit assignment the element could not apply yet outranks
+    //    everything, because it is the host saying so imperatively;
+    //  - then the bound textarea, which disconnect syncs before snapshotting,
+    //    so the two only disagree when the host rewrote the textarea itself;
+    //  - then whatever markup is in the element NOW, but only if there is any.
+    //    Teardown empties the subtree, so anything here on a rebuild was put
+    //    back by the host -- a server re-render, newer than any snapshot;
+    //  - then the snapshot taken at disconnect. This is what stops the element
+    //    reading its own toolbar markup back as the document.
+    const restored = this.innerHTML.trim()
+    const initialHtml =
+      this.#pendingValue ?? textarea?.value ?? (restored || this.#initialHtml) ?? ''
+    this.#pendingValue = null
+    this.#initialHtml = initialHtml
+    const nestedTextarea =
+      textarea && this.contains(textarea) ? textarea : null
+    // An externally bound textarea -- the documented `for=` pattern -- stayed
+    // visible and focusable unless the integrator remembered `hidden`. Forgetting
+    // is not cosmetic: a keyboard user can tab into it, type, and have
+    // `FormBridge.sync()` overwrite every word at submit, silently, at the exact
+    // moment the work was meant to be saved. It still posts while hidden.
+    if (textarea && !nestedTextarea) textarea.hidden = true
+    // Nested binding used to `innerHTML = ''` the textarea out of the document,
+    // so it was no longer a successful form control. Lift it aside first, then
+    // put it back hidden so the form still posts it.
+    nestedTextarea?.remove()
+    this.innerHTML = ''
+    this.classList.add('ol-editor')
+    this.#applyHostRole()
+    if (this.hasAttribute('inline')) this.classList.add('ol-inline')
+    if (this.hasAttribute('autoresize')) this.classList.add('ol-autoresize')
+    this.#visualAidsAvailable = this.getAttribute('visualaids') !== 'false'
+    this.#visualAids = this.#visualAidsAvailable
+    if (this.#visualAids) this.classList.add('ol-visual-aids')
+
+    const formats = parseFormatList(this.getAttribute('formats'))
+    const overflow = this.hasAttribute('toolbar-overflow')
+    const layout = this.getAttribute('toolbar')
+    const wantsToolbar = layout !== 'none'
+    const menubarAttr = this.getAttribute('menubar')
+    const wantsMenubar = menubarAttr !== null && menubarAttr !== 'none'
+
+    if (wantsMenubar) {
+      // The attribute is a list, not a flag: `menubar="edit help"` asks for those
+      // two menus in that order. An unrecognised list leaves no menubar rather
+      // than an empty one with nothing in it.
+      const menus = selectMenus(menubarAttr)
+      if (menus.length > 0) {
+        this.#menubar = new MenuBar(this, this.ownerDocument, menus, this.getAttribute('lang'))
+        this.appendChild(this.#menubar.el)
+      }
+    }
+
+    if (wantsToolbar) {
+      this.#toolbar = new Toolbar(this, this.ownerDocument, {
+        ...(layout ? { layout } : {}),
+        overflow,
+        formats,
+        locale: this.getAttribute('lang'),
+      })
+      this.appendChild(this.#toolbar.el)
+    }
+
+    const toolbar2 = this.getAttribute('toolbar2')
+    if (toolbar2 && toolbar2 !== 'none') {
+      this.#toolbar2 = new Toolbar(this, this.ownerDocument, {
+        layout: toolbar2,
+        label: 'More formatting',
+        overflow,
+        formats,
+        locale: this.getAttribute('lang'),
+      })
+      this.appendChild(this.#toolbar2.el)
+    }
+
+    const contentHost = this.ownerDocument.createElement('div')
+    contentHost.className = 'ol-content'
+    this.appendChild(contentHost)
+    this.#contentHost = contentHost
+
+    // The Alt+F10 hint lives in a hidden element referenced by
+    // aria-describedby. Screen reader users cannot guess the shortcut, and
+    // discoverability comes from telling them rather than from choosing a
+    // guessable key.
+    //
+    // It no longer repeats the region's own name. A description is read
+    // immediately after the name, so "Rich text editor" followed by "Rich text
+    // editor. Press Alt plus F10..." made NVDA say the phrase twice -- and with
+    // no toolbar the whole description said nothing the role had not already.
+    if (wantsToolbar) {
+      const hint = this.ownerDocument.createElement('span')
+      hint.id = `ol-hint-${(hintCounter += 1)}`
+      hint.className = 'ol-live'
+      hint.textContent = this.#localised('Press Alt plus F10 for the formatting toolbar.')
+      this.appendChild(hint)
+      this.#hint = hint
+    }
 
     // Unconditionally, and not from whichever bar happens to exist. A layout of
     // `toolbar="none" toolbar2="bold italic"` used to mount no region at all, so
@@ -402,6 +639,10 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#contentHost = null
     this.#hint?.remove()
     this.#hint = null
+    // The shared announcement region is the host's, so no individual toolbar
+    // may remove it -- but it must not survive the editor either, for the same
+    // reason the chrome above does not: #build() falls back to this.innerHTML.
+    disposeLiveRegion(this)
 
     // Presentation state goes too. `ol-fullscreen` is fixed-position, inset 0,
     // at the top of the stacking order, and nothing re-applies it on a rebuild

@@ -138,8 +138,8 @@ export const COLOUR_CSS = `
 @media (forced-colors: active) {
   .ol-swatch { border: 1px solid ButtonBorder; }
   /* box-shadow is discarded in this mode, so selection cannot ride on it here
-     and is re-expressed as a thicker border -- which leaves `outline` free for
-     focus, the same separation as above. Previously both were `outline` and the
+     and is re-expressed as a thicker border -- which leaves \`outline\` free for
+     focus, the same separation as above. Previously both were \`outline\` and the
      selection rule won, so the focused swatch was indistinguishable. */
   .ol-swatch[aria-selected="true"] { border: 3px solid ButtonText; box-shadow: none; }
   .ol-swatch:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }

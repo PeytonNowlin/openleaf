@@ -65,3 +65,25 @@ export function announce(host: HTMLElement, message: string): void {
     }, 60),
   )
 }
+
+/**
+ * Remove a host's live region and cancel anything queued for it.
+ *
+ * The region is the host's, not any one toolbar's -- several bars share it --
+ * so no `Toolbar.destroy()` may take it away while another bar is still using
+ * it. It goes when the editor itself goes, and it has to go then: the element
+ * reads its own `innerHTML` back as document content when it rebuilds, so a
+ * region left behind becomes the author's document and is posted to the server.
+ *
+ * The pending timer is cleared as well. It holds a reference to the detached
+ * node and would write into it after teardown -- harmless, but it is a timer
+ * outliving the thing it was announcing for.
+ */
+export function disposeLiveRegion(host: HTMLElement): void {
+  const pending = timers.get(host)
+  if (pending !== undefined) {
+    clearTimeout(pending)
+    timers.delete(host)
+  }
+  host.querySelector(`:scope > .${REGION_CLASS}`)?.remove()
+}

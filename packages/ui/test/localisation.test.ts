@@ -196,18 +196,18 @@ describe('the image dialog', () => {
 
 describe('the help dialog', () => {
   it('is built in the editor own language', () => {
-    promptHelp(document, 'fr')
+    promptHelp(document, frenchHost())
     const form = openForm()
     expect(form.querySelector('h2')?.textContent).toBe('Raccourcis clavier')
     expect(buttonText(form)).toContain('Fermer')
   })
 
   it('gives each dialog its own heading id, so two editors cannot collide', () => {
-    promptHelp(document, null)
+    promptHelp(document)
     const first = document.querySelector('dialog')
     const firstId = first?.getAttribute('aria-labelledby')
     first?.remove()
-    promptHelp(document, null)
+    promptHelp(document)
     const secondId = document.querySelector('dialog')?.getAttribute('aria-labelledby')
     expect(firstId).toBeTruthy()
     expect(secondId).not.toBe(firstId)

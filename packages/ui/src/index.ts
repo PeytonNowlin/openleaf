@@ -31,7 +31,7 @@ export {
   type MenuSpec,
   type MenuEntry,
 } from './menu.js'
-export { announce, liveRegion } from './live.js'
+export { announce, disposeLiveRegion, liveRegion } from './live.js'
 export { promptHelp } from './help.js'
 export {
   FloatingToolbars,

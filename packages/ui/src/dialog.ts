@@ -253,6 +253,7 @@ function buildForm<T>(
     busyLabel?: string
     browse?: { label: string; fill: () => Promise<Record<string, string> | null> }
     locale?: string | null
+    host?: HTMLElement
   },
   commit: Commit<T>,
 ): Promise<T | null> {
