@@ -77,6 +77,7 @@ import {
   ensureSkins,
   ensureStyles,
   imageFilesFrom,
+  announce,
   imageUploaderFor,
   liveRegion,
   loadContentCss,
@@ -168,6 +169,8 @@ export class OpenLeafEditor extends HTMLElementBase {
   #unwatchSchema: (() => void) | undefined
   #resizeObserver: ResizeObserver | null = null
   #visualAids = true
+  /** Whether the aids plugin was installed at all. Build-time, like the attribute. */
+  #visualAidsAvailable = true
   #fullscreen = false
   /** True while a real fullscreen session is ours, as opposed to the fallback. */
   #nativeFullscreen = false
@@ -227,7 +230,8 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#applyHostRole()
     if (this.hasAttribute('inline')) this.classList.add('ol-inline')
     if (this.hasAttribute('autoresize')) this.classList.add('ol-autoresize')
-    this.#visualAids = this.getAttribute('visualaids') !== 'false'
+    this.#visualAidsAvailable = this.getAttribute('visualaids') !== 'false'
+    this.#visualAids = this.#visualAidsAvailable
     if (this.#visualAids) this.classList.add('ol-visual-aids')
 
     const formats = parseFormatList(this.getAttribute('formats'))
@@ -432,8 +436,9 @@ export class OpenLeafEditor extends HTMLElementBase {
     // Prefer the bound textarea's form: the documented `for` binding allows
     // the editor to live outside the <form>, next to a hidden textarea inside it.
     this.#formBridge.attach()
-    this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })
-    this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
+    const aidsState = { active: this.#visualAids, enabled: this.#visualAidsAvailable }
+    this.#toolbar?.setItemState('visualAids', aidsState)
+    this.#toolbar2?.setItemState('visualAids', aidsState)
     this.#formBridge.sync()
   }
 
@@ -537,6 +542,13 @@ export class OpenLeafEditor extends HTMLElementBase {
       this.#sourceMode = true
       this.#toolbar?.setItemState('source', { active: true })
       this.#toolbar2?.setItemState('source', { active: true })
+      // Every other control goes unavailable: a formatting command here runs
+      // against the hidden document, which `#teardownSource` then reparses over
+      // the top of. The mode change is announced because moving focus into a
+      // textarea full of angle brackets, with no explanation, is disorienting.
+      this.#toolbar?.setSourceMode(true)
+      this.#toolbar2?.setSourceMode(true)
+      announce(this, this.#localised('HTML source view'))
       // Announced before focus so an enhancer can wrap the textarea while it is
       // still inert; focusing first would move the caret and then move the
       // element out from under it.
@@ -554,6 +566,9 @@ export class OpenLeafEditor extends HTMLElementBase {
     contentHost.hidden = false
     this.#toolbar?.setItemState('source', { active: false })
     this.#toolbar2?.setItemState('source', { active: false })
+    this.#toolbar?.setSourceMode(false)
+    this.#toolbar2?.setSourceMode(false)
+    announce(this, this.#localised('Rich text view'))
     view.focus()
   }
 
@@ -912,6 +927,12 @@ export class OpenLeafEditor extends HTMLElementBase {
   }
 
   #onToggleVisualAids = (): void => {
+    // `visualaids="false"` is read once, at build time, and the plugin that
+    // draws the aids is never installed. The toggle still flipped aria-pressed,
+    // so the button reported a feature as on that does not exist -- a lie a
+    // screen reader repeats, and the one kind of state error ARIA cannot
+    // recover from. The control is disabled instead.
+    if (!this.#visualAidsAvailable) return
     this.#visualAids = !this.#visualAids
     this.classList.toggle('ol-visual-aids', this.#visualAids)
     this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })

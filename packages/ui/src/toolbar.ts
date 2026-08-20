@@ -29,7 +29,7 @@
  *    Escape leaves, matching TinyMCE and CKEditor 5 so muscle memory transfers.
  */
 
-import { shortcutFor, type FormatSpec } from '@openleaf-editor/core'
+import { shortcuts, type FormatSpec } from '@openleaf-editor/core'
 import type { EditorState, Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { ensureSprite, iconElement } from './icons.js'
@@ -115,6 +115,27 @@ function guarded(itemId: string, kind: string, run: () => boolean): boolean {
   }
 }
 
+/**
+ * The `aria-keyshortcuts` spelling of an item's shortcut.
+ *
+ * Not the same string as the tooltip, and deliberately so: the tooltip is for
+ * reading ("Ctrl+B", "⌘B") while this attribute has a defined grammar that
+ * assistive technology parses -- named modifiers joined by `+`, with the
+ * platform's real modifier rather than a symbol.
+ */
+function keyShortcutFor(label: string): string | null {
+  const found = shortcuts.find((entry) => entry.label === label)
+  if (!found) return null
+  const mod =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+      ? 'Meta'
+      : 'Control'
+  return found.keys
+    .split('-')
+    .map((part) => (part === 'Mod' ? mod : part.length === 1 ? part.toUpperCase() : part))
+    .join('+')
+}
+
 export class Toolbar {
   readonly el: HTMLDivElement
 
@@ -130,6 +151,14 @@ export class Toolbar {
   #formats: readonly FormatSpec[]
   #locale: string | null
   #wantsOverflow: boolean
+  /**
+   * True while the host is showing raw HTML instead of the document.
+   *
+   * Not `setItemState`, which is what the host reaches for elsewhere: that
+   * pushes a value per item and has no way to say "and put every other item
+   * back afterwards". A mode is one flag, and clearing it is one assignment.
+   */
+  #sourceMode = false
   #overflow: ToolbarOverflow | null = null
   #unsubscribe: (() => void) | undefined
   #unlocale: (() => void) | undefined
@@ -184,6 +213,21 @@ export class Toolbar {
     if (value === this.#locale) return
     this.#locale = value
     if (this.#view) this.#rerenderPreservingState()
+  }
+
+  /**
+   * Enter or leave source view.
+   *
+   * Every control except the one that leaves again goes unavailable. In source
+   * mode a formatting command ran against the hidden document and the textarea
+   * was then reparsed over the top of it, so pressing Bold silently discarded
+   * the edit -- a button that does nothing is better than a button that
+   * destroys work, and a button that says it is unavailable is better still.
+   */
+  setSourceMode(active: boolean): void {
+    if (active === this.#sourceMode) return
+    this.#sourceMode = active
+    if (this.#view) this.update(this.#view.state)
   }
 
   /** Attach to a view and build the controls. */
@@ -367,9 +411,17 @@ export class Toolbar {
     // it would double up with what the platform already announces.
     button.setAttribute('aria-label', t(spec.label))
 
-    const shortcut = spec.shortcut ? shortcutFor(spec.shortcut) : null
+    // The title is the label and nothing more. Per accname `title` becomes the
+    // DESCRIPTION of an element that already has a name, so "Bold (Ctrl+B)"
+    // beside aria-label="Bold" had NVDA say "Bold, button, Bold Ctrl+B". Equal
+    // to the name, it is dropped rather than read twice; the shortcut moves to
+    // the attribute that exists to carry it.
     const label = t(spec.label)
-    button.title = shortcut ? `${label} (${shortcut})` : label
+    button.title = label
+    if (spec.shortcut) {
+      const keys = keyShortcutFor(spec.shortcut)
+      if (keys) button.setAttribute('aria-keyshortcuts', keys)
+    }
 
     if ((spec.kind ?? 'action') === 'toggle') {
       button.setAttribute('aria-pressed', 'false')
@@ -571,8 +623,11 @@ export class Toolbar {
       const { spec } = control
 
       const readonly = this.#host.hasAttribute('readonly')
+      // `source` itself stays live in source mode: it is the way back out, and
+      // disabling it would strand the author in a textarea.
+      const suspended = this.#sourceMode && spec.id !== 'source'
       const enabled =
-        readonly
+        readonly || suspended
           ? false
           : control.forcedEnabled ??
             guarded(spec.id, 'isEnabled', () =>
@@ -614,7 +669,8 @@ export class Toolbar {
       // here means a custom control gets the same disabled treatment as a button
       // without every plugin author having to remember the attribute exists.
       const trigger = control.el.querySelector<HTMLButtonElement>('button.ol-btn')
-      trigger?.setAttribute('aria-disabled', this.#host.hasAttribute('readonly') ? 'true' : 'false')
+      const unavailable = this.#host.hasAttribute('readonly') || this.#sourceMode
+      trigger?.setAttribute('aria-disabled', unavailable ? 'true' : 'false')
       if (!control.update) continue
       guarded(id, 'update', () => {
         control.update?.(state)
@@ -623,7 +679,7 @@ export class Toolbar {
     }
 
     if (this.#selects.size > 0) {
-      const readonly = this.#host.hasAttribute('readonly')
+      const readonly = this.#host.hasAttribute('readonly') || this.#sourceMode
       // Only declared `type: 'select'` items live here. Block type is a rendered
       // control and keeps its own state in sync through its ToolbarControl.
       for (const [id, select] of this.#selects) {
