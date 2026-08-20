@@ -13,13 +13,16 @@
  *
  * Two details that are easy to get wrong and both matter:
  *
- * 1. **Arrow-key roving is applied only to `<button>` elements.** The block-type
- *    control is a native `<select>`, and when focus is on it, Left/Right have two
- *    competing owners -- the roving handler wants to move to the next item, the
- *    select natively wants to change its value. Intercepting those keys breaks
- *    the select; not intercepting them breaks the toolbar contract. The
- *    resolution is that the select owns all of its own key events and is a
- *    genuine second tab stop rather than part of the roving scheme.
+ * 1. **Arrow-key roving covers the `<select>` controls too.** The default bar has
+ *    four of them -- paragraph style, font family, font size, line height -- and
+ *    when focus is on one, Left/Right have two competing owners: the roving
+ *    handler wants to move to the next item, the select natively wants to change
+ *    its value. Leaving them out was the earlier resolution, and it cost more
+ *    than it saved: ArrowRight from Redo jumped past four controls to Bold, and
+ *    each select became its own tab stop, making the default bar five tab stops
+ *    instead of one. The APG resolution is the one used here -- the toolbar takes
+ *    Left/Right, and Up/Down, Home/End and typeahead are left to the select, so
+ *    it is still fully operable and Alt+Down still opens its list.
  *
  * 2. **Escape returns focus and the selection to the content.** Preventing mouse
  *    clicks from stealing focus solves the mouse case and leaves the keyboard
@@ -84,6 +87,16 @@ interface MountedControl {
 const reported = new Set<string>()
 
 /**
+ * What the roving tabindex walks.
+ *
+ * Buttons and native selects alike: every control the bar renders is one of the
+ * two, and leaving the selects out is what made the default bar five tab stops.
+ * `ol-btn`/`ol-select` rather than the bare tags, so a custom control's own
+ * popover -- which lives on the host, not in here -- cannot be walked into.
+ */
+const FOCUSABLE = 'button.ol-btn, select.ol-select'
+
+/**
  * Call a third-party predicate, falling back rather than propagating.
  *
  * The fallback for BOTH `isActive` and `isEnabled` is `false`. Defaulting
@@ -134,8 +147,8 @@ export class Toolbar {
   #overflow: ToolbarOverflow | null = null
   #unsubscribe: (() => void) | undefined
   #unlocale: (() => void) | undefined
-  /** Focusable buttons in DOM order; the roving tabindex walks this. */
-  #focusables: HTMLButtonElement[] = []
+  /** Focusable controls in DOM order; the roving tabindex walks this. */
+  #focusables: HTMLElement[] = []
   #rovingIndex = 0
 
   constructor(host: HTMLElement, doc: Document, options: ToolbarOptions = {}) {
@@ -193,7 +206,12 @@ export class Toolbar {
     this.#view = view
     this.#render()
     if (this.#wantsOverflow && !this.#overflow) {
-      this.#overflow = new ToolbarOverflow(this.el, this.#host, this.#doc)
+      // Relayout moves whole groups out of the bar and back, so the roving list
+      // is rebuilt after it: a control in the More panel is not a stop in the
+      // bar, and the More trigger itself is.
+      this.#overflow = new ToolbarOverflow(this.el, this.#host, this.#doc, () =>
+        this.#refreshFocusables(),
+      )
     }
     this.update(view.state)
   }
@@ -335,19 +353,15 @@ export class Toolbar {
     if (this.#view) this.update(this.#view.state)
 
     if (!focusedId) return
-    const select = this.#selects.get(focusedId)
-    if (select) {
-      select.focus()
-      return
-    }
-    const control = this.#controls.get(focusedId)
-    if (control) {
-      const index = this.#focusables.indexOf(control.el)
-      if (index >= 0) {
-        this.#rovingIndex = index
-        this.#applyRoving()
-      }
-      control.el.focus()
+    // One lookup for buttons, selects and custom triggers alike: they are all in
+    // the roving list, and they are all found by the id the item was registered
+    // under -- which is why a control that writes its LABEL into `data-ol-id`
+    // silently loses focus here.
+    const index = this.#focusables.findIndex((el) => el.dataset['olId'] === focusedId)
+    if (index >= 0) {
+      this.#rovingIndex = index
+      this.#applyRoving()
+      this.#focusables[index]?.focus()
       return
     }
     this.#customs.find(({ id }) => id === focusedId)?.control.focusable?.focus()
@@ -420,7 +434,7 @@ export class Toolbar {
     if (!view) return null
 
     try {
-      const control = spec.render({ view, host: this.#host, formats: this.#formats })
+      const control = spec.render({ view, id: spec.id, host: this.#host, formats: this.#formats })
       this.#customs.push({ id: spec.id, control })
       return control.el
     } catch (error) {
@@ -720,21 +734,35 @@ export class Toolbar {
    * -------------------------------------------------------------- */
 
   #refreshFocusables(): void {
-    this.#focusables = [...this.el.querySelectorAll<HTMLButtonElement>('button.ol-btn')]
+    this.#focusables = [...this.el.querySelectorAll<HTMLElement>(FOCUSABLE)]
     this.#rovingIndex = 0
     this.#applyRoving()
   }
 
   #applyRoving(): void {
-    this.#focusables.forEach((button, index) => {
-      button.tabIndex = index === this.#rovingIndex ? 0 : -1
+    this.#focusables.forEach((el, index) => {
+      el.tabIndex = index === this.#rovingIndex ? 0 : -1
     })
   }
 
+  /**
+   * Step to the next control, skipping any that cannot take focus.
+   *
+   * Buttons carry `aria-disabled` and stay reachable on purpose. A `<select>`
+   * has no such option -- a readonly editor really does disable it, and a
+   * disabled element silently refuses `focus()`, which would leave the arrow
+   * keys dead at that position.
+   */
   #moveRoving(delta: number): void {
-    if (this.#focusables.length === 0) return
     const count = this.#focusables.length
-    this.#rovingIndex = (this.#rovingIndex + delta + count) % count
+    if (count === 0) return
+    let index = this.#rovingIndex
+    for (let step = 0; step < count; step += 1) {
+      index = (index + delta + count) % count
+      const el = this.#focusables[index]
+      if (el && !(el as HTMLElement & { disabled?: boolean }).disabled) break
+    }
+    this.#rovingIndex = index
     this.#applyRoving()
     this.#focusables[this.#rovingIndex]?.focus()
   }
@@ -755,13 +783,15 @@ export class Toolbar {
     }
 
     const target = event.target as HTMLElement | null
+    if (!target) return
+    const index = this.#focusables.indexOf(target)
+    if (index < 0) return
+    this.#rovingIndex = index
 
-    // Arrow roving applies ONLY to buttons. The native <select> owns its own
-    // key handling; hijacking Left/Right there would break value changing.
-    if (!target || target.tagName !== 'BUTTON') return
-
-    const index = this.#focusables.indexOf(target as HTMLButtonElement)
-    if (index >= 0) this.#rovingIndex = index
+    // Left/Right belong to the toolbar on every control, including a select.
+    // Everything else a select uses -- Up/Down, Home/End, typeahead, Alt+Down to
+    // open the list -- is left alone, which is what keeps it operable.
+    const isSelect = target.tagName === 'SELECT'
 
     switch (event.key) {
       case 'ArrowRight':
@@ -773,10 +803,12 @@ export class Toolbar {
         this.#moveRoving(-1)
         break
       case 'Home':
+        if (isSelect) break
         event.preventDefault()
         this.#setRoving(0)
         break
       case 'End':
+        if (isSelect) break
         event.preventDefault()
         this.#setRoving(this.#focusables.length - 1)
         break
@@ -792,14 +824,9 @@ export class Toolbar {
       this.#focusables[this.#rovingIndex]?.focus()
       return
     }
-    // A toolbar of only selects or custom controls has no roving buttons. The
+    // A bar of nothing but custom controls has no roving stop of its own. The
     // shortcut is still documented; swallowing it with nowhere to go would make
     // a valid `toolbar` attribute a silent no-op.
-    const declared = this.#selects.values().next().value
-    if (declared) {
-      declared.focus()
-      return
-    }
     this.#customs.find(({ control }) => control.focusable)?.control.focusable?.focus()
   }
 

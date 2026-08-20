@@ -76,7 +76,9 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
   trigger.type = 'button'
   // `ol-btn` is load-bearing: it is what the toolbar's roving tabindex looks for.
   trigger.className = 'ol-btn ol-color-trigger'
-  trigger.dataset['olId'] = options.label
+  // The registered id, not the label: the toolbar reads this back to restore
+  // focus after a re-render, and it looks the id up.
+  trigger.dataset['olId'] = ctx.id ?? options.label
   trigger.setAttribute('aria-label', options.label)
   trigger.setAttribute('aria-haspopup', 'dialog')
   trigger.setAttribute('aria-expanded', 'false')

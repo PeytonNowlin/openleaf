@@ -266,74 +266,176 @@ describe('the alignment items', () => {
 })
 
 describe('the overflow menu', () => {
-  /*
-   * Two selects in the menu, and the second one chosen.
-   *
-   * The forwarding used to find its target with `querySelector('select')` -- the
-   * FIRST select in the bar. With only block type that was right by accident;
-   * with a font family beside it, choosing a family applied a heading instead.
-   * The lookup is by `data-ol-id` now, and this is what holds it there.
+  /**
+   * jsdom has no layout, so the measurement the panel is driven by has to be
+   * supplied. Two groups at 200 against a budget of 250 puts exactly one of them
+   * in the panel, which is the interesting case: something in, something out.
    */
-  it('forwards a chosen value to its own control, not the first select', () => {
-    const { toolbar, host } = mount('blockType fontFamily | bold')
-    const overflow = new ToolbarOverflow(toolbar.el, host, document)
-    for (const group of toolbar.el.querySelectorAll<HTMLElement>(':scope > .ol-group')) {
-      group.hidden = true
-    }
-    const more = toolbar.el.querySelector<HTMLButtonElement>('.ol-overflow-more')
-    more!.hidden = false
-    more!.click()
+  function forceOverflow(toolbar: Toolbar, host: HTMLElement): ToolbarOverflow {
+    Object.defineProperty(toolbar.el, 'clientWidth', { get: () => 250, configurable: true })
+    Object.defineProperty(toolbar.el, 'scrollWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.querySelectorAll(':scope > .ol-group').length * 200
+      },
+    })
+    return new ToolbarOverflow(toolbar.el, host, document)
+  }
 
-    const blockOriginal = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="blockType"]')
-    const fontOriginal = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="fontFamily"]')
-    expect(blockOriginal).not.toBeNull()
-    expect(fontOriginal).not.toBeNull()
-    const blockBefore = blockOriginal!.value
+  function panel(host: HTMLElement): HTMLElement {
+    const el = host.querySelector<HTMLElement>('.ol-overflow-menu')
+    if (!el) throw new Error('no overflow panel')
+    return el
+  }
 
-    const fontClone = host.querySelector<HTMLSelectElement>(
-      '.ol-overflow-menu select[data-ol-id="fontFamily"]',
-    )
-    expect(fontClone).not.toBeNull()
-    fontClone!.value = 'Georgia'
-    fontClone!.dispatchEvent(new Event('change', { bubbles: true }))
+  function press(target: Element, key: string): void {
+    target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+  }
 
-    expect(fontOriginal!.value).toBe('Georgia')
-    // The block-type control must be untouched: it is the one the old lookup hit.
-    expect(blockOriginal!.value).toBe(blockBefore)
+  /*
+   * The clone is gone, and with it three bugs that only existed because there
+   * were two of everything: a forwarded click that carried no value, a lookup
+   * that found the wrong control, and a copy that went stale when the caret
+   * moved. The control in the panel IS the control, which is not a thing that
+   * can be got wrong later.
+   */
+  it('moves the real control into the panel rather than a copy of it', () => {
+    const { toolbar, host } = mount('bold | blockType fontFamily')
+    const overflow = forceOverflow(toolbar, host)
+
+    const inPanel = panel(host).querySelector<HTMLSelectElement>('[data-ol-id="fontFamily"]')
+    expect(inPanel).not.toBeNull()
+    // Not a second copy left behind in the bar.
+    expect(toolbar.el.querySelectorAll('[data-ol-id="fontFamily"]')).toHaveLength(0)
+
+    inPanel!.value = 'Georgia'
+    inPanel!.dispatchEvent(new Event('change', { bubbles: true }))
+    // The control still owns its own listener, so the value applied itself.
+    expect(inPanel!.value).toBe('Georgia')
+    overflow.destroy()
+    // Destroying puts the bar back the way it was found.
+    expect(toolbar.el.querySelectorAll('[data-ol-id="fontFamily"]')).toHaveLength(1)
+  })
+
+  it('sits immediately after the bar, not at the end of the editor', () => {
+    const { toolbar, host } = mount('bold | blockType fontFamily')
+    // The editable region, which is what the panel used to be appended after.
+    host.appendChild(document.createElement('div'))
+    const overflow = forceOverflow(toolbar, host)
+    // Appended to the host it landed after the editable region, so Tab from
+    // More walked into the content instead of into the panel.
+    expect(toolbar.el.nextElementSibling).toBe(panel(host))
     overflow.destroy()
   })
 
-  it('rebuilds select clones when opened so they match current state', () => {
-    const { toolbar, host } = mount('fontFamily | bold')
-    const overflow = new ToolbarOverflow(toolbar.el, host, document)
-    // Force groups into overflow without depending on jsdom layout metrics.
-    // layout() just un-hid them; hide again so fillMenu has something to clone.
-    for (const group of toolbar.el.querySelectorAll<HTMLElement>(':scope > .ol-group')) {
-      group.hidden = true
-    }
+  it('opens on the trigger and moves focus into the panel', () => {
+    const { toolbar, host } = mount('bold | blockType fontFamily')
+    const overflow = forceOverflow(toolbar, host)
+    const more = toolbar.el.querySelector<HTMLButtonElement>('.ol-overflow-more')!
+    expect(panel(host).hidden).toBe(true)
 
-    const original = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="fontFamily"]')
-    expect(original).not.toBeNull()
-    original!.value = 'Georgia'
+    more.click()
 
-    const more = toolbar.el.querySelector<HTMLButtonElement>('.ol-overflow-more')
-    expect(more).not.toBeNull()
-    more!.hidden = false
-    more!.click()
+    expect(panel(host).hidden).toBe(false)
+    expect(more.getAttribute('aria-expanded')).toBe('true')
+    expect(more.getAttribute('aria-controls')).toBe(panel(host).id)
+    // Opening a popup and leaving focus behind it is the same as not opening it.
+    expect(panel(host).contains(document.activeElement)).toBe(true)
+    overflow.destroy()
+  })
 
-    const clone = host.querySelector<HTMLSelectElement>(
-      '.ol-overflow-menu select[data-ol-id="fontFamily"]',
-    )
-    expect(clone?.value).toBe('Georgia')
+  it('is one tab stop while it is open', () => {
+    const { toolbar, host } = mount('bold | blockType fontFamily')
+    const overflow = forceOverflow(toolbar, host)
+    toolbar.el.querySelector<HTMLButtonElement>('.ol-overflow-more')!.click()
 
-    original!.value = 'Arial'
-    // Close then reopen: the clone must pick up the new value.
-    more!.click()
-    more!.click()
-    const refreshed = host.querySelector<HTMLSelectElement>(
-      '.ol-overflow-menu select[data-ol-id="fontFamily"]',
-    )
-    expect(refreshed?.value).toBe('Arial')
+    const items = [...panel(host).querySelectorAll<HTMLElement>('button.ol-btn, select.ol-select')]
+    expect(items.length).toBeGreaterThan(1)
+    expect(items.filter((el) => el.tabIndex === 0)).toHaveLength(1)
+    overflow.destroy()
+  })
+
+  it('moves between controls on the arrow keys', () => {
+    const { toolbar, host } = mount('bold | blockType fontFamily italic')
+    const overflow = forceOverflow(toolbar, host)
+    toolbar.el.querySelector<HTMLButtonElement>('.ol-overflow-more')!.click()
+
+    const items = [...panel(host).querySelectorAll<HTMLElement>('button.ol-btn, select.ol-select')]
+    const first = items[0]!
+    const last = items[items.length - 1]!
+    expect(document.activeElement).toBe(first)
+    press(first, 'ArrowDown')
+    expect(document.activeElement).toBe(items[1])
+    press(items[1]!, 'ArrowUp')
+    expect(document.activeElement).toBe(first)
+    press(last, 'Home')
+    expect(document.activeElement).toBe(first)
+    press(first, 'ArrowUp')
+    // Wraps, the way the bar it came from does.
+    expect(document.activeElement).toBe(last)
+    overflow.destroy()
+  })
+
+  /*
+   * The same bargain the bar strikes, turned ninety degrees: the panel takes the
+   * keys it needs to be a widget, and leaves the select the ones it needs to be
+   * a select. Home and End are the select's own first and last option.
+   */
+  it('leaves Home and End to a select', () => {
+    const { toolbar, host } = mount('bold | blockType fontFamily italic')
+    const overflow = forceOverflow(toolbar, host)
+    toolbar.el.querySelector<HTMLButtonElement>('.ol-overflow-more')!.click()
+
+    const items = [...panel(host).querySelectorAll<HTMLElement>('button.ol-btn, select.ol-select')]
+    const select = items.find((el) => el.tagName === 'SELECT')!
+    const end = new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true })
+    select.dispatchEvent(end)
+    expect(end.defaultPrevented).toBe(false)
+    // And the panel is genuinely listening on the same element, so the pass
+    // through above is a decision rather than the absence of a handler.
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    select.dispatchEvent(escape)
+    expect(escape.defaultPrevented).toBe(true)
+    overflow.destroy()
+  })
+
+  it('closes on Escape and puts focus back on the trigger', () => {
+    const { toolbar, host } = mount('bold | blockType fontFamily')
+    const overflow = forceOverflow(toolbar, host)
+    const more = toolbar.el.querySelector<HTMLButtonElement>('.ol-overflow-more')!
+    more.click()
+
+    press(document.activeElement!, 'Escape')
+
+    expect(panel(host).hidden).toBe(true)
+    expect(more.getAttribute('aria-expanded')).toBe('false')
+    // Not the document: a panel that dumps focus at the top of the page has not
+    // returned the author to where they were.
+    expect(document.activeElement).toBe(more)
+    overflow.destroy()
+  })
+
+  it('closes on Tab rather than letting focus walk out of an open panel', () => {
+    const { toolbar, host } = mount('bold | blockType fontFamily')
+    const overflow = forceOverflow(toolbar, host)
+    const more = toolbar.el.querySelector<HTMLButtonElement>('.ol-overflow-more')!
+    more.click()
+
+    press(document.activeElement!, 'Tab')
+
+    expect(panel(host).hidden).toBe(true)
+    expect(document.activeElement).toBe(more)
+    overflow.destroy()
+  })
+
+  it('gives the panel a role with a content model that fits what is in it', () => {
+    const { toolbar, host } = mount('bold | blockType fontFamily')
+    const overflow = forceOverflow(toolbar, host)
+    // Not role="menu": a menu owns menuitem children, and four of the default
+    // bar's controls are <select>, which is not one.
+    expect(panel(host).getAttribute('role')).toBe('toolbar')
+    expect(panel(host).getAttribute('aria-orientation')).toBe('vertical')
+    expect(panel(host).getAttribute('aria-label')).toBeTruthy()
     overflow.destroy()
   })
 })

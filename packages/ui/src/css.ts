@@ -572,6 +572,10 @@ export const CSS = `
   position: absolute;
   z-index: calc(var(--ol-z) + 20);
   min-width: 12rem;
+  /* Capped, so a deep menu opened low on a short window can be flipped above
+     its trigger instead of running off the bottom of the page. */
+  max-height: 60vh;
+  overflow-y: auto;
   margin: 0;
   padding: 4px;
   border: 1px solid var(--ol-border-strong);
@@ -626,6 +630,33 @@ export const CSS = `
 .ol-editor .ol-toolbar.ol-toolbar--overflow {
   flex-wrap: nowrap;
   overflow: hidden;
+}
+/* The More panel. Positioned in viewport coordinates from script, because the
+   bar it belongs to may live inside a host with \`overflow: hidden\` -- which is
+   the situation the whole feature exists for. */
+.ol-editor .ol-overflow-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--ol-gap);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.ol-editor .ol-overflow-menu[hidden] {
+  display: none;
+}
+/* Vertical: the panel exists because there is no horizontal room left. */
+.ol-editor .ol-overflow-menu .ol-group {
+  flex-direction: column;
+  align-items: stretch;
+}
+.ol-editor .ol-overflow-menu .ol-group + .ol-group {
+  border-inline-start: 0;
+  border-block-start: 1px solid var(--ol-border);
+  padding-inline-start: 0;
+  margin-inline-start: 0;
+  padding-block-start: 4px;
+  margin-block-start: 3px;
 }
 .ol-editor.ol-visual-aids .ol-empty-block {
   outline: 1px dashed var(--ol-border);
