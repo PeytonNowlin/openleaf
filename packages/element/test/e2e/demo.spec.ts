@@ -89,4 +89,93 @@ test.describe('the demo page', () => {
     await page.keyboard.type('typed')
     await expect.poll(() => page.locator('#typo').inputValue()).toContain('typed')
   })
+
+  /*
+   * The collapsible-section example, which was the first thing a reader tried and
+   * the first thing that did not work. Clicking a summary inside a contenteditable
+   * does not toggle the element -- the click places a caret instead -- so the body
+   * of the section was unreachable.
+   */
+  test('toggles the collapsible section, and stores the state', async ({ page }) => {
+    await page.goto(DEMO)
+    const det = host(page, 'insert-body').locator('details').first()
+    const stored = () => page.locator('#insert-body').inputValue()
+    await expect(det).toBeVisible()
+
+    expect(await det.evaluate((d: HTMLDetailsElement) => d.open)).toBe(false)
+    await det.locator('summary').click()
+    await expect.poll(() => det.evaluate((d: HTMLDetailsElement) => d.open)).toBe(true)
+    await expect(det.locator('p').first()).toBeVisible()
+    await expect.poll(stored).toContain('<details open')
+
+    await det.locator('summary').click()
+    await expect.poll(() => det.evaluate((d: HTMLDetailsElement) => d.open)).toBe(false)
+    expect(await stored()).not.toContain('<details open')
+  })
+
+  test('keeps the section label editable', async ({ page }) => {
+    await page.goto(DEMO)
+    const det = host(page, 'insert-body').locator('details').first()
+    await det.locator('summary').click()
+    await page.keyboard.type('XX')
+    await expect.poll(() => page.locator('#insert-body').inputValue()).toContain('XX')
+  })
+
+  // Typing on the front door. Clicked by its text rather than its centre: the
+  // editor is taller than the viewport, and its centre lands on the preserved
+  // callout atom, which takes no caret.
+  test('accepts typing in the main editor and mirrors it to the textarea', async ({ page }) => {
+    await page.goto(DEMO)
+    const content = page.getByRole('textbox', { name: 'Post body' })
+    await expect(content).toBeVisible({ timeout: 15000 })
+    await content.getByText('Try editing this').click()
+    await page.keyboard.type('AUDIT')
+    await expect.poll(() => page.locator('#body').inputValue()).toContain('AUDIT')
+    await expect.poll(() => page.locator('#output').textContent()).toContain('AUDIT')
+  })
+
+  test('switches every skin the page offers', async ({ page }) => {
+    await page.goto(DEMO)
+    const editor = page.locator('openleaf-editor[for="body"]')
+    for (const skin of ['midnight', 'paper', 'contrast', 'compact']) {
+      await page.locator(`[data-skin="${skin}"]`).click()
+      await expect(editor).toHaveAttribute('skin', skin)
+    }
+  })
+
+  test('opens and closes the source view', async ({ page }) => {
+    await page.goto(DEMO)
+    const bar = page.locator('openleaf-editor[for="body"] > .ol-toolbar').first()
+    await bar.getByRole('button', { name: 'HTML source' }).click()
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toBeVisible()
+    await bar.getByRole('button', { name: 'HTML source' }).click()
+    await expect(page.getByRole('textbox', { name: 'HTML source' })).toHaveCount(0)
+  })
+
+  test('opens every menu in the menubar', async ({ page }) => {
+    await page.goto(DEMO)
+    const bar = host(page, 'chrome-body').getByRole('menubar')
+    for (const name of ['Edit', 'Insert', 'Format', 'View', 'Help']) {
+      await bar.getByRole('menuitem', { name }).click()
+      await expect(page.locator('.ol-menu:visible').first()).toBeVisible()
+    }
+    await page.keyboard.press('Escape')
+  })
+
+  test('opens the overflow menu on the narrow editor', async ({ page }) => {
+    await page.goto(DEMO)
+    const narrow = host(page, 'narrow-body')
+    await narrow.getByRole('textbox').first().click()
+    await narrow.getByRole('button', { name: 'More' }).click()
+    await expect(narrow.locator('.ol-overflow-menu')).toBeVisible()
+  })
+
+  test('imports both sample files', async ({ page }) => {
+    await page.goto(DEMO)
+    await expect(page.getByRole('textbox', { name: 'Post body' })).toBeVisible({ timeout: 15000 })
+    for (const id of ['#import-sample', '#import-docx']) {
+      await page.locator(id).click()
+      await expect.poll(() => page.locator(id).textContent(), { timeout: 30000 }).not.toContain('Importing')
+    }
+  })
 })
