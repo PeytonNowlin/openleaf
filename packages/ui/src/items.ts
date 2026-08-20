@@ -457,7 +457,7 @@ export function registerDefaultItems(): void {
     label: 'Help',
     icon: 'help',
     run: ({ host }) => {
-      promptHelp(host.ownerDocument)
+      promptHelp(host.ownerDocument, host)
     },
   })
 }

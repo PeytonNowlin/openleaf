@@ -28,10 +28,17 @@
   "files": [
     "dist"
   ],
+  "sideEffects": [
+    "**/*.css"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/emit-css.mjs"
   },
-  "dependencies": {
+  "peerDependencies": {
+    "@openleaf-editor/core": "workspace:^",
+    "@openleaf-editor/ui": "workspace:^"
+  },
+  "devDependencies": {
     "@openleaf-editor/core": "workspace:*",
     "@openleaf-editor/ui": "workspace:*",
     "prosemirror-state": "^1.4.3",

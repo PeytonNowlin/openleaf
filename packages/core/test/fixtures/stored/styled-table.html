@@ -1,0 +1,23 @@
+<!--
+  A table styled the way fifteen years of CMS content is styled.
+
+  The schema models background-color, padding, width and height and nothing
+  else, so `border` and `border-collapse` had nowhere to go. Because `style` is
+  the cell's OWN attribute, the carry mechanism skipped it as "modelled" and
+  every declaration the schema did not read was discarded with no residue at
+  all -- <td style="border:1px solid #ccc"> came back as <td>.
+-->
+<table style="border-collapse:collapse;border:1px solid #cccccc;width:100%">
+  <thead>
+    <tr style="border-bottom:2px solid #333333;background-color:#eeeeee">
+      <th style="border:1px solid #cccccc;padding:4px;text-align:left">Region</th>
+      <th style="border:1px solid #cccccc;padding:4px;text-align:right">Revenue</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td bgcolor="#f5f5f5" style="border:1px solid #cccccc;padding:4px;vertical-align:top">North</td>
+      <td style="border:1px solid #cccccc;padding:4px;font-variant-numeric:tabular-nums">1,204</td>
+    </tr>
+  </tbody>
+</table>

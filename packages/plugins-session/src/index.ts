@@ -143,7 +143,10 @@ export { documentStats, countWords, formatWordCount, type DocumentStats } from '
 export {
   clearDraft,
   defaultStorage,
+  DRAFT_PREFIX,
+  DRAFT_TTL_MS,
   draftStorageKey,
+  purgeDrafts,
   readDraft,
   writeDraft,
   type DraftRecord,

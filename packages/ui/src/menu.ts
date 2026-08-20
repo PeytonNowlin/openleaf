@@ -415,10 +415,18 @@ export class MenuBar {
     if (!this.#popup.el.isConnected) this.#host.appendChild(this.#popup.el)
   }
 
+  /**
+   * Detach the menubar AND take its DOM with it -- see `Toolbar.destroy()`.
+   * The host reads its own `innerHTML` back as content when it rebuilds, so a
+   * menubar row left behind here would become the author's document.
+   *
+   * Idempotent: `.remove()` on a detached node is a no-op.
+   */
   destroy(): void {
     this.#doc.removeEventListener('pointerdown', this.#onPointerDown, true)
     this.el.removeEventListener('keydown', this.#onKeydown)
     this.#popup.destroy()
+    this.el.remove()
   }
 
   #render(): void {

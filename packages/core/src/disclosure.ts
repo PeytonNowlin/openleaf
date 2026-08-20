@@ -78,6 +78,31 @@ export function disclosurePlugin(): Plugin {
               open: !node.attrs['open'],
             })
             tr.setSelection(TextSelection.near(tr.doc.resolve(tr.mapping.map(caret))))
+
+            /*
+             * Keep the toggle off the undo stack.
+             *
+             * `open` lives in the document, so flipping it is by every mechanical
+             * measure a document change: it is a step, it maps positions, it
+             * serializes on save. History would take it on those grounds alone.
+             *
+             * But the undo stack does not model changes to the document, it
+             * models an author's intent to have made them, and expanding a
+             * section in order to read it is not an edit -- it is how you look at
+             * a document whose parts are folded away. An author who opened three
+             * collapsed sections while hunting for a paragraph, fixed a typo in
+             * the third and pressed Ctrl+Z got the typo back and the section
+             * closed under them; the correction they meant to take back was four
+             * undos away, behind their own navigation. Losing the ability to undo
+             * a fold costs nothing -- the gesture that made it is one click away
+             * and visible on screen -- while losing the edit next to it costs the
+             * work.
+             *
+             * `addToHistory: false` is the key `prosemirror-history` reads to
+             * exclude a transaction; the attribute still changes, and still
+             * round-trips.
+             */
+            tr.setMeta('addToHistory', false)
             view.dispatch(tr)
 
             /*

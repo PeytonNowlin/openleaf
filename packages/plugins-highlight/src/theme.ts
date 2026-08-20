@@ -18,7 +18,9 @@
  */
 const LIGHT_TOKENS = `
   --ol-t-comment: var(--openleaf-code-comment, #5c6370);
-  --ol-t-punct: var(--openleaf-code-punctuation, #6e7781);
+  /* #6e7781 was 4.27:1 on the #f6f8fa code surface -- the only token in either
+     palette below 4.5:1, and punctuation is where a missing brace hides. */
+  --ol-t-punct: var(--openleaf-code-punctuation, #656d76);
   --ol-t-tag: var(--openleaf-code-tag, #116329);
   --ol-t-attr: var(--openleaf-code-attr-name, #0550ae);
   --ol-t-value: var(--openleaf-code-attr-value, #0a3069);
@@ -151,7 +153,9 @@ export const HIGHLIGHT_CSS = `
   box-sizing: border-box;
   margin: 0;
   padding: 12px;
-  border: 1px solid var(--ol-border);
+  /* Matches \`.ol-source\` in the core sheet: this is the editable region's
+     boundary, so it takes the control token rather than the decorative one. */
+  border: 1px solid var(--ol-border-strong);
   border-radius: 0 0 var(--ol-radius) var(--ol-radius);
   font-family: var(--ol-font-mono);
   font-size: 13px;
