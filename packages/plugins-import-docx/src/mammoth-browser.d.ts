@@ -15,7 +15,10 @@ declare module 'mammoth/mammoth.browser.js' {
           contentType: string
           read: (encoding?: string) => Promise<string | Buffer>
         }) => Promise<{ src: string; alt?: string }>,
-      ): NonNullable<Parameters<typeof mammothTypes.convertToHtml>[1]>['convertImage']
+        // `imgElement` always returns a converter; the option it is assigned to
+        // is what is optional. Declaring it nullable here made every call site
+        // prove a thing that is never true.
+      ): NonNullable<NonNullable<Parameters<typeof mammothTypes.convertToHtml>[1]>['convertImage']>
     }
   }
 
