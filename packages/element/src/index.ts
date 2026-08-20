@@ -78,6 +78,7 @@ import {
   ensureStyles,
   imageFilesFrom,
   imageUploaderFor,
+  liveRegion,
   loadContentCss,
   promptForImage,
   promptHelp,
@@ -271,7 +272,11 @@ export class OpenLeafEditor extends HTMLElementBase {
       : 'Rich text editor.'
     this.appendChild(hint)
 
-    if (this.#toolbar) this.appendChild(this.#toolbar.liveRegion)
+    // Unconditionally, and not from whichever bar happens to exist. A layout of
+    // `toolbar="none" toolbar2="bold italic"` used to mount no region at all, so
+    // Ctrl+B was silent -- the failure the whole announcement design exists to
+    // prevent. One region per editor, shared by every bar on it.
+    liveRegion(this)
 
     // Held on the instance rather than built inline, because `reconfigure`
     // has to hand the view back the *same* history() it was created with.
@@ -682,6 +687,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     const lang = this.getAttribute('lang')
     this.#toolbar?.setLocale(lang)
     this.#toolbar2?.setLocale(lang)
+    this.#floating?.setLocale(lang)
   }
 
   #mountFloating(): void {
@@ -697,6 +703,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#floating = new FloatingToolbars(this, this.ownerDocument, {
       selectionLayout,
       insertLayout,
+      locale: this.getAttribute('lang'),
     })
     this.#floating.mount(view)
   }

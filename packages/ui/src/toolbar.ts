@@ -34,6 +34,7 @@ import type { EditorState, Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { ensureSprite, iconElement } from './icons.js'
 import { t, onLocaleChange, withLocale } from './i18n.js'
+import { announce, liveRegion } from './live.js'
 import { ToolbarOverflow } from './overflow.js'
 import {
   DEFAULT_LAYOUT,
@@ -124,8 +125,6 @@ export class Toolbar {
   #customs: MountedControl[] = []
   /** Native selects keyed by item id (block type plus any `type: 'select'`). */
   #selects = new Map<string, HTMLSelectElement>()
-  #live: HTMLDivElement
-  #liveTimer: ReturnType<typeof setTimeout> | undefined
   #layout: string
   #label: string
   #formats: readonly FormatSpec[]
@@ -155,13 +154,12 @@ export class Toolbar {
     this.el.setAttribute('role', 'toolbar')
     this.el.setAttribute('aria-label', t(this.#label))
 
-    this.#live = doc.createElement('div')
-    this.#live.className = 'ol-live'
-    // Polite and atomic: an assertive region would interrupt the author
-    // mid-word, and a non-atomic one can read partial updates.
-    this.#live.setAttribute('role', 'status')
-    this.#live.setAttribute('aria-live', 'polite')
-    this.#live.setAttribute('aria-atomic', 'true')
+    // Mounted on the HOST, and mounted now rather than on the first
+    // announcement: a region a screen reader has never seen may not be observed
+    // in time to read the text that appears in it. Shared with every other bar
+    // on this editor, so a secondary or floating toolbar is never the one that
+    // speaks into a detached node.
+    liveRegion(host)
 
     this.el.addEventListener('keydown', this.#onKeydown)
     // Re-render when a plugin registers late. Import-time registration races
@@ -202,7 +200,6 @@ export class Toolbar {
     this.#unsubscribe?.()
     this.#unlocale?.()
     this.#overflow?.destroy()
-    clearTimeout(this.#liveTimer)
     this.el.removeEventListener('keydown', this.#onKeydown)
     this.#destroyCustoms()
     this.#controls.clear()
@@ -229,9 +226,15 @@ export class Toolbar {
     this.#customs = []
   }
 
-  /** The live region element, which the host mounts once. */
+  /**
+   * The editor's live region.
+   *
+   * One per host, shared by every bar on it, and already mounted -- so a host
+   * that appends this is moving a node it already owns rather than adopting a
+   * detached one. Kept on the class because integrations reach for it.
+   */
   get liveRegion(): HTMLDivElement {
-    return this.#live
+    return liveRegion(this.#host)
   }
 
   /* -------------------------------------------------------------- *
@@ -693,13 +696,7 @@ export class Toolbar {
   }
 
   #announce(message: string): void {
-    // Clear then set on a timer: replacing identical text does not re-announce,
-    // and the delay coalesces a held shortcut into one utterance.
-    this.#live.textContent = ''
-    clearTimeout(this.#liveTimer)
-    this.#liveTimer = setTimeout(() => {
-      this.#live.textContent = message
-    }, 60)
+    announce(this.#host, message)
   }
 
   /* -------------------------------------------------------------- *
