@@ -19,13 +19,94 @@ export function resolveDocument(explicit?: Document): Document {
   return doc
 }
 
-/** Parse a fragment. `<template>` permits otherwise-illegal fragments. */
-export function parseFragment(html: string, doc: Document): HTMLElement {
-  const host = doc.createElement('div')
+/**
+ * Anything the cleanup passes can walk: a real element, or the inert fragment
+ * a paste is parsed into. Both satisfy the `ParentNode` surface the passes use
+ * -- `querySelectorAll`, `children`, `insertBefore` -- so nothing below has to
+ * care which it was handed.
+ */
+export type Container = Element | DocumentFragment
+
+/**
+ * A parsed paste and the inert document that owns it.
+ *
+ * The two travel together deliberately. Keeping the nodes inert is not just a
+ * property of where they were parsed -- it is a property that every later step
+ * has to preserve, and the commonest way to break it is to build a new element
+ * with the *live* `document` and move untrusted children into it. So the
+ * document to create nodes with is handed out alongside the nodes themselves,
+ * and no normalizer needs to remember which of the two it is holding.
+ */
+export interface InertFragment {
+  /** The parsed nodes. Mutate them in place; never move them out. */
+  readonly root: DocumentFragment
+  /** The inert document that owns them. Create every new node with this. */
+  readonly doc: Document
+}
+
+/**
+ * Parse untrusted clipboard HTML into an **inert** fragment.
+ *
+ * `<template>` is used for two separate reasons, and only one of them is about
+ * fragment legality.
+ *
+ * The first is that `<template>` permits otherwise-illegal fragments: a bare
+ * `<tr>` or `<td>` from an Excel or Word clipboard is silently discarded by
+ * `innerHTML` on a `<div>`, because the HTML fragment parsing algorithm applies
+ * the context element's insertion mode. A template's content has no such
+ * context and keeps them.
+ *
+ * The second is security, and it is why this hands back the fragment rather
+ * than a host element. `tpl.content` belongs to the *template contents owner
+ * document* -- a document with no browsing context, where images do not load
+ * and `on*` content attributes are never compiled into handlers. Moving those
+ * nodes anywhere in the live document adopts them across that boundary, and the
+ * browser starts the fetch and compiles the handler at that instant, long
+ * before any cleanup pass gets a chance to strip the attribute. Building a
+ * `<div>` from the live document and appending `tpl.content` to it is exactly
+ * that move, and it is what this function used to do.
+ *
+ * So the nodes never leave: the passes mutate the fragment in place, anything
+ * new is created with {@link InertFragment.doc}, and
+ * {@link serializeFragment} reads the result back out without ever touching a
+ * live node.
+ *
+ * See `@openleaf-editor/core`'s `parseHtml`, which parses into `tpl.content`
+ * and hands that straight to ProseMirror for the same reason.
+ */
+export function parseFragment(html: string, doc: Document): InertFragment {
   const tpl = doc.createElement('template')
   tpl.innerHTML = html
-  host.appendChild(tpl.content)
-  return host
+  const root = tpl.content
+  const owner = root.ownerDocument
+  // Never reachable against a conforming DOM -- a template's content always has
+  // an owner. It throws rather than falling back to `doc`, because the fallback
+  // would be the live document and would silently restore the bug this whole
+  // function exists to prevent.
+  if (!owner) {
+    throw new Error(
+      '@openleaf-editor/paste: template content has no owner document; refusing to ' +
+        'parse untrusted HTML against the live one.',
+    )
+  }
+  return { root, doc: owner }
+}
+
+/**
+ * Serialize an inert fragment back to a string, without adopting it.
+ *
+ * The obvious implementation -- append into a `<div>` and read `innerHTML` --
+ * is the bug {@link parseFragment} exists to avoid. A `<template>` created from
+ * the inert document has its content in that same document, so moving the
+ * fragment into it is a same-document move that starts nothing, and a
+ * template's `innerHTML` getter serializes its content.
+ *
+ * The fragment is emptied by this call. Callers are done with it by then.
+ */
+export function serializeFragment(fragment: InertFragment): string {
+  const tpl = fragment.doc.createElement('template')
+  tpl.content.appendChild(fragment.root)
+  return tpl.innerHTML
 }
 
 /** Replace an element with its own children, keeping order. */
@@ -98,7 +179,15 @@ export function writeStyle(el: Element, style: Map<string, string>): void {
   )
 }
 
-/** Wrap an element's children in a new element of `tag`. */
+/**
+ * Wrap an element's children in a new element of `tag`.
+ *
+ * `doc` must be the fragment's own inert document, not the live one. The
+ * children are moved into the wrapper before the wrapper is put back, so a
+ * wrapper built from the live document would adopt every one of them into it
+ * on the way past -- the same boundary crossing {@link parseFragment} exists to
+ * prevent, just spelled differently.
+ */
 export function wrapChildren(el: Element, tag: string, doc: Document): Element {
   const wrapper = doc.createElement(tag)
   while (el.firstChild) wrapper.appendChild(el.firstChild)

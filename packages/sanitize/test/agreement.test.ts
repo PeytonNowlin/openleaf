@@ -14,6 +14,7 @@ import {
   isAllowedDeclaration,
   isAllowedEmbedSrc,
   safeAllowList as policySafeAllowList,
+  policyForPreserved,
   sanitizeHtml,
   toDOMPurifyConfig,
 } from '../src/index.js'
@@ -256,5 +257,65 @@ describe('the default policy accepts everything the editor emits', () => {
       policy: DEFAULT_POLICY,
     })
     expect(out).toBe('<p>t</p>')
+  })
+})
+
+/**
+ * The corpus above is schema-native by construction, and that is exactly why it
+ * stayed green while the preservation layer round-tripped `<iframe srcdoc>`,
+ * `<svg>` with a SMIL rewrite, and `<math>`. Preserved markup is the half of
+ * the editor's output the agreement test never looked at, and it is the half
+ * where the two lists had drifted.
+ *
+ * The claim is one-directional and stronger than "the policy permits this": the
+ * editor must never store a construct the sanitizer would have to remove. So
+ * the assertion is that a sanitize pass over what the editor stored is a no-op
+ * -- if a frame or a foreign-namespace element were still in there, the
+ * sanitizer would strip it and the two strings would differ.
+ *
+ * `policyForPreserved` widens the policy to keep the wrapper's `class`, because
+ * without it the div's class is stripped and the test would fail for a reason
+ * that has nothing to do with what it is checking.
+ */
+const PRESERVED_HOSTILE = [
+  // The wrapper's `class` is the bypass: it makes the div opaque, so the
+  // subtree is claimed whole and stored as a string nothing re-checks.
+  '<div class="c"><iframe src="https://evil.example/" allow="camera; microphone; geolocation"></iframe></div>',
+  '<div class="c"><iframe srcdoc="<script>alert(1)</script>"></iframe></div>',
+  '<div class="c"><svg><a href="/x"><animate attributeName="href" values="javascript:alert(1)"/>' +
+    '<text y="20">click</text></a></svg></div>',
+  '<div class="c"><math><mtext><a href="/x">m</a></mtext></math></div>',
+  '<svg><a href="/x"><animate attributeName="href" values="javascript:alert(1)"/></a></svg>',
+  '<math><mtext>m</mtext></math>',
+  '<div class="c"><plaintext>hello',
+  '<div class="c"><xmp><img src=x onerror=alert(1)></xmp></div>',
+]
+
+describe('the editor stores nothing the policy would have to remove', () => {
+  const policy = policyForPreserved(DEFAULT_POLICY, { div: ['class'] })
+
+  for (const html of PRESERVED_HOSTILE) {
+    const label = html.slice(0, 46)
+    it(`sanitizes to a no-op after storing ${label}`, () => {
+      const stored = serializeHtml(parseHtml(html))
+      expect(sanitizeHtml(stored, { policy })).toBe(stored)
+    })
+  }
+
+  it('leaves no frame, foreign namespace or srcdoc in stored markup at all', () => {
+    for (const html of PRESERVED_HOSTILE) {
+      const stored = serializeHtml(parseHtml(html))
+      expect(stored, html).not.toMatch(/<iframe|<svg|<math|srcdoc|plaintext|<xmp/i)
+    }
+  })
+
+  it('still stores the allowlisted embed the modelled node exists for', () => {
+    // The fixtures above must not have been made to pass by dropping every
+    // iframe: the player the schema models is still stored and still permitted.
+    const stored = serializeHtml(
+      parseHtml('<iframe src="https://www.youtube.com/embed/abc" title="Clip"></iframe>'),
+    )
+    expect(stored).toContain('youtube.com/embed/abc')
+    expect(sanitizeHtml(stored, { policy: DEFAULT_POLICY })).toBe(stored)
   })
 })

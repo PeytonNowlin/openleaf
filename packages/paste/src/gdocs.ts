@@ -25,7 +25,16 @@ import {
   isBoldWeight,
   stripAllStyles,
 } from './clean.js'
-import { parseFragment, parseStyle, resolveDocument, stripComments, unwrap, writeStyle } from './dom.js'
+import {
+  parseFragment,
+  parseStyle,
+  resolveDocument,
+  serializeFragment,
+  stripComments,
+  unwrap,
+  writeStyle,
+  type Container,
+} from './dom.js'
 
 /** True when this HTML came from Google Docs, Sheets or Slides. */
 export function looksLikeGoogleDocs(html: string): boolean {
@@ -36,7 +45,7 @@ export function looksLikeGoogleDocs(html: string): boolean {
  * Drop `text-decoration:underline` on anything inside a link, so the
  * redundant `<u>` is never created in the first place.
  */
-function dropRedundantLinkUnderlines(container: Element): void {
+function dropRedundantLinkUnderlines(container: Container): void {
   for (const anchor of Array.from(container.querySelectorAll('a'))) {
     for (const el of [anchor, ...Array.from(anchor.querySelectorAll('*'))]) {
       const style = parseStyle(el)
@@ -52,7 +61,7 @@ function dropRedundantLinkUnderlines(container: Element): void {
 }
 
 /** Remove Google's internal bookkeeping without touching real content. */
-function stripGoogleJunk(container: Element): void {
+function stripGoogleJunk(container: Container): void {
   for (const meta of Array.from(container.querySelectorAll('meta,style,link,title'))) {
     meta.remove()
   }
@@ -77,18 +86,20 @@ function stripGoogleJunk(container: Element): void {
 }
 
 export function normalizeGoogleDocs(html: string, explicitDocument?: Document): string {
-  const doc = resolveDocument(explicitDocument)
-  const container = parseFragment(html, doc)
+  // Inert throughout -- see parseFragment. `doc` here is the fragment's own
+  // inert document, so nothing created below adopts the paste into the live one.
+  const fragment = parseFragment(html, resolveDocument(explicitDocument))
+  const { root, doc } = fragment
 
   // Underlines first: once extractSemantics runs, the decoration has already
   // become a <u> element and removing it is a harder problem.
-  dropRedundantLinkUnderlines(container)
-  extractSemantics(container, doc)
-  stripGoogleJunk(container)
-  stripComments(container)
-  stripAllStyles(container)
-  collapseBareSpans(container)
-  dropEmptyBlocks(container, ['span', 'p'])
+  dropRedundantLinkUnderlines(root)
+  extractSemantics(root, doc)
+  stripGoogleJunk(root)
+  stripComments(root)
+  stripAllStyles(root)
+  collapseBareSpans(root)
+  dropEmptyBlocks(root, ['span', 'p'])
 
-  return container.innerHTML
+  return serializeFragment(fragment)
 }
