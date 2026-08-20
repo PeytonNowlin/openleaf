@@ -37,6 +37,7 @@ for (const asset of ['openleaf-logo.png', 'openleaf-logo-dark.png', 'openleaf-ma
 const WORKSPACE_ALIASES = {
   '@openleaf-editor/content-policy': src('../packages/content-policy/src/index.ts'),
   '@openleaf-editor/content-policy/css': src('../packages/content-policy/src/css.ts'),
+  '@openleaf-editor/content-policy/elements': src('../packages/content-policy/src/elements.ts'),
   '@openleaf-editor/content-policy/embed': src('../packages/content-policy/src/embed.ts'),
   '@openleaf-editor/content-policy/url': src('../packages/content-policy/src/url.ts'),
   '@openleaf-editor/core': src('../packages/core/src/index.ts'),
