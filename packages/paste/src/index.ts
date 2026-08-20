@@ -21,7 +21,7 @@ import {
   extractSemantics,
   stripAllStyles,
 } from './clean.js'
-import { parseFragment, resolveDocument, stripComments } from './dom.js'
+import { parseFragment, resolveDocument, serializeFragment, stripComments } from './dom.js'
 import { looksLikeGoogleDocs, normalizeGoogleDocs } from './gdocs.js'
 import { looksLikeWord, normalizeWord } from './word.js'
 
@@ -67,15 +67,19 @@ export function detectSource(html: string): PasteSource {
 }
 
 function clean(html: string, doc: Document, keepStyles: boolean): string {
-  const container = parseFragment(html, doc)
+  // Inert throughout: the fragment is walked and mutated where it was parsed,
+  // every node created below is created in the fragment's own document, and the
+  // result is serialized straight out. Nothing here ever enters the live one.
+  const fragment = parseFragment(html, doc)
+  const { root, doc: inert } = fragment
 
-  extractSemantics(container, doc)
-  stripComments(container)
-  if (!keepStyles) stripAllStyles(container)
-  collapseBareSpans(container)
-  dropEmptyBlocks(container, ['span'])
+  extractSemantics(root, inert)
+  stripComments(root)
+  if (!keepStyles) stripAllStyles(root)
+  collapseBareSpans(root)
+  dropEmptyBlocks(root, ['span'])
 
-  return container.innerHTML
+  return serializeFragment(fragment)
 }
 
 /**

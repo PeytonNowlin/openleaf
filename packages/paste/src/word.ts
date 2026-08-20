@@ -41,8 +41,10 @@ import {
   parseStyle,
   plainText,
   resolveDocument,
+  serializeFragment,
   stripComments,
   unwrap,
+  type Container,
 } from './dom.js'
 
 /** Namespaced junk Word emits: <o:p>, <w:sdt>, <m:oMath>, <v:shape>, <st1:place>. */
@@ -86,8 +88,35 @@ const STRUCTURAL_ATTR_ELEMENTS = new Set([
  * A marker is ordered when it ends in a delimiter after a number, letter or
  * roman numeral. A bare `o` (Word's level-2 Courier bullet) has no delimiter
  * and so correctly reads as unordered.
+ *
+ * The bracket is grouped WITH the whitespace that may follow it, rather than
+ * sitting between two independent `\s*` runs. That grouping is not cosmetic.
+ * The older shape, `^\s*[([]?\s*(...)`, is ambiguous whenever the optional
+ * bracket matches empty: two adjacent unbounded whitespace runs mean a run of
+ * N spaces can be divided N+1 ways, and a marker that then fails to end in a
+ * delimiter forces the engine to try every division. The cost is QUADRATIC,
+ * not exponential -- measured end-to-end through normalizePastedHtml at ~4x
+ * per doubling: 16 KB 205 ms, 32 KB 804 ms, 64 KB 3.7 s, 128 KB 13.3 s.
+ * Quadratic is quite bad enough on an unbounded input, and this input is
+ * unbounded: marker text is whatever an `mso-list:Ignore` span or an
+ * `[if !supportLists]` comment range in the pasted HTML happens to contain,
+ * and pasted HTML is attacker-influenceable in any CMS. Because a bracket is
+ * never whitespace, the grouped form admits exactly one division.
+ *
+ * The alternation is NOT the problem, which is worth recording because it is
+ * the part that looks suspicious. Its branches are flat -- no quantifier
+ * nested inside another, and an anchor in front -- so a long run of digits or
+ * letters backtracks linearly, once per branch. Measured, every such input
+ * stays under 0.1 ms at 32 KB even against the old pattern.
+ * Only a whitespace run is expensive. Listing `[ivxlcdm]+` ahead of `[a-z]` is
+ * therefore an intent fix, not a performance one: it lets `iv.` match on the
+ * roman branch directly instead of reaching it by backtracking out of `[a-z]`.
+ * It matches exactly the same strings either way.
+ *
+ * See also the 64-character cap in `analyze`: real markers are a handful of
+ * characters, and bounding the input is the belt to this regex's braces.
  */
-const ORDERED_MARKER = /^\s*[([]?\s*(\d+|[a-z]|[ivxlcdm]+)\s*[.)\]]/i
+const ORDERED_MARKER = /^\s*(?:[([]\s*)?(?:\d+|[ivxlcdm]+|[a-z])\s*[.)\]]/i
 
 interface ListInfo {
   el: Element
@@ -181,8 +210,13 @@ function readListInfo(el: Element): ListInfo | null {
   const level = Number.parseInt(/\blevel(\d+)\b/i.exec(msoList)?.[1] ?? '1', 10) || 1
 
   const marker = findMarker(el)
-  const ordered = ORDERED_MARKER.test(marker.text)
-  const startMatch = ordered ? /\d+/.exec(marker.text) : null
+  // A list marker is `1.`, `a)`, `(iv)` or a single bullet glyph, plus the
+  // couple of non-breaking spaces Word pads it with. Nothing legitimate comes
+  // close to 64 characters, so the cap costs nothing and denies a hostile
+  // paste the unbounded input any backtracking search needs to be expensive.
+  const text = marker.text.slice(0, 64)
+  const ordered = ORDERED_MARKER.test(text)
+  const startMatch = ordered ? /\d+/.exec(text) : null
 
   return {
     el,
@@ -255,7 +289,7 @@ function buildNested(run: ListInfo[], doc: Document): Element {
 }
 
 /** Replace runs of Word list paragraphs with real nested lists. */
-function reconstructLists(container: Element, doc: Document): void {
+function reconstructLists(container: Container, doc: Document): void {
   // Word wraps the body in <div class="WordSection1">. The algorithm only
   // sees direct children, so without this the whole paste becomes one
   // attributed wrapper and the lists inside it are never reconstructed.
@@ -388,7 +422,7 @@ function normalizeLanguage(container: Element): void {
 }
 
 /** Remove Word's proprietary elements, classes, attributes and styles. */
-function stripJunk(container: Element): void {
+function stripJunk(container: Container): void {
   // Before the attribute sweep below, and before bare spans are collapsed: a
   // span that keeps its `lang` is no longer bare.
   normalizeLanguage(container)
@@ -431,15 +465,19 @@ export function looksLikeWord(html: string): boolean {
 }
 
 export function normalizeWord(html: string, explicitDocument?: Document): string {
-  const doc = resolveDocument(explicitDocument)
-  const container = parseFragment(html, doc)
+  // Inert throughout -- see parseFragment. `doc` here is the fragment's own
+  // inert document, so the <ul>/<ol>/<li>/<p> that list reconstruction builds
+  // below are inert too, and moving the paste's own nodes into them never
+  // crosses into the live document.
+  const fragment = parseFragment(html, resolveDocument(explicitDocument))
+  const { root, doc } = fragment
 
   // Lists first: the algorithm reads conditional comments and mso- styles
   // that the later passes delete.
-  reconstructLists(container, doc)
-  extractSemantics(container, doc)
-  stripComments(container)
-  stripJunk(container)
+  reconstructLists(root, doc)
+  extractSemantics(root, doc)
+  stripComments(root)
+  stripJunk(root)
 
-  return container.innerHTML
+  return serializeFragment(fragment)
 }

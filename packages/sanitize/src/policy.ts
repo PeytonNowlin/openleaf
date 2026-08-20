@@ -65,6 +65,8 @@
  * looks like.
  */
 
+import { DROP_WITH_CONTENT } from '@openleaf-editor/content-policy/elements'
+
 export interface ElementPolicy {
   /** Attribute names permitted on this element, beyond the global ones. */
   attributes?: string[]
@@ -270,11 +272,11 @@ export const DEFAULT_POLICY: Policy = {
 
   allowRelativeUrls: true,
 
-  dropWithContent: [
-    'script', 'style', 'frame', 'frameset', 'object', 'embed',
-    'applet', 'form', 'input', 'button', 'select', 'textarea', 'option',
-    'link', 'meta', 'base', 'noscript', 'template', 'svg', 'math',
-  ],
+  // Spread from content-policy rather than written out again. This list and
+  // core's `NEVER_PRESERVE` are the same decision made in two packages; they
+  // were kept in step by hand and drifted, which is how the editor came to store
+  // `<svg>` and `<math>` that this list says to delete.
+  dropWithContent: [...DROP_WITH_CONTENT],
 }
 
 /**
