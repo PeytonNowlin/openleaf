@@ -11,11 +11,21 @@
  * ```
  */
 
-import { canInsert } from '@openleaf-editor/core'
+import { canInsert, registerEditorPlugin } from '@openleaf-editor/core'
 import { registerIcons, registerToolbarItem } from '@openleaf-editor/ui'
+import { importBookmarkPlugin } from './bookmark.js'
 import { BUILT_IN_ACCEPT } from './converters.js'
 import { importFilesIntoView } from './import.js'
 import { announce, describeOutcome } from './report.js'
+
+export { importBookmarkPlugin } from './bookmark.js'
+export {
+  DEFAULT_IMPORT_LIMITS,
+  importLimits,
+  setImportLimits,
+  type ImportLimits,
+} from './limits.js'
+export { isUploadableImageType } from '@openleaf-editor/ui'
 
 export {
   BUILT_IN_ACCEPT,
@@ -92,6 +102,21 @@ async function pickAndImport(view: import('prosemirror-view').EditorView, host: 
   announce(host, describeOutcome(files.length, outcome.warnings, outcome.error))
 }
 
+/**
+ * Report a failed import instead of dropping it on the floor.
+ *
+ * `importFilesIntoView` returns its failures rather than throwing, so reaching
+ * here means something unforeseen went wrong. Both call sites used to discard
+ * the rejection entirely -- `void pickAndImport(...)`, and a `.then` with no
+ * `.catch` -- which made a teardown mid-import an unhandled rejection in the
+ * console and nothing at all for the author.
+ */
+function reportFailure(host: HTMLElement, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error)
+  console.error('@openleaf-editor/plugins-import: the import failed', error)
+  announce(host, `The import did not finish: ${message}`)
+}
+
 let installed = false
 
 /** Install the import button and drag-and-drop. Idempotent. */
@@ -100,6 +125,12 @@ export function installImport(): void {
   installed = true
 
   registerIcons(ICONS)
+
+  // One plugin, installed with the editor and idle until an import is pending.
+  // The alternative -- adding and removing a plugin around each import through
+  // `state.reconfigure` -- destroyed and rebuilt every plugin view in the
+  // editor twice per file. See bookmark.ts.
+  registerEditorPlugin(() => [importBookmarkPlugin()])
 
   registerToolbarItem({
     id: 'importFile',
@@ -110,7 +141,7 @@ export function installImport(): void {
     // Importing inserts a block, so it needs somewhere a block can go.
     isEnabled: (state) => canInsert(state, 'paragraph'),
     run: ({ view, host }) => {
-      void pickAndImport(view, host)
+      void pickAndImport(view, host).catch((error: unknown) => reportFailure(host, error))
     },
   })
 
@@ -149,8 +180,10 @@ export function installImport(): void {
     const files = [...(event.dataTransfer?.files ?? [])]
     if (files.length === 0) return
 
-    void importFilesIntoView(view, files).then((outcome) => {
-      announce(host, describeOutcome(files.length, outcome.warnings, outcome.error))
-    })
+    void importFilesIntoView(view, files)
+      .then((outcome) => {
+        announce(host, describeOutcome(files.length, outcome.warnings, outcome.error))
+      })
+      .catch((error: unknown) => reportFailure(host, error))
   })
 }

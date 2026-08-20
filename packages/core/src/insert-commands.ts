@@ -26,9 +26,16 @@ export interface LinkAttrs {
  * Removes any existing link first: without that, updating a link that only
  * partially overlaps the selection leaves two adjacent links with different
  * hrefs, which looks fine and is wrong.
+ *
+ * Declines an href the schema would refuse. The parse rule at `schema.ts:541`
+ * already rejects `javascript:`, but only on the way *in* -- so without this
+ * check the hostile href lives in the document, serializes into the bound
+ * textarea and is submitted. It disappears on the next parse, one round trip
+ * after the server stored it, which is the wrong side of the write.
  */
 export function setLink(attrs: LinkAttrs): Command {
   return (state, dispatch) => {
+    if (!isSafeUrl(attrs.href)) return false
     const type = markIn(state, 'link')
     if (!type) return false
     if (state.selection.empty) return false
@@ -84,8 +91,16 @@ export interface ImageAttrs {
   caption?: string | null
 }
 
+/**
+ * Insert an image, optionally wrapped in a captioned `<figure>`.
+ *
+ * Declines a `src` the schema would refuse, for the same reason `setLink` does:
+ * the parse rule only guards the way in, so an unchecked `javascript:` src is
+ * live in the document and submitted with the form before anything strips it.
+ */
 export function insertImage(attrs: ImageAttrs): Command {
   return (state, dispatch) => {
+    if (!isSafeUrl(attrs.src)) return false
     const imageType = nodeIn(state, 'image')
     if (!imageType) return false
     const image = imageType.create({

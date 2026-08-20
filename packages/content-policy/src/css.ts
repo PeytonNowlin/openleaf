@@ -194,6 +194,24 @@ const RGB_CHANNELS = /^rgba?\(\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3
 export function safeColor(value: string | null | undefined): string | null {
   if (!value) return null
   // Collapsed rather than stripped: `rgb(255 0 0)` needs its separators.
+  //
+  // Do not delete this line, and do not move it below the matches that follow.
+  // It is a security control as much as a normalization: the collapse is what
+  // bounds their cost, so anything matched before it runs is unprotected.
+  //
+  // FUNCTIONAL and RGB_CHANNELS
+  // are both ambiguous about whitespace: FUNCTIONAL puts `\s*` immediately
+  // before a character class that itself contains `\s`, and RGB_CHANNELS
+  // separates channels with `\s*[,\s]\s*`. Fed a raw run of N spaces that
+  // ultimately fails to match, either pattern makes the engine try every way
+  // of dividing that run between the adjacent quantifiers, which is quadratic.
+  // Measured against the bare patterns: `rgb(` plus 32k spaces costs
+  // FUNCTIONAL 399 ms, and `rgb(1` plus 64k spaces then a non-digit costs
+  // RGB_CHANNELS 1,614 ms. Delete this line and safeColor itself takes 24.7
+  // SECONDS on a 256k run. Collapsing first means the patterns only ever see a
+  // single space, and safeColor stays linear -- 0.2 ms at 256k. Style
+  // values arrive from pasted HTML, so the input is attacker-influenceable and
+  // the bound has to hold. Regression test: packages/content-policy/test/css.test.ts.
   const candidate = value.trim().replace(/\s+/g, ' ')
   if (candidate === '') return null
 

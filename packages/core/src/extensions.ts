@@ -60,7 +60,12 @@ import { serializationTarget } from './preserve.js'
 import { coreMarks, coreNodes, listStart } from './schema.js'
 import { CARRIED_STYLE_SCRUBS } from './tables.js'
 import { safeId } from './tokens.js'
-import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
+import {
+  URL_ATTRIBUTES,
+  isEventHandlerAttribute,
+  isNeverCarriedAttribute,
+  isSafeUrl,
+} from './url.js'
 
 export interface SchemaExtension {
   /** Stable and unique. Namespace it: `openleaf/footnote`. */
@@ -408,6 +413,12 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
           // `javascript:` URL would reintroduce exactly the executable content
           // core promises to drop.
           if (isEventHandlerAttribute(attr.name)) continue
+          // Markup-bearing attributes are refused outright rather than
+          // scheme-checked. This path never reaches scrub(): the iframe node
+          // claims an allowlisted player, and `srcdoc` -- which the HTML spec
+          // gives precedence over `src` -- rode in here as residue, so the
+          // frame rendered the attacker's document and never fetched YouTube.
+          if (isNeverCarriedAttribute(attr.name)) continue
           if (URL_ATTRIBUTES.has(attr.name.toLowerCase()) && !isSafeUrl(attr.value)) continue
           if (attr.name === 'style') {
             const css = withoutOfficeMetadata(attr.value)
