@@ -225,7 +225,17 @@ test.describe('source view lifecycle', () => {
     await expect(source).toBeVisible()
     await source.fill('<p>edited in source</p>')
 
+    // Remember the exact view instance, so "the session survived" is checked by
+    // identity rather than inferred from an event not firing.
+    await page.evaluate(() => {
+      type Held = Window & { __olView?: unknown }
+      const el = document.querySelector('openleaf-editor') as Element & { view?: unknown }
+      ;(window as Held).__olView = el.view
+    })
+
     // Remove and reinsert in one task, the way a keyed-list reorder does.
+    // The settle window is deliberately generous: teardown is deferred, so
+    // waiting LONGER can only make a teardown easier to catch, never harder.
     await page.evaluate(async () => {
       const el = document.querySelector('openleaf-editor')
       const parent = el?.parentNode
@@ -233,11 +243,18 @@ test.describe('source view lifecycle', () => {
       const next = el.nextSibling
       parent.removeChild(el)
       parent.insertBefore(el, next)
-      // Let the deferred teardown decide, so this proves it declined rather
-      // than merely that it had not run yet.
-      await new Promise((resolve) => setTimeout(resolve, 0))
+      await new Promise((resolve) => setTimeout(resolve, 250))
     })
 
+    // The same EditorView, which is the whole point: undo history, selection
+    // and every plugin's state came through the move.
+    expect(
+      await page.evaluate(() => {
+        type Held = Window & { __olView?: unknown }
+        const el = document.querySelector('openleaf-editor') as Element & { view?: unknown }
+        return el.view === (window as Held).__olView && el.view != null
+      }),
+    ).toBe(true)
     expect(
       await page.evaluate(() => (window as Window & { __olSourceClosed?: boolean }).__olSourceClosed),
     ).toBe(false)
