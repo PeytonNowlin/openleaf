@@ -179,9 +179,10 @@ test.describe('the colour picker', () => {
 
   test('names every swatch, so the grid works without seeing colour', async ({ page }) => {
     await button(page, 'Text colour').click()
-    const swatches = popover(page).getByRole('button')
-    // 32 palette swatches plus the remove-colour button.
-    await expect(swatches).toHaveCount(33)
+    // The swatches are gridcells now, so the grid can say which row and column
+    // the author is in -- the remove-colour control is the only plain button.
+    await expect(popover(page).getByRole('gridcell')).toHaveCount(32)
+    await expect(popover(page).getByRole('button')).toHaveCount(1)
     const unnamed = await popover(page)
       .locator('button')
       .evaluateAll((els) => els.filter((el) => !el.getAttribute('aria-label') && !el.textContent?.trim()).length)
@@ -189,7 +190,7 @@ test.describe('the colour picker', () => {
   })
 
   test('moves focus into the grid and navigates it with the arrow keys', async ({ page }) => {
-    const swatch = (name: string) => popover(page).getByRole('button', { name, exact: true })
+    const swatch = (name: string) => popover(page).getByRole('gridcell', { name, exact: true })
 
     await button(page, 'Text colour').click()
     await expect(swatch('Black')).toBeFocused()

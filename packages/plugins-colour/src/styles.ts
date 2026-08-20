@@ -41,11 +41,17 @@ export const COLOUR_CSS = `
   z-index: var(--openleaf-z-index, 1);
 }
 .ol-color-pop[hidden] { display: none; }
-.ol-color-grid {
+/* The grid holds rows and the rows hold cells, because a row role needs a real
+   element to sit on. Nested grids rather than display:contents, which has a
+   history of dropping the element out of the accessibility tree -- the one thing
+   this structure exists to add. */
+.ol-color-grid { display: grid; gap: 4px; }
+.ol-color-row {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   gap: 4px;
 }
+.ol-color-status { margin: 0 0 6px; font-size: .85em; opacity: .8; }
 .ol-swatch {
   box-sizing: border-box;
   width: 100%;
@@ -62,7 +68,7 @@ export const COLOUR_CSS = `
   outline: 2px solid var(--openleaf-color-focus, #0969da);
   outline-offset: 2px;
 }
-.ol-swatch[aria-pressed="true"] {
+.ol-swatch[aria-selected="true"] {
   outline: 2px solid var(--openleaf-color-text, #1f2328);
   outline-offset: 1px;
 }
@@ -100,7 +106,7 @@ export const COLOUR_CSS = `
    usable there; the border keeps the grid readable as a grid. */
 @media (forced-colors: active) {
   .ol-swatch { border: 1px solid ButtonBorder; }
-  .ol-swatch[aria-pressed="true"] { outline: 2px solid Highlight; }
+  .ol-swatch[aria-selected="true"] { outline: 2px solid Highlight; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ol-swatch:hover { transform: none; }
