@@ -576,10 +576,21 @@ export class Toolbar {
   /**
    * Reflect the editor state onto the controls.
    *
-   * Deliberately synchronous, not batched into an animation frame. Twenty cheap
-   * predicates plus a diffed attribute write is sub-millisecond work, and
-   * batching would trade a perceptible frame of lag between pressing Bold and
-   * the button lighting up for a performance problem that does not exist.
+   * Deliberately synchronous, not batched into an animation frame: batching
+   * would put a perceptible frame of lag between pressing Bold and the button
+   * lighting up.
+   *
+   * This used to claim the predicates were "sub-millisecond work" and that the
+   * performance problem "does not exist". It did. Every control without an
+   * `isEnabled` is probed by dry-running its command, each of which walks the
+   * selection, and a page routinely carries four bars over one editor -- so a
+   * Select-All on a hundred-page document measured 1.4 ms per bar and about
+   * 3 ms per pointermove during a selection drag, inside `dispatchTransaction`.
+   * What makes synchronous affordable is the three guards below it: skipping
+   * transactions that cannot have changed an answer, caching each answer per
+   * state so the four bars share one computation, and giving the alignment items
+   * an explicit `isEnabled` so they stop dry-running a command that walks the
+   * selection twice.
    *
    * `tr` is passed so announcements can be gated on a real formatting change.
    */
