@@ -95,8 +95,6 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
   }
 
   const visit = (node: Element): void => {
-    for (const child of Array.from(node.children)) visit(child)
-
     const tag = node.nodeName.toLowerCase()
 
     if (!isAllowedElement(policy, tag)) {
@@ -170,7 +168,31 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
     }
   }
 
-  for (const child of Array.from(root.children)) visit(child)
+  /**
+   * Post-order traversal on an explicit stack, because recursion was a bypass.
+   *
+   * `visit` used to recurse once per level of nesting. Measured on Node 26 at
+   * the default stack size, 4,000 levels -- about 43 KB of `<div>` -- threw
+   * `RangeError: Maximum call stack size exceeded`. That is not merely a crashed
+   * request: the docstring above tells integrators to run this on the SERVER,
+   * and the natural shape of the integration there is a try/catch that keeps the
+   * original HTML when sanitizing fails --
+   * which turns a 43 KB request body into a **sanitizer bypass** -- unsanitized
+   * markup stored because the sanitizer fell over on the way to filtering it.
+   *
+   * The traversal was already post-order over `Array.from(node.children)`, a
+   * snapshot taken before any mutation, so it converts to a worklist without
+   * changing what `visit` sees. Children are collected on the way down and
+   * visited on the way back up, in the same order as before.
+   */
+  const order: Element[] = []
+  const pending: Element[] = Array.from(root.children)
+  while (pending.length > 0) {
+    const node = pending.pop() as Element
+    order.push(node)
+    for (const child of Array.from(node.children)) pending.push(child)
+  }
+  for (let i = order.length - 1; i >= 0; i -= 1) visit(order[i] as Element)
 
   return root.innerHTML
 }

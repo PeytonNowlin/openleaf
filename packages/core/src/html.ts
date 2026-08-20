@@ -10,6 +10,7 @@
 import { DOMParser, DOMSerializer, type Node as PMNode, type Schema } from 'prosemirror-model'
 import { isInsidePreserved, withSerializationDocument } from './preserve.js'
 import { coreSchema } from './extensions.js'
+import { OpenLeafError } from './errors.js'
 
 /**
  * Parsers and serializers are resolved per schema rather than built once.
@@ -54,7 +55,8 @@ export interface HtmlIOOptions {
 function resolveDocument(opts?: HtmlIOOptions): Document {
   const doc = opts?.document ?? (typeof document !== 'undefined' ? document : undefined)
   if (!doc) {
-    throw new Error(
+    throw new OpenLeafError(
+      'no-document',
       '@openleaf-editor/core: no Document available. Pass { document } when ' +
         'running outside a browser.',
     )
@@ -62,11 +64,74 @@ function resolveDocument(opts?: HtmlIOOptions): Document {
   return doc
 }
 
-/** Parse an HTML string into an OpenLeaf document. */
+/**
+ * How deep a parsed tree may nest.
+ *
+ * ProseMirror's DOM parser recurses once per element, and so does the serializer
+ * on the way back, so a document deep enough overflows the JavaScript stack
+ * before either finishes. Measured on Node 26 at the default stack size:
+ * `'<div>'.repeat(5000)` -- 30 KB of markup -- throws `RangeError: Maximum call
+ * stack size exceeded`, while a 2 MB *flat* document parses without complaint.
+ * Depth is the problem, not size, which is what makes it reachable by an
+ * attacker with a small payload.
+ *
+ * 500 is far above anything authored and far below where any engine gives out.
+ * The deepest structure real content produces is quoted email, and that runs to
+ * tens of levels, not hundreds.
+ */
+export const MAX_PARSE_DEPTH = 500
+
+/**
+ * Reject over-deep input before the recursive parse meets it.
+ *
+ * An explicit stack, so measuring the depth cannot itself overflow. Two parallel
+ * arrays rather than an array of pairs: a 2 MB document has ~110,000 elements
+ * and the object churn was measurable where two number pushes are not.
+ */
+function assertDepthWithin(root: ParentNode, limit: number): void {
+  const nodes: Element[] = []
+  const depths: number[] = []
+  for (const child of Array.from(root.children)) {
+    nodes.push(child)
+    depths.push(1)
+  }
+  while (nodes.length > 0) {
+    const node = nodes.pop() as Element
+    const depth = depths.pop() as number
+    if (depth > limit) {
+      throw new OpenLeafError(
+        'depth-limit',
+        `@openleaf-editor/core: HTML nests more than ${limit} elements deep. Parsing it ` +
+          'recurses once per level and would overflow the stack. This is almost always ' +
+          'adversarial input rather than a document somebody wrote.',
+      )
+    }
+    for (const child of Array.from(node.children)) {
+      nodes.push(child)
+      depths.push(depth + 1)
+    }
+  }
+}
+
+/**
+ * Parse an HTML string into an OpenLeaf document.
+ *
+ * Throws `OpenLeafError` with code `invalid-argument` for a non-string, and
+ * `depth-limit` for input nested past {@link MAX_PARSE_DEPTH}. It used to coerce
+ * anything at all -- `parseHtml(42)` returned an empty document -- which turned
+ * a caller's type error into silent content loss.
+ */
 export function parseHtml(html: string, opts?: HtmlIOOptions): PMNode {
+  if (typeof html !== 'string') {
+    throw new OpenLeafError(
+      'invalid-argument',
+      `@openleaf-editor/core: parseHtml expects an HTML string, received ${typeof html}.`,
+    )
+  }
   const doc = resolveDocument(opts)
   const tpl = doc.createElement('template')
   tpl.innerHTML = html
+  assertDepthWithin(tpl.content, MAX_PARSE_DEPTH)
   return parserFor(opts?.schema ?? coreSchema()).parse(tpl.content, {
     preserveWhitespace: false,
   })
@@ -107,8 +172,22 @@ function unwrapSoleCellParagraph(host: Element): void {
   }
 }
 
-/** Serialize an OpenLeaf document back to an HTML string. */
+/**
+ * Serialize an OpenLeaf document back to an HTML string.
+ *
+ * Throws `OpenLeafError` with code `invalid-argument` for anything that is not a
+ * ProseMirror node. `serializeHtml(null)` used to surface a raw
+ * `TypeError: Cannot read properties of null (reading 'type')` from inside
+ * ProseMirror, with nothing in it naming OpenLeaf or the call that was wrong.
+ */
 export function serializeHtml(node: PMNode, opts?: HtmlIOOptions): string {
+  if (node === null || typeof node !== 'object' || !('type' in node) || !('content' in node)) {
+    throw new OpenLeafError(
+      'invalid-argument',
+      '@openleaf-editor/core: serializeHtml expects a ProseMirror node, such as ' +
+        '`view.state.doc`.',
+    )
+  }
   const doc = resolveDocument(opts)
   return withSerializationDocument(doc, () => {
     // Taken from the document itself, so a document built on an extended schema

@@ -55,6 +55,7 @@ import {
   parseDeclarations,
   serializeDeclarations,
 } from './css.js'
+import { OpenLeafError } from './errors.js'
 import { coreMarks, coreNodes } from './schema.js'
 import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
 
@@ -119,6 +120,11 @@ export function registerSchemaExtension(extension: SchemaExtension): () => void 
     )
     return () => undefined
   }
+  // Build the schema this registration would produce, and throw here if it does
+  // not build. Without this the collision still threw -- but on some later,
+  // unrelated `coreSchema()` call, with a stack pointing at whichever editor
+  // happened to be constructed next rather than at the extension that clashed.
+  createSchema([...extensions.values(), extension])
   extensions.set(extension.id, extension)
   notify()
   return () => {
@@ -334,7 +340,8 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
 function assertRulePriorities(extensionId: string, name: string, spec: NodeSpec | MarkSpec): void {
   for (const rule of (spec.parseDOM ?? []) as ParseRule[]) {
     if (rule.priority !== undefined && rule.priority <= 1) {
-      throw new Error(
+      throw new OpenLeafError(
+        'invalid-argument',
         `@openleaf-editor/core: extension "${extensionId}" gives "${name}" a parse rule at ` +
           `priority ${rule.priority}. The preservation layer's catch-all rules sit at ` +
           'priority 0 and 1, so this rule would tie with them and the winner would be ' +
@@ -355,7 +362,8 @@ function claim(
   const previous = claimed.get(`${kind}:${name}`)
 
   if (previous && !replaces.has(name)) {
-    throw new Error(
+    throw new OpenLeafError(
+      'schema-conflict',
       `@openleaf-editor/core: extensions "${previous}" and "${extension.id}" both define the ` +
         `${kind} "${name}". A ${kind} type is a storage format, not a preference: two ` +
         'definitions mean two serializations of the same content chosen by load order. ' +
@@ -363,7 +371,8 @@ function claim(
     )
   }
   if (existsInCore && !replaces.has(name)) {
-    throw new Error(
+    throw new OpenLeafError(
+      'schema-conflict',
       `@openleaf-editor/core: extension "${extension.id}" defines the ${kind} "${name}", which ` +
         `already exists in the base schema. If replacing it is intended, declare ` +
         `replaces: ['${name}'].`,

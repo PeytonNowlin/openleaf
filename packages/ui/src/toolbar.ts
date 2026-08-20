@@ -63,6 +63,22 @@ export interface ToolbarOptions {
   locale?: string | null
 }
 
+/**
+ * What a host or a plugin actually needs from a toolbar.
+ *
+ * Published instead of the `Toolbar` class itself. The documented need is
+ * `setItemState` -- pushing state no predicate can derive, such as an upload in
+ * flight -- and the keyboard entry point; exposing the class froze its whole
+ * surface, private fields and rendering internals included, into the public API
+ * before 1.0.
+ */
+export interface ToolbarHandle {
+  /** Force a control's state, overriding its `isActive`/`isEnabled` predicate. */
+  setItemState(id: string, state: { active?: boolean; enabled?: boolean }): void
+  /** Move focus into the bar, as Alt+F10 does. */
+  focusToolbar(): void
+}
+
 interface Control {
   spec: ToolbarItemSpec
   el: HTMLButtonElement

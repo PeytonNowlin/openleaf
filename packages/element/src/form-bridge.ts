@@ -54,8 +54,16 @@ export class FormBridge {
     this.attach()
   }
 
-  sync(): void {
-    if (this.#textarea) this.#textarea.value = this.readValue()
+  /**
+   * Write the document into the textarea.
+   *
+   * `value` is an optional already-serialized copy. The keystroke path has one
+   * in hand -- it is about to put the same string in the change event's detail
+   * -- and serializing the document twice per keystroke was measurable on a
+   * large post.
+   */
+  sync(value?: string): void {
+    if (this.#textarea) this.#textarea.value = value ?? this.readValue()
   }
 
   #onSubmit = (): void => this.sync()

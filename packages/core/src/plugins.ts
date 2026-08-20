@@ -14,14 +14,32 @@
 
 import type { Plugin } from 'prosemirror-state'
 import type { Schema } from 'prosemirror-model'
+import { OpenLeafError } from './errors.js'
 
 export type EditorPluginFactory = (schema: Schema) => Plugin[]
 
 const factories = new Set<EditorPluginFactory>()
 const listeners = new Set<() => void>()
 
-/** Register plugins to be installed in every editor created from now on. */
+/**
+ * Register plugins to be installed in every editor created from now on.
+ *
+ * Throws `OpenLeafError` with code `invalid-argument` when handed something that
+ * is not a function. `registerEditorPlugin(42)` used to be accepted silently and
+ * fail on the far side of the registry -- once per editor, through
+ * `console.error`, with a stack pointing at `createRegisteredPlugins` rather
+ * than at the script tag that got it wrong.
+ */
 export function registerEditorPlugin(factory: EditorPluginFactory): () => void {
+  if (typeof factory !== 'function') {
+    throw new OpenLeafError(
+      'invalid-argument',
+      '@openleaf-editor/core: registerEditorPlugin expects a function taking a schema and ' +
+        `returning an array of ProseMirror plugins, received ${typeof factory}. Passing a ` +
+        'plugin instance is the usual mistake: instances carry per-editor state and cannot ' +
+        'be shared, which is why this takes a factory.',
+    )
+  }
   factories.add(factory)
   notify()
   return () => {
@@ -51,7 +69,17 @@ function notify(): void {
   }
 }
 
-/** Build plugin instances for an editor, reusing cached instances when given. */
+/**
+ * Build plugin instances for an editor, reusing cached instances when given.
+ *
+ * `cache` is a host's own per-editor map, and it is genuinely part of the
+ * contract rather than an optimisation that leaked: without it, reconfiguring an
+ * editor after a late registration builds *new* instances of the plugins already
+ * running, and each one starts from its initial state -- so a table plugin loses
+ * its selection and a session plugin its draft, on every later registration.
+ * Omit it and every call returns fresh instances, which is correct for a host
+ * building one editor once.
+ */
 export function createRegisteredPlugins(
   schema: Schema,
   cache?: Map<EditorPluginFactory, Plugin[]>,

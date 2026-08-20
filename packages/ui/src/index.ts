@@ -1,4 +1,4 @@
-export { Toolbar, type ToolbarOptions } from './toolbar.js'
+export { Toolbar, type ToolbarHandle, type ToolbarOptions } from './toolbar.js'
 export {
   DEFAULT_LAYOUT,
   LAYOUT_WITH_COLOUR,
@@ -30,6 +30,9 @@ export {
   TABLE_CONTEXT_ITEMS,
   type MenuSpec,
   type MenuEntry,
+  // `MenuEntry` is `MenuItemRef | '|'`, so building a menu entry by hand meant
+  // naming a type that was not exported.
+  type MenuItemRef,
 } from './menu.js'
 export { promptHelp } from './help.js'
 export {
@@ -39,7 +42,14 @@ export {
 } from './floating.js'
 export { loadContentCss, contentCssUrls, scopeContentCss } from './content-css.js'
 export { CSS, ensureStyles, markStylesExternal, registerStyles } from './styles.js'
-export { ensureSprite, iconElement, iconNames, registerIcons, type IconName } from './icons.js'
+export {
+  DIRECTIONAL,
+  ensureSprite,
+  iconElement,
+  iconNames,
+  registerIcons,
+  type IconName,
+} from './icons.js'
 export {
   promptFields,
   promptForImage,

@@ -84,10 +84,13 @@ import {
   registerDefaultItems,
   runUploader,
   type ColourScheme,
+  type ImageUploader,
+  type ToolbarHandle,
 } from '@openleaf-editor/ui'
 import { baseKeymap } from 'prosemirror-commands'
 import { history } from 'prosemirror-history'
 import { keymap } from 'prosemirror-keymap'
+import type { Schema } from 'prosemirror-model'
 import { EditorState, Plugin, TextSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import { FormBridge } from './form-bridge.js'
@@ -110,22 +113,102 @@ export const SOURCE_CLOSE_EVENT = 'openleaf:source-close'
 // import their component modules while rendering a route.
 const HTMLElementBase = (globalThis.HTMLElement ?? class {}) as typeof HTMLElement
 
+/**
+ * Attributes that shape the chrome and take effect by rebuilding it.
+ *
+ * Each of these is read once while the toolbars, menubar, floating bars and
+ * context menu are constructed, so applying a change means constructing them
+ * again -- which `#rerenderChrome` does without touching the view, the document
+ * or the undo history.
+ */
+const CHROME_ATTRIBUTES = [
+  'toolbar',
+  'toolbar2',
+  'menubar',
+  'formats',
+  'contextmenu',
+  'selection-toolbar',
+  'insert-toolbar',
+  'toolbar-overflow',
+] as const
+
 export class OpenLeafEditor extends HTMLElementBase {
+  /**
+   * Every attribute this element documents, not the five it used to observe.
+   *
+   * `observedAttributes` returned `['for','readonly','skin','theme','lang']`
+   * while all three framework wrappers forwarded `toolbar`, `formats`,
+   * `aria-label` and the rest as reactive bindings. So `setAttribute('toolbar',
+   * 'bold')` after mount left all 22 default buttons in place and
+   * `setAttribute('aria-label', ...)` left the editable region labelled "Rich
+   * text editor" -- with no error either time. A prop that reactively does
+   * nothing is worse than one that does not exist: an integrator ships it, QA
+   * checks it once on mount, and it breaks on the first state change.
+   */
   static get observedAttributes(): string[] {
-    return ['for', 'readonly', 'skin', 'theme', 'lang']
+    return [
+      'for',
+      'readonly',
+      'skin',
+      'theme',
+      'lang',
+      'aria-label',
+      'inline',
+      'autoresize',
+      'visualaids',
+      'autolink',
+      'content-css',
+      ...CHROME_ATTRIBUTES,
+    ]
   }
 
   /**
-   * Appearance attributes are applied on change as well as at build time, so a
-   * host that lets a person switch theme does not have to rebuild the editor --
-   * which would cost them their undo history for a colour change.
+   * Apply an attribute change to a running editor.
+   *
+   * Nothing here rebuilds the view, so a change costs neither the document nor
+   * the undo history -- which is the whole reason these are applied incrementally
+   * rather than by tearing the editor down. Every branch is a no-op before
+   * `#build()` has run, because the callback also fires for attributes already
+   * present at upgrade time.
    */
   attributeChangedCallback(name: string): void {
-    if (name === 'skin') applySkin(this, this.getAttribute('skin'))
-    if (name === 'theme') applyColourScheme(this, this.#colourScheme())
-    if (name === 'readonly') this.#applyReadonly()
-    if (name === 'for' && this.#view) this.#formBridge.rebind()
-    if (name === 'lang') this.#applyLocale()
+    switch (name) {
+      case 'skin':
+        applySkin(this, this.getAttribute('skin'))
+        return
+      case 'theme':
+        applyColourScheme(this, this.#colourScheme())
+        return
+      case 'readonly':
+        this.#applyReadonly()
+        return
+      case 'for':
+        if (this.#view) this.#formBridge.rebind()
+        return
+      case 'lang':
+        this.#applyLocale()
+        return
+      case 'aria-label':
+        this.#view?.setProps({ attributes: this.#viewAttributes() })
+        return
+      case 'inline':
+        this.#applyInline()
+        return
+      case 'autoresize':
+        this.#applyAutoresize()
+        return
+      case 'visualaids':
+        this.#applyVisualAids(this.getAttribute('visualaids') !== 'false')
+        return
+      case 'autolink':
+        this.#reconfigurePlugins()
+        return
+      case 'content-css':
+        void this.#mountContentCss()
+        return
+      default:
+        this.#rerenderChrome()
+    }
   }
 
   #colourScheme(): ColourScheme {
@@ -146,7 +229,15 @@ export class OpenLeafEditor extends HTMLElementBase {
   #deferred = false
   /** The schema this editor was built with. Fixed for its lifetime. */
   #schema = coreSchema()
-  #basePlugins: Plugin[] = []
+  /**
+   * The plugins that never change once built, held so `reconfigure` hands the
+   * view back the *same* `history()` it was created with. Building a second one
+   * is what dropped undo when a plugin registered late.
+   */
+  #corePlugins: Plugin[] = []
+  /** Uploader for this editor alone, overriding `registerImageUploader`. */
+  imageUploader: ImageUploader | null = null
+  #hintId = ''
   #pluginCache = new Map<EditorPluginFactory, Plugin[]>()
   #unwatchPlugins: (() => void) | undefined
   #unwatchSchema: (() => void) | undefined
@@ -213,6 +304,154 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#visualAids = this.getAttribute('visualaids') !== 'false'
     if (this.#visualAids) this.classList.add('ol-visual-aids')
 
+    const contentHost = this.ownerDocument.createElement('div')
+    contentHost.className = 'ol-content'
+    this.#contentHost = contentHost
+
+    // The Alt+F10 hint lives in a hidden element referenced by
+    // aria-describedby. Screen reader users cannot guess the shortcut, and
+    // discoverability comes from telling them rather than from choosing a
+    // guessable key.
+    this.#hintId = `ol-hint-${(hintCounter += 1)}`
+
+    // Chrome first, so the toolbars sit above the canvas in the DOM; the hint
+    // and the live region go in afterwards.
+    this.#buildChrome()
+
+    // Held on the instance rather than built inline, because `reconfigure`
+    // has to hand the view back the *same* history() it was created with.
+    // Building a second one is what dropped undo when a plugin registered late.
+    this.#corePlugins = [
+      history(),
+      keymap({
+        'Alt-F10': () => {
+          this.#toolbar?.focusToolbar()
+          return true
+        },
+        F1: () => {
+          promptHelp(this.ownerDocument)
+          return true
+        },
+      }),
+      keymap(buildKeymap()),
+      keymap(baseKeymap),
+      nonEditablePlugin(),
+      disclosurePlugin(),
+    ]
+
+    this.#schema = coreSchema()
+
+    this.#view = new EditorView(contentHost, {
+      state: EditorState.create({
+        doc: parseHtml(initialHtml, { schema: this.#schema }),
+        // Plugins contributed by opt-in bundles. The cache is per editor, so
+        // instances are still never shared between two editors -- each carries
+        // its own state and two editors sharing one would fight over it -- but
+        // reconfiguring this editor reuses its own, which is what stops a late
+        // registration resetting the plugin state of the ones already running.
+        plugins: this.#allPlugins(),
+      }),
+      editable: () => !this.hasAttribute('readonly'),
+      attributes: this.#viewAttributes(),
+      // Normalize before ProseMirror parses. Word and Google Docs express
+      // structure as proprietary CSS, so without this a pasted list arrives as
+      // a wall of paragraphs with stray bullet characters in the text.
+      transformPastedHTML: (html) => normalizePastedHtml(html),
+      // Dropping or pasting an image file is the way most people expect to add
+      // one, and both arrive as a File rather than as markup.
+      handleDrop: (view, event) => this.#handleImageFiles(view, event, event.dataTransfer),
+      handlePaste: (view, event) => this.#handleImageFiles(view, event, event.clipboardData),
+      dispatchTransaction: (tr) => {
+        const view = this.#view
+        if (!view) return
+        view.updateState(view.state.apply(tr))
+
+        // Persistence comes FIRST, and deliberately so. The document is already
+        // committed by the line above; nothing about writing it out should
+        // depend on chrome rendering succeeding. With this the other way round,
+        // a third-party toolbar predicate that threw on one keystroke threw on
+        // every keystroke after it, and the textarea sync plus this event never
+        // ran again for the rest of the session -- an autosave listening here
+        // would stop silently and the author would lose work.
+        if (tr.docChanged) {
+          // Serialized once and used twice: the textarea and the event detail
+          // want the same string, and this runs on every keystroke.
+          const value = this.value
+          this.#formBridge.sync(value)
+          this.#emitChange(value)
+        }
+
+        // Passing the transaction lets the toolbar tell a formatting change from
+        // a cursor move, which is what keeps its announcements useful instead of
+        // chatty. Guarded because everything it calls may be third-party code.
+        try {
+          this.#toolbar?.update(view.state, tr)
+          this.#toolbar2?.update(view.state, tr)
+          this.#floating?.update(view.state)
+        } catch (error) {
+          console.error('@openleaf-editor/element: toolbar update failed', error)
+        }
+      },
+    })
+
+    this.#mountChrome()
+    this.#mountInline()
+    this.#mountAutoresize()
+    void this.#mountContentCss()
+    this.addEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
+    this.addEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
+    this.ownerDocument.addEventListener('fullscreenchange', this.#onFullscreenChange)
+    this.addEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
+
+    if (nestedTextarea) {
+      nestedTextarea.hidden = true
+      this.appendChild(nestedTextarea)
+    }
+
+    // An editor already on the page when a deferred bundle finishes loading
+    // would otherwise never receive its plugins, and the author would find
+    // table controls that do nothing. `reconfigure` keeps the document and the
+    // undo history; rebuilding the state from scratch would discard both.
+    this.#unwatchSchema = onSchemaExtensionsChange(() => {
+      if (!this.#view) return
+      if (coreSchema() === this.#schema) return
+      console.warn(
+        '@openleaf-editor/element: a schema extension registered after this editor was ' +
+          'built, so its node types are not available here. A document\'s schema is ' +
+          'fixed when its editor is created -- load the plugin script before the ' +
+          'editor, or reload the page. Editors created from now on will have it.',
+      )
+    })
+
+    this.#unwatchPlugins = onEditorPluginsChange(() => {
+      this.#reconfigurePlugins()
+    })
+
+    // Belt and braces: `submit` covers ordinary posts, `formdata` covers
+    // fetch-based submissions built from a FormData snapshot.
+    // Prefer the bound textarea's form: the documented `for` binding allows
+    // the editor to live outside the <form>, next to a hidden textarea inside it.
+    this.#formBridge.attach()
+    this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })
+    this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
+    this.#formBridge.sync()
+  }
+
+  /* -------------------------------------------------------------- *
+   * Chrome, built once and rebuilt when an attribute changes
+   * -------------------------------------------------------------- */
+
+  /**
+   * Construct the toolbars, menubar and canvas, in DOM order.
+   *
+   * Split out of `#build` so `#rerenderChrome` can run exactly the same code on
+   * an attribute change. Everything here reads attributes and creates elements;
+   * nothing touches the view, which is what makes re-running it safe.
+   */
+  #buildChrome(): void {
+    const contentHost = this.#contentHost
+    if (!contentHost) return
+
     const formats = parseFormatList(this.getAttribute('formats'))
     const overflow = this.hasAttribute('toolbar-overflow')
     const layout = this.getAttribute('toolbar')
@@ -253,18 +492,12 @@ export class OpenLeafEditor extends HTMLElementBase {
       this.appendChild(this.#toolbar2.el)
     }
 
-    const contentHost = this.ownerDocument.createElement('div')
-    contentHost.className = 'ol-content'
+    // Appended, not re-created, so the view it already hosts is not disturbed by
+    // a rebuild -- the canvas keeps its place under the new toolbars.
     this.appendChild(contentHost)
-    this.#contentHost = contentHost
 
-    // The Alt+F10 hint lives in a hidden element referenced by
-    // aria-describedby. Screen reader users cannot guess the shortcut, and
-    // discoverability comes from telling them rather than from choosing a
-    // guessable key.
-    const hintId = `ol-hint-${(hintCounter += 1)}`
     const hint = this.ownerDocument.createElement('span')
-    hint.id = hintId
+    hint.id = this.#hintId
     hint.className = 'ol-live'
     hint.textContent = wantsToolbar
       ? 'Rich text editor. Press Alt plus F10 for the formatting toolbar.'
@@ -272,144 +505,128 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.appendChild(hint)
 
     if (this.#toolbar) this.appendChild(this.#toolbar.liveRegion)
+  }
 
-    // Held on the instance rather than built inline, because `reconfigure`
-    // has to hand the view back the *same* history() it was created with.
-    // Building a second one is what dropped undo when a plugin registered late.
-    this.#basePlugins = [
-      history(),
-      keymap({
-        'Alt-F10': () => {
-          this.#toolbar?.focusToolbar()
-          return true
-        },
-        F1: () => {
-          promptHelp(this.ownerDocument)
-          return true
-        },
-      }),
-      keymap(buildKeymap()),
-      keymap(baseKeymap),
-      nonEditablePlugin(),
-      disclosurePlugin(),
-    ]
-    if (this.getAttribute('autolink') !== 'false') this.#basePlugins.push(autolinkPlugin())
-    if (this.#visualAids) this.#basePlugins.push(visualAidsPlugin())
-
-    this.#schema = coreSchema()
-
-    this.#view = new EditorView(contentHost, {
-      state: EditorState.create({
-        doc: parseHtml(initialHtml, { schema: this.#schema }),
-        // Plugins contributed by opt-in bundles. The cache is per editor, so
-        // instances are still never shared between two editors -- each carries
-        // its own state and two editors sharing one would fight over it -- but
-        // reconfiguring this editor reuses its own, which is what stops a late
-        // registration resetting the plugin state of the ones already running.
-        plugins: [...this.#basePlugins, ...createRegisteredPlugins(this.#schema, this.#pluginCache)],
-      }),
-      editable: () => !this.hasAttribute('readonly'),
-      attributes: {
-        role: 'textbox',
-        'aria-multiline': 'true',
-        'aria-label': this.getAttribute('aria-label') ?? 'Rich text editor',
-        'aria-describedby': hintId,
-      },
-      // Normalize before ProseMirror parses. Word and Google Docs express
-      // structure as proprietary CSS, so without this a pasted list arrives as
-      // a wall of paragraphs with stray bullet characters in the text.
-      transformPastedHTML: (html) => normalizePastedHtml(html),
-      // Dropping or pasting an image file is the way most people expect to add
-      // one, and both arrive as a File rather than as markup.
-      handleDrop: (view, event) => this.#handleImageFiles(view, event, event.dataTransfer),
-      handlePaste: (view, event) => this.#handleImageFiles(view, event, event.clipboardData),
-      dispatchTransaction: (tr) => {
-        const view = this.#view
-        if (!view) return
-        view.updateState(view.state.apply(tr))
-
-        // Persistence comes FIRST, and deliberately so. The document is already
-        // committed by the line above; nothing about writing it out should
-        // depend on chrome rendering succeeding. With this the other way round,
-        // a third-party toolbar predicate that threw on one keystroke threw on
-        // every keystroke after it, and the textarea sync plus this event never
-        // ran again for the rest of the session -- an autosave listening here
-        // would stop silently and the author would lose work.
-        if (tr.docChanged) {
-          this.#formBridge.sync()
-          this.dispatchEvent(new CustomEvent('openleaf:change', { bubbles: true }))
-        }
-
-        // Passing the transaction lets the toolbar tell a formatting change from
-        // a cursor move, which is what keeps its announcements useful instead of
-        // chatty. Guarded because everything it calls may be third-party code.
-        try {
-          this.#toolbar?.update(view.state, tr)
-          this.#toolbar2?.update(view.state, tr)
-          this.#floating?.update(view.state)
-        } catch (error) {
-          console.error('@openleaf-editor/element: toolbar update failed', error)
-        }
-      },
-    })
-
-    this.#toolbar?.mount(this.#view)
-    this.#toolbar2?.mount(this.#view)
-    this.#menubar?.mount(this.#view)
+  /** Give the freshly built chrome the view, and the state it cannot derive. */
+  #mountChrome(): void {
+    const view = this.#view
+    if (!view) return
+    this.#toolbar?.mount(view)
+    this.#toolbar2?.mount(view)
+    this.#menubar?.mount(view)
     this.#mountFloating()
     this.#mountContextMenu()
-    this.#mountInline()
-    this.#mountAutoresize()
-    void this.#mountContentCss()
-    this.addEventListener(SOURCE_TOGGLE_EVENT, this.#onToggleSource)
-    this.addEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
-    this.ownerDocument.addEventListener('fullscreenchange', this.#onFullscreenChange)
-    this.addEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
-
-    if (nestedTextarea) {
-      nestedTextarea.hidden = true
-      this.appendChild(nestedTextarea)
-    }
-
-    // An editor already on the page when a deferred bundle finishes loading
-    // would otherwise never receive its plugins, and the author would find
-    // table controls that do nothing. `reconfigure` keeps the document and the
-    // undo history; rebuilding the state from scratch would discard both.
-    this.#unwatchSchema = onSchemaExtensionsChange(() => {
-      if (!this.#view) return
-      if (coreSchema() === this.#schema) return
-      console.warn(
-        '@openleaf-editor/element: a schema extension registered after this editor was ' +
-          'built, so its node types are not available here. A document\'s schema is ' +
-          'fixed when its editor is created -- load the plugin script before the ' +
-          'editor, or reload the page. Editors created from now on will have it.',
-      )
-    })
-
-    this.#unwatchPlugins = onEditorPluginsChange(() => {
-      const view = this.#view
-      if (!view) return
-      view.updateState(
-        view.state.reconfigure({
-          plugins: [
-            ...this.#basePlugins,
-            ...createRegisteredPlugins(this.#schema, this.#pluginCache),
-          ],
-        }),
-      )
-      this.#toolbar?.update(view.state)
-      this.#toolbar2?.update(view.state)
-      this.#floating?.update(view.state)
-    })
-
-    // Belt and braces: `submit` covers ordinary posts, `formdata` covers
-    // fetch-based submissions built from a FormData snapshot.
-    // Prefer the bound textarea's form: the documented `for` binding allows
-    // the editor to live outside the <form>, next to a hidden textarea inside it.
-    this.#formBridge.attach()
     this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })
     this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
-    this.#formBridge.sync()
+    this.#toolbar?.setItemState('source', { active: this.#sourceMode })
+    this.#toolbar2?.setItemState('source', { active: this.#sourceMode })
+    this.#toolbar?.setItemState('fullscreen', { active: this.#fullscreen })
+    this.#toolbar2?.setItemState('fullscreen', { active: this.#fullscreen })
+  }
+
+  /** Tear the chrome down, leaving the canvas and the view untouched. */
+  #destroyChrome(): void {
+    this.removeEventListener('contextmenu', this.#onContextMenu)
+    this.ownerDocument.removeEventListener('pointerdown', this.#onContextPointer, true)
+    this.#floating?.destroy()
+    this.#floating = null
+    this.#contextMenu?.destroy()
+    this.#contextMenu = null
+    // `destroy()` unsubscribes and clears listeners but does not unparent, so
+    // the elements are removed here. Missing this left a dead toolbar on the
+    // page next to the live one.
+    this.#menubar?.destroy()
+    this.#menubar?.el.remove()
+    this.#menubar = null
+    this.#toolbar2?.destroy()
+    this.#toolbar2?.el.remove()
+    this.#toolbar2 = null
+    this.#toolbar?.destroy()
+    this.#toolbar?.el.remove()
+    this.#toolbar?.liveRegion.remove()
+    this.#toolbar = null
+    this.ownerDocument.getElementById(this.#hintId)?.remove()
+  }
+
+  /**
+   * Rebuild the chrome for a changed attribute, preserving everything else.
+   *
+   * The view, the document, the selection and the undo history all survive,
+   * because none of them is touched: the canvas element is re-parented rather
+   * than replaced. This is what makes `toolbar`, `menubar`, `formats` and the
+   * rest safe to treat as reactive props, which all three wrappers already
+   * did -- to no effect, before this existed.
+   */
+  #rerenderChrome(): void {
+    if (!this.#view || !this.#contentHost) return
+    this.#destroyChrome()
+    this.#buildChrome()
+    this.#mountChrome()
+    this.#toolbar?.update(this.#view.state)
+    this.#toolbar2?.update(this.#view.state)
+  }
+
+  /** The attributes ProseMirror puts on the editable region. */
+  #viewAttributes(): Record<string, string> {
+    return {
+      role: 'textbox',
+      'aria-multiline': 'true',
+      'aria-label': this.getAttribute('aria-label') ?? 'Rich text editor',
+      'aria-describedby': this.#hintId,
+    }
+  }
+
+  /**
+   * The full plugin list: the fixed core, the two attribute-driven optionals,
+   * then whatever the registry holds.
+   *
+   * The optionals are recomputed rather than held, so `autolink` and `visualaids`
+   * can change after mount; the core list is not, so `history()` stays the same
+   * instance across every reconfigure and undo survives.
+   */
+  #allPlugins(): Plugin[] {
+    const plugins = [...this.#corePlugins]
+    if (this.getAttribute('autolink') !== 'false') plugins.push(autolinkPlugin())
+    if (this.#visualAids) plugins.push(visualAidsPlugin())
+    // Plugins contributed by opt-in bundles. The cache is per editor, so
+    // instances are still never shared between two editors -- each carries its
+    // own state and two editors sharing one would fight over it -- but
+    // reconfiguring this editor reuses its own, which is what stops a late
+    // registration resetting the plugin state of the ones already running.
+    plugins.push(...createRegisteredPlugins(this.#schema, this.#pluginCache))
+    return plugins
+  }
+
+  /** Swap the plugin set into the running view, keeping document and history. */
+  #reconfigurePlugins(): void {
+    const view = this.#view
+    if (!view) return
+    view.updateState(view.state.reconfigure({ plugins: this.#allPlugins() }))
+    this.#toolbar?.update(view.state)
+    this.#toolbar2?.update(view.state)
+    this.#floating?.update(view.state)
+  }
+
+  /**
+   * Announce a document change.
+   *
+   * `composed: true` because a design system that puts the editor inside its own
+   * shadow root -- every Lit, Stencil and LWC component does -- otherwise never
+   * receives this at all: a bubbling event stops at the shadow boundary. The
+   * element already anticipates that host, since `FormBridge.bind()` resolves
+   * its textarea through a root that may be a `ShadowRoot`.
+   *
+   * The `detail` carries the value so a listener does not have to read `.value`
+   * back off the element, which serializes the document a second time.
+   */
+  #emitChange(value: string): void {
+    this.dispatchEvent(
+      new CustomEvent('openleaf:change', {
+        bubbles: true,
+        composed: true,
+        detail: { value },
+      }),
+    )
   }
 
   disconnectedCallback(): void {
@@ -422,24 +639,13 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.removeEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
     this.ownerDocument.removeEventListener('fullscreenchange', this.#onFullscreenChange)
     this.removeEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
-    this.removeEventListener('contextmenu', this.#onContextMenu)
-    this.ownerDocument.removeEventListener('pointerdown', this.#onContextPointer, true)
     this.removeEventListener('focusin', this.#onInlineFocus)
     this.removeEventListener('focusout', this.#onInlineBlur)
     this.#resizeObserver?.disconnect()
     this.#resizeObserver = null
     this.#unwatchPlugins?.()
     this.#unwatchSchema?.()
-    this.#floating?.destroy()
-    this.#floating = null
-    this.#contextMenu?.destroy()
-    this.#contextMenu = null
-    this.#menubar?.destroy()
-    this.#menubar = null
-    this.#toolbar2?.destroy()
-    this.#toolbar2 = null
-    this.#toolbar?.destroy()
-    this.#toolbar = null
+    this.#destroyChrome()
     this.#view?.destroy()
     this.#view = null
   }
@@ -469,18 +675,96 @@ export class OpenLeafEditor extends HTMLElementBase {
     return this.#view
   }
 
-  /** The schema this editor was built with. */
-  get schema(): import('prosemirror-model').Schema {
-    return this.#schema
+  /**
+   * The schema this editor was built with.
+   *
+   * Typed through the document node so the generic parameters are the schema's
+   * own rather than `Schema<any, any>`, which is what a bare `Schema` widens to
+   * and what made every node and mark name on it `any` for a consumer.
+   */
+  get schema(): Schema<string, string> {
+    return this.#schema as Schema<string, string>
   }
 
-  /** The toolbar, for plugins pushing external state via setItemState. */
-  get toolbar(): Toolbar | null {
+  /**
+   * The toolbar, for plugins pushing external state via `setItemState`.
+   *
+   * Renamed from `toolbar`, which is now the attribute-reflecting property every
+   * framework expects a custom element to have. The old name was a **silent
+   * data-loss bug** in every framework binding: Vue's `shouldSetAsProp` ends in
+   * `return key in el`, `'toolbar' in el` was true because of this accessor, so
+   * Vue took the property path, `patchDOMProp` did `try { el[key] = value }
+   * catch {}`, assigning to a getter-only accessor threw in strict mode, and the
+   * throw was swallowed. `<OpenLeafEditor toolbar="bold italic" />` rendered the
+   * full 22-button default bar with no error anywhere. React 19's custom-element
+   * property path has the same shape.
+   *
+   * Narrowed to `ToolbarHandle` as well: the documented need is `setItemState`
+   * and `focusToolbar`, and publishing the whole `Toolbar` class froze its
+   * entire surface into the public API before 1.0.
+   */
+  get toolbarInstance(): ToolbarHandle | null {
     return this.#toolbar
   }
 
+  /** The `toolbar` attribute. Assigning reflects, as HTML properties should. */
+  get toolbar(): string | null {
+    return this.getAttribute('toolbar')
+  }
+
+  set toolbar(layout: string | null) {
+    this.#reflect('toolbar', layout)
+  }
+
+  /** The `toolbar2` attribute. */
+  get toolbar2(): string | null {
+    return this.getAttribute('toolbar2')
+  }
+
+  set toolbar2(layout: string | null) {
+    this.#reflect('toolbar2', layout)
+  }
+
+  /** The `menubar` attribute. */
+  get menubar(): string | null {
+    return this.getAttribute('menubar')
+  }
+
+  set menubar(menus: string | null) {
+    this.#reflect('menubar', menus)
+  }
+
+  /** The `formats` attribute. */
+  get formats(): string | null {
+    return this.getAttribute('formats')
+  }
+
+  set formats(spec: string | null) {
+    this.#reflect('formats', spec)
+  }
+
+  /** The `readonly` attribute, as the boolean every framework binds it as. */
+  get readOnly(): boolean {
+    return this.hasAttribute('readonly')
+  }
+
+  set readOnly(value: boolean) {
+    this.#reflect('readonly', value ? '' : null)
+  }
+
+  #reflect(name: string, value: string | null): void {
+    if (value === null || value === undefined) this.removeAttribute(name)
+    else this.setAttribute(name, value)
+  }
+
+  /** Whether the HTML source view is open. Assigning toggles it. */
   get sourceMode(): boolean {
     return this.#sourceMode
+  }
+
+  set sourceMode(open: boolean) {
+    if (open === this.#sourceMode) return
+    this.#onToggleSource()
   }
 
   /* -------------------------------------------------------------- *
@@ -516,7 +800,11 @@ export class OpenLeafEditor extends HTMLElementBase {
       // still inert; focusing first would move the caret and then move the
       // element out from under it.
       this.dispatchEvent(
-        new CustomEvent(SOURCE_OPEN_EVENT, { bubbles: true, detail: { textarea: area } }),
+        new CustomEvent(SOURCE_OPEN_EVENT, {
+        bubbles: true,
+        composed: true,
+        detail: { textarea: area },
+      }),
       )
       area.focus()
       return
@@ -547,7 +835,11 @@ export class OpenLeafEditor extends HTMLElementBase {
       return
     }
     this.dispatchEvent(
-      new CustomEvent(SOURCE_CLOSE_EVENT, { bubbles: true, detail: { textarea: area } }),
+      new CustomEvent(SOURCE_CLOSE_EVENT, {
+        bubbles: true,
+        composed: true,
+        detail: { textarea: area },
+      }),
     )
     const html = area.value
     area.remove()
@@ -633,6 +925,11 @@ export class OpenLeafEditor extends HTMLElementBase {
    * and "later" has no UI, because there is no image-editing dialog yet.
    */
   async #uploadImages(view: EditorView, files: readonly File[]): Promise<void> {
+    // Reads `this.imageUploader` first, then the global one. The property is now
+    // declared on the class, so a consumer setting it gets a type instead of
+    // `error TS2339: Property 'imageUploader' does not exist on type
+    // 'OpenLeafEditor'` -- which is what the README and the JSDoc shipped in
+    // dist/index.d.ts had been telling them to write since the first beta.
     const uploader = imageUploaderFor(this)
     if (!uploader) return
 
@@ -682,6 +979,51 @@ export class OpenLeafEditor extends HTMLElementBase {
     const lang = this.getAttribute('lang')
     this.#toolbar?.setLocale(lang)
     this.#toolbar2?.setLocale(lang)
+  }
+
+  /** `inline` after mount: attach or detach the focus-reveal listeners. */
+  #applyInline(): void {
+    const wanted = this.hasAttribute('inline')
+    this.classList.toggle('ol-inline', wanted)
+    // Both are idempotent: adding a listener twice with the same function
+    // reference is a no-op, and removing one that is not attached is too.
+    this.removeEventListener('focusin', this.#onInlineFocus)
+    this.removeEventListener('focusout', this.#onInlineBlur)
+    if (wanted) this.#mountInline()
+    else this.classList.remove('ol-inline-active')
+  }
+
+  /** `autoresize` after mount: start or stop growing the canvas. */
+  #applyAutoresize(): void {
+    const wanted = this.hasAttribute('autoresize')
+    this.classList.toggle('ol-autoresize', wanted)
+    this.#resizeObserver?.disconnect()
+    this.#resizeObserver = null
+    if (wanted) {
+      this.#mountAutoresize()
+      return
+    }
+    // Leaving the measured pixel height behind would freeze the canvas at
+    // whatever size it happened to be when the attribute was removed.
+    const pm = this.#contentHost?.querySelector<HTMLElement>('.ProseMirror')
+    if (pm) pm.style.height = ''
+  }
+
+  /**
+   * Turn visual aids on or off.
+   *
+   * Both the class (which draws them) and the decoration plugin (which marks
+   * what to draw) have to move together, so this is also what the toolbar button
+   * calls. Toggling only the class left the decorations in the document with
+   * nothing styling them.
+   */
+  #applyVisualAids(active: boolean): void {
+    if (active === this.#visualAids) return
+    this.#visualAids = active
+    this.classList.toggle('ol-visual-aids', active)
+    this.#toolbar?.setItemState('visualAids', { active })
+    this.#toolbar2?.setItemState('visualAids', { active })
+    this.#reconfigurePlugins()
   }
 
   #mountFloating(): void {
@@ -815,10 +1157,7 @@ export class OpenLeafEditor extends HTMLElementBase {
   }
 
   #onToggleVisualAids = (): void => {
-    this.#visualAids = !this.#visualAids
-    this.classList.toggle('ol-visual-aids', this.#visualAids)
-    this.#toolbar?.setItemState('visualAids', { active: this.#visualAids })
-    this.#toolbar2?.setItemState('visualAids', { active: this.#visualAids })
+    this.#applyVisualAids(!this.#visualAids)
   }
 
 }
@@ -849,7 +1188,46 @@ export {
   type ImageUploader,
   type ListedResource,
   type PickedResource,
+  type ToolbarHandle,
 } from '@openleaf-editor/ui'
+
+/** The `detail` of `openleaf:change`. */
+export interface OpenLeafChangeDetail {
+  /** The document as HTML, already serialized. */
+  value: string
+}
+
+/** The `detail` of `openleaf:source-open` and `openleaf:source-close`. */
+export interface OpenLeafSourceDetail {
+  textarea: HTMLTextAreaElement
+}
+
+/**
+ * Teach the DOM about this element.
+ *
+ * Without this, `document.querySelector('openleaf-editor')` is an `Element` and
+ * `document.createElement('openleaf-editor')` is an `HTMLElement` -- neither of
+ * which has `.value`, `.view`, `.schema` or `.sourceMode`. There was no
+ * `declare global` anywhere in the repository, and the project's own docs
+ * worked around the gap: `docs/authoring-plugins.md` told plugin authors to
+ * write `(el as HTMLElement & { toolbar?: { setItemState(...): void } })`, which
+ * re-declares a *weaker* structural type for a member the class already types
+ * properly.
+ *
+ * The event map matters as much as the tag map. `addEventListener('openleaf:change')`
+ * handed back a bare `Event`, so reading `event.detail` was `error TS2339` and
+ * every listener in every example had to cast.
+ */
+declare global {
+  interface HTMLElementTagNameMap {
+    'openleaf-editor': OpenLeafEditor
+  }
+  interface HTMLElementEventMap {
+    'openleaf:change': CustomEvent<OpenLeafChangeDetail>
+    'openleaf:source-open': CustomEvent<OpenLeafSourceDetail>
+    'openleaf:source-close': CustomEvent<OpenLeafSourceDetail>
+  }
+}
 
 /** Idempotent: safe to import twice, or alongside a bundled copy. */
 export function defineOpenLeafEditor(tag = 'openleaf-editor'): void {

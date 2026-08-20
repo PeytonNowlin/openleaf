@@ -21,11 +21,20 @@ const EXPECTED_EXPORTS = [
   // then fails in the field, because a node built from one schema instance is
   // rejected by a document built from another.
   'baseSchema', 'coreNodes', 'coreMarks', 'parseHtml', 'serializeHtml', 'roundTrip',
-  // schema extensions
+  // The depth past which parseHtml refuses rather than overflowing the stack.
+  'MAX_PARSE_DEPTH',
+  // The one error type thrown on purpose, and the cross-copy check for it.
+  // Before this there were four styles and none of them was identifiable.
+  'OpenLeafError', 'isOpenLeafError',
+  // schema extensions.
+  // `CARRIED_ATTR` was REMOVED: its own docstring said "it is not for plugin
+  // authors", and it names an internal attribute slot whose contents the carry
+  // mechanism owns. Still importable from `./extensions.js` inside this package.
   'createSchema', 'coreSchema', 'registerSchemaExtension', 'registeredSchemaExtensions',
-  'onSchemaExtensionsChange', 'CARRIED_ATTR',
-  // preservation
-  'isLosslesslyUnwrappable', 'unknownBlock', 'unknownInline',
+  'onSchemaExtensionsChange',
+  // preservation. `isInsidePreserved` is ADDED: authoring-plugins.md §4.1
+  // requires plugin authors to call it and it was not exported.
+  'isLosslesslyUnwrappable', 'isInsidePreserved', 'unknownBlock', 'unknownInline',
   // url safety
   'isSafeUrl', 'safeUrlOrNull', 'isEventHandlerAttribute', 'URL_ATTRIBUTES',
   // css safety -- the vocabulary alignment and colour are allowed to write, which
@@ -83,11 +92,17 @@ const EXPECTED_EXPORTS = [
   'parseFormatList', 'formatParts', 'setBlockClass', 'activeBlockClass', 'carriedClass',
   // plugin registry
   'registerEditorPlugin', 'createRegisteredPlugins', 'onEditorPluginsChange',
-  // table nodes, and the style validator the property dialogs in
-  // @openleaf-editor/plugins-table share with the parse path -- exported so a
-  // dialog writing attributes directly cannot disagree with the schema about an
-  // acceptable padding, which is how `padding: 0;position:fixed;inset:0` got in
-  'table', 'table_row', 'table_cell', 'table_header', 'safeTableStyleValue',
+  // The style validator the property dialogs in @openleaf-editor/plugins-table
+  // share with the parse path -- exported so a dialog writing attributes
+  // directly cannot disagree with the schema about an acceptable padding, which
+  // is how `padding: 0;position:fixed;inset:0` got in.
+  //
+  // The `table`/`table_row`/`table_cell`/`table_header` specs themselves were
+  // REMOVED: raw mutable `NodeSpec` objects, reachable from every consumer, that
+  // nothing outside core imported. `coreSchema().nodes['table']` is the
+  // supported route to a table node type, and the schema it belongs to is
+  // immutable.
+  'safeTableStyleValue',
 ] as const
 
 describe('the public surface', () => {
