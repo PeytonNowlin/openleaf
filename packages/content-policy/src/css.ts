@@ -395,30 +395,38 @@ export function indentCss(levels: number): string {
   return `${levels * INDENT_EM}em`
 }
 
-const LIST_STYLE_ALIASES: Record<string, ListStyle> = {
-  disc: 'disc',
-  circle: 'circle',
-  square: 'square',
-  decimal: 'decimal',
-  'lower-roman': 'lower-roman',
-  'upper-roman': 'upper-roman',
-  'lower-alpha': 'lower-alpha',
-  'upper-alpha': 'upper-alpha',
-  'lower-latin': 'lower-alpha',
-  'upper-latin': 'upper-alpha',
-  'lower-greek': 'lower-greek',
-  // HTML `type` on <ol>.
-  a: 'lower-alpha',
-  A: 'upper-alpha',
-  i: 'lower-roman',
-  I: 'upper-roman',
-  '1': 'decimal',
-}
+/**
+ * A Map, not an object literal, because the lookup key is author-controlled.
+ * An object inherits `Object.prototype`, so `aliases['constructor']` answers
+ * with the `Object` constructor and `<ol type="constructor">` round-tripped to
+ * `list-style-type:function Object() { [native code] }`. A Map has no
+ * prototype keys to find.
+ */
+const LIST_STYLE_ALIASES = new Map<string, ListStyle>([
+  ['disc', 'disc'],
+  ['circle', 'circle'],
+  ['square', 'square'],
+  ['decimal', 'decimal'],
+  ['lower-roman', 'lower-roman'],
+  ['upper-roman', 'upper-roman'],
+  ['lower-alpha', 'lower-alpha'],
+  ['upper-alpha', 'upper-alpha'],
+  ['lower-latin', 'lower-alpha'],
+  ['upper-latin', 'upper-alpha'],
+  ['lower-greek', 'lower-greek'],
+  // HTML `type` on <ol>. Case matters here: `a` and `A` are different lists,
+  // so the exact spelling is tried before the lowercased one.
+  ['a', 'lower-alpha'],
+  ['A', 'upper-alpha'],
+  ['i', 'lower-roman'],
+  ['I', 'upper-roman'],
+  ['1', 'decimal'],
+])
 
 export function safeListStyle(value: string | null | undefined): ListStyle | null {
   if (!value) return null
   const candidate = value.trim()
-  return LIST_STYLE_ALIASES[candidate] ?? LIST_STYLE_ALIASES[candidate.toLowerCase()] ?? null
+  return LIST_STYLE_ALIASES.get(candidate) ?? LIST_STYLE_ALIASES.get(candidate.toLowerCase()) ?? null
 }
 
 /**

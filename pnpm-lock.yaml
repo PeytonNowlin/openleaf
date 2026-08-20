@@ -68,6 +68,10 @@ importers:
       prosemirror-view:
         specifier: ^1.37.0
         version: 1.42.2
+    devDependencies:
+      prosemirror-tables:
+        specifier: ^1.6.4
+        version: 1.8.5
 
   packages/element:
     dependencies:

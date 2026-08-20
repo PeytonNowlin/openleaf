@@ -1,0 +1,16 @@
+<!--
+  Text blocks carrying CSS the schema does not model.
+
+  These went out on a spec ARRAY, and prosemirror-model writes a spec array's
+  style with `dom.style.cssText = value` -- a CSSOM parse, and therefore a
+  rewrite. `margin-bottom:0` came back `margin-bottom: 0px`, which is a change
+  to the VALUE, on first save, to every paragraph in an archive that carries an
+  unmodelled declaration.
+-->
+<p style="margin-bottom:0">A paragraph with no bottom margin.</p>
+<p style="margin-bottom:0;text-align:center">Centred, and still no bottom margin.</p>
+<h3 style="letter-spacing:0.08em">A heading with tracking</h3>
+<p class="lead" data-cms-block="7" style="letter-spacing:0.05em">Class, data attribute and CSS together.</p>
+<ul style="margin-left:0">
+  <li>A list whose margin was reset.</li>
+</ul>
