@@ -62,7 +62,11 @@ export async function confirmAction(
     })
 
     dialog.showModal()
-    ok.focus()
+    // Never the destructive button. "Clear editor" focused by default means one
+    // reflexive Enter -- the key that opened the dialog is still under the
+    // author's finger -- discards the document.
+    if (options.danger === true) cancel.focus()
+    else ok.focus()
   })
 }
 

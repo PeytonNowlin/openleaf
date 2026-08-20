@@ -110,11 +110,12 @@ export function tableContextMenu(): Plugin {
         view.dom.parentElement ??
         view.dom
 
-      const close = (): void => {
+      const close = (returnFocus = false): void => {
         if (!open || !menu) return
         menu.hidden = true
         open = false
         view.dom.ownerDocument.removeEventListener('pointerdown', onPointerDown, true)
+        if (returnFocus) view.focus()
       }
 
       const onPointerDown = (event: Event): void => {
@@ -135,6 +136,7 @@ export function tableContextMenu(): Plugin {
             button.type = 'button'
             button.className = 'ol-table-menu-item'
             button.setAttribute('role', 'menuitem')
+            button.tabIndex = -1
             button.textContent = item.label
             const enabled = item.enabled ? item.enabled(view) : true
             button.setAttribute('aria-disabled', enabled ? 'false' : 'true')
@@ -165,7 +167,7 @@ export function tableContextMenu(): Plugin {
         menu.style.top = `${Math.round(y)}px`
         open = true
         view.dom.ownerDocument.addEventListener('pointerdown', onPointerDown, true)
-        menu.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])')?.focus()
+        focusItem(menu.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])'))
       }
 
       const onContextMenu = (event: Event): void => {
@@ -195,21 +197,54 @@ export function tableContextMenu(): Plugin {
         showAt(event.clientX, event.clientY)
       }
 
+      /*
+       * Escape, and the arrow keys, bound on the MENU.
+       *
+       * They were bound on `view.dom`, which never saw them: `showAt` appends
+       * the menu to the editor host and moves focus into it, and because the
+       * element builds its chrome in the light DOM, `view.dom` is not an
+       * ancestor of the menu. Shift+F10 is a documented way in, so that left a
+       * widget with an entrance and no exit.
+       */
+      const items = (): HTMLButtonElement[] =>
+        menu ? [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')] : []
+
+      const focusItem = (next: HTMLButtonElement | null | undefined): void => {
+        if (!next) return
+        for (const item of items()) item.tabIndex = item === next ? 0 : -1
+        next.focus()
+      }
+
       const onKeyDown = (event: KeyboardEvent): void => {
-        if (event.key === 'Escape' && open) {
+        if (!open) return
+        // Tab out of a popup menu closes it rather than walking through it.
+        if (event.key === 'Escape' || event.key === 'Tab') {
           event.preventDefault()
-          close()
-          view.focus()
+          close(true)
+          return
+        }
+        const all = items()
+        const index = all.indexOf(event.target as HTMLButtonElement)
+        if (index < 0) return
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault()
+          const delta = event.key === 'ArrowDown' ? 1 : -1
+          focusItem(all[(index + delta + all.length) % all.length])
+          return
+        }
+        if (event.key === 'Home' || event.key === 'End') {
+          event.preventDefault()
+          focusItem(event.key === 'Home' ? all[0] : all[all.length - 1])
         }
       }
 
       view.dom.addEventListener('contextmenu', onContextMenu)
-      view.dom.addEventListener('keydown', onKeyDown)
+      view.dom.ownerDocument.addEventListener('keydown', onKeyDown, true)
 
       return {
         destroy() {
           view.dom.removeEventListener('contextmenu', onContextMenu)
-          view.dom.removeEventListener('keydown', onKeyDown)
+          view.dom.ownerDocument.removeEventListener('keydown', onKeyDown, true)
           close()
           menu?.remove()
         },

@@ -401,25 +401,25 @@ function buildFindBar(host: EditorHost, view: EditorView): { root: HTMLElement; 
 
   findInput.addEventListener('input', applyQuery)
   caseBox.addEventListener('change', applyQuery)
+  // Escape delegated on the bar, not bound to two of its eight controls. Bound
+  // per input, the author who had tabbed to Next, Replace or the case checkbox
+  // pressed Escape and nothing happened.
+  root.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    close()
+  })
   findInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       if (event.shiftKey) findPrev(view.state, view.dispatch)
       else findNext(view.state, view.dispatch)
     }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      close()
-    }
   })
   replaceInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       replaceCurrent(replaceInput.value)(view.state, view.dispatch)
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      close()
     }
   })
   prev.addEventListener('click', () => findPrev(view.state, view.dispatch))
