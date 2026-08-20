@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   CARRIED_ATTR,
   activeHeadingLevel,
-  clearSchemaExtensions,
   coreSchema,
   createSchema,
   isMarkActive,
@@ -17,6 +16,7 @@ import {
   toggleHeading,
   type SchemaExtension,
 } from '../src/index.js'
+import { clearSchemaExtensions } from '../src/testing.js'
 
 afterEach(() => {
   clearSchemaExtensions()

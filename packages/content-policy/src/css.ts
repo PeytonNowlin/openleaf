@@ -1,0 +1,581 @@
+/**
+ * Canonical CSS validation shared by the editor and server-side policy adapters.
+ *
+ * Alignment and colour are the two formatting features that cannot be expressed
+ * as a tag. `<p align="center">` and `<font color="red">` were removed from HTML
+ * years ago; every editor this one is meant to replace -- TinyMCE, CKEditor,
+ * Google Docs -- writes `style="text-align:center"` and
+ * `<span style="color:#c00">` instead. Matching them is not a preference: it is
+ * the difference between reading a customer's existing archive and rewriting it.
+ *
+ * So OpenLeaf emits a `style` attribute, which means it owes a precise answer to
+ * "which declarations, with which values". That answer lives here, in one place,
+ * because four separate consumers need to agree on it:
+ *
+ *   the schema        -- parsing stored HTML and writing it back
+ *   the commands      -- validating what a toolbar hands them
+ *   the preservation  -- deciding whether a `<span style>` is fully modelled and
+ *   layer                can therefore be unwrapped rather than kept as an atom
+ *   @openleaf-editor/sanitize -- allowing exactly these declarations server-side
+ *
+ * Four hand-written copies of a CSS allowlist is the same divergence the
+ * sanitize package exists to prevent, one layer down.
+ *
+ * ## Why a validator rather than a blocklist
+ *
+ * `style` has a genuinely bad history: `expression()` in old IE executed
+ * JavaScript, `url()` fetches, `position:fixed` lets pasted content cover the
+ * page with something that looks like your UI. None of that is reachable
+ * through a closed property allowlist whose values must match a colour, a
+ * length, a font name, or one of a few keywords -- and an allowlist stays safe
+ * against whatever CSS gains next, which a list of known-bad functions does not.
+ */
+
+/** The four alignments a toolbar offers. */
+export type Align = 'left' | 'center' | 'right' | 'justify'
+
+export const ALIGNMENTS: readonly Align[] = ['left', 'center', 'right', 'justify']
+
+/**
+ * Declarations the schema models, and therefore the only ones it will write.
+ *
+ * `@openleaf-editor/sanitize` reads this list to build its own allowlist, so a
+ * property added here reaches the server-side policy rather than being stripped
+ * from stored content by a policy that never heard of it.
+ */
+export const MODELLED_PROPERTIES: readonly string[] = [
+  'text-align',
+  'color',
+  'background-color',
+  'font-family',
+  'font-size',
+  'line-height',
+  'padding-inline-start',
+  'list-style-type',
+]
+
+/**
+ * The subset a mark can represent, and therefore the subset the preservation
+ * layer may unwrap a `<span>` for. Block properties are deliberately absent:
+ * unwrapping the element that carries them would drop them.
+ */
+export const COLOUR_PROPERTIES: readonly string[] = ['color', 'background-color']
+
+export const INLINE_STYLE_PROPERTIES: readonly string[] = [
+  'color',
+  'background-color',
+  'font-family',
+  'font-size',
+]
+
+/** Indent step written as `padding-inline-start`. Matches TinyMCE's 2em. */
+export const INDENT_EM = 2
+export const MAX_INDENT = 8
+
+/** List styles the toolbar offers. `decimal` is the ordered-list default. */
+export type ListStyle =
+  | 'disc'
+  | 'circle'
+  | 'square'
+  | 'decimal'
+  | 'lower-roman'
+  | 'upper-roman'
+  | 'lower-alpha'
+  | 'upper-alpha'
+  | 'lower-greek'
+
+export const LIST_STYLES: readonly ListStyle[] = [
+  'disc',
+  'circle',
+  'square',
+  'decimal',
+  'lower-roman',
+  'upper-roman',
+  'lower-alpha',
+  'upper-alpha',
+  'lower-greek',
+]
+
+export type Dir = 'ltr' | 'rtl'
+
+export const FONT_FAMILIES: readonly string[] = [
+  'Arial',
+  'Georgia',
+  'Times New Roman',
+  'Courier New',
+  'Verdana',
+  'Tahoma',
+  'Trebuchet MS',
+  'Palatino',
+  'Garamond',
+  'system-ui',
+  'serif',
+  'sans-serif',
+  'monospace',
+]
+
+/** Preset sizes the toolbar lists, in pixels. The number input accepts any in range. */
+export const FONT_SIZE_PRESETS: readonly number[] = [8, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72]
+
+export const LINE_HEIGHT_PRESETS: readonly string[] = ['1', '1.15', '1.5', '2', '2.5']
+
+/**
+ * Split a `style` attribute into declarations.
+ *
+ * Deliberately reads the raw attribute rather than the CSSOM. `element.style`
+ * normalizes as it parses -- Chrome turns `#ff0000` into `rgb(255, 0, 0)` -- and
+ * anything that reads through it rewrites every hex colour in an archive on the
+ * first save. The parse is trivial because the values that survive validation
+ * contain no semicolons or quotes; anything that does fails validation and is
+ * dropped, so a naive split cannot be tricked into producing a value the
+ * validators would not have accepted anyway.
+ *
+ * Keys are lowercased; values keep their case, because a colour may be a hex
+ * digit sequence an author wrote in capitals and there is no reason to change it.
+ */
+export function parseDeclarations(style: string | null | undefined): Map<string, string> {
+  const out = new Map<string, string>()
+  if (!style) return out
+  for (const part of style.split(';')) {
+    const colon = part.indexOf(':')
+    if (colon < 0) continue
+    const name = part.slice(0, colon).trim().toLowerCase()
+    const value = part.slice(colon + 1).trim()
+    if (name === '' || value === '') continue
+    out.set(name, value)
+  }
+  return out
+}
+
+/** Join declarations back into a `style` attribute value, or `null` if empty. */
+export function serializeDeclarations(declarations: Map<string, string>): string | null {
+  if (declarations.size === 0) return null
+  return [...declarations].map(([name, value]) => `${name}:${value}`).join(';')
+}
+
+/**
+ * The alignment this value means, or null.
+ *
+ * `start` and `end` are accepted because they are what a bidirectional-aware
+ * author writes, and they are resolved against the reading direction rather than
+ * dropped: in an RTL document `start` is the right edge. They are NOT preserved
+ * as `start`/`end`, which is a real if narrow loss -- an RTL paragraph aligned to
+ * `start` comes back as `right`, and stays right if the document's direction
+ * later changes. Modelling logical alignment properly means a second attribute
+ * and a toolbar that can express it, which is a bigger feature than this one.
+ */
+export function safeAlign(value: string | null | undefined, dir?: string | null): Align | null {
+  if (!value) return null
+  const candidate = value.trim().toLowerCase()
+  const rtl = (dir ?? '').toLowerCase() === 'rtl'
+  if (candidate === 'start') return rtl ? 'right' : 'left'
+  if (candidate === 'end') return rtl ? 'left' : 'right'
+  return (ALIGNMENTS as readonly string[]).includes(candidate) ? (candidate as Align) : null
+}
+
+/**
+ * A colour value, or null when it is not one.
+ *
+ * The three accepted shapes are hex, the `rgb`/`hsl` function families, and a
+ * bare keyword. A keyword is matched as a plain identifier rather than against
+ * the 148-name CSS colour list: the list costs most of a kilobyte in a bundle
+ * with a hard budget, and an unrecognised identifier is not dangerous -- the
+ * browser discards the declaration. Every form that can actually reach outside
+ * the declaration needs a character this rejects, `(` for `expression()` and
+ * `url()` among them, and both are excluded from the keyword shape.
+ */
+const HEX = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
+const FUNCTIONAL = /^(?:rgba?|hsla?)\(\s*[0-9a-z\s.,%/+-]+\)$/i
+const KEYWORD = /^[a-z]{3,24}$/i
+
+/** `rgb(255, 0, 0)` and friends, so a fully opaque one can become hex. */
+const RGB_CHANNELS = /^rgba?\(\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*(?:[,/]\s*(1|1?\.0+|100%)\s*)?\)$/i
+
+export function safeColor(value: string | null | undefined): string | null {
+  if (!value) return null
+  // Collapsed rather than stripped: `rgb(255 0 0)` needs its separators.
+  const candidate = value.trim().replace(/\s+/g, ' ')
+  if (candidate === '') return null
+
+  const rgb = RGB_CHANNELS.exec(candidate)
+  if (rgb) {
+    // Normalized to hex, and this is what keeps a round trip stable rather than
+    // merely lossless. ProseMirror matches mark style rules through the CSSOM,
+    // which hands us `rgb(255, 0, 0)` for an authored `#ff0000` -- so without
+    // this, opening and saving a document would rewrite every hex colour in it
+    // into a longer functional form. Folding the other direction instead makes
+    // both spellings converge on the shorter one, and the second save is a
+    // no-op.
+    const channels = [rgb[1], rgb[2], rgb[3]].map((n) => Number.parseInt(n as string, 10))
+    if (channels.every((n) => n <= 255)) {
+      return `#${channels.map((n) => n.toString(16).padStart(2, '0')).join('')}`
+    }
+  }
+
+  if (HEX.test(candidate)) return candidate.toLowerCase()
+  if (FUNCTIONAL.test(candidate)) return candidate.toLowerCase()
+  if (KEYWORD.test(candidate)) return candidate.toLowerCase()
+  return null
+}
+
+export function safeDir(value: string | null | undefined): Dir | null {
+  if (!value) return null
+  const candidate = value.trim().toLowerCase()
+  return candidate === 'ltr' || candidate === 'rtl' ? candidate : null
+}
+
+const GENERIC_FAMILIES = new Set([
+  'serif',
+  'sans-serif',
+  'monospace',
+  'cursive',
+  'fantasy',
+  'system-ui',
+  'ui-sans-serif',
+  'ui-serif',
+  'ui-monospace',
+  'ui-rounded',
+  'emoji',
+  'math',
+  'fangsong',
+])
+
+/**
+ * A font stack, or null.
+ *
+ * Names are identifiers or quoted strings of letters, digits, spaces and
+ * hyphens. Anything that can reach outside the declaration -- `url()`,
+ * `expression()`, `var()`, a quote that does not match -- is refused. A stack
+ * is a comma-separated list of those names, capped so a paste cannot dump a
+ * novel into the attribute.
+ */
+export function safeFontFamily(value: string | null | undefined): string | null {
+  if (!value) return null
+  const raw = value.trim()
+  if (raw === '' || raw.length > 160) return null
+  if (/url\s*\(|expression|var\s*\(|[@\\<>]/i.test(raw)) return null
+
+  const parts: string[] = []
+  let current = ''
+  let quote: string | null = null
+  for (const char of raw) {
+    if (quote) {
+      if (char === quote) quote = null
+      current += char
+      continue
+    }
+    if (char === '"' || char === "'") {
+      quote = char
+      current += char
+      continue
+    }
+    if (char === ',') {
+      parts.push(current)
+      current = ''
+      continue
+    }
+    current += char
+  }
+  if (quote !== null) return null
+  parts.push(current)
+  if (parts.length === 0 || parts.length > 6) return null
+
+  const out: string[] = []
+  for (const part of parts) {
+    const family = oneFontFamily(part)
+    if (family === null) return null
+    out.push(family)
+  }
+  return out.join(',')
+}
+
+function oneFontFamily(part: string): string | null {
+  const trimmed = part.trim()
+  if (trimmed === '' || trimmed.length > 64) return null
+  const quoted = /^(['"])(.*)\1$/.exec(trimmed)
+  // `?.[2]` rather than a ternary: a capture group is `string | undefined` to the
+  // type checker even when the match succeeded. `(.*)` matches the empty string,
+  // so a quoted empty name still reads as '' and is refused below -- the `??`
+  // only fires when there was no match at all.
+  const name = quoted?.[2] ?? trimmed
+  if (name === '' || /[^a-zA-Z0-9 \-]/.test(name)) return null
+  if (!/^[a-zA-Z]/.test(name)) return null
+  const lower = name.toLowerCase()
+  if (GENERIC_FAMILIES.has(lower)) return lower
+  return /\s/.test(name) ? `"${name}"` : name
+}
+
+const FONT_SIZE_KEYWORDS = new Set([
+  'xx-small',
+  'x-small',
+  'small',
+  'medium',
+  'large',
+  'x-large',
+  'xx-large',
+  'xxx-large',
+])
+
+const FONT_SIZE_LENGTH = /^(\d+(?:\.\d+)?)(px|pt|em|rem|%)$/i
+
+/**
+ * A font size, or null.
+ *
+ * Keywords and a closed set of length units. Values are clamped so a pasted
+ * `font-size: 400px` cannot blow the layout out; the toolbar's number input
+ * writes pixels inside the same range.
+ */
+export function safeFontSize(value: string | null | undefined): string | null {
+  if (!value) return null
+  const candidate = value.trim().toLowerCase().replace(/\s+/g, '')
+  if (FONT_SIZE_KEYWORDS.has(candidate)) return candidate
+  const match = FONT_SIZE_LENGTH.exec(candidate)
+  if (!match) return null
+  const amount = Number(match[1])
+  const unit = match[2] as 'px' | 'pt' | 'em' | 'rem' | '%'
+  const min = { px: 8, pt: 6, em: 0.5, rem: 0.5, '%': 50 }
+  const max = { px: 96, pt: 72, em: 6, rem: 6, '%': 300 }
+  if (!(amount >= min[unit] && amount <= max[unit])) return null
+  const rendered = Number.isInteger(amount) ? String(amount) : String(amount)
+  return `${rendered}${unit}`
+}
+
+const LINE_HEIGHT_LENGTH = /^(\d+(?:\.\d+)?)(px|em|rem|%)?$/i
+
+/** A line height: `normal`, a unitless multiplier, or a short length. */
+export function safeLineHeight(value: string | null | undefined): string | null {
+  if (!value) return null
+  const candidate = value.trim().toLowerCase().replace(/\s+/g, '')
+  if (candidate === 'normal') return 'normal'
+  const match = LINE_HEIGHT_LENGTH.exec(candidate)
+  if (!match) return null
+  const amount = Number(match[1])
+  const unit = match[2] ?? ''
+  if (unit === '') {
+    if (!(amount >= 0.5 && amount <= 4)) return null
+    return Number.isInteger(amount) ? String(amount) : String(amount)
+  }
+  if (unit === '%') {
+    if (!(amount >= 50 && amount <= 400)) return null
+    return `${formatNumber(amount)}%`
+  }
+  if (!(amount >= 0.5 && amount <= 96)) return null
+  return `${formatNumber(amount)}${unit}`
+}
+
+function formatNumber(amount: number): string {
+  return Number.isInteger(amount) ? String(amount) : String(amount)
+}
+
+/**
+ * How many indent steps this declaration means, or null.
+ *
+ * Written as `padding-inline-start: 2em` per step. Inherited `padding-left`
+ * and `margin-left` in 40px or 2em multiples are read as the same thing, which
+ * is what TinyMCE and CKEditor stored for years.
+ */
+export function indentLevels(value: string | null | undefined): number | null {
+  if (!value) return null
+  const candidate = value.trim().toLowerCase().replace(/\s+/g, '')
+  const em = /^(\d+(?:\.\d+)?)em$/.exec(candidate)
+  if (em) return stepsFrom(Number(em[1]), INDENT_EM)
+  const px = /^(\d+(?:\.\d+)?)px$/.exec(candidate)
+  if (px) return stepsFrom(Number(px[1]), 40)
+  return null
+}
+
+function stepsFrom(amount: number, step: number): number | null {
+  const steps = amount / step
+  if (steps < 0.9 || steps > MAX_INDENT) return null
+  const rounded = Math.round(steps)
+  return Math.abs(steps - rounded) < 0.05 ? rounded : null
+}
+
+export function indentCss(levels: number): string {
+  return `${levels * INDENT_EM}em`
+}
+
+const LIST_STYLE_ALIASES: Record<string, ListStyle> = {
+  disc: 'disc',
+  circle: 'circle',
+  square: 'square',
+  decimal: 'decimal',
+  'lower-roman': 'lower-roman',
+  'upper-roman': 'upper-roman',
+  'lower-alpha': 'lower-alpha',
+  'upper-alpha': 'upper-alpha',
+  'lower-latin': 'lower-alpha',
+  'upper-latin': 'upper-alpha',
+  'lower-greek': 'lower-greek',
+  // HTML `type` on <ol>.
+  a: 'lower-alpha',
+  A: 'upper-alpha',
+  i: 'lower-roman',
+  I: 'upper-roman',
+  '1': 'decimal',
+}
+
+export function safeListStyle(value: string | null | undefined): ListStyle | null {
+  if (!value) return null
+  const candidate = value.trim()
+  return LIST_STYLE_ALIASES[candidate] ?? LIST_STYLE_ALIASES[candidate.toLowerCase()] ?? null
+}
+
+/**
+ * A BCP 47-shaped language tag, or null.
+ *
+ * Not a complete parser: it admits `en`, `en-GB`, `zh-Hans-CN` and refuses
+ * anything that could not be a language tag. The point is to keep `lang`
+ * from becoming a free-form attribute for whatever a paste stuffed in it.
+ */
+export function safeLang(value: string | null | undefined): string | null {
+  if (!value) return null
+  const candidate = value.trim()
+  if (candidate.length < 2 || candidate.length > 35) return null
+  if (!/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8}){0,4}$/.test(candidate)) return null
+  return candidate
+}
+
+/** The canonical value for a modelled declaration, or null if it is not one. */
+export function modelledValue(property: string, value: string): string | null {
+  switch (property) {
+    case 'text-align':
+      return safeAlign(value)
+    case 'color':
+    case 'background-color':
+      return safeColor(value)
+    case 'font-family':
+      return safeFontFamily(value)
+    case 'font-size':
+      return safeFontSize(value)
+    case 'line-height':
+      return safeLineHeight(value)
+    case 'padding-inline-start':
+    case 'padding-left':
+    case 'margin-inline-start':
+    case 'margin-left': {
+      const steps = indentLevels(value)
+      return steps === null ? null : indentCss(steps)
+    }
+    case 'list-style-type':
+      return safeListStyle(value)
+    default:
+      return null
+  }
+}
+
+/**
+ * Put CSS on an element without losing the author's spelling.
+ *
+ * ## Why this is not simply `setAttribute('style', css)`
+ *
+ * ProseMirror's DOM serializer writes `style` with `element.style.cssText = value`,
+ * which routes the declaration through the CSSOM -- and the CSSOM rewrites as it
+ * parses. `color:#cc0000` comes back out as `color: rgb(204, 0, 0)`. Measured in
+ * Chromium and WebKit: `setAttribute` preserves the string exactly, `cssText`
+ * does not.
+ *
+ * The consequence of letting the serializer do it is that opening and saving a
+ * document rewrites every hex colour in it into a longer functional form. No
+ * information is lost, so it is a normalization rather than a fidelity bug -- but
+ * it is a normalization that touches the COMMON case in inherited content, and
+ * "we changed every coloured span in your archive" is not a diff this project
+ * gets to put in somebody's revision history quietly. So the nodes and marks that
+ * emit CSS return a real element and set the attribute themselves.
+ *
+ * ## Why it then falls back to the CSSOM anyway
+ *
+ * A strict Content-Security-Policy without `unsafe-inline` in `style-src` blocks
+ * a `style` ATTRIBUTE: the attribute stays in the DOM and the browser refuses to
+ * parse it, so the paragraph renders unaligned and the console fills with
+ * violations. A CSSOM write is not blocked -- the same distinction that makes the
+ * toolbar's constructable stylesheet CSP-safe.
+ *
+ * So: set the attribute, then check whether the browser honoured it, and fall
+ * back to `cssText` if it did not. Under an ordinary CSP the author's spelling
+ * survives; under a strict one the formatting still renders, at the cost of the
+ * normalization. Getting both right in the environment that has both is not
+ * possible, and of the two, "it renders" has to win.
+ */
+export function applyStyleAttribute(el: Element, css: string): void {
+  el.setAttribute('style', css)
+  const style = (el as HTMLElement).style
+  // `length` is zero when the attribute was set but not parsed, which is exactly
+  // the CSP-blocked case. It is also zero if the declaration was invalid, where
+  // falling through costs nothing because there was nothing to render.
+  if (style && style.length === 0) style.cssText = css
+}
+
+/**
+ * Is every declaration in this `style` attribute one the schema models?
+ *
+ * The preservation layer asks this before unwrapping a `<span style>`. A span
+ * carrying only colour and font is fully representable as marks, so unwrapping
+ * it loses nothing and the text inside stays editable. One carrying
+ * `letter-spacing` as well is not, and it must stay an opaque preserved atom.
+ */
+export function isFullyModelledStyle(
+  style: string | null | undefined,
+  properties: readonly string[] = INLINE_STYLE_PROPERTIES,
+): boolean {
+  const declarations = parseDeclarations(style)
+  if (declarations.size === 0) return false
+  for (const [name, value] of declarations) {
+    if (!properties.includes(name)) return false
+    if (modelledValue(name, value) === null) return false
+  }
+  return true
+}
+
+const LENGTH = /^-?\d+(?:\.\d+)?(?:px|em|rem|%|pt|ex|ch)?$/i
+const VERTICAL_ALIGNMENTS = new Set(['top', 'middle', 'bottom', 'baseline'])
+
+/** Validate every CSS declaration understood by the editor or sanitizer policy. */
+export function isAllowedDeclaration(property: string, value: string): boolean {
+  switch (property.toLowerCase()) {
+    case 'text-align': return safeAlign(value) !== null
+    case 'color':
+    case 'background-color': return safeColor(value) !== null
+    case 'font-family': return safeFontFamily(value) !== null
+    case 'font-size': return safeFontSize(value) !== null
+    case 'line-height': return safeLineHeight(value) !== null
+    case 'padding-inline-start': return indentLevels(value) !== null
+    case 'list-style-type': return safeListStyle(value) !== null
+    case 'padding': {
+      const parts = value.trim().split(/\s+/)
+      return parts.length >= 1 && parts.length <= 4 && parts.every((part) => LENGTH.test(part))
+    }
+    case 'width':
+    case 'height': return LENGTH.test(value.trim())
+    case 'vertical-align': return VERTICAL_ALIGNMENTS.has(value.trim().toLowerCase())
+    default: return false
+  }
+}
+
+/** Filter a style attribute while preserving the spelling of accepted declarations. */
+export function filterStyle(style: string, permitted: ReadonlySet<string>): string | null {
+  const kept: string[] = []
+  let dropped = false
+  for (const part of style.split(';')) {
+    if (part.trim() === '') continue
+    const colon = part.indexOf(':')
+    const property = colon < 0 ? '' : part.slice(0, colon).trim().toLowerCase()
+    const value = colon < 0 ? '' : part.slice(colon + 1).trim()
+    if (property === '' || value === '' || !permitted.has(property) || !isAllowedDeclaration(property, value)) {
+      dropped = true
+      continue
+    }
+    kept.push(part.trim())
+  }
+  if (kept.length === 0) return null
+  return dropped ? kept.join(';') : style
+}
+
+/** Every CSS property any element may carry under a policy. */
+export function allStyleProperties(elements: Record<string, { styleProperties?: string[] }>): string[] {
+  const out = new Set<string>()
+  for (const element of Object.values(elements)) {
+    for (const property of element.styleProperties ?? []) out.add(property)
+  }
+  return [...out]
+}

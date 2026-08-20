@@ -17,6 +17,7 @@ export {
 export { allStyleProperties, filterStyle, isAllowedDeclaration } from './css.js'
 export { isUrlAllowed, sanitizeHtml, type SanitizeOptions } from './sanitize.js'
 export {
+  configureDOMPurify,
   embedHook,
   embedSrcPattern,
   embedValidationNote,
@@ -27,4 +28,5 @@ export {
   toHtmlPurifierConfig,
   type DOMPurifyAttributeEvent,
   type DOMPurifyConfig,
+  type DOMPurifyHooks,
 } from './adapters.js'

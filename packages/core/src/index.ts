@@ -160,7 +160,6 @@ export {
 export { safeTableStyleValue, table, table_cell, table_header, table_row } from './tables.js'
 export {
   CARRIED_ATTR,
-  clearSchemaExtensions,
   coreSchema,
   createSchema,
   onSchemaExtensionsChange,

@@ -3,7 +3,6 @@ export {
   DEFAULT_LAYOUT,
   LAYOUT_WITH_COLOUR,
   allToolbarItems,
-  clearToolbarItems,
   getToolbarItem,
   onRegistryChange,
   registerToolbarItem,

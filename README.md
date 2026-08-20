@@ -233,6 +233,7 @@ toolbar. Add the plugin controls to the `toolbar` attribute where you want them.
 | [`@openleaf-editor/paste`](packages/paste) | Word and Google Docs paste normalization |
 | [`@openleaf-editor/ui`](packages/ui) | Toolbar, menus, dialogs, icons, skins, and theme tokens |
 | [`@openleaf-editor/sanitize`](packages/sanitize) | Canonical allowlist and sanitizer adapters |
+| [`@openleaf-editor/content-policy`](packages/content-policy) | URL, CSS, and embed rules shared by the editor and the sanitizers |
 | [`@openleaf-editor/react`](packages/react) | React wrapper around the custom element |
 | [`@openleaf-editor/vue`](packages/vue) | Vue 3 wrapper around the custom element |
 | [`@openleaf-editor/angular`](packages/angular) | Angular wrapper around the custom element |

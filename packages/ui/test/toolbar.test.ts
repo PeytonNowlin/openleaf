@@ -15,17 +15,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerDefaultItems } from '../src/items.js'
 import { ToolbarOverflow } from '../src/overflow.js'
 import { DEFAULT_LAYOUT, LAYOUT_WITH_COLOUR, registerToolbarItem } from '../src/registry.js'
+import { clearToolbarItems } from '../src/testing.js'
 import { Toolbar } from '../src/toolbar.js'
 
 /*
  * Two sharp edges this fixture is shaped around, both worth knowing about before
  * writing another test here.
- *
- * `clearToolbarItems()` is not usable between tests in this file. It notifies
- * every live toolbar, which re-renders and warns about the ids it can no longer
- * find -- and `registerDefaultItems` is idempotent, so it will not repopulate what
- * was cleared. So the defaults are registered once and the registry is left
- * alone; registration is last-wins, which makes reusing an id across tests safe.
  *
  * Toolbars are destroyed after each test for the same reason: a live one is a
  * registry subscriber, and leaving twelve of them attached makes every later
@@ -340,5 +335,15 @@ describe('the overflow menu', () => {
     )
     expect(refreshed?.value).toBe('Arial')
     overflow.destroy()
+  })
+})
+
+describe('registry reset', () => {
+  it('can repopulate defaults after tests clear the registry', () => {
+    for (const toolbar of mounted.splice(0)) toolbar.destroy()
+    clearToolbarItems()
+    registerDefaultItems()
+    const { toolbar } = mount('undo blockType source')
+    expect(toolbar.el.querySelectorAll('button, select')).toHaveLength(3)
   })
 })

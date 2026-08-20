@@ -22,6 +22,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
     }
   },
   "files": [
@@ -32,6 +36,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@openleaf-editor/content-policy": "workspace:*",
     "orderedmap": "^2.1.1",
     "prosemirror-commands": "^1.6.2",
     "prosemirror-history": "^1.4.1",

@@ -35,6 +35,10 @@ for (const asset of ['openleaf-logo.png', 'openleaf-logo-dark.png', 'openleaf-ma
 
 /** Workspace packages resolved to TypeScript source, so no dist can go stale. */
 const WORKSPACE_ALIASES = {
+  '@openleaf-editor/content-policy': src('../packages/content-policy/src/index.ts'),
+  '@openleaf-editor/content-policy/css': src('../packages/content-policy/src/css.ts'),
+  '@openleaf-editor/content-policy/embed': src('../packages/content-policy/src/embed.ts'),
+  '@openleaf-editor/content-policy/url': src('../packages/content-policy/src/url.ts'),
   '@openleaf-editor/core': src('../packages/core/src/index.ts'),
   '@openleaf-editor/paste': src('../packages/paste/src/index.ts'),
   '@openleaf-editor/ui': src('../packages/ui/src/index.ts'),
@@ -49,6 +53,7 @@ const WORKSPACE_ALIASES = {
 
 /** Modules the core bundle publishes and plugin bundles borrow. */
 const SHARED = [
+  '@openleaf-editor/content-policy',
   '@openleaf-editor/core',
   '@openleaf-editor/paste',
   '@openleaf-editor/ui',

@@ -18,8 +18,35 @@ entries below say so explicitly when they do.
   size and line height as native selects, plus indent and outdent buttons. All
   five ship in the default toolbar layout and use the core commands that were
   already modelling the storage format. Indent and outdent also appear in the
-  Format menu. Generic `type: 'select'` is implemented for preset lists; the
-  block-type control stays special-cased because it owns host-injected formats.
+  Format menu. `type: 'select'` is a declarative contract -- `options`,
+  `getValue`, `applyValue` -- for a fixed preset list.
+- **`@openleaf-editor/content-policy`**, a new dependency-free package holding the
+  URL, CSS and embed rules. `core` and `sanitize` both import it now. They answer
+  the same questions from opposite sides of the wire, and `sanitize` deliberately
+  does not depend on `core` so a server needing only the policy need not install
+  ProseMirror -- which for a while meant the rules were written twice and kept
+  honest by a test comparing the copies. One definition now.
+- Framework entry points are importable without a DOM, checked by
+  `pnpm test:ssr-imports`, and the Angular wrapper compiles against the real
+  `@angular/core` types rather than an ambient shim.
+
+### Changed
+
+- **`toDOMPurifyConfig` now withholds `style` as well as `iframe` by default**,
+  and `configureDOMPurify(purify, policy)` installs both hooks and enables both
+  features in one call. Previously `style` was allowed globally with an
+  instruction to install `styleAttributeHook` yourself, and forgetting it let
+  `position:fixed;inset:0` through -- an invisible hole. Forgetting the hook now
+  costs alignment and colour, which is visible and correctable. A config and the
+  hooks it depends on can no longer disagree.
+- The block-type control is a registered item with its own renderer rather than a
+  special case inside the toolbar, so no built-in control needs an id-specific
+  branch. `focusable` lets a rendered control name its focus target for the
+  roving tabindex.
+- Registry reset helpers moved behind `@openleaf-editor/core/testing` and
+  `@openleaf-editor/ui/testing`, so test-only surface is not part of the package's
+  public API.
+- The core bundle's gzip budget rises to 110 KB, measured at 108.0.
 
 ## 0.1.0-beta.2 - 2026-08-19
 

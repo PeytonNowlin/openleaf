@@ -29,17 +29,7 @@
  *    Escape leaves, matching TinyMCE and CKEditor 5 so muscle memory transfers.
  */
 
-import {
-  activeBlockClass,
-  activeHeadingLevel,
-  formatParts,
-  setBlockClass,
-  setHeading,
-  setParagraph,
-  shortcutFor,
-  toggleHeading,
-  type FormatSpec,
-} from '@openleaf-editor/core'
+import { shortcutFor, type FormatSpec } from '@openleaf-editor/core'
 import type { EditorState, Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { ensureSprite, iconElement } from './icons.js'
@@ -83,8 +73,6 @@ interface Control {
   forcedActive?: boolean
   forcedEnabled?: boolean
 }
-
-const BLOCK_TYPE_ID = 'blockType'
 
 /** A `custom` item's control, and the id it was built for. */
 interface MountedControl {
@@ -274,11 +262,6 @@ export class Toolbar {
         continue
       }
 
-      if (token === BLOCK_TYPE_ID) {
-        group.appendChild(this.#buildBlockTypeSelect())
-        continue
-      }
-
       const spec = getToolbarItem(token)
       // Silently skipping an unknown id would hide a typo in an integrator's
       // `toolbar` attribute forever.
@@ -345,13 +328,16 @@ export class Toolbar {
       return
     }
     const control = this.#controls.get(focusedId)
-    if (!control) return
-    const index = this.#focusables.indexOf(control.el)
-    if (index >= 0) {
-      this.#rovingIndex = index
-      this.#applyRoving()
+    if (control) {
+      const index = this.#focusables.indexOf(control.el)
+      if (index >= 0) {
+        this.#rovingIndex = index
+        this.#applyRoving()
+      }
+      control.el.focus()
+      return
     }
-    control.el.focus()
+    this.#customs.find(({ id }) => id === focusedId)?.control.focusable?.focus()
   }
 
   #newGroup(): HTMLDivElement {
@@ -421,7 +407,7 @@ export class Toolbar {
     if (!view) return null
 
     try {
-      const control = spec.render({ view, host: this.#host })
+      const control = spec.render({ view, host: this.#host, formats: this.#formats })
       this.#customs.push({ id: spec.id, control })
       return control.el
     } catch (error) {
@@ -471,70 +457,6 @@ export class Toolbar {
     })
 
     this.#selects.set(spec.id, select)
-    return select
-  }
-
-  /**
-   * The block-type control.
-   *
-   * A native `<select>`. A custom listbox would be several hundred lines of
-   * ARIA that would then owe real screen reader testing to be worth anything,
-   * and the native control is already tested by the browser vendors. It carries
-   * its own accessible name because the toolbar's own label does not describe it.
-   */
-  #buildBlockTypeSelect(): HTMLSelectElement {
-    const select = this.#doc.createElement('select')
-    select.className = 'ol-select'
-    select.setAttribute('aria-label', t('Paragraph style'))
-    select.dataset['olId'] = BLOCK_TYPE_ID
-
-    const options: Array<[string, string]> = [
-      ['p', t('Paragraph')],
-      ['1', t('Heading 1')],
-      ['2', t('Heading 2')],
-      ['3', t('Heading 3')],
-      ['4', t('Heading 4')],
-      ['5', t('Heading 5')],
-      ['6', t('Heading 6')],
-    ]
-    for (const [value, label] of options) {
-      const option = this.#doc.createElement('option')
-      option.value = value
-      option.textContent = label
-      select.appendChild(option)
-    }
-    for (const format of this.#formats) {
-      const option = this.#doc.createElement('option')
-      option.value = `format:${format.token}`
-      option.textContent = t(format.label)
-      select.appendChild(option)
-    }
-
-    this.#wireSelectInteraction(select, () => {
-      const view = this.#view
-      if (!view) return
-      const value = select.value
-      if (value.startsWith('format:')) {
-        const { element, className } = formatParts(value.slice('format:'.length))
-        // Element first: changing the block type replaces the node, so a class
-        // written before that would go with the node it was written on.
-        // `setHeading` rather than `toggleHeading` -- picking "Section" twice
-        // must not turn the heading back into a paragraph.
-        if (element === 'p') setParagraph(view.state, view.dispatch, view)
-        else if (element !== null && /^h[1-6]$/.test(element)) {
-          setHeading(Number(element.slice(1)))(view.state, view.dispatch, view)
-        }
-        // Null clears, which is what a token naming only an element means: the
-        // author picked "Section", not "Section, keeping whatever class was on
-        // the paragraph before".
-        setBlockClass(className)(view.state, view.dispatch, view)
-      } else {
-        const command = value === 'p' ? setParagraph : toggleHeading(Number(value))
-        command(view.state, view.dispatch, view)
-      }
-    })
-
-    this.#selects.set(BLOCK_TYPE_ID, select)
     return select
   }
 
@@ -601,7 +523,7 @@ export class Toolbar {
 
     try {
       if (spec.run) {
-        spec.run({ view, host: this.#host })
+        spec.run({ view, host: this.#host, formats: this.#formats })
         return
       }
       if (spec.command) {
@@ -692,37 +614,14 @@ export class Toolbar {
 
     if (this.#selects.size > 0) {
       const readonly = this.#host.hasAttribute('readonly')
+      // Only declared `type: 'select'` items live here. Block type is a rendered
+      // control and keeps its own state in sync through its ToolbarControl.
       for (const [id, select] of this.#selects) {
-        if (id === BLOCK_TYPE_ID) {
-          select.disabled = readonly
-          this.#syncBlockTypeSelect(select, state)
-          continue
-        }
         this.#syncRegisteredSelect(id, select, state, readonly)
       }
     }
 
     if (transitions.length > 0) this.#announce(transitions.join(', '))
-  }
-
-  #syncBlockTypeSelect(select: HTMLSelectElement, state: EditorState): void {
-    const formatClass = activeBlockClass(state)
-    const level = activeHeadingLevel(state)
-    const activeElement = level === null ? 'p' : `h${level}`
-    // Both halves have to agree, or `p.lead` would look active on an
-    // `<h2 class="lead">` and picking it again would appear to do nothing.
-    const matching = this.#formats.find((format) => {
-      const { element, className } = formatParts(format.token)
-      if (className !== formatClass) return false
-      return element === null || element === activeElement
-    })
-    if (matching) {
-      const next = `format:${matching.token}`
-      if (select.value !== next) select.value = next
-    } else {
-      const value = level === null ? 'p' : String(level)
-      if (select.value !== value) select.value = value
-    }
   }
 
   #syncRegisteredSelect(
@@ -880,11 +779,15 @@ export class Toolbar {
       this.#focusables[this.#rovingIndex]?.focus()
       return
     }
-    // A toolbar that is only selects has no roving buttons. The shortcut is
-    // still documented; swallowing it with nowhere to go would make a valid
-    // `toolbar` attribute a silent no-op.
-    const first = this.#selects.values().next().value
-    first?.focus()
+    // A toolbar of only selects or custom controls has no roving buttons. The
+    // shortcut is still documented; swallowing it with nowhere to go would make
+    // a valid `toolbar` attribute a silent no-op.
+    const declared = this.#selects.values().next().value
+    if (declared) {
+      declared.focus()
+      return
+    }
+    this.#customs.find(({ control }) => control.focusable)?.control.focusable?.focus()
   }
 
   /** Return focus and the prior selection to the editable region. */

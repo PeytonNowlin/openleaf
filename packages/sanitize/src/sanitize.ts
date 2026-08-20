@@ -16,7 +16,7 @@
  *     default policy rather than reasoned about, because reasoning about them
  *     correctly is a research project.
  *
- * **If you can add a dependency, use `toDOMPurifyConfig()` with DOMPurify
+ * **If you can add a dependency, use `configureDOMPurify()` with DOMPurify
  * instead.** DOMPurify has had years of adversarial attention; this function has
  * had an afternoon. It exists because "add no dependencies" is a real constraint
  * in real CMS deployments, and shipping nothing would leave those integrators

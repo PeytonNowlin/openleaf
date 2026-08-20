@@ -1,0 +1,26 @@
+{
+  "name": "@openleaf-editor/content-policy",
+  "version": "0.1.0-beta.2",
+  "description": "Dependency-free URL, CSS, and embed policy primitives shared by OpenLeaf's editor and sanitizers.",
+  "license": "Apache-2.0",
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeytonNowlin/openleaf.git",
+    "directory": "packages/content-policy"
+  },
+  "homepage": "https://peytonnowlin.github.io/openleaf/",
+  "bugs": { "url": "https://github.com/PeytonNowlin/openleaf/issues" },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./css": { "types": "./dist/css.d.ts", "import": "./dist/css.js" },
+    "./embed": { "types": "./dist/embed.d.ts", "import": "./dist/embed.js" },
+    "./url": { "types": "./dist/url.d.ts", "import": "./dist/url.js" }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": { "build": "tsc -p tsconfig.json" }
+}

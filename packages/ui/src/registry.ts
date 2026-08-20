@@ -20,12 +20,15 @@
 import type { Command, EditorState } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import type { IconName } from './icons.js'
+import type { FormatSpec } from '@openleaf-editor/core'
 
 /** What a custom `run` handler receives. */
 export interface ToolbarContext {
   view: EditorView
   /** The `<openleaf-editor>` element, for dispatching events or hosting dialogs. */
   host: HTMLElement
+  /** Extra host-defined block formats available to select controls. */
+  formats?: readonly FormatSpec[]
 }
 
 /**
@@ -33,16 +36,18 @@ export interface ToolbarContext {
  *
  * The contract is narrow on purpose. A custom item owns its own markup, so it
  * can be a colour grid or a table-size picker, but it does not get to own the
- * toolbar's keyboard model: the element it returns must contain exactly one
- * focusable `button.ol-btn`, because that is what the roving tabindex walks. A
- * control with two focusable buttons in the bar would make the toolbar two tab
- * stops where the author expects one; a control with none would be unreachable
- * by keyboard. Anything else the control needs -- a popover, a grid of swatches
- * -- belongs outside the toolbar element, in the top layer or on the host.
+ * toolbar's keyboard model. Button-like custom controls participate in the
+ * roving tabindex through one `button.ol-btn`; select controls identify their
+ * native focus target with `focusable`. A control with two focusable elements
+ * in the bar would make the toolbar two tab stops where the author expects one.
+ * Anything else the control needs -- a popover, a grid of swatches -- belongs
+ * outside the toolbar element, in the top layer or on the host.
  */
 export interface ToolbarControl {
   /** The element placed in the toolbar. */
   el: HTMLElement
+  /** Focus target when the control is not a standard toolbar button. */
+  focusable?: HTMLElement
   /**
    * Reflect the editor state. Called on every transaction, so it must be cheap
    * and must not throw; a throw is caught and logged once, like a predicate.
@@ -65,6 +70,11 @@ export interface ToolbarItemSpec {
    * What kind of control this is.
    *
    * `button` is the common case. `custom` hands the item a chance to build its
+   * own DOM through `render`, which is how the colour picker and block-type
+   * select exist without id-specific branches in the toolbar.
+   *
+   * `select` and `custom` both build through `render`; the distinct name keeps
+   * the public declaration honest about the control users will receive.
    * own DOM through `render`, which is how the colour picker exists at all: a
    * swatch grid is not a button, and modelling it as one would have meant
    * special-casing it in the toolbar by id.
@@ -88,8 +98,7 @@ export interface ToolbarItemSpec {
   /** For items needing more than the editor state -- dialogs, mode switches. */
   run?: (ctx: ToolbarContext) => void
   /**
-   * For `type: 'custom'`: build the control. Required for that type, ignored
-   * otherwise.
+   * For `type: 'custom'` or `type: 'select'`: build the control.
    */
   render?: (ctx: ToolbarContext) => ToolbarControl
   /**

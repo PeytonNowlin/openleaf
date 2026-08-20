@@ -898,6 +898,7 @@ registerToolbarItem({
   label: 'Text colour',
   render: ({ view, host }) => ({
     el,                        // goes in the toolbar
+    focusable: mySelect,       // optional: focus target, if it is not a button
     update: (state) => { … },  // every transaction, guarded like a predicate
     destroy: () => { … },      // remove anything you put in the document
   }),
@@ -906,9 +907,14 @@ registerToolbarItem({
 
 Four constraints, each of which cost something to learn:
 
-- **Exactly one focusable `button.ol-btn` in the element you return.** That is
-  what the toolbar's roving tabindex walks. Two makes the bar two tab stops where
-  the author expects one; none makes your control unreachable by keyboard.
+- **Exactly one focusable element in what you return, and say which it is.** A
+  button-like control puts a single `button.ol-btn` in the element it returns, and
+  the toolbar's roving tabindex walks it. A control whose focus target is not a
+  toolbar button -- a native `<select>`, say, which is how the built-in block-type
+  control is built -- returns that element as `focusable` on the `ToolbarControl`
+  instead. Two focusable elements makes the bar two tab stops where the author
+  expects one; none, or one the toolbar cannot find, makes your control
+  unreachable by keyboard.
 - **Anything else lives outside the toolbar element.** The picker appends its grid
   to the host and uses `popover="manual"` for the top layer. Left inside the
   toolbar, its thirty-two swatch buttons would be found by that same query, and one

@@ -46,20 +46,29 @@ import type { Command } from 'prosemirror-state'
 import { promptForImage, promptForLink } from './dialog.js'
 import { promptHelp } from './help.js'
 import type { IconName } from './icons.js'
-import { registerToolbarItem } from './registry.js'
+import { getToolbarItem, registerToolbarItem } from './registry.js'
 import { imageUploaderFor, runUploader } from './upload.js'
+import { blockTypeControl } from './block-type.js'
 
 /** Event the host listens for to switch between rich and source views. */
 export const SOURCE_TOGGLE_EVENT = 'openleaf:toggle-source'
 export const FULLSCREEN_TOGGLE_EVENT = 'openleaf:toggle-fullscreen'
 export const VISUAL_AIDS_TOGGLE_EVENT = 'openleaf:toggle-visual-aids'
 
-let registered = false
-
 /** Register the built-in items. Idempotent. */
 export function registerDefaultItems(): void {
-  if (registered) return
-  registered = true
+  if (getToolbarItem('undo') && getToolbarItem('blockType') && getToolbarItem('source')) return
+
+  registerToolbarItem({
+    id: 'blockType',
+    // `custom`, not `select`: it builds its own DOM because it carries formats
+    // the host injects at mount time. `type: 'select'` is the declarative
+    // contract for a fixed preset list, which this is not.
+    type: 'custom',
+    kind: 'action',
+    label: 'Paragraph style',
+    render: ({ view, host, formats }) => blockTypeControl(view, host, formats ?? []),
+  })
 
   registerToolbarItem({
     id: 'undo',
