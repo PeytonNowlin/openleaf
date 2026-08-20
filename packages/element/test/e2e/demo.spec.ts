@@ -134,6 +134,22 @@ test.describe('the demo page', () => {
     await expect.poll(() => page.locator('#output').textContent()).toContain('AUDIT')
   })
 
+  // The typography section now claims a picker as well as editability. Located
+  // by id rather than by role: the label is the same word as the section heading
+  // and a role query picks up the prose.
+  test('applies a font and an indent from the typography section', async ({ page }) => {
+    await page.goto(DEMO)
+    const editor = host(page, 'typo')
+    const content = editor.getByRole('textbox').first()
+    await expect(content).toBeVisible({ timeout: 15000 })
+    await content.click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await editor.locator('[data-ol-id="fontFamily"]').selectOption('Georgia')
+    await expect.poll(() => page.locator('#typo').inputValue()).toContain('font-family:Georgia')
+    await editor.locator('[data-ol-id="indent"]').click()
+    await expect.poll(() => page.locator('#typo').inputValue()).toContain('padding-inline-start')
+  })
+
   test('switches every skin the page offers', async ({ page }) => {
     await page.goto(DEMO)
     const editor = page.locator('openleaf-editor[for="body"]')

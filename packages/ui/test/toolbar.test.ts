@@ -271,6 +271,43 @@ describe('the alignment items', () => {
 })
 
 describe('the overflow menu', () => {
+  /*
+   * Two selects in the menu, and the second one chosen.
+   *
+   * The forwarding used to find its target with `querySelector('select')` -- the
+   * FIRST select in the bar. With only block type that was right by accident;
+   * with a font family beside it, choosing a family applied a heading instead.
+   * The lookup is by `data-ol-id` now, and this is what holds it there.
+   */
+  it('forwards a chosen value to its own control, not the first select', () => {
+    const { toolbar, host } = mount('blockType fontFamily | bold')
+    const overflow = new ToolbarOverflow(toolbar.el, host, document)
+    for (const group of toolbar.el.querySelectorAll<HTMLElement>(':scope > .ol-group')) {
+      group.hidden = true
+    }
+    const more = toolbar.el.querySelector<HTMLButtonElement>('.ol-overflow-more')
+    more!.hidden = false
+    more!.click()
+
+    const blockOriginal = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="blockType"]')
+    const fontOriginal = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="fontFamily"]')
+    expect(blockOriginal).not.toBeNull()
+    expect(fontOriginal).not.toBeNull()
+    const blockBefore = blockOriginal!.value
+
+    const fontClone = host.querySelector<HTMLSelectElement>(
+      '.ol-overflow-menu select[data-ol-id="fontFamily"]',
+    )
+    expect(fontClone).not.toBeNull()
+    fontClone!.value = 'Georgia'
+    fontClone!.dispatchEvent(new Event('change', { bubbles: true }))
+
+    expect(fontOriginal!.value).toBe('Georgia')
+    // The block-type control must be untouched: it is the one the old lookup hit.
+    expect(blockOriginal!.value).toBe(blockBefore)
+    overflow.destroy()
+  })
+
   it('rebuilds select clones when opened so they match current state', () => {
     const { toolbar, host } = mount('fontFamily | bold')
     const overflow = new ToolbarOverflow(toolbar.el, host, document)

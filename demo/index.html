@@ -412,29 +412,33 @@ const ratio = width / height   // division, not a regex
   a CSSOM write, which CSP does not gate.
 </p>
 
-<h2 id="typography">Typography, and a feature with no buttons</h2>
+<h2 id="typography">Typography, and why the storage format came first</h2>
 <p class="lede">
-  Fonts, sizes, line height, indent, direction and list styles are in the storage
-  format. There are no toolbar controls for them yet — and that order was on purpose.
+  Font family, size and line height are in the toolbar. They are in the schema
+  first, which is the part that decides whether an inherited document is editable
+  at all.
 </p>
 
 <p>
   A schema-based editor has to decide what it understands. Anything it does not
   understand, OpenLeaf keeps as an opaque atom: faithful, movable, and
   <em>not editable</em>. So for an archive full of <code>&lt;font face&gt;</code>
-  and <code>font-family</code> spans, the question is not "is there a dropdown" —
-  it is whether that text is a paragraph you can fix a typo in, or a grey card you
-  cannot get a caret into.
+  and <code>font-family</code> spans, the first question is not "is there a
+  dropdown" — it is whether that text is a paragraph you can fix a typo in, or a
+  grey card you cannot get a caret into. That is why these landed in the storage
+  format one release before the controls arrived.
 </p>
 
 <p>
-  The editor below has no font controls. Click into any line and type anyway:
+  The editor below is seeded with exactly that kind of markup. Change a font with
+  the picker, and also click into any line and type — both work, and the second
+  one is the one that was ever in doubt:
 </p>
 
 <div style="margin-top:1rem">
   <label for="typo" class="visually-hidden">Typography sample</label>
   <openleaf-editor for="typo" aria-label="Typography sample"
-    toolbar="undo redo | bold italic | source"></openleaf-editor>
+    toolbar="undo redo | fontFamily fontSize lineHeight | indent outdent | bold italic | source"></openleaf-editor>
   <textarea id="typo" hidden><p><font face="Verdana">A font tag from 2009. Editable text, not a card.</font></p>
 <p><span style="font-family:Georgia">A family on a span,</span> and <span style="font-size:14pt">a size on another.</span></p>
 <p style="line-height:1.8">A paragraph carrying a line height, which survives the round trip.</p>
@@ -459,30 +463,39 @@ const ratio = width / height   // division, not a regex
 </ul>
 
 <p>
-  What is reachable today: <kbd>Mod</kbd>+<kbd>=</kbd> and
-  <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>=</kbd> for subscript and superscript,
-  <kbd>Mod</kbd>+<kbd>]</kbd> and <kbd>Mod</kbd>+<kbd>[</kbd> for indent and
-  outdent — all four in the <kbd>F1</kbd> list. Everything else is a command, so a
-  control is a dropdown plus one call:
+  In the toolbar: <code>fontFamily</code>, <code>fontSize</code>,
+  <code>lineHeight</code>, <code>indent</code> and <code>outdent</code>, all five
+  in the default layout. Subscript and superscript are
+  <kbd>Mod</kbd>+<kbd>=</kbd> and <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>=</kbd>;
+  indent and outdent also answer to <kbd>Mod</kbd>+<kbd>]</kbd> and
+  <kbd>Mod</kbd>+<kbd>[</kbd>. All four are in the <kbd>F1</kbd> list.
+</p>
+
+<p>
+  Text direction, per-run language, list style and <code>clearFormatting</code>
+  have no control yet. They are commands, and a preset list is now a declared
+  item type rather than a bespoke widget — the built-in pickers are registered
+  exactly this way:
 </p>
 
 <pre>import { registerToolbarItem } from '@openleaf-editor/ui'
-import { setFontFamily, activeFontFamily, FONT_FAMILIES } from '@openleaf-editor/core'
+import { setListStyle, activeListStyle, LIST_STYLES } from '@openleaf-editor/core'
 
 registerToolbarItem({
-  id: 'fontFamily', type: 'custom', label: 'Font',
-  render: (ctx) =&gt; buildYourSelect(FONT_FAMILIES, {
-    value: activeFontFamily(ctx.view.state),
-    onPick: (family) =&gt; setFontFamily(family)(ctx.view.state, ctx.view.dispatch),
-  }),
+  id: 'listStyle',
+  type: 'select',
+  label: 'List style',
+  options: [{ value: '', label: 'Default' },
+            ...LIST_STYLES.map((s) =&gt; ({ value: s, label: s }))],
+  getValue: (state) =&gt; activeListStyle(state) ?? '',
+  applyValue: (value) =&gt; setListStyle(value === '' ? null : value),
 })</pre>
 
 <p>
-  <code>FONT_SIZE_PRESETS</code>, <code>LINE_HEIGHT_PRESETS</code> and
-  <code>LIST_STYLES</code> are exported for the same purpose, with an
-  <code>active*</code> predicate for each so a control can show the current value.
-  First-party controls are next; the storage format shipped first because content
-  already sitting in a database cannot wait for a dropdown.
+  <code>FONT_FAMILIES</code>, <code>FONT_SIZE_PRESETS</code> and
+  <code>LINE_HEIGHT_PRESETS</code> are exported for the same purpose, each with an
+  <code>active*</code> predicate so a control can show the current value. Pick an
+  id that is not already taken — the five above are registered by default.
 </p>
 
 <h2 id="insert">Inserting things that are not text</h2>
