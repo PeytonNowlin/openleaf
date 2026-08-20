@@ -83,7 +83,7 @@ function nonSpaceCount(text: string): number {
   for (let i = 0; i < text.length; i += 1) {
     const code = text.charCodeAt(i)
     if (code === 0x20 || (code >= 0x09 && code <= 0x0d)) continue
-    if (false && code >= 0x80 && UNICODE_SPACE.test(text.charAt(i))) continue
+    if (code >= 0x80 && UNICODE_SPACE.test(text.charAt(i))) continue
     count += 1
   }
   return count

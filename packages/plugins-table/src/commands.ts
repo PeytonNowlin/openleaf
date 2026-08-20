@@ -493,7 +493,10 @@ export function colgroupSyncPlugin(): Plugin {
       let tr: Transaction | null = null
       state.doc.descendants((node, pos) => {
         if (node.type.spec['tableRole'] !== 'table') return true
-        const next = colgroupFromCellWidths(node)
+        // Cached on the node: a transaction elsewhere in the document reuses
+        // every table node it did not touch, so an untouched table answers from
+        // the map instead of rebuilding its TableMap and reparsing its colgroup.
+        const next = cachedColgroupFromCellWidths(node)
         if (next === null) return false
         if (next === node.attrs['colgroup']) return false
         tr ??= state.tr

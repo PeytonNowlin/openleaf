@@ -162,6 +162,8 @@ export class OpenLeafEditor extends HTMLElementBase {
   #unwatchPlugins: (() => void) | undefined
   #unwatchSchema: (() => void) | undefined
   #resizeObserver: ResizeObserver | null = null
+  /** Pending autoresize frame, so a burst of observations relays out once. */
+  #resizeFrame = 0
   #visualAids = true
   #fullscreen = false
   /** True while a real fullscreen session is ours, as opposed to the fallback. */
@@ -461,6 +463,8 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.removeEventListener('focusout', this.#onInlineBlur)
     this.#resizeObserver?.disconnect()
     this.#resizeObserver = null
+    if (this.#resizeFrame) cancelAnimationFrame(this.#resizeFrame)
+    this.#resizeFrame = 0
     this.#unwatchPlugins?.()
     this.#unwatchSchema?.()
     this.#floating?.destroy()
