@@ -284,7 +284,7 @@ export class OpenLeafEditor extends HTMLElementBase {
           return true
         },
         F1: () => {
-          promptHelp(this.ownerDocument)
+          promptHelp(this.ownerDocument, this)
           return true
         },
       }),

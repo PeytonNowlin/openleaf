@@ -2,7 +2,13 @@ import { insertAudio, insertDetails, insertHtml, insertIframe, insertNamedAnchor
 import { listedSnippets } from './snippets.js'
 import type { EditorView } from 'prosemirror-view'
 
-function ask(doc: Document, title: string, fields: Array<{ name: string; label: string; value?: string }>): Promise<Record<string, string> | null> {
+/**
+ * `host` is the editor to mount inside. Skin tokens are scoped to
+ * `.ol-editor[data-ol-skin]`, so a dialog appended to `document.body` never
+ * sees them; `showModal()` promotes to the top layer either way, so nesting is
+ * free.
+ */
+function ask(doc: Document, title: string, fields: Array<{ name: string; label: string; value?: string }>, host?: HTMLElement): Promise<Record<string, string> | null> {
   const dialog = doc.createElement('dialog')
   dialog.className = 'ol-dialog'
   const form = doc.createElement('form')
@@ -35,7 +41,7 @@ function ask(doc: Document, title: string, fields: Array<{ name: string; label: 
   actions.append(cancel, ok)
   form.appendChild(actions)
   dialog.appendChild(form)
-  doc.body.appendChild(dialog)
+  ;(host && host.ownerDocument === doc ? host : doc.body).appendChild(dialog)
 
   return new Promise((resolve) => {
     const finish = (value: Record<string, string> | null): void => {
@@ -50,6 +56,9 @@ function ask(doc: Document, title: string, fields: Array<{ name: string; label: 
     })
     form.addEventListener('submit', (event) => {
       event.preventDefault()
+      // Nested inside the editor this sits inside the host page's own <form>,
+      // and `submit` bubbles: inserting a video must not read as a page save.
+      event.stopPropagation()
       const values: Record<string, string> = {}
       for (const [name, input] of inputs) values[name] = input.value.trim()
       finish(values)
@@ -63,7 +72,7 @@ export async function promptInsertMedia(view: EditorView, host: HTMLElement): Pr
   const values = await ask(host.ownerDocument, 'Insert media', [
     { name: 'src', label: 'Address' },
     { name: 'title', label: 'Title' },
-  ])
+  ], host)
   if (!values?.['src']) {
     view.focus()
     return
@@ -82,7 +91,7 @@ export async function promptInsertMedia(view: EditorView, host: HTMLElement): Pr
 export async function promptInsertDetails(view: EditorView, host: HTMLElement): Promise<void> {
   const values = await ask(host.ownerDocument, 'Collapsible section', [
     { name: 'summary', label: 'Summary', value: 'Details' },
-  ])
+  ], host)
   if (!values) {
     view.focus()
     return
@@ -92,7 +101,7 @@ export async function promptInsertDetails(view: EditorView, host: HTMLElement): 
 }
 
 export async function promptInsertAnchor(view: EditorView, host: HTMLElement): Promise<void> {
-  const values = await ask(host.ownerDocument, 'Named anchor', [{ name: 'id', label: 'Name' }])
+  const values = await ask(host.ownerDocument, 'Named anchor', [{ name: 'id', label: 'Name' }], host)
   if (!values?.['id']) {
     view.focus()
     return
@@ -113,7 +122,7 @@ export async function promptInsertSnippet(view: EditorView, host: HTMLElement): 
   }
   const values = await ask(host.ownerDocument, 'Insert snippet', [
     { name: 'id', label: `Snippet id (${available.map((s) => s.id).join(', ')})` },
-  ])
+  ], host)
   const found = available.find((s) => s.id === values?.['id'] || s.title === values?.['id'])
   if (!found) {
     view.focus()

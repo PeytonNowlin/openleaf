@@ -78,8 +78,10 @@ export const BUILT_IN_SKINS: readonly Skin[] = [
       --openleaf-color-surface-hover: #21262d;
       --openleaf-color-surface-active: #1f3a5f;
       --openleaf-color-border: #3d444d;
+      --openleaf-color-border-strong: #8b949e;
       --openleaf-color-accent: #79c0ff;
       --openleaf-color-focus: #79c0ff;
+      --openleaf-color-danger: #ff8182;
     `,
   },
   {
@@ -93,6 +95,7 @@ export const BUILT_IN_SKINS: readonly Skin[] = [
       --openleaf-color-surface-hover: #f0e9dd;
       --openleaf-color-surface-active: #e6dcc8;
       --openleaf-color-border: #d8cdb9;
+      --openleaf-color-border-strong: #7d7364;
       --openleaf-color-accent: #8a5a20;
       --openleaf-color-focus: #8a5a20;
       --openleaf-radius: 2px;
@@ -115,8 +118,13 @@ export const BUILT_IN_SKINS: readonly Skin[] = [
       --openleaf-color-surface-hover: #e8e8e8;
       --openleaf-color-surface-active: #d0d0d0;
       --openleaf-color-border: #000000;
+      /* Set explicitly, and not because the default would fail: it would leave
+         this skin's control boundaries at the shared 4.55:1 fallback while its
+         decorative ones sat at 21:1, which is this skin backwards. */
+      --openleaf-color-border-strong: #000000;
       --openleaf-color-accent: #0000c0;
       --openleaf-color-focus: #0000c0;
+      --openleaf-color-danger: #a40e26;
       --openleaf-focus-width: 3px;
       --openleaf-focus-offset: 2px;
     `,
