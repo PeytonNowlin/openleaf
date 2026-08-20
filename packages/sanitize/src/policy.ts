@@ -154,6 +154,14 @@ export const DEFAULT_POLICY: Policy = {
     video: { attributes: ['src', 'title', 'controls', 'width', 'height', 'poster'] },
     audio: { attributes: ['src', 'title', 'controls'] },
     /*
+     * `<source>` and `<track>` are the only children the media nodes model, and
+     * the editor emits them for source-only media -- a `<video>` with no `src`
+     * of its own. Without them here a server-side pass would unwrap the sources
+     * out of every such player and then delete the player for having no source.
+     */
+    source: { attributes: ['src', 'type', 'media', 'srcset', 'sizes'] },
+    track: { attributes: ['src', 'kind', 'srclang', 'label', 'default'] },
+    /*
      * Iframes are allowlisted by host in sanitize.ts, not by being listed here.
      * Listing the element without that check would store an arbitrary nested
      * page; the host check is what makes this safe to emit.

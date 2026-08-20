@@ -46,6 +46,11 @@ const SCHEMA_NATIVE = [
   '<details><summary>More</summary><p>body</p></details>',
   '<hr class="ol-pagebreak">',
   '<video src="/talk.mp4" controls=""></video>',
+  // Source-only media, which has no `src` of its own -- the shape the policy
+  // used to unwrap the sources out of and then delete for having no source.
+  '<video controls=""><source src="/talk.webm" type="video/webm"><source src="/talk.mp4"></video>',
+  '<audio controls=""><source src="/talk.ogg"></audio>',
+  '<video src="/talk.mp4" controls=""><track kind="captions" src="/c.vtt" srclang="en"></video>',
   '<iframe src="https://www.youtube.com/embed/abc" title="Clip" allowfullscreen=""></iframe>',
   '<iframe src="https://www.youtube.com/embed/abc" title="Clip" ' +
     'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; ' +
