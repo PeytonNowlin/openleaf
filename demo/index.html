@@ -144,7 +144,7 @@
   </p>
   <p class="badges">
     <span class="badge">Apache-2.0</span>
-    <span class="badge">92 KB gzipped</span>
+    <span class="badge">107 KB gzipped</span>
     <span class="badge">No framework</span>
     <span class="badge">Built on ProseMirror</span>
     <span class="badge"><a href="https://github.com/PeytonNowlin/openleaf">Source on GitHub</a></span>
@@ -412,6 +412,125 @@ const ratio = width / height   // division, not a regex
   a CSSOM write, which CSP does not gate.
 </p>
 
+<h2 id="typography">Typography, and a feature with no buttons</h2>
+<p class="lede">
+  Fonts, sizes, line height, indent, direction and list styles are in the storage
+  format. There are no toolbar controls for them yet — and that order was on purpose.
+</p>
+
+<p>
+  A schema-based editor has to decide what it understands. Anything it does not
+  understand, OpenLeaf keeps as an opaque atom: faithful, movable, and
+  <em>not editable</em>. So for an archive full of <code>&lt;font face&gt;</code>
+  and <code>font-family</code> spans, the question is not "is there a dropdown" —
+  it is whether that text is a paragraph you can fix a typo in, or a grey card you
+  cannot get a caret into.
+</p>
+
+<p>
+  The editor below has no font controls. Click into any line and type anyway:
+</p>
+
+<div style="margin-top:1rem">
+  <label for="typo" class="visually-hidden">Typography sample</label>
+  <openleaf-editor for="typo" aria-label="Typography sample"
+    toolbar="undo redo | bold italic | source"></openleaf-editor>
+  <textarea id="typo" hidden><p><font face="Verdana">A font tag from 2009. Editable text, not a card.</font></p>
+<p><span style="font-family:Georgia">A family on a span,</span> and <span style="font-size:14pt">a size on another.</span></p>
+<p style="line-height:1.8">A paragraph carrying a line height, which survives the round trip.</p>
+<ol type="a"><li><p>A list using the legacy <code>type</code> attribute.</p></li></ol></textarea>
+</div>
+
+<p>
+  Open <strong>source</strong> to see what it stored. Three things changed on the
+  way in, and each is a deliberate modernisation rather than a loss:
+</p>
+
+<ul>
+  <li><code>&lt;font face="Verdana"&gt;</code> became
+    <code>&lt;span style="font-family:Verdana"&gt;</code>. A legacy tag whose every
+    attribute a mark can hold gets modelled; one carrying more than that is still
+    preserved whole.</li>
+  <li><code>&lt;ol type="a"&gt;</code> became
+    <code>list-style-type:lower-alpha</code>, the same conversion
+    <code>align="center"</code> has always had.</li>
+  <li>Declarations OpenLeaf models come back in its own spelling and order.
+    Anything it does not model goes back byte-for-byte.</li>
+</ul>
+
+<p>
+  What is reachable today: <kbd>Mod</kbd>+<kbd>=</kbd> and
+  <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>=</kbd> for subscript and superscript,
+  <kbd>Mod</kbd>+<kbd>]</kbd> and <kbd>Mod</kbd>+<kbd>[</kbd> for indent and
+  outdent — all four in the <kbd>F1</kbd> list. Everything else is a command, so a
+  control is a dropdown plus one call:
+</p>
+
+<pre>import { registerToolbarItem } from '@openleaf-editor/ui'
+import { setFontFamily, activeFontFamily, FONT_FAMILIES } from '@openleaf-editor/core'
+
+registerToolbarItem({
+  id: 'fontFamily', type: 'custom', label: 'Font',
+  render: (ctx) =&gt; buildYourSelect(FONT_FAMILIES, {
+    value: activeFontFamily(ctx.view.state),
+    onPick: (family) =&gt; setFontFamily(family)(ctx.view.state, ctx.view.dispatch),
+  }),
+})</pre>
+
+<p>
+  <code>FONT_SIZE_PRESETS</code>, <code>LINE_HEIGHT_PRESETS</code> and
+  <code>LIST_STYLES</code> are exported for the same purpose, with an
+  <code>active*</code> predicate for each so a control can show the current value.
+  First-party controls are next; the storage format shipped first because content
+  already sitting in a database cannot wait for a dropdown.
+</p>
+
+<h2 id="insert">Inserting things that are not text</h2>
+<p class="lede">
+  Media, collapsible sections, anchors, symbols and page breaks — one opt-in
+  bundle, and the node types they store are in core.
+</p>
+
+<p>
+  Same split as tables. <code>&lt;figure&gt;</code>, <code>&lt;video&gt;</code>,
+  <code>&lt;details&gt;</code> and allowlisted <code>&lt;iframe&gt;</code> embeds are
+  in the base schema so stored documents stay editable; the dialogs, the character
+  map and the drag-resize handles are the download.
+</p>
+
+<pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
+&lt;script src="/js/openleaf-insert.min.js"&gt;&lt;/script&gt;   &lt;!-- 5.0 KB, optional --&gt;</pre>
+
+<div style="margin-top:1rem">
+  <label for="insert-body" class="visually-hidden">Insert sample</label>
+  <openleaf-editor for="insert-body" aria-label="Insert sample"
+    toolbar="undo redo | bold italic | image media details anchor | charmap emoji datetime pagebreak nbsp | source"></openleaf-editor>
+  <textarea id="insert-body" hidden><details><summary>A collapsible section</summary><p>Its open state round-trips too.</p></details>
+<p>Drag the corner of the image to resize it. Then try the character map, the emoji
+grid, and Insert media — a poster frame and alternate sources are all on the dialog.</p>
+<p><img src="./assets/openleaf-mark.png" alt="The OpenLeaf mark" width="96" height="96"></p></textarea>
+</div>
+
+<p>
+  One shape worth calling out, because it used to be destroyed rather than merely
+  left uneditable. A player whose addresses are all in <code>&lt;source&gt;</code>
+  children has no <code>src</code> of its own:
+</p>
+
+<pre>&lt;video controls&gt;
+  &lt;source src="/clip.webm" type="video/webm"&gt;
+  &lt;source src="/clip.mp4"  type="video/mp4"&gt;
+&lt;/video&gt;</pre>
+
+<p>
+  OpenLeaf declined that element, and the preservation layer's drop rule for
+  declined media then deleted it — so the whole player, and every address in it,
+  saved as <code>&lt;p&gt;&lt;/p&gt;</code>. It is a real node now, with its
+  sources and any <code>&lt;track&gt;</code> captions kept on it. Media carrying
+  fallback content for browsers that cannot play the file is preserved whole
+  instead of having the fallback stripped.
+</p>
+
 <h2 id="highlighting">Syntax highlighting and source formatting</h2>
 <p class="lede">
   A second opt-in bundle, 6.1 KB. It colours code blocks and it formats the HTML
@@ -556,6 +675,84 @@ const ratio = width / height   // division, not a regex
   the hook for anything else.
 </p>
 
+<h2 id="chrome">Chrome around the canvas</h2>
+<p class="lede">
+  A menubar, floating toolbars, fullscreen, a shortcut sheet and visual aids.
+  All optional, all attributes.
+</p>
+
+<p>
+  The editor below turns most of it on at once. Right-click a link, an image or a
+  table for a context menu; select some text for the floating toolbar; press
+  <kbd>F1</kbd> for the shortcut sheet. <strong>Visual aids</strong> marks empty
+  blocks and non-breaking spaces, which is the difference between "there is a
+  stray nbsp in this paragraph" and an hour of squinting.
+</p>
+
+<pre>&lt;openleaf-editor
+  for="body"
+  menubar
+  toolbar="bold italic | link | help fullscreen visualAids"
+  selection-toolbar="bold italic | link"
+  insert-toolbar="image insertTable"
+  content-css="/css/article.css"
+&gt;&lt;/openleaf-editor&gt;</pre>
+
+<div style="margin-top:1rem">
+  <label for="chrome-body" class="visually-hidden">Chrome sample</label>
+  <openleaf-editor for="chrome-body" aria-label="Chrome sample"
+    menubar
+    toolbar="undo redo | blockType | bold italic | link image | help fullscreen visualAids | source"
+    selection-toolbar="bold italic | link"
+    insert-toolbar="image"></openleaf-editor>
+  <textarea id="chrome-body" hidden><h2>A heading, so the menubar has something to report</h2>
+<p>Select this sentence to raise the floating toolbar, or right-click
+<a href="https://example.org">this link</a> for its context menu.</p>
+<p>There is a non-breaking space between these&nbsp;two words, and an empty
+paragraph below. Both are marked while visual aids are on.</p>
+<p></p></textarea>
+</div>
+
+<p>
+  <code>menubar</code> takes a list, so <code>menubar="edit help"</code> gives
+  exactly those two. Left bare it means all five.
+</p>
+
+<h3>When the toolbar does not fit</h3>
+
+<p>
+  Wrapping keeps every control visible and is the default, because a control that
+  has silently moved into a menu is a control an author cannot find.
+  <code>toolbar-overflow</code> opts into collapsing the groups that do not fit
+  into a <strong>More</strong> menu instead. The editor below is deliberately
+  narrow:
+</p>
+
+<div style="margin-top:1rem; max-width:20rem">
+  <label for="narrow-body" class="visually-hidden">Narrow sample</label>
+  <openleaf-editor for="narrow-body" aria-label="Narrow sample"
+    toolbar-overflow
+    toolbar="undo redo | blockType | bold italic underline | link image | insertTable"></openleaf-editor>
+  <textarea id="narrow-body" hidden><p>A narrow column.</p></textarea>
+</div>
+
+<h3>Translations</h3>
+
+<p>
+  <code>lang</code> sets the interface language per editor, so two editors on one
+  page can differ. Register the strings you want to override and leave the rest in
+  English — a missing translation shows the source string rather than a key:
+</p>
+
+<pre>OpenLeaf.registerTranslations('fr', { Bold: 'Gras', Italic: 'Italique' })</pre>
+
+<div style="margin-top:1rem">
+  <label for="fr-body" class="visually-hidden">Exemple</label>
+  <openleaf-editor for="fr-body" aria-label="Exemple" lang="fr"
+    toolbar="bold italic | link"></openleaf-editor>
+  <textarea id="fr-body" hidden><p>Survolez les boutons : ils sont en français.</p></textarea>
+</div>
+
 <h2 id="restricted">A smaller toolbar</h2>
 <p class="lede">
   Plugins declare capability. Integrators declare layout. Installing a plugin never
@@ -569,6 +766,36 @@ const ratio = width / height   // division, not a regex
   <openleaf-editor for="comment" aria-label="Comment" toolbar="bold italic | link | undo redo"></openleaf-editor>
   <textarea id="comment" hidden><p>A comment box needs four controls, not eighteen.</p></textarea>
 </div>
+
+<h2 id="wrappers">React, Vue and Angular</h2>
+<p class="lede">
+  Thin hosts around the same custom element. The editor is not reimplemented once
+  per framework.
+</p>
+
+<p>
+  Each wrapper forwards attributes, keeps a controlled value in sync and re-emits
+  <code>openleaf:change</code>. Nothing about editing lives in them, which is the
+  point: three copies of a schema is three sets of bugs, and a node built by one
+  is not a node type another accepts.
+</p>
+
+<pre>// React
+import { OpenLeafEditor } from '@openleaf-editor/react'
+&lt;OpenLeafEditor value={html} onOpenLeafChange={setHtml} toolbar="bold italic | link" /&gt;
+
+// Vue — v-model maps onto the element's value
+import { OpenLeafEditor } from '@openleaf-editor/vue'
+&lt;OpenLeafEditor v-model="html" toolbar="bold italic | link" /&gt;
+
+// Angular — standalone component, [(value)] two-way binding
+import { OpenLeafComponent } from '@openleaf-editor/angular'
+&lt;openleaf [(value)]="html" toolbar="bold italic | link"&gt;&lt;/openleaf&gt;</pre>
+
+<p>
+  If you are not using a framework, skip all three. The element works on its own
+  and that is the supported path, not a fallback.
+</p>
 
 <h2 id="use">Using it</h2>
 <p class="lede">No build step. A script tag and an element.</p>
@@ -644,6 +871,19 @@ const ratio = width / height   // division, not a regex
         resolve({ src: './assets/openleaf-mark.png', width: 96, height: 96 })
       }, 500)
     })
+  })
+
+  /* ---- translations ------------------------------------------------- *
+   * The `lang` editor further down advertises a French interface, so the
+   * strings have to exist. Only two are overridden on purpose: a missing
+   * translation falls back to the English source string rather than showing a
+   * key, which is what makes a partial catalogue usable.                     */
+
+  OpenLeaf.registerTranslations('fr', {
+    Bold: 'Gras',
+    Italic: 'Italique',
+    Link: 'Lien',
+    Formatting: 'Mise en forme',
   })
 
   /* ---- skins and colour scheme ------------------------------------- */
