@@ -54,7 +54,21 @@ export const BUDGETS_KB = {
   // 110 against a measured 107.7: the headroom is deliberate. A budget that
   // passes by tens of bytes fails on the next contributor's unrelated patch --
   // 108 left three hundred bytes, which is that trap rather than a limit.
-  'openleaf.min.js': 110,
+  //
+  // Raised for the accessibility and correctness series. What bought the bytes,
+  // in the order it landed: visible focus indicators and the contrast fixes
+  // (a second border token, the forced-colours block, the menu focus ring), a
+  // keyboard-operable overflow panel that holds the real controls instead of
+  // clones, the preservation-layer drop lists, and the per-keystroke work.
+  //
+  // None of it is storage format this time, which is a change from every rise
+  // above -- it is the editor being operable without a mouse and legible at the
+  // contrast ratios WCAG asks for. That is not decoration to be traded against
+  // a number, so the number moved.
+  //
+  // Note es2022 (#74) gave 1.6 KB back first, so this rise is smaller than the
+  // work in it; the series is a net +4-ish over 108, not over 110.
+  'openleaf.min.js': 118,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
