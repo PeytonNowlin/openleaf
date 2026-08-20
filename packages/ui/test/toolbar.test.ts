@@ -8,8 +8,8 @@
  * tested in packages/element/test/e2e.
  */
 
-import { coreSchema, parseHtml } from '@openleaf-editor/core'
-import { EditorState, type Transaction } from 'prosemirror-state'
+import { coreSchema, parseHtml, serializeHtml } from '@openleaf-editor/core'
+import { EditorState, TextSelection, type Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerDefaultItems } from '../src/items.js'
@@ -36,6 +36,10 @@ const mounted: Toolbar[] = []
 
 function fakeView(html = '<p>hello</p>'): EditorView {
   let state = EditorState.create({ doc: parseHtml(html, { schema: coreSchema() }) })
+  // Select the whole paragraph text so mark commands have a range to decorate.
+  state = state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, 1, state.doc.content.size - 1)),
+  )
   return {
     get state() {
       return state
@@ -50,14 +54,15 @@ function fakeView(html = '<p>hello</p>'): EditorView {
 function mount(
   layout: string,
   options: { host?: HTMLElement; html?: string } = {},
-): { toolbar: Toolbar; host: HTMLElement } {
+): { toolbar: Toolbar; host: HTMLElement; view: EditorView } {
   const host = options.host ?? document.createElement('div')
   document.body.appendChild(host)
   const toolbar = new Toolbar(host, document, { layout })
   mounted.push(toolbar)
   host.appendChild(toolbar.el)
-  toolbar.mount(fakeView(options.html))
-  return { toolbar, host }
+  const view = fakeView(options.html)
+  toolbar.mount(view)
+  return { toolbar, host, view }
 }
 
 beforeEach(() => {
@@ -181,11 +186,58 @@ describe('custom controls', () => {
     expect(error).toHaveBeenCalledOnce()
   })
 
-  it('still warns that `select` is not implemented', () => {
+  it('warns and skips a select item missing its contract', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     registerToolbarItem({ id: 'dropdown', type: 'select', label: 'Dropdown' })
-    mount('dropdown')
+    const { toolbar } = mount('dropdown')
+    expect(toolbar.el.querySelector('select')).toBeNull()
     expect(warn).toHaveBeenCalledOnce()
+  })
+})
+
+describe('select controls', () => {
+  it('renders font family, size and line height in the default layout', () => {
+    const { toolbar } = mount(DEFAULT_LAYOUT)
+    expect(toolbar.el.querySelector('[data-ol-id="fontFamily"]')).not.toBeNull()
+    expect(toolbar.el.querySelector('[data-ol-id="fontSize"]')).not.toBeNull()
+    expect(toolbar.el.querySelector('[data-ol-id="lineHeight"]')).not.toBeNull()
+    expect(toolbar.el.querySelector('[data-ol-id="indent"]')).not.toBeNull()
+    expect(toolbar.el.querySelector('[data-ol-id="outdent"]')).not.toBeNull()
+  })
+
+  it('applies a font family from the select', () => {
+    const { toolbar, view } = mount('fontFamily')
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="fontFamily"]')
+    expect(select).not.toBeNull()
+    select!.value = 'Georgia'
+    select!.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(serializeHtml(view.state.doc)).toContain('font-family:Georgia')
+  })
+
+  it('keeps multi-word families matched after validation quotes them', () => {
+    const { toolbar, view } = mount('fontFamily')
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="fontFamily"]')
+    const quoted = '"Times New Roman"'
+    expect([...select!.options].some((option) => option.value === quoted)).toBe(true)
+    select!.value = quoted
+    select!.dispatchEvent(new Event('change', { bubbles: true }))
+    toolbar.update(view.state)
+    expect(select!.value).toBe(quoted)
+  })
+
+  it('reflects an active font size, including values outside the presets', () => {
+    const { toolbar } = mount('fontSize', {
+      html: '<p><span style="font-size:15px">hello</span></p>',
+    })
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="fontSize"]')
+    expect(select?.value).toBe('15px')
+    expect([...select!.options].some((option) => option.value === '15px')).toBe(true)
+  })
+
+  it('indents the current block', () => {
+    const { toolbar, view } = mount('indent')
+    toolbar.el.querySelector<HTMLButtonElement>('[data-ol-id="indent"]')?.click()
+    expect(serializeHtml(view.state.doc)).toContain('padding-inline-start')
   })
 })
 
@@ -208,6 +260,8 @@ describe('the alignment items', () => {
 
   it('are in the default layout, and colour deliberately is not', () => {
     expect(DEFAULT_LAYOUT).toContain('alignLeft alignCenter alignRight alignJustify')
+    expect(DEFAULT_LAYOUT).toContain('fontFamily fontSize lineHeight')
+    expect(DEFAULT_LAYOUT).toContain('indent outdent')
     // The picker ships in an opt-in bundle, and naming an unregistered item logs a
     // warning for every deployment that did not load it.
     expect(DEFAULT_LAYOUT).not.toContain('textColour')

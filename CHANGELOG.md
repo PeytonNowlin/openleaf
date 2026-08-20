@@ -10,6 +10,17 @@ This project follows [Semantic Versioning](https://semver.org/). While the
 version is `0.x`, minor and pre-release bumps may contain breaking changes; the
 entries below say so explicitly when they do.
 
+## Unreleased
+
+### Added
+
+- **Typography toolbar controls in `@openleaf-editor/ui`** — font family, font
+  size and line height as native selects, plus indent and outdent buttons. All
+  five ship in the default toolbar layout and use the core commands that were
+  already modelling the storage format. Indent and outdent also appear in the
+  Format menu. Generic `type: 'select'` is implemented for preset lists; the
+  block-type control stays special-cased because it owns host-injected formats.
+
 ## 0.1.0-beta.2 - 2026-08-19
 
 The formatting and structure release. Five new packages, so read the install

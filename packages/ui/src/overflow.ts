@@ -126,7 +126,9 @@ export class ToolbarOverflow {
     this.#menu.onchange = (event) => {
       const clone = event.target
       if (!(clone instanceof HTMLSelectElement)) return
-      const original = this.#toolbar.querySelector<HTMLSelectElement>('select')
+      const original = this.#toolbar.querySelector<HTMLSelectElement>(
+        `select[data-ol-id="${clone.dataset['olId']}"]`,
+      )
       if (!original) return
       original.value = clone.value
       original.dispatchEvent(new Event('change', { bubbles: true }))

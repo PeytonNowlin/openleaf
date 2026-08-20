@@ -134,7 +134,8 @@ export class Toolbar {
   #view: EditorView | null = null
   #controls = new Map<string, Control>()
   #customs: MountedControl[] = []
-  #select: HTMLSelectElement | null = null
+  /** Native selects keyed by item id (block type plus any `type: 'select'`). */
+  #selects = new Map<string, HTMLSelectElement>()
   #live: HTMLDivElement
   #liveTimer: ReturnType<typeof setTimeout> | undefined
   #layout: string
@@ -261,7 +262,7 @@ export class Toolbar {
     this.#destroyCustoms()
     this.el.replaceChildren()
     this.#controls.clear()
-    this.#select = null
+    this.#selects.clear()
 
     let group = this.#newGroup()
 
@@ -290,10 +291,11 @@ export class Toolbar {
         if (el) group.appendChild(el)
         continue
       }
-      // `select` is still unimplemented -- the block-type control is special-cased
-      // by id, not by type. A declared-and-inert variant is worse than an absent
-      // one, because the author sees a plausible button and no signal that the
-      // control they asked for was not built.
+      if (spec.type === 'select') {
+        const el = this.#buildSelect(spec)
+        if (el) group.appendChild(el)
+        continue
+      }
       if (spec.type && spec.type !== 'button') {
         console.warn(
           `@openleaf-editor/ui: toolbar item "${spec.id}" declares type "${spec.type}", ` +
@@ -337,8 +339,9 @@ export class Toolbar {
     if (this.#view) this.update(this.#view.state)
 
     if (!focusedId) return
-    if (focusedId === BLOCK_TYPE_ID) {
-      this.#select?.focus()
+    const select = this.#selects.get(focusedId)
+    if (select) {
+      select.focus()
       return
     }
     const control = this.#controls.get(focusedId)
@@ -432,6 +435,46 @@ export class Toolbar {
   }
 
   /**
+   * Build a `type: 'select'` control from the item's options.
+   *
+   * Same keyboard contract as the block-type select: it is a second tab stop,
+   * owns its own arrow keys, and only returns focus to the content when the
+   * author commits by pointer.
+   */
+  #buildSelect(spec: ToolbarItemSpec): HTMLSelectElement | null {
+    if (!spec.options || !spec.getValue || !spec.applyValue) {
+      console.warn(
+        `@openleaf-editor/ui: toolbar item "${spec.id}" declares type "select" but is ` +
+          'missing options, getValue, or applyValue, so there is nothing to build.',
+      )
+      return null
+    }
+
+    const select = this.#doc.createElement('select')
+    select.className = spec.selectMod ? `ol-select ol-select--${spec.selectMod}` : 'ol-select'
+    select.setAttribute('aria-label', t(spec.label))
+    select.dataset['olId'] = spec.id
+    select.title = t(spec.label)
+
+    for (const choice of spec.options) {
+      const option = this.#doc.createElement('option')
+      option.value = choice.value
+      option.textContent = t(choice.label)
+      select.appendChild(option)
+    }
+
+    this.#wireSelectInteraction(select, () => {
+      const view = this.#view
+      if (!view || !spec.applyValue) return
+      const command = spec.applyValue(select.value)
+      command(view.state, view.dispatch, view)
+    })
+
+    this.#selects.set(spec.id, select)
+    return select
+  }
+
+  /**
    * The block-type control.
    *
    * A native `<select>`. A custom listbox would be several hundred lines of
@@ -467,6 +510,39 @@ export class Toolbar {
       select.appendChild(option)
     }
 
+    this.#wireSelectInteraction(select, () => {
+      const view = this.#view
+      if (!view) return
+      const value = select.value
+      if (value.startsWith('format:')) {
+        const { element, className } = formatParts(value.slice('format:'.length))
+        // Element first: changing the block type replaces the node, so a class
+        // written before that would go with the node it was written on.
+        // `setHeading` rather than `toggleHeading` -- picking "Section" twice
+        // must not turn the heading back into a paragraph.
+        if (element === 'p') setParagraph(view.state, view.dispatch, view)
+        else if (element !== null && /^h[1-6]$/.test(element)) {
+          setHeading(Number(element.slice(1)))(view.state, view.dispatch, view)
+        }
+        // Null clears, which is what a token naming only an element means: the
+        // author picked "Section", not "Section, keeping whatever class was on
+        // the paragraph before".
+        setBlockClass(className)(view.state, view.dispatch, view)
+      } else {
+        const command = value === 'p' ? setParagraph : toggleHeading(Number(value))
+        command(view.state, view.dispatch, view)
+      }
+    })
+
+    this.#selects.set(BLOCK_TYPE_ID, select)
+    return select
+  }
+
+  /**
+   * Shared select wiring: keep pointer vs keyboard focus behaviour identical
+   * across every native list in the bar.
+   */
+  #wireSelectInteraction(select: HTMLSelectElement, apply: () => void): void {
     select.addEventListener('mousedown', (event) => event.stopPropagation())
 
     /**
@@ -499,25 +575,8 @@ export class Toolbar {
     select.addEventListener('change', () => {
       const view = this.#view
       if (!view) return
-      const value = select.value
-      if (value.startsWith('format:')) {
-        const { element, className } = formatParts(value.slice('format:'.length))
-        // Element first: changing the block type replaces the node, so a class
-        // written before that would go with the node it was written on.
-        // `setHeading` rather than `toggleHeading` -- picking "Section" twice
-        // must not turn the heading back into a paragraph.
-        if (element === 'p') setParagraph(view.state, view.dispatch, view)
-        else if (element !== null && /^h[1-6]$/.test(element)) {
-          setHeading(Number(element.slice(1)))(view.state, view.dispatch, view)
-        }
-        // Null clears, which is what a token naming only an element means: the
-        // author picked "Section", not "Section, keeping whatever class was on
-        // the paragraph before".
-        setBlockClass(className)(view.state, view.dispatch, view)
-      } else {
-        const command = value === 'p' ? setParagraph : toggleHeading(Number(value))
-        command(view.state, view.dispatch, view)
-      }
+      if (this.#host.hasAttribute('readonly')) return
+      apply()
       // Return the caret to the content only when the author committed the
       // choice by pointer. Keyboard users keep focus and leave with Tab or
       // Escape.
@@ -526,9 +585,6 @@ export class Toolbar {
         view.focus()
       }
     })
-
-    this.#select = select
-    return select
   }
 
   /* -------------------------------------------------------------- *
@@ -634,27 +690,85 @@ export class Toolbar {
       })
     }
 
-    if (this.#select) {
-      const formatClass = activeBlockClass(state)
-      const level = activeHeadingLevel(state)
-      const activeElement = level === null ? 'p' : `h${level}`
-      // Both halves have to agree, or `p.lead` would look active on an
-      // `<h2 class="lead">` and picking it again would appear to do nothing.
-      const matching = this.#formats.find((format) => {
-        const { element, className } = formatParts(format.token)
-        if (className !== formatClass) return false
-        return element === null || element === activeElement
-      })
-      if (matching) {
-        const next = `format:${matching.token}`
-        if (this.#select.value !== next) this.#select.value = next
-      } else {
-        const value = level === null ? 'p' : String(level)
-        if (this.#select.value !== value) this.#select.value = value
+    if (this.#selects.size > 0) {
+      const readonly = this.#host.hasAttribute('readonly')
+      for (const [id, select] of this.#selects) {
+        if (id === BLOCK_TYPE_ID) {
+          select.disabled = readonly
+          this.#syncBlockTypeSelect(select, state)
+          continue
+        }
+        this.#syncRegisteredSelect(id, select, state, readonly)
       }
     }
 
     if (transitions.length > 0) this.#announce(transitions.join(', '))
+  }
+
+  #syncBlockTypeSelect(select: HTMLSelectElement, state: EditorState): void {
+    const formatClass = activeBlockClass(state)
+    const level = activeHeadingLevel(state)
+    const activeElement = level === null ? 'p' : `h${level}`
+    // Both halves have to agree, or `p.lead` would look active on an
+    // `<h2 class="lead">` and picking it again would appear to do nothing.
+    const matching = this.#formats.find((format) => {
+      const { element, className } = formatParts(format.token)
+      if (className !== formatClass) return false
+      return element === null || element === activeElement
+    })
+    if (matching) {
+      const next = `format:${matching.token}`
+      if (select.value !== next) select.value = next
+    } else {
+      const value = level === null ? 'p' : String(level)
+      if (select.value !== value) select.value = value
+    }
+  }
+
+  #syncRegisteredSelect(
+    id: string,
+    select: HTMLSelectElement,
+    state: EditorState,
+    readonly: boolean,
+  ): void {
+    const spec = getToolbarItem(id)
+    if (!spec?.getValue) {
+      select.disabled = readonly
+      return
+    }
+
+    let value = ''
+    try {
+      value = spec.getValue(state)
+    } catch (error) {
+      const key = `${id}:getValue`
+      if (!reported.has(key)) {
+        reported.add(key)
+        console.error(
+          `@openleaf-editor/ui: the getValue callback for toolbar item "${id}" threw. ` +
+            'The control is shown as Default. This is a bug in whatever registered it, ' +
+            'not in the editor.',
+          error,
+        )
+      }
+      value = ''
+    }
+
+    // Inherited sizes/families that are not in the preset list still need a
+    // visible option, or the select snaps to Default and looks cleared.
+    if (value !== '' && ![...select.options].some((option) => option.value === value)) {
+      const option = this.#doc.createElement('option')
+      option.value = value
+      option.textContent = value
+      select.appendChild(option)
+    }
+
+    if (select.value !== value) select.value = value
+
+    const enabled = spec.isEnabled
+      ? guarded(id, 'isEnabled', () => spec.isEnabled!(state))
+      : true
+    select.disabled = readonly || !enabled
   }
 
   /**
@@ -766,10 +880,11 @@ export class Toolbar {
       this.#focusables[this.#rovingIndex]?.focus()
       return
     }
-    // A toolbar that is only the block-type select has no roving buttons.
-    // The shortcut is still documented; swallowing it with nowhere to go
-    // would make a valid `toolbar` attribute a silent no-op.
-    this.#select?.focus()
+    // A toolbar that is only selects has no roving buttons. The shortcut is
+    // still documented; swallowing it with nowhere to go would make a valid
+    // `toolbar` attribute a silent no-op.
+    const first = this.#selects.values().next().value
+    first?.focus()
   }
 
   /** Return focus and the prior selection to the editable region. */

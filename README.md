@@ -50,9 +50,11 @@ semantic HTML.
 - Content preservation for legacy and application-specific markup
 - Word and Google Docs paste cleanup, including nested list reconstruction
 - Keyboard-accessible toolbar with configurable controls and themes
-- Alignment, links, images, lists, block quotes, code blocks, and source view
+- Alignment, fonts, sizes, line height, indent, links, images, lists, block
+  quotes, code blocks, and source view
 - Typography in the storage format: fonts, sizes, line height, indent, direction,
-  language, sub/superscript, and list styles (see below for how to reach them)
+  language, sub/superscript, and list styles (toolbar covers fonts, size, line
+  height, and indent; see below for the rest)
 - Optional tables, color controls, syntax highlighting, file import, insert tools,
   and session tools
 - React, Vue, and Angular wrappers around the same custom element
