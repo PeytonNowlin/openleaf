@@ -228,6 +228,14 @@ export class OpenLeafEditor extends HTMLElementBase {
       // rebuilt, but the element may have landed in a different <form>, and the
       // submit hooks have to follow it. `attach()` detaches first, so this
       // cannot double-register.
+      //
+      // `attach()` and not `rebind()`, deliberately. Re-resolving the textarea
+      // would be wrong more often than right: `bind()`'s nested branch is
+      // `querySelector('textarea')`, which in source mode matches the
+      // `.ol-source` box ahead of the real one. The residual gap -- a host that
+      // REPLACES the bound textarea while the element is moved leaves the
+      // bridge writing into a detached node -- is left open knowingly; closing
+      // it means teaching `bind()` to skip the source box first.
       if (this.#view) this.#formBridge.attach()
       return
     }
@@ -519,7 +527,14 @@ export class OpenLeafEditor extends HTMLElementBase {
    * in `connectedCallback` can never help: by the time it runs the view has
    * already been destroyed. Deferring the decision by one microtask makes a
    * move a no-op, which is what keeps undo history, selection and every
-   * plugin's state alive across a keyed-list reorder or a `<KeepAlive>`.
+   * plugin's state alive across a keyed-list reorder, an `insertBefore`
+   * shuffle or a drag-to-reorder.
+   *
+   * The limit is worth being precise about, because it is not "unmounting is
+   * safe now": this only covers a move completed within one task. Anything that
+   * parks the element in a detached container across ticks -- Vue's
+   * `<KeepAlive>` does exactly that -- is a real removal and tears down, which
+   * is why the rebuild path has to stay correct rather than merely unreachable.
    */
   disconnectedCallback(): void {
     // Persist whatever is in the source box before tearing it down, so a
