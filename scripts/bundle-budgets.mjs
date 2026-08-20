@@ -45,9 +45,16 @@ export const BUDGETS_KB = {
   // editable text instead of becoming an opaque preserved atom. The toolbar
   // controls for them are the integrator's choice, not extra weight here.
   //
-  // 108 against a measured 106.8: the headroom is deliberate. A budget that
-  // passes by tens of bytes fails on the next contributor's unrelated patch.
-  'openleaf.min.js': 108,
+  // Raised again for the typography toolbar: three preset selects, indent and
+  // outdent, and a generic `type: 'select'` in place of the block-type special
+  // case. Controls rather than storage format this time, but they are the
+  // controls for a format core already had, and the default bar is where an
+  // author looks for them.
+  //
+  // 110 against a measured 107.7: the headroom is deliberate. A budget that
+  // passes by tens of bytes fails on the next contributor's unrelated patch --
+  // 108 left three hundred bytes, which is that trap rather than a limit.
+  'openleaf.min.js': 110,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,

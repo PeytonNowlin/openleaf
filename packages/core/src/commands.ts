@@ -592,14 +592,22 @@ function activeColor(state: EditorState, name: string): string | null {
     return found ? (found.attrs['color'] as string) : null
   }
 
+  // `seen` is load-bearing: `null` means both "not visited yet" and "unmarked
+  // text", so without a separate flag a selection that starts unmarked and then
+  // hits a coloured run would report the colour as uniform.
+  let seen = false
   let value: string | null = null
   let uniform = true
   state.doc.nodesBetween(from, to, (child) => {
     if (!child.isText) return true
     const found = type.isInSet(child.marks)
     const colour = found ? (found.attrs['color'] as string) : null
-    if (value === null && uniform) value = colour
-    else if (colour !== value) uniform = false
+    if (!seen) {
+      value = colour
+      seen = true
+    } else if (colour !== value) {
+      uniform = false
+    }
     return true
   })
   // Mixed colours report null for the same reason mixed alignment does: a
@@ -671,14 +679,22 @@ function activeMarkAttr(state: EditorState, name: string, attr: string): string 
     return found ? (found.attrs[attr] as string) : null
   }
 
+  // Same sentinel problem as activeColor: without `seen`, an unmarked run at
+  // the start of the selection is overwritten by the first marked value and
+  // the dropdown claims the whole range has that family or size.
+  let seen = false
   let value: string | null = null
   let uniform = true
   state.doc.nodesBetween(from, to, (child) => {
     if (!child.isText) return true
     const found = type.isInSet(child.marks)
     const current = found ? (found.attrs[attr] as string) : null
-    if (value === null && uniform) value = current
-    else if (current !== value) uniform = false
+    if (!seen) {
+      value = current
+      seen = true
+    } else if (current !== value) {
+      uniform = false
+    }
     return true
   })
   return uniform ? value : null

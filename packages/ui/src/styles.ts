@@ -278,6 +278,10 @@ export const CSS = `
   -webkit-appearance: none;
 }
 
+.ol-editor .ol-select--wide {
+  max-width: 14em;
+}
+
 .ol-editor .ol-select:hover {
   background-color: var(--ol-surface-hover);
 }

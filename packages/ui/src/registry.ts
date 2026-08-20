@@ -52,6 +52,12 @@ export interface ToolbarControl {
   destroy?: () => void
 }
 
+/** One choice in a `type: 'select'` toolbar item. */
+export interface ToolbarSelectOption {
+  value: string
+  label: string
+}
+
 export interface ToolbarItemSpec {
   /** Stable id used in the `toolbar` layout attribute. */
   id: string
@@ -61,12 +67,12 @@ export interface ToolbarItemSpec {
    * `button` is the common case. `custom` hands the item a chance to build its
    * own DOM through `render`, which is how the colour picker exists at all: a
    * swatch grid is not a button, and modelling it as one would have meant
-   * special-casing it in the toolbar by id, the way the block-type `select`
-   * still is.
+   * special-casing it in the toolbar by id.
    *
-   * `select` remains unimplemented, and the block-type control is special-cased
-   * by id rather than being one. Declaring it logs a warning rather than
-   * rendering a plausible-looking button that is not the control asked for.
+   * `select` builds a native `<select>` from `options` / `getValue` /
+   * `applyValue`. The block-type control stays special-cased by id because it
+   * owns formats the host injects at mount time; everything else that is a
+   * preset list (font family, size, line height) uses this type.
    */
   type?: 'button' | 'select' | 'custom'
   /** Accessible name. Kept constant across states -- the platform announces pressed. */
@@ -86,6 +92,26 @@ export interface ToolbarItemSpec {
    * otherwise.
    */
   render?: (ctx: ToolbarContext) => ToolbarControl
+  /**
+   * For `type: 'select'`: the choices shown. Required for that type. An empty
+   * `value` is the "Default" / clear option.
+   */
+  options?: readonly ToolbarSelectOption[]
+  /**
+   * For `type: 'select'`: the value that matches the selection. Empty string
+   * means no explicit formatting (the Default option).
+   */
+  getValue?: (state: EditorState) => string
+  /**
+   * For `type: 'select'`: turn a chosen value into a command. Empty string
+   * clears.
+   */
+  applyValue?: (value: string) => Command
+  /**
+   * Optional CSS modifier for a select (e.g. `wide` for long font names).
+   * Becomes `ol-select--{mod}` on the element.
+   */
+  selectMod?: string
   isActive?: (state: EditorState) => boolean
   /** Defaults to asking `command` whether it would apply. */
   isEnabled?: (state: EditorState) => boolean
@@ -151,15 +177,16 @@ export function clearToolbarItems(): void {
  * Order reasoning: history sits leftmost because it is the control an author
  * reaches for under stress and muscle memory puts it at the start of the bar in
  * every office application. Block type comes next because choosing what a
- * paragraph *is* precedes decorating it. Then character marks, then block
- * structure, then insertions, and finally source view -- the one control that
- * changes the editor's mode rather than the document, kept away from the rest
- * so it is not hit by accident.
+ * paragraph *is* precedes decorating it. Font family, size and line height sit
+ * beside it as the next layer of look. Then character marks, alignment, indent,
+ * lists, insertions, and finally source view -- the one control that changes
+ * the editor's mode rather than the document, kept away from the rest so it is
+ * not hit by accident.
  */
 export const DEFAULT_LAYOUT =
-  'undo redo | blockType | bold italic underline strikethrough code | ' +
+  'undo redo | blockType | fontFamily fontSize lineHeight | bold italic underline strikethrough code | ' +
   'alignLeft alignCenter alignRight alignJustify | ' +
-  'bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | source'
+  'indent outdent | bulletList orderedList blockquote codeBlock | link unlink image horizontalRule | source'
 
 /**
  * The default layout with the colour controls in it.

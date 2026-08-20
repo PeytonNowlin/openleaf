@@ -25,7 +25,7 @@ below.
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
 | **Add a node or mark type** | — | **Not available out of tree.** Commands and HTML I/O are schema-agnostic already; schema assembly is not |
 | Add a colour grid or popover control | `registerToolbarItem` with `type: 'custom'` and a `render` function | Works — see [4.9](#49-custom-controls-own-their-own-dom-and-their-own-cleanup) |
-| Add a dropdown | — | `type: 'select'` is not implemented and renders as a button; the block-type control is special-cased by id |
+| Add a dropdown | `registerToolbarItem` with `type: 'select'`, `options`, `getValue`, `applyValue` | Works — native `<select>`, same keyboard contract as block type |
 | Add CSS for your node | — | No extension point; see [4.7](#47-there-is-no-css-extension-point) |
 
 ### Where schema extensibility actually stands
@@ -348,6 +348,24 @@ registerToolbarItem({
   isActive: (state) => inCallout(state),
   // No isEnabled. It defaults to asking `command` whether it would apply, and
   // for a wrap-or-lift toggle that is the exact right answer.
+})
+```
+
+For a preset dropdown, use `type: 'select'`. Option values should be the spelling
+the schema stores so `getValue` can match them after a round-trip:
+
+```ts
+registerToolbarItem({
+  id: 'fontFamily',
+  type: 'select',
+  label: 'Font family',
+  options: [
+    { value: '', label: 'Default' },
+    { value: 'Georgia', label: 'Georgia' },
+    { value: '"Times New Roman"', label: 'Times New Roman' },
+  ],
+  getValue: (state) => activeFontFamily(state) ?? '',
+  applyValue: (value) => setFontFamily(value === '' ? null : value),
 })
 ```
 

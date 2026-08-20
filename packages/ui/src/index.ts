@@ -10,6 +10,7 @@ export {
   type ToolbarContext,
   type ToolbarControl,
   type ToolbarItemSpec,
+  type ToolbarSelectOption,
 } from './registry.js'
 export { SOURCE_TOGGLE_EVENT, FULLSCREEN_TOGGLE_EVENT, VISUAL_AIDS_TOGGLE_EVENT, registerDefaultItems } from './items.js'
 export {

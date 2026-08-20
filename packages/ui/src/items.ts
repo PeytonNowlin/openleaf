@@ -8,13 +8,25 @@
  */
 
 import {
+  activeFontFamily,
+  activeFontSize,
+  activeLineHeight,
   activeLink,
   activeTextAlign,
+  FONT_FAMILIES,
+  FONT_SIZE_PRESETS,
+  indent,
   insertHorizontalRule,
   insertImage,
   isMarkActive,
   isNodeActive,
+  LINE_HEIGHT_PRESETS,
+  outdent,
   redo,
+  safeFontFamily,
+  setFontFamily,
+  setFontSize,
+  setLineHeight,
   setLink,
   toggleBlockquote,
   toggleBold,
@@ -113,6 +125,53 @@ export function registerDefaultItems(): void {
     })
   }
 
+  /* ---- typography ----
+     Preset selects over core's font / size / line-height commands. The schema
+     already models these so inherited HTML stays editable; these controls are
+     the chrome that was missing from the default bar. */
+
+  registerToolbarItem({
+    id: 'fontFamily',
+    type: 'select',
+    label: 'Font family',
+    selectMod: 'wide',
+    options: [
+      { value: '', label: 'Default' },
+      // Option values are the validated spelling the schema stores (quoted when
+      // the name has a space), so getValue can match them after a round-trip.
+      ...FONT_FAMILIES.map((family) => ({
+        value: safeFontFamily(family) ?? family,
+        label: family,
+      })),
+    ],
+    getValue: (state) => activeFontFamily(state) ?? '',
+    applyValue: (value) => setFontFamily(value === '' ? null : value),
+  })
+
+  registerToolbarItem({
+    id: 'fontSize',
+    type: 'select',
+    label: 'Font size',
+    options: [
+      { value: '', label: 'Default' },
+      ...FONT_SIZE_PRESETS.map((px) => ({ value: `${px}px`, label: String(px) })),
+    ],
+    getValue: (state) => activeFontSize(state) ?? '',
+    applyValue: (value) => setFontSize(value === '' ? null : value),
+  })
+
+  registerToolbarItem({
+    id: 'lineHeight',
+    type: 'select',
+    label: 'Line height',
+    options: [
+      { value: '', label: 'Default' },
+      ...LINE_HEIGHT_PRESETS.map((value) => ({ value, label: value })),
+    ],
+    getValue: (state) => activeLineHeight(state) ?? '',
+    applyValue: (value) => setLineHeight(value === '' ? null : value),
+  })
+
   /* ---- block structure ----
      These get toggle semantics too. A blockquote or a list is a state the
      cursor is either in or not, exactly like bold, and leaving them as plain
@@ -189,6 +248,26 @@ export function registerDefaultItems(): void {
       shortcut: item.label,
     })
   }
+
+  registerToolbarItem({
+    id: 'indent',
+    type: 'button',
+    kind: 'action',
+    label: 'Indent',
+    icon: 'indent',
+    command: indent,
+    shortcut: 'Indent',
+  })
+
+  registerToolbarItem({
+    id: 'outdent',
+    type: 'button',
+    kind: 'action',
+    label: 'Outdent',
+    icon: 'outdent',
+    command: outdent,
+    shortcut: 'Outdent',
+  })
 
   /* ---- insertions ---- */
 
