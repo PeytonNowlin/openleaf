@@ -1,0 +1,36 @@
+// The solution file for `pnpm typecheck` (`tsc -b`).
+//
+// Every package is already a composite project with `references` to the
+// workspace packages its `src` imports, which is what lets TypeScript build
+// them in dependency order and incrementally. What was missing was this file:
+// with no root tsconfig, `tsc -b` had no project to build and `pnpm typecheck`
+// failed with TS5083 before checking anything.
+//
+// `files: []` is the idiom for a solution file -- it owns no sources of its own
+// and exists only to name the projects. Every package is listed rather than
+// just the leaves, so a package nothing else depends on (sanitize, and the
+// framework wrappers) is still checked.
+//
+// This emits `dist`, because a composite project must. `pnpm -r build` remains
+// the gate in `scripts/verify.mjs`: it runs each package's own build script,
+// which for some of them also emits CSS that `tsc` knows nothing about.
+{
+  "files": [],
+  "references": [
+    { "path": "packages/angular" },
+    { "path": "packages/core" },
+    { "path": "packages/element" },
+    { "path": "packages/paste" },
+    { "path": "packages/plugins-colour" },
+    { "path": "packages/plugins-highlight" },
+    { "path": "packages/plugins-import" },
+    { "path": "packages/plugins-import-docx" },
+    { "path": "packages/plugins-insert" },
+    { "path": "packages/plugins-session" },
+    { "path": "packages/plugins-table" },
+    { "path": "packages/react" },
+    { "path": "packages/sanitize" },
+    { "path": "packages/ui" },
+    { "path": "packages/vue" }
+  ]
+}

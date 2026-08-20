@@ -94,17 +94,20 @@ describe('running an uploader', () => {
   })
 
   it('passes the file and the host through', async () => {
-    let seen: { name: string; host: HTMLElement } | null = null
+    // A holder rather than a `let`: a variable assigned only inside a callback
+    // keeps its narrowed `null` type where it is read.
+    const seen: { name?: string; host?: HTMLElement } = {}
     await runUploader(
       async (f, ctx) => {
-        seen = { name: f.name, host: ctx.host }
+        seen.name = f.name
+        seen.host = ctx.host
         return '/uploads/a.png'
       },
       file('a.png', 'image/png'),
       host,
     )
-    expect(seen?.name).toBe('a.png')
-    expect(seen?.host).toBe(host)
+    expect(seen.name).toBe('a.png')
+    expect(seen.host).toBe(host)
   })
 
   it('refuses a URL the schema would drop', async () => {

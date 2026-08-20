@@ -13,14 +13,14 @@ import { coreSchema, parseHtml, visualAidsPlugin } from '../src/index.js'
 /** The ranges the plugin decorates, paired with the class it used. */
 function decorations(html: string): Array<{ from: number; to: number; className: string }> {
   const schema = coreSchema()
+  const plugin = visualAidsPlugin()
   const state = EditorState.create({
     doc: parseHtml(html, { schema }),
-    plugins: [visualAidsPlugin()],
+    plugins: [plugin],
   })
-  const set = visualAidsPlugin().props.decorations?.call(
-    { getState: () => undefined },
-    state,
-  )
+  // Bound to the plugin the state was built with, which is what `decorations`
+  // declares as its `this`.
+  const set = plugin.props.decorations?.call(plugin, state)
   const found = (set as { find(): Array<{ from: number; to: number; type: unknown }> } | undefined)
     ?.find() ?? []
   return found.map((d) => ({

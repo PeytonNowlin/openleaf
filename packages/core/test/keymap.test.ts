@@ -11,11 +11,14 @@ function stateFrom(html: string, pos = 3): EditorState {
 function press(state: EditorState, keys: string): string | null {
   const command = buildKeymap()[keys]
   if (!command) throw new Error(`no binding for ${keys}`)
-  let next: EditorState | null = null
+  // A holder rather than a `let`: a variable assigned only inside a callback
+  // keeps its narrowed `null` type at the point it is read, so `next.doc` would
+  // not typecheck. A property is not narrowed that way.
+  const out: { state: EditorState | null } = { state: null }
   const handled = command(state, (tr) => {
-    next = state.apply(tr)
+    out.state = state.apply(tr)
   })
-  return handled && next ? serializeHtml(next.doc) : null
+  return handled && out.state ? serializeHtml(out.state.doc) : null
 }
 
 describe('the shortcut table', () => {
