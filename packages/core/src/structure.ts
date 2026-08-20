@@ -7,9 +7,15 @@
  * `@openleaf-editor/plugins-insert`. What is here is the storage format.
  */
 
-import type { Attrs, NodeSpec } from 'prosemirror-model'
+import type { Attrs, DOMOutputSpec, NodeSpec } from 'prosemirror-model'
 import { safeAllowList, safeEmbedSrc } from './embed.js'
 import { IMAGE_ALIGN_CLASS, IMAGE_ALIGN_CLASSES, imageAlignFromClass, safeClassList, safeId, type ImageAlign } from './tokens.js'
+import {
+  MEDIA_FURNITURE_TAGS,
+  hasMediaFallback,
+  scrub,
+  serializationTarget,
+} from './preserve.js'
 import { isSafeUrl } from './url.js'
 
 function boolAttr(el: Element, name: string): boolean {
@@ -22,16 +28,84 @@ function dimension(el: Element, name: string): string | null {
   return /^\d+(?:\.\d+)?%?$/.test(value) ? value : null
 }
 
+/**
+ * The `<source>`/`<track>` children of a media element, as scrubbed markup.
+ *
+ * Furniture rather than nodes for the same reason a table's `<colgroup>` is:
+ * authors never type into them, and a content expression for something nobody
+ * edits buys nothing. Storing them at all is what keeps
+ * `<video><source src="clip.webm"></video>` -- which has no `src` of its own --
+ * a real editable node. Without it the schema declined the element and the
+ * preservation layer's drop rule then deleted the whole thing.
+ */
+function readMediaFurniture(el: Element): string | null {
+  let html = ''
+  for (const child of Array.from(el.children)) {
+    if (!MEDIA_FURNITURE_TAGS.has(child.nodeName.toLowerCase())) continue
+    // Dropped whole rather than scrubbed down to `<source>`: `scrub` would strip
+    // the unsafe address and leave an element that plays nothing and says
+    // nothing. A media element left with no usable source is then declined.
+    if (!isSafeUrl(child.getAttribute('src'))) continue
+    html += scrub(child)
+  }
+  return html || null
+}
+
+/**
+ * Rebuild stored furniture and append it to the element being serialized.
+ *
+ * `<template>` is the parsing context because a bare `<source>` is illegal
+ * inside a `<div>` and would be silently discarded there -- the same reason the
+ * preservation layer uses one.
+ */
+function appendMediaFurniture(host: Element, html: string, doc: Document): void {
+  const tpl = doc.createElement('template')
+  tpl.innerHTML = html
+  for (const child of Array.from((tpl as HTMLTemplateElement).content.children)) {
+    if (!MEDIA_FURNITURE_TAGS.has(child.nodeName.toLowerCase())) continue
+    // Scrubbed on the way out too. Furniture read from a parse has already been
+    // through `readMediaFurniture`, but a string written by a command or a
+    // dialog has not, and `<source src="x" onerror="...">` must not be stored.
+    const clean = doc.createElement('template')
+    clean.innerHTML = scrub(child)
+    const el = (clean as HTMLTemplateElement).content.firstElementChild
+    if (el) host.appendChild(el)
+  }
+}
+
 function mediaAttrs(el: Element): Record<string, unknown> | false {
+  // Fallback content has nowhere to live on an atom. Declining hands the element
+  // to the preservation layer, which keeps it whole -- see the priority-45 rule
+  // in preserve.ts.
+  if (hasMediaFallback(el)) return false
   const src = el.getAttribute('src')
-  if (!isSafeUrl(src)) return false
+  if (src !== null && !isSafeUrl(src)) return false
+  const furniture = readMediaFurniture(el)
+  // One or the other. A player with neither has nothing to play.
+  if (src === null && furniture === null) return false
   return {
     src,
+    furniture,
     title: el.getAttribute('title'),
     controls: boolAttr(el, 'controls'),
     width: dimension(el, 'width'),
     height: dimension(el, 'height'),
   }
+}
+
+/**
+ * Serialize a media element, splicing its furniture back in as children.
+ *
+ * A real element rather than a spec array whenever there is furniture: an array
+ * cannot carry raw markup, and the `<source>` children have to be appended.
+ */
+function mediaToDOM(tag: 'video' | 'audio', attrs: Record<string, string>, furniture: string | null): DOMOutputSpec {
+  if (!furniture) return [tag, attrs]
+  const doc = serializationTarget()
+  const el = doc.createElement(tag)
+  for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value)
+  appendMediaFurniture(el, furniture, doc)
+  return el
 }
 
 /**
@@ -45,7 +119,9 @@ export const video: NodeSpec = {
   selectable: true,
   draggable: true,
   attrs: {
-    src: {},
+    // Optional: source-only media carries its addresses in `furniture` instead.
+    src: { default: null },
+    furniture: { default: null },
     title: { default: null },
     controls: { default: false },
     width: { default: null },
@@ -68,14 +144,15 @@ export const video: NodeSpec = {
     },
   ],
   toDOM(node) {
-    const { src, title, controls, width, height, poster } = node.attrs
-    const attrs: Record<string, string> = { src: src as string }
+    const { src, title, controls, width, height, poster, furniture } = node.attrs
+    const attrs: Record<string, string> = {}
+    if (src !== null) attrs['src'] = src as string
     if (title !== null) attrs['title'] = title as string
     if (controls) attrs['controls'] = ''
     if (width !== null) attrs['width'] = width as string
     if (height !== null) attrs['height'] = height as string
     if (poster !== null) attrs['poster'] = poster as string
-    return ['video', attrs]
+    return mediaToDOM('video', attrs, furniture as string | null)
   },
 }
 
@@ -85,7 +162,8 @@ export const audio: NodeSpec = {
   selectable: true,
   draggable: true,
   attrs: {
-    src: {},
+    src: { default: null },
+    furniture: { default: null },
     title: { default: null },
     controls: { default: false },
   },
@@ -93,23 +171,22 @@ export const audio: NodeSpec = {
     {
       tag: 'audio',
       getAttrs(dom) {
-        const el = dom as Element
-        const src = el.getAttribute('src')
-        if (!isSafeUrl(src)) return false
-        return {
-          src,
-          title: el.getAttribute('title'),
-          controls: el.hasAttribute('controls'),
-        }
+        const base = mediaAttrs(dom as Element)
+        if (!base) return false
+        // Audio has no intrinsic box, so the dimensions mediaAttrs read are not
+        // part of this node's shape.
+        const { width: _width, height: _height, ...rest } = base
+        return rest
       },
     },
   ],
   toDOM(node) {
-    const { src, title, controls } = node.attrs
-    const attrs: Record<string, string> = { src: src as string }
+    const { src, title, controls, furniture } = node.attrs
+    const attrs: Record<string, string> = {}
+    if (src !== null) attrs['src'] = src as string
     if (title !== null) attrs['title'] = title as string
     if (controls) attrs['controls'] = ''
-    return ['audio', attrs]
+    return mediaToDOM('audio', attrs, furniture as string | null)
   },
 }
 

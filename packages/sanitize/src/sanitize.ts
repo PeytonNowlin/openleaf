@@ -148,9 +148,15 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
         else if (kept !== node.getAttribute('allow')) node.setAttribute('allow', kept)
       }
     }
-    if ((tag === 'video' || tag === 'audio') && !node.getAttribute('src')) {
-      node.remove()
-      return
+    // A player with nothing to play. `<source>` children count: source-only
+    // media is what the editor emits for `<video><source src="clip.webm">`, and
+    // removing it for having no `src` attribute would delete a working player.
+    if (tag === 'video' || tag === 'audio') {
+      const hasSource = node.getAttribute('src') !== null || node.querySelector('source') !== null
+      if (!hasSource) {
+        node.remove()
+        return
+      }
     }
 
     // A link that opens a new window without rel=noopener hands the opened page
