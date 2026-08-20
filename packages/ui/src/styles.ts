@@ -568,6 +568,33 @@ export const CSS = `
   flex-wrap: nowrap;
   overflow: hidden;
 }
+/* The More panel. Positioned in viewport coordinates from script, because the
+   bar it belongs to may live inside a host with \`overflow: hidden\` -- which is
+   the situation the whole feature exists for. */
+.ol-editor .ol-overflow-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--ol-gap);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.ol-editor .ol-overflow-menu[hidden] {
+  display: none;
+}
+/* Vertical: the panel exists because there is no horizontal room left. */
+.ol-editor .ol-overflow-menu .ol-group {
+  flex-direction: column;
+  align-items: stretch;
+}
+.ol-editor .ol-overflow-menu .ol-group + .ol-group {
+  border-inline-start: 0;
+  border-block-start: 1px solid var(--ol-border);
+  padding-inline-start: 0;
+  margin-inline-start: 0;
+  padding-block-start: 4px;
+  margin-block-start: 3px;
+}
 .ol-editor.ol-visual-aids .ol-empty-block {
   outline: 1px dashed var(--ol-border);
   outline-offset: 2px;

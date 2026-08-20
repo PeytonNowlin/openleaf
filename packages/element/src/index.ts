@@ -153,6 +153,8 @@ export class OpenLeafEditor extends HTMLElementBase {
   #resizeObserver: ResizeObserver | null = null
   #visualAids = true
   #fullscreen = false
+  /** Set by Shift+F10 / the Menu key, read by the `contextmenu` that follows. */
+  #contextByKey = false
   /** True while a real fullscreen session is ours, as opposed to the fallback. */
   #nativeFullscreen = false
 
@@ -423,6 +425,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.ownerDocument.removeEventListener('fullscreenchange', this.#onFullscreenChange)
     this.removeEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
     this.removeEventListener('contextmenu', this.#onContextMenu)
+    this.removeEventListener('keydown', this.#onContextKey, true)
     this.ownerDocument.removeEventListener('pointerdown', this.#onContextPointer, true)
     this.removeEventListener('focusin', this.#onInlineFocus)
     this.removeEventListener('focusout', this.#onInlineBlur)
@@ -707,22 +710,63 @@ export class OpenLeafEditor extends HTMLElementBase {
     if (this.#view) this.#contextMenu.attach(this.#view)
     this.appendChild(this.#contextMenu.el)
     this.addEventListener('contextmenu', this.#onContextMenu)
+    this.addEventListener('keydown', this.#onContextKey, true)
     this.ownerDocument.addEventListener('pointerdown', this.#onContextPointer, true)
   }
 
   #onContextPointer = (event: PointerEvent): void => {
+    this.#contextByKey = false
     const menu = this.#contextMenu
     if (!menu?.open) return
     if (event.target instanceof Node && menu.el.contains(event.target)) return
     menu.close()
   }
 
+  /**
+   * Remember that the next `contextmenu` came from the keyboard.
+   *
+   * Shift+F10 and the Menu key both synthesize a `contextmenu` event, but the
+   * event itself is indistinguishable from a real secondary click in a way that
+   * is portable: `button` is 0 and `detail` is 0 for a right-click too in some
+   * engines. The key press is the only unambiguous signal, so it is recorded
+   * here and read once by the handler that follows it.
+   */
+  #onContextKey = (event: KeyboardEvent): void => {
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      this.#contextByKey = true
+    }
+  }
+
+  /**
+   * The element the menu is about.
+   *
+   * For a pointer, that is what was clicked. For the keyboard it is emphatically
+   * NOT `event.target`: the focused element is the ProseMirror contenteditable
+   * div, and `closest()` walks UP from it, so it never finds the `<a>` or `<img>`
+   * the caret is actually in and the handler used to return in silence. The
+   * position is resolved from the selection instead, which is what the table
+   * plugin already does.
+   */
+  #contextTarget(view: EditorView): Element | null {
+    try {
+      const { node, offset } = view.domAtPos(view.state.selection.from)
+      const at = node.nodeType === 1 ? (node.childNodes[offset] ?? node) : node
+      return at instanceof Element ? at : (at.parentElement ?? null)
+    } catch {
+      return null
+    }
+  }
+
   #onContextMenu = (event: MouseEvent): void => {
     const view = this.#view
     const menu = this.#contextMenu
     if (!view || !menu) return
-    const target = event.target
-    if (!(target instanceof Element) || !this.#contentHost?.contains(target)) return
+    const byKey = this.#contextByKey
+    this.#contextByKey = false
+    const clicked = event.target
+    if (!(clicked instanceof Element) || !this.#contentHost?.contains(clicked)) return
+    const target = byKey ? this.#contextTarget(view) : clicked
+    if (!target) return
 
     const items = target.closest('a')
       ? LINK_CONTEXT_ITEMS
@@ -733,7 +777,16 @@ export class OpenLeafEditor extends HTMLElementBase {
           : null
     if (!items) return
     event.preventDefault()
-    menu.show(items, event.clientX, event.clientY, () => view.focus())
+    // `clientX/clientY` on a synthesized event are the focused element's corner
+    // at best and 0,0 at worst -- neither is where the caret is.
+    let x = event.clientX
+    let y = event.clientY
+    if (byKey || x <= 0) {
+      const coords = view.coordsAtPos(view.state.selection.from)
+      x = coords.left
+      y = coords.bottom
+    }
+    menu.show(items, x, y, { label: 'Editor menu', onClose: () => view.focus() })
   }
 
   #mountInline(): void {
