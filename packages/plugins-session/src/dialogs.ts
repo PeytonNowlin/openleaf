@@ -6,6 +6,37 @@
  * this package rather than growing the shared dialog helper.
  */
 
+/**
+ * Unique ids per dialog.
+ *
+ * These were constants -- `ol-session-confirm-title` and friends -- and every
+ * one of them is appended to `doc.body`. With two editors on a page an
+ * `aria-labelledby` resolved to whichever dialog came first in the document,
+ * naming this one after somebody else's.
+ */
+let idCounter = 0
+
+function nextId(kind: string): string {
+  idCounter += 1
+  return `ol-session-${kind}-${idCounter}`
+}
+
+/**
+ * The language a generated document should declare.
+ *
+ * A preview or a print-out with no `lang` is read by a screen reader in whatever
+ * voice it happened to be using -- English prose in a French voice, or the other
+ * way round. The host page already knows the answer.
+ */
+function documentLang(doc: Document): string {
+  return doc.documentElement.getAttribute('lang')?.trim() || 'en'
+}
+
+/** Escaped for an attribute value, since it goes into generated markup. */
+function attr(value: string): string {
+  return value.replace(/[<>&"']/g, '')
+}
+
 export async function confirmAction(
   doc: Document,
   options: { title: string; message: string; confirmLabel: string; danger?: boolean },
@@ -14,13 +45,14 @@ export async function confirmAction(
     const previouslyFocused = doc.activeElement as HTMLElement | null
     const dialog = doc.createElement('dialog')
     dialog.className = 'ol-dialog ol-session-dialog'
-    dialog.setAttribute('aria-labelledby', 'ol-session-confirm-title')
+    const headingId = nextId('confirm-title')
+    dialog.setAttribute('aria-labelledby', headingId)
 
     const form = doc.createElement('form')
     form.method = 'dialog'
 
     const heading = doc.createElement('h2')
-    heading.id = 'ol-session-confirm-title'
+    heading.id = headingId
     heading.textContent = options.title
     form.appendChild(heading)
 
@@ -70,10 +102,11 @@ export function showPreview(doc: Document, html: string): void {
   const previouslyFocused = doc.activeElement as HTMLElement | null
   const dialog = doc.createElement('dialog')
   dialog.className = 'ol-dialog ol-session-dialog ol-preview-dialog'
-  dialog.setAttribute('aria-labelledby', 'ol-session-preview-title')
+  const headingId = nextId('preview-title')
+  dialog.setAttribute('aria-labelledby', headingId)
 
   const heading = doc.createElement('h2')
-  heading.id = 'ol-session-preview-title'
+  heading.id = headingId
   heading.textContent = 'Preview'
 
   const frame = doc.createElement('iframe')
@@ -82,7 +115,11 @@ export function showPreview(doc: Document, html: string): void {
   frame.sandbox = ''
   // srcdoc rather than innerHTML on the host: the preview must not run script
   // from stored markup, and an iframe without allow-scripts is that boundary.
-  frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>
+  // `lang` and a `<title>`: the frame is a whole document, and one with neither
+  // is announced as an untitled page in whatever voice the reader was already
+  // using.
+  frame.srcdoc = `<!doctype html><html lang="${attr(documentLang(doc))}"><head><meta charset="utf-8">\
+<title>Preview</title><style>
     body { margin: 1.25rem; font: 16px/1.6 system-ui, sans-serif; color: #1f2328; }
     img { max-width: 100%; height: auto; }
     table { border-collapse: collapse; }
@@ -128,7 +165,7 @@ export function printHtml(doc: Document, html: string, title: string): void {
   }
   const safeTitle = title.replace(/[<>&"]/g, '')
   win.document.open()
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title>
+  win.document.write(`<!doctype html><html lang="${attr(documentLang(doc))}"><head><meta charset="utf-8"><title>${safeTitle}</title>
 <style>body{margin:1.5rem;font:16px/1.6 system-ui,sans-serif} img{max-width:100%} table{border-collapse:collapse} td,th{border:1px solid #333;padding:.3rem .5rem}</style>
 </head><body>${html}</body></html>`)
   win.document.close()
@@ -148,10 +185,11 @@ export function showStats(
   const previouslyFocused = doc.activeElement as HTMLElement | null
   const dialog = doc.createElement('dialog')
   dialog.className = 'ol-dialog ol-session-dialog'
-  dialog.setAttribute('aria-labelledby', 'ol-session-stats-title')
+  const headingId = nextId('stats-title')
+  dialog.setAttribute('aria-labelledby', headingId)
 
   const heading = doc.createElement('h2')
-  heading.id = 'ol-session-stats-title'
+  heading.id = headingId
   heading.textContent = 'Word count'
 
   const list = doc.createElement('ul')
