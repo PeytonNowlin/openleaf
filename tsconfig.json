@@ -17,7 +17,6 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/angular" },
     { "path": "packages/content-policy" },
     { "path": "packages/core" },
     { "path": "packages/element" },

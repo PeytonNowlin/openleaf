@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /** Published browser-facing entry points must still be importable during SSR. */
-const packages = ['element', 'react', 'vue', 'angular']
+const packages = ['element', 'react', 'vue']
 
 for (const name of packages) {
   try {
