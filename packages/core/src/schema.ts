@@ -9,7 +9,7 @@
  */
 
 import { Schema, type Attrs, type DOMOutputSpec, type MarkSpec, type NodeSpec } from 'prosemirror-model'
-import { applyStyleAttribute, parseDeclarations, safeAlign, safeColor, type Align } from './css.js'
+import { applyStyleAttribute, indentCss, indentLevels, isFullyModelledStyle, parseDeclarations, safeAlign, safeColor, safeDir, safeFontFamily, safeFontSize, safeLang, safeLineHeight, safeListStyle, serializeDeclarations, type Align, type Dir, type ListStyle } from './css.js'
 import { serializationTarget, unknownBlock, unknownInline } from './preserve.js'
 import { table, table_cell, table_header, table_row } from './tables.js'
 import { isSafeUrl } from './url.js'
@@ -24,27 +24,58 @@ import { isSafeUrl } from './url.js'
  * years of CMS content looks like, and a schema that only understands the
  * declaration silently centres nothing.
  */
-function textBlockAttrs(el: Element): { dir: string | null; align: Align | null } {
-  const dir = el.getAttribute('dir')
-  const declaration = parseDeclarations(el.getAttribute('style')).get('text-align')
-  return { dir, align: safeAlign(declaration ?? el.getAttribute('align'), dir) }
+function textBlockAttrs(el: Element): {
+  dir: Dir | null
+  align: Align | null
+  lineHeight: string | null
+  indent: number | null
+} {
+  const dir = safeDir(el.getAttribute('dir'))
+  const declarations = parseDeclarations(el.getAttribute('style'))
+  return {
+    dir,
+    align: safeAlign(declarations.get('text-align') ?? el.getAttribute('align'), dir),
+    lineHeight: safeLineHeight(declarations.get('line-height') ?? null) ,
+    indent: readIndent(declarations),
+  }
+}
+
+function readIndent(declarations: Map<string, string>): number | null {
+  for (const property of [
+    'padding-inline-start',
+    'margin-inline-start',
+    'padding-left',
+    'margin-left',
+  ]) {
+    const steps = indentLevels(declarations.get(property))
+    if (steps !== null) return steps
+  }
+  return null
 }
 
 /**
  * Write them back.
  *
- * Alignment goes out as `style="text-align:..."` and never as the legacy
- * attribute, so stored content converges on the one form that is still valid
- * HTML. The `align` attribute the value may have been read from is dropped from
- * the carried residue by extensions.ts, which is what stops the two spellings
- * being emitted side by side with a chance to disagree.
+ * Alignment, line height and indent go out as a single `style` attribute in a
+ * stable order, never as the legacy `align` attribute, so stored content
+ * converges on the form that is still valid HTML. The `align` attribute the
+ * value may have been read from is dropped from the carried residue by
+ * extensions.ts.
  */
 function textBlockDOMAttrs(attrs: Attrs): Record<string, string> {
   const out: Record<string, string> = {}
-  const dir = attrs['dir'] as string | null
+  const dir = attrs['dir'] as Dir | null
   if (dir !== null) out['dir'] = dir
+
+  const declarations = new Map<string, string>()
   const align = attrs['align'] as Align | null
-  if (align !== null) out['style'] = `text-align:${align}`
+  if (align !== null) declarations.set('text-align', align)
+  const lineHeight = attrs['lineHeight'] as string | null
+  if (lineHeight !== null) declarations.set('line-height', lineHeight)
+  const indent = attrs['indent'] as number | null
+  if (indent !== null && indent > 0) declarations.set('padding-inline-start', indentCss(indent))
+  const style = serializeDeclarations(declarations)
+  if (style !== null) out['style'] = style
   return out
 }
 
@@ -73,6 +104,35 @@ function textBlockToDOM(tag: string, attrs: Attrs): DOMOutputSpec {
   return Object.keys(domAttrs).length > 0 ? [tag, domAttrs, 0] : [tag, 0]
 }
 
+function listAttrs(el: Element, ordered: boolean): { start?: number; listStyle: ListStyle | null } {
+  const declarations = parseDeclarations(el.getAttribute('style'))
+  const fromStyle = safeListStyle(declarations.get('list-style-type') ?? null)
+  const fromType = safeListStyle(el.getAttribute('type'))
+  const listStyle = fromStyle ?? fromType
+  if (!ordered) return { listStyle }
+  const start = el.getAttribute('start')
+  return { start: start ? Number(start) : 1, listStyle }
+}
+
+function listToDOM(tag: 'ul' | 'ol', attrs: Attrs): DOMOutputSpec {
+  const out: Record<string, string> = {}
+  if (tag === 'ol') {
+    const start = attrs['start'] as number
+    if (start !== 1) out['start'] = String(start)
+  }
+  const listStyle = attrs['listStyle'] as ListStyle | null
+  if (listStyle !== null) out['style'] = `list-style-type:${listStyle}`
+  if (out['style'] !== undefined) {
+    const el = serializationTarget().createElement(tag)
+    for (const [name, value] of Object.entries(out)) {
+      if (name === 'style') applyStyleAttribute(el, value)
+      else el.setAttribute(name, value)
+    }
+    return { dom: el, contentDOM: el }
+  }
+  return Object.keys(out).length > 0 ? [tag, out, 0] : [tag, 0]
+}
+
 /** The base node specs. Extensions are appended to these. */
 export const coreNodes: Record<string, NodeSpec> = {
   doc: { content: 'block+' },
@@ -88,7 +148,12 @@ export const coreNodes: Record<string, NodeSpec> = {
     // toolbar, so an author cannot see that a paragraph is centred or change
     // it. A formatting control the editor cannot express is a feature request
     // the schema is answering.
-    attrs: { dir: { default: null }, align: { default: null } },
+    attrs: {
+      dir: { default: null },
+      align: { default: null },
+      lineHeight: { default: null },
+      indent: { default: null },
+    },
     content: 'inline*',
     group: 'block',
     parseDOM: [{ tag: 'p', getAttrs: (dom) => textBlockAttrs(dom as Element) }],
@@ -96,7 +161,13 @@ export const coreNodes: Record<string, NodeSpec> = {
   },
 
   heading: {
-    attrs: { level: { default: 1 }, dir: { default: null }, align: { default: null } },
+    attrs: {
+      level: { default: 1 },
+      dir: { default: null },
+      align: { default: null },
+      lineHeight: { default: null },
+      indent: { default: null },
+    },
     content: 'inline*',
     group: 'block',
     defining: true,
@@ -157,29 +228,29 @@ export const coreNodes: Record<string, NodeSpec> = {
   },
 
   bullet_list: {
+    attrs: { listStyle: { default: null } },
     content: 'list_item+',
     group: 'block',
-    parseDOM: [{ tag: 'ul' }],
-    toDOM: () => ['ul', 0],
+    parseDOM: [
+      {
+        tag: 'ul',
+        getAttrs: (dom) => listAttrs(dom as Element, false),
+      },
+    ],
+    toDOM: (node) => listToDOM('ul', node.attrs),
   },
 
   ordered_list: {
-    attrs: { start: { default: 1 } },
+    attrs: { start: { default: 1 }, listStyle: { default: null } },
     content: 'list_item+',
     group: 'block',
     parseDOM: [
       {
         tag: 'ol',
-        getAttrs(dom) {
-          const start = (dom as Element).getAttribute('start')
-          return { start: start ? Number(start) : 1 }
-        },
+        getAttrs: (dom) => listAttrs(dom as Element, true),
       },
     ],
-    toDOM(node) {
-      const start = node.attrs['start'] as number
-      return start === 1 ? ['ol', 0] : ['ol', { start: String(start) }, 0]
-    },
+    toDOM: (node) => listToDOM('ol', node.attrs),
   },
 
   list_item: {
@@ -351,6 +422,81 @@ export const coreMarks: Record<string, MarkSpec> = {
     ],
     toDOM: (mark) =>
       elementWithStyle('span', { style: `background-color:${mark.attrs['color'] as string}` }),
+  },
+
+  font_family: {
+    attrs: { family: {} },
+    parseDOM: [
+      {
+        style: 'font-family',
+        getAttrs(value) {
+          const family = safeFontFamily(value)
+          return family ? { family } : false
+        },
+      },
+      {
+        tag: 'font[face]',
+        getAttrs(dom) {
+          const el = dom as Element
+          // Colour-only `<font>` is a different mark. Face plus anything else
+          // this mark cannot hold stays with the preservation layer.
+          if (el.attributes.length > 1) return false
+          const family = safeFontFamily(el.getAttribute('face'))
+          return family ? { family } : false
+        },
+      },
+    ],
+    toDOM: (mark) =>
+      elementWithStyle('span', { style: `font-family:${mark.attrs['family'] as string}` }),
+  },
+
+  font_size: {
+    attrs: { size: {} },
+    parseDOM: [
+      {
+        style: 'font-size',
+        getAttrs(value) {
+          const size = safeFontSize(value)
+          return size ? { size } : false
+        },
+      },
+    ],
+    toDOM: (mark) =>
+      elementWithStyle('span', { style: `font-size:${mark.attrs['size'] as string}` }),
+  },
+
+  subscript: {
+    excludes: 'superscript',
+    parseDOM: [{ tag: 'sub' }, { style: 'vertical-align=sub' }],
+    toDOM: () => ['sub', 0],
+  },
+
+  superscript: {
+    excludes: 'subscript',
+    parseDOM: [{ tag: 'sup' }, { style: 'vertical-align=super' }],
+    toDOM: () => ['sup', 0],
+  },
+
+  language: {
+    attrs: { lang: {} },
+    inclusive: false,
+    parseDOM: [
+      {
+        tag: 'span[lang]',
+        getAttrs(dom) {
+          const el = dom as Element
+          const lang = safeLang(el.getAttribute('lang'))
+          if (!lang) return false
+          for (const attr of Array.from(el.attributes)) {
+            if (attr.name === 'lang') continue
+            if (attr.name === 'style' && isFullyModelledStyle(attr.value)) continue
+            return false
+          }
+          return { lang }
+        },
+      },
+    ],
+    toDOM: (mark) => ['span', { lang: mark.attrs['lang'] as string }, 0],
   },
 
   link: {

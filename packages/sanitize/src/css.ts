@@ -18,21 +18,77 @@
 
 /** Alignment keywords. `start` and `end` are resolved by the editor, not here. */
 const ALIGN = new Set(['left', 'center', 'right', 'justify', 'start', 'end'])
+const LIST_STYLE = new Set([
+  'disc', 'circle', 'square', 'decimal',
+  'lower-roman', 'upper-roman', 'lower-alpha', 'upper-alpha',
+  'lower-latin', 'upper-latin', 'lower-greek',
+])
+const FONT_SIZE_KEYWORDS = new Set([
+  'xx-small', 'x-small', 'small', 'medium', 'large', 'x-large', 'xx-large', 'xxx-large',
+])
+const GENERIC_FONT = new Set([
+  'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui',
+  'ui-sans-serif', 'ui-serif', 'ui-monospace', 'ui-rounded', 'emoji', 'math', 'fangsong',
+])
 
 const HEX = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
 const FUNCTIONAL = /^(?:rgba?|hsla?)\(\s*[0-9a-z\s.,%/+-]+\)$/i
 const KEYWORD = /^[a-z]{3,24}$/i
+const FONT_SIZE_LENGTH = /^(\d+(?:\.\d+)?)(px|pt|em|rem|%)$/i
+const LINE_HEIGHT = /^(?:normal|\d+(?:\.\d+)?(?:px|em|rem|%)?)$/i
+const INDENT = /^(?:\d+(?:\.\d+)?em|\d+(?:\.\d+)?px)$/i
 
 /** How a declaration's value is checked, by property. */
 const CHECKS: Record<string, (value: string) => boolean> = {
   'text-align': (value) => ALIGN.has(value.toLowerCase()),
   color: isColor,
   'background-color': isColor,
+  'font-family': isFontFamily,
+  'font-size': isFontSize,
+  'line-height': (value) => LINE_HEIGHT.test(value.trim().toLowerCase().replace(/\s+/g, '')),
+  'padding-inline-start': (value) => INDENT.test(value.trim().toLowerCase().replace(/\s+/g, '')),
+  'list-style-type': (value) => LIST_STYLE.has(value.trim().toLowerCase()),
 }
 
 function isColor(value: string): boolean {
   const candidate = value.trim().replace(/\s+/g, ' ')
   return HEX.test(candidate) || FUNCTIONAL.test(candidate) || KEYWORD.test(candidate)
+}
+
+function isFontFamily(value: string): boolean {
+  const raw = value.trim()
+  if (raw === '' || raw.length > 160) return false
+  if (/url\s*\(|expression|var\s*\(|[@\\<>]/i.test(raw)) return false
+  const parts = raw.split(',')
+  if (parts.length === 0 || parts.length > 6) return false
+  for (const part of parts) {
+    const trimmed = part.trim()
+    const quoted = /^(['"])(.*)\1$/.exec(trimmed)
+    // `?.[2]` rather than a ternary: a capture group is `string | undefined` to
+    // the type checker even when the match succeeded. `(.*)` matches the empty
+    // string, so a quoted empty name still reads as '' and is refused below.
+    const name = quoted?.[2] ?? trimmed
+    if (name === '' || name.length > 64) return false
+    if (/[^a-zA-Z0-9 \-]/.test(name) || !/^[a-zA-Z]/.test(name)) return false
+    if (!quoted && GENERIC_FONT.has(name.toLowerCase())) continue
+  }
+  return true
+}
+
+function isFontSize(value: string): boolean {
+  const candidate = value.trim().toLowerCase().replace(/\s+/g, '')
+  if (FONT_SIZE_KEYWORDS.has(candidate)) return true
+  const match = FONT_SIZE_LENGTH.exec(candidate)
+  if (!match) return false
+  const amount = Number(match[1])
+  // The unit group is not optional in the regexp, so a match always has one.
+  // Cast once here and let the bounds objects keep their literal keys: that is
+  // what makes the lookups type-safe without a cast at each one, and it is how
+  // core's copy of this function reads.
+  const unit = match[2] as 'px' | 'pt' | 'em' | 'rem' | '%'
+  const min = { px: 8, pt: 6, em: 0.5, rem: 0.5, '%': 50 }
+  const max = { px: 96, pt: 72, em: 6, rem: 6, '%': 300 }
+  return amount >= min[unit] && amount <= max[unit]
 }
 
 /** Is this declaration permitted at all, and is its value one we recognise? */

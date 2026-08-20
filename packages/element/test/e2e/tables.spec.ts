@@ -31,6 +31,50 @@ test.describe('core bundle alone', () => {
     await expect(editor(page).locator('table')).toBeVisible()
   })
 
+  test('renders a caption and hands it back on save', async ({ page }) => {
+    // A caption used to be deleted on parse, which for a screen-reader user
+    // removed the table's accessible name. jsdom cannot answer whether it
+    // actually renders, so the question is asked in a real browser.
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value =
+        '<table><caption>Q1 results</caption>' +
+        '<colgroup><col width="200"></colgroup>' +
+        '<tbody><tr><td>A</td></tr></tbody></table>'
+    })
+
+    const caption = editor(page).locator('table > caption')
+    await expect(caption).toBeVisible()
+    await expect(caption).toHaveText('Q1 results')
+
+    const stored = await value(page)
+    expect(stored).toContain('<caption>Q1 results</caption>')
+    expect(stored).toContain('width="200"')
+    // The inert marker is for the editor's DOM only; storing it would be this
+    // editor writing its own attribute into the author's markup.
+    expect(stored).not.toContain('contenteditable')
+  })
+
+  test('typing cannot corrupt a caption it does not own', async ({ page }) => {
+    // The caption renders inside the editable area but outside the node's
+    // contentDOM. Without contenteditable="false" a caret enters it and the
+    // typing is reverted on the next redraw, which looks like data loss.
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<table><caption>Q1 results</caption><tbody><tr><td>A</td></tr></tbody></table>'
+    })
+
+    const caption = editor(page).locator('table > caption')
+    await expect(caption).toBeVisible()
+    await expect(caption).toHaveAttribute('contenteditable', 'false')
+
+    await caption.click()
+    await page.keyboard.type('XYZ')
+
+    await expect(caption).toHaveText('Q1 results')
+    expect(await value(page)).toContain('<caption>Q1 results</caption>')
+  })
+
   test('has no table controls', async ({ page }) => {
     // The opt-in half really is absent, rather than present but inert.
     await expect(toolbar(page).getByRole('button', { name: 'Insert table' })).toHaveCount(0)
@@ -93,6 +137,38 @@ test.describe('with the table bundle loaded', () => {
 
     await toolbar(page).getByRole('button', { name: 'Delete column' }).click()
     await expect(editor(page).locator('table tr').first().locator('th, td')).toHaveCount(before)
+  })
+
+  test('edits a captioned table without the cell map drifting', async ({ page }) => {
+    /*
+     * The load-bearing test for why a caption is an attribute and not a child
+     * node. `prosemirror-tables` takes `height = table.childCount` and reads
+     * every child as a row, so a caption node would shift every coordinate it
+     * derives -- and the symptom would not be an error, it would be row and
+     * column commands quietly operating one cell off.
+     */
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value =
+        '<table><caption>Q1 results</caption><tbody>' +
+        '<tr><th scope="col">Region</th><th scope="col">Q1</th></tr>' +
+        '<tr><td>North</td><td>1204</td></tr></tbody></table>'
+    })
+    await expect(editor(page).locator('table > caption')).toBeVisible()
+
+    const rows = await editor(page).locator('table tr').count()
+    const cols = await editor(page).locator('table tr').first().locator('th, td').count()
+
+    await editor(page).getByText('North').click()
+    await toolbar(page).getByRole('button', { name: 'Insert row below' }).click()
+    await expect(editor(page).locator('table tr')).toHaveCount(rows + 1)
+
+    await toolbar(page).getByRole('button', { name: 'Insert column after' }).click()
+    await expect(editor(page).locator('table tr').first().locator('th, td')).toHaveCount(cols + 1)
+
+    // The edits landed and the caption is still there, still exactly once.
+    await expect(editor(page).locator('table > caption')).toHaveCount(1)
+    expect(await value(page)).toContain('<caption>Q1 results</caption>')
   })
 
   test('toggles the header row', async ({ page }) => {

@@ -27,7 +27,17 @@ export const BUDGETS_KB = {
   // core cannot delegate -- reading the `text-align` and `color` markup an
   // inherited archive already contains, which is the same reasoning that keeps
   // the table schema here while table editing is opt-in.
-  'openleaf.min.js': 92,
+  //
+  // Raised again from 92 when `<caption>` and `<colgroup>` stopped being
+  // discarded. That change measured 91.955 KB against a 92 KB budget: a pass by
+  // 45 bytes, which is not a pass -- it is the next contributor's build failing
+  // for a reason that has nothing to do with their patch. The headroom is the
+  // point of the number, so it is restored rather than shaved.
+  //
+  // This is core rather than the table plugin for the reason stated in
+  // tables.ts: the schema has to be present or an inherited table degrades to an
+  // uneditable atom, and a caption it cannot read is a caption it deletes.
+  'openleaf.min.js': 94,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,

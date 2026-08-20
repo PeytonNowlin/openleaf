@@ -37,6 +37,7 @@
  */
 
 import type { NodeSpec } from 'prosemirror-model'
+import { isSerializing, scrub, serializationTarget } from './preserve.js'
 
 /** Presentational attributes legacy CMS content puts on `<table>`. */
 const TABLE_LEGACY_ATTRS = ['border', 'cellpadding', 'cellspacing', 'width', 'align', 'summary', 'class'] as const
@@ -111,14 +112,90 @@ function cellToDOM(tag: 'td' | 'th') {
   }
 }
 
+/**
+ * `<caption>` and `<colgroup>`/`<col>`: preserved as markup on the table node.
+ *
+ * These are the two parts of a table that are neither rows nor cells, and until
+ * now both were discarded on parse. For a caption that is not a cosmetic loss:
+ * a caption is a table's accessible name, so opening and saving an inherited
+ * document silently stripped the one element telling a screen-reader user what
+ * the table is. Column widths in a `<colgroup>` went the same way, taking the
+ * page's layout with them.
+ *
+ * They are attributes rather than child nodes, which is the compromise and is
+ * worth being precise about. The natural model is a `caption` node as the
+ * table's first child. It cannot work today: `prosemirror-tables` computes its
+ * cell map with `height = table.childCount` and reads `table.child(row)` as a
+ * row, so any non-row child shifts every coordinate the library derives, and
+ * cell selection, column resizing and the row/column commands all index into
+ * the wrong place. Storing markup on an attribute keeps the node's children
+ * exactly what that library requires while making the round-trip lossless.
+ *
+ * The cost is that the caption is not editable in place -- it renders, it
+ * survives, it cannot be typed into. That is a real limitation and it is the
+ * same bargain the preservation layer already strikes everywhere else: content
+ * kept intact and inert beats content silently deleted. Editing it needs the
+ * upstream indexing fix, at which point this becomes a node and the attribute
+ * migrates.
+ *
+ * Scrubbed on the way in with the preservation layer's own scrubber, so a
+ * `<caption onclick="...">` cannot ride in on a code path whose entire promise
+ * is to hand markup back unmodified.
+ */
+const FURNITURE_TAGS: ReadonlySet<string> = new Set(['caption', 'colgroup', 'col'])
+
+/** Serialized direct children of `el` matching `tags`, in document order. */
+function readFurniture(el: Element, tags: readonly string[]): string | null {
+  let html = ''
+  for (const child of Array.from(el.children)) {
+    if (!tags.includes(child.nodeName.toLowerCase())) continue
+    html += scrub(child)
+    // HTML permits exactly one caption; a second is somebody else's bug and
+    // concatenating it would render two. Take the first and stop.
+    if (child.nodeName.toLowerCase() === 'caption') break
+  }
+  return html || null
+}
+
+/**
+ * Rebuild stored furniture markup and append it to the table being built.
+ *
+ * `<template>` is the parsing context because a bare `<caption>` or `<col>` is
+ * illegal inside a `<div>` and would be silently discarded there -- the same
+ * reason the preservation layer uses one.
+ */
+function appendFurniture(table: Element, html: string, doc: Document, inert: boolean): void {
+  const tpl = doc.createElement('template')
+  tpl.innerHTML = html
+  for (const child of Array.from((tpl as HTMLTemplateElement).content.children)) {
+    if (!FURNITURE_TAGS.has(child.nodeName.toLowerCase())) continue
+    // Editor only. A caption sits inside the editable area but outside the
+    // node's contentDOM, so without this a caret can enter text ProseMirror
+    // will discard on its next redraw.
+    if (inert) child.setAttribute('contenteditable', 'false')
+    table.appendChild(child)
+  }
+}
+
 export const table: NodeSpec = {
   content: 'table_row+',
   tableRole: 'table',
   isolating: true,
   group: 'block',
-  attrs: legacyDefaults(TABLE_LEGACY_ATTRS),
+  attrs: {
+    ...legacyDefaults(TABLE_LEGACY_ATTRS),
+    caption: { default: null },
+    colgroup: { default: null },
+  },
   parseDOM: [
-    { tag: 'table', getAttrs: (dom) => readAttrs(dom as Element, TABLE_LEGACY_ATTRS) },
+    {
+      tag: 'table',
+      getAttrs: (dom) => ({
+        ...readAttrs(dom as Element, TABLE_LEGACY_ATTRS),
+        caption: readFurniture(dom as Element, ['caption']),
+        colgroup: readFurniture(dom as Element, ['colgroup', 'col']),
+      }),
+    },
     /*
      * `tbody`, `thead` and `tfoot` are SKIPPED rather than ignored: the wrapper
      * itself carries nothing, but its rows are the entire content. `ignore`
@@ -132,26 +209,43 @@ export const table: NodeSpec = {
     { tag: 'thead', skip: true },
     { tag: 'tfoot', skip: true },
     /*
-     * KNOWN LIMITATION, declared rather than hidden.
+     * `caption`, `colgroup` and `col` are ignored as CONTENT and captured as
+     * ATTRIBUTES instead -- see `readFurniture` for why they cannot be nodes.
      *
-     * `<colgroup>`/`<col>` are dropped, and `<caption>` is dropped with its
-     * text. Both should be preserved and neither can be today: a caption node
-     * would have to be the table's first child, and `prosemirror-tables`
-     * computes its cell map by treating every child of a table as a row, so a
-     * leading caption breaks its indexing.
-     *
-     * Dropping a caption is a real accessibility regression -- a caption is a
-     * table's accessible name -- so this is tracked as a bug to fix by adding a
-     * caption node and contributing the indexing fix upstream, not as a design
-     * decision. There is a fixture asserting the current behaviour so it cannot
-     * regress further without someone noticing.
+     * The `ignore` rules are still load-bearing after that capture. Without
+     * them the preservation layer's catch-all claims a `<caption>` as an
+     * unrecognised block, and `table_row+` refuses to accept it, so the caption
+     * is dropped a second way by a different mechanism.
      */
     { tag: 'colgroup', ignore: true },
     { tag: 'col', ignore: true },
     { tag: 'caption', ignore: true },
   ],
   toDOM(node) {
-    return ['table', writeAttrs(node.attrs, TABLE_LEGACY_ATTRS), ['tbody', 0]]
+    const attrs = writeAttrs(node.attrs, TABLE_LEGACY_ATTRS)
+    const caption = node.attrs['caption'] as string | null
+    const colgroup = node.attrs['colgroup'] as string | null
+    if (!caption && !colgroup) return ['table', attrs, ['tbody', 0]]
+
+    /*
+     * Furniture forces a real element rather than an output-spec array, because
+     * an array cannot express "these children, then the content hole inside a
+     * LATER child". `{ dom, contentDOM }` can, and ProseMirror accepts it from
+     * both the editor's node renderer and DOMSerializer.
+     */
+    const doc = serializationTarget()
+    const table = doc.createElement('table')
+    for (const [name, value] of Object.entries(attrs)) table.setAttribute(name, value)
+
+    // Document order is fixed by HTML: caption first, then colgroup, then rows.
+    // Emitting them in any other order produces markup browsers reshuffle, which
+    // would make the round-trip lossy again by a subtler route.
+    if (caption) appendFurniture(table, caption, doc, !isSerializing())
+    if (colgroup) appendFurniture(table, colgroup, doc, false)
+
+    const tbody = doc.createElement('tbody')
+    table.appendChild(tbody)
+    return { dom: table, contentDOM: tbody }
   },
 }
 

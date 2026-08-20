@@ -51,6 +51,7 @@ import {
 import {
   MODELLED_PROPERTIES,
   applyStyleAttribute,
+  indentLevels,
   parseDeclarations,
   serializeDeclarations,
 } from './css.js'
@@ -172,28 +173,34 @@ const CARRY_SCRUB: Record<string, (carried: Record<string, string>) => void> = {
   },
   paragraph: scrubModelledStyle,
   heading: scrubModelledStyle,
+  bullet_list: scrubModelledStyle,
+  ordered_list: scrubModelledStyle,
 }
 
 /**
  * Drop the declarations a text block now models from its carried residue.
  *
- * `text-align` is the node's own `align` attribute and colour is the two colour
- * marks, so carrying either a second time emits both spellings of the same
- * intent -- and the moment an author changes the alignment, the copy that is not
- * modelled disagrees with the one that is. The legacy `align` attribute goes for
- * the same reason: it is where the value may have been read from, and it is not
- * where it is written back.
+ * `text-align` is the node's own `align` attribute, line height and indent are
+ * modelled the same way, and colour and font are marks, so carrying any of them
+ * a second time emits both spellings of the same intent. The legacy `align`
+ * attribute goes for the same reason.
  *
  * Anything else in the attribute stays. A paragraph stored as
- * `style="line-height:1.4;text-align:left"` keeps its line height, which is the
- * whole point of the carry mechanism.
+ * `style="letter-spacing:0.05em;text-align:left"` keeps its letter-spacing.
  */
 function scrubModelledStyle(carried: Record<string, string>): void {
   delete carried['align']
+  delete carried['type']
   const style = carried['style']
   if (style === undefined) return
   const declarations = parseDeclarations(style)
   for (const name of MODELLED_PROPERTIES) declarations.delete(name)
+  // Indent aliases consumed into the `indent` attribute. Only dropped when they
+  // actually parsed as an indent; `padding-left:3px` is not one and must stay.
+  for (const name of ['padding-left', 'margin-left', 'margin-inline-start'] as const) {
+    const value = declarations.get(name)
+    if (value !== undefined && indentLevels(value) !== null) declarations.delete(name)
+  }
   const rest = serializeDeclarations(declarations)
   if (rest !== null) carried['style'] = rest
   else delete carried['style']
@@ -204,11 +211,11 @@ function scrubModelledStyle(carried: Record<string, string>): void {
  *
  * Modelled attributes win, because the spec is the authority on the names it
  * declared -- except for `style`, where winning wholesale is a content-loss bug.
- * A paragraph whose stored style was `line-height:1.4;text-align:left` has the
- * line height in its residue and the alignment in its `align` attribute; a plain
- * object spread replaces the residue's `style` with the spec's and the line
- * height is gone. So `style` is merged one declaration at a time, residue first
- * so the modelled value overrides a stale copy of itself.
+ * A paragraph whose stored style was `letter-spacing:0.05em;text-align:left`
+ * has the letter-spacing in its residue and the alignment in its `align`
+ * attribute; a plain object spread replaces the residue's `style` with the
+ * spec's and the letter-spacing is gone. So `style` is merged one declaration
+ * at a time, residue first so the modelled value overrides a stale copy of itself.
  */
 /**
  * Merge carried residue onto an element a spec built for itself.
@@ -216,7 +223,7 @@ function scrubModelledStyle(carried: Record<string, string>): void {
  * The array path below cannot cover this case, and it is not hypothetical: a
  * paragraph carrying CSS returns a real element from `toDOM` so that its `style`
  * attribute is not rewritten by the CSSOM. That element has to be given the
- * residue too, or modelling `text-align` would silently drop the `line-height`
+ * residue too, or modelling `text-align` would silently drop the `letter-spacing`
  * next to it -- the exact loss the carry mechanism exists to prevent,
  * reintroduced from a new direction.
  */

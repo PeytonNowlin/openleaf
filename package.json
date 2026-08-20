@@ -18,7 +18,8 @@
     "typecheck": "tsc -b",
     "verify": "node scripts/verify.mjs",
     "verify:quick": "node scripts/verify.mjs --quick",
-    "publish:beta": "pnpm -r --filter \"./packages/**\" publish --access public --tag beta"
+    "publish:beta": "pnpm -r --filter \"./packages/**\" publish --access public --tag beta && node scripts/dist-tags.mjs",
+    "dist-tags": "node scripts/dist-tags.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

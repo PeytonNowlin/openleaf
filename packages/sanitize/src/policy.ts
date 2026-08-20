@@ -106,13 +106,13 @@ export const DEFAULT_POLICY: Policy = {
      * `position:fixed` overlays; none of those is reachable through a property
      * list of `text-align` whose values must be one of four keywords.
      */
-    p: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h1: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h2: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h3: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h4: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h5: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
-    h6: { attributes: ['dir', 'style'], styleProperties: ['text-align'] },
+    p: { attributes: ['dir', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h1: { attributes: ['dir', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h2: { attributes: ['dir', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h3: { attributes: ['dir', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h4: { attributes: ['dir', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h5: { attributes: ['dir', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
+    h6: { attributes: ['dir', 'style'], styleProperties: ['text-align', 'line-height', 'padding-inline-start'] },
     /*
      * `<span>` exists in this policy only to carry colour.
      *
@@ -122,7 +122,7 @@ export const DEFAULT_POLICY: Policy = {
      * which is what the editor's own preservation layer does with one it cannot
      * model.
      */
-    span: { attributes: ['style'], styleProperties: ['color', 'background-color'] },
+    span: { attributes: ['style', 'lang'], styleProperties: ['color', 'background-color', 'font-family', 'font-size'] },
     blockquote: {},
     pre: {},
     // The language class and nothing else. The schema reads `language-js` from
@@ -131,8 +131,8 @@ export const DEFAULT_POLICY: Policy = {
     // policy for markup the editor does not emit. A class on <pre> is
     // preservation residue, and preservation is opt-in via policyForPreserved().
     code: { attributes: ['class'] },
-    ul: {},
-    ol: { attributes: ['start'] },
+    ul: { attributes: ['style'], styleProperties: ['list-style-type'] },
+    ol: { attributes: ['start', 'style'], styleProperties: ['list-style-type'] },
     li: {},
     hr: {},
     br: {},
@@ -140,6 +140,8 @@ export const DEFAULT_POLICY: Policy = {
     em: {},
     u: {},
     s: {},
+    sub: {},
+    sup: {},
     a: { attributes: ['href', 'title', 'target', 'rel'] },
     img: { attributes: ['src', 'alt', 'title', 'width', 'height'] },
 
@@ -157,6 +159,16 @@ export const DEFAULT_POLICY: Policy = {
     table: {
       attributes: ['border', 'cellpadding', 'cellspacing', 'width', 'align', 'summary', 'class'],
     },
+    /*
+     * `caption` is here because it is a table's accessible name, and `colgroup`
+     * and `col` because they carry the column widths a page's layout depends on.
+     * The schema preserves all three verbatim; a policy that stripped them would
+     * delete on the way to the database exactly what the editor just took care
+     * to keep, which is the drift this shared policy exists to prevent.
+     */
+    caption: { attributes: ['align', 'class', 'style'], styleProperties: ['text-align'] },
+    colgroup: { attributes: ['span', 'width', 'align', 'valign', 'class'] },
+    col: { attributes: ['span', 'width', 'align', 'valign', 'class'] },
     thead: {},
     tbody: {},
     tfoot: {},

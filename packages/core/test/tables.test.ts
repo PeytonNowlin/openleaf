@@ -83,27 +83,132 @@ describe('legacy and accessibility attributes survive', () => {
   })
 })
 
-describe('declared limitations', () => {
+describe('caption and colgroup survive the round trip', () => {
   /*
-   * These assert current behaviour that is WRONG and known. They exist so the
-   * gap is visible in the suite rather than discovered by a user, and so it
-   * cannot quietly get worse.
+   * These were dropped until they were not. A caption is a table's accessible
+   * name, so losing it was an accessibility defect as much as a fidelity one:
+   * opening and saving an inherited document removed the only element telling a
+   * screen-reader user what the table was.
    */
 
-  it('drops <caption>, which is an accessibility regression to be fixed', () => {
-    // A caption is a table's accessible name. It cannot be modelled today
-    // because prosemirror-tables computes its cell map by treating every child
-    // of a table as a row, so a leading caption node breaks its indexing.
-    // Tracked as a bug: the fix is a caption node plus an upstream change.
+  it('keeps a caption and its text', () => {
     const out = roundTrip('<table><caption>Q1 results</caption><tr><td>A</td></tr></table>')
-    expect(out).not.toContain('caption')
-    expect(out).not.toContain('Q1 results')
+    expect(out).toContain('<caption>Q1 results</caption>')
+    expect(out).toContain('<td>A</td>')
   })
 
-  it('drops <colgroup> and <col>', () => {
-    const out = roundTrip('<table><colgroup><col width="200"></colgroup><tr><td>A</td></tr></table>')
-    expect(out).not.toContain('colgroup')
+  it('keeps markup and attributes inside a caption', () => {
+    const out = roundTrip(
+      '<table><caption class="cap">Q1 <strong>results</strong></caption><tr><td>A</td></tr></table>',
+    )
+    expect(out).toContain('class="cap"')
+    expect(out).toContain('<strong>results</strong>')
+  })
+
+  it('keeps colgroup and col with their widths', () => {
+    const out = roundTrip(
+      '<table><colgroup><col width="200"><col width="80"></colgroup><tr><td>A</td></tr></table>',
+    )
+    expect(out).toContain('<colgroup>')
+    expect(out).toContain('width="200"')
+    expect(out).toContain('width="80"')
     expect(out).toContain('<td>A</td>')
+  })
+
+  it('keeps bare col elements that have no colgroup wrapper', () => {
+    const out = roundTrip('<table><col width="200"><tr><td>A</td></tr></table>')
+    expect(out).toContain('<col')
+    expect(out).toContain('width="200"')
+  })
+
+  it('emits caption before colgroup, the order HTML requires', () => {
+    const out = roundTrip(
+      '<table><caption>C</caption><colgroup><col width="200"></colgroup><tr><td>A</td></tr></table>',
+    )
+    expect(out.indexOf('<caption')).toBeLessThan(out.indexOf('<colgroup'))
+    expect(out.indexOf('<colgroup')).toBeLessThan(out.indexOf('<td'))
+  })
+
+  it('does not invent a caption for a table that never had one', () => {
+    expect(roundTrip('<table><tr><td>A</td></tr></table>')).not.toContain('caption')
+  })
+
+  it('never writes contenteditable into saved HTML', () => {
+    // toDOM marks a caption inert for the EDITOR, because it renders inside the
+    // editable area but outside the node's contentDOM. That attribute is ours,
+    // not the author's, and must not end up in what the server stores.
+    const out = roundTrip('<table><caption>Q1</caption><tr><td>A</td></tr></table>')
+    expect(out).not.toContain('contenteditable')
+  })
+
+  it('marks the caption inert when the EDITOR renders it', () => {
+    // The other half of the pair above. Serialization must not emit
+    // contenteditable; the editor must, or a caret gets into a region
+    // ProseMirror does not manage and the typing is reverted on redraw.
+    const doc = parseHtml('<table><caption>Q1</caption><tr><td>A</td></tr></table>')
+    let table: unknown = null
+    doc.descendants((node) => {
+      if (node.type.name === 'table') table = node
+      return true
+    })
+    const toDOM = coreSchema().nodes['table']?.spec.toDOM
+    expect(toDOM).toBeDefined()
+    const rendered = toDOM?.(table as never) as { dom: Element; contentDOM?: Element }
+    // A content hole inside a later child is why this returns an element rather
+    // than an output-spec array at all.
+    expect(rendered.contentDOM?.nodeName).toBe('TBODY')
+    const caption = rendered.dom.querySelector('caption')
+    expect(caption?.getAttribute('contenteditable')).toBe('false')
+    expect(caption?.textContent).toBe('Q1')
+  })
+
+  it('scrubs event handlers out of preserved furniture', () => {
+    // The furniture path hands markup back unmodified, so it has to be scrubbed
+    // on the way in or it becomes a route around the security rules.
+    const out = roundTrip(
+      '<table><caption onclick="steal()">Q1</caption><tr><td>A</td></tr></table>',
+    )
+    expect(out).toContain('Q1')
+    expect(out).not.toContain('onclick')
+  })
+
+  it('drops a script hidden inside a caption', () => {
+    const out = roundTrip(
+      '<table><caption>Q1<script>alert(1)</script></caption><tr><td>A</td></tr></table>',
+    )
+    expect(out).toContain('Q1')
+    expect(out).not.toContain('script')
+  })
+
+  it('takes only the first caption when a document has two', () => {
+    const out = roundTrip(
+      '<table><caption>One</caption><caption>Two</caption><tr><td>A</td></tr></table>',
+    )
+    expect(out).toContain('One')
+    expect(out).not.toContain('Two')
+  })
+
+  it('leaves the cell map intact, so table editing still indexes correctly', () => {
+    // The reason caption is an attribute and not a child node: prosemirror-tables
+    // reads height as table.childCount and every child as a row. A captioned
+    // table must still parse to rows only.
+    const doc = parseHtml('<table><caption>C</caption><tr><td>A</td><td>B</td></tr></table>')
+    let table: ReturnType<typeof parseHtml> | null = null
+    doc.descendants((node) => {
+      if (node.type.name === 'table') table = node
+      return true
+    })
+    expect(table).not.toBeNull()
+    const found = table as unknown as { childCount: number; child: (i: number) => { type: { name: string } } }
+    expect(found.childCount).toBe(1)
+    expect(found.child(0).type.name).toBe('table_row')
+  })
+
+  it('keeps a caption on a table nested inside preserved markup', () => {
+    const out = roundTrip(
+      '<div class="callout"><table><caption>Q1</caption><tr><td>A</td></tr></table></div>',
+    )
+    expect(out).toContain('Q1')
   })
 })
 
