@@ -130,7 +130,20 @@ export function parseHtml(html: string, opts?: HtmlIOOptions): PMNode {
   }
   const doc = resolveDocument(opts)
   const tpl = doc.createElement('template')
-  tpl.innerHTML = html
+  // The DOM parser is itself recursive and gives out at around 20,000 levels,
+  // which is *before* the depth check below could run. Its `RangeError` says
+  // nothing about what happened or which call caused it, so it is converted
+  // rather than allowed to escape.
+  try {
+    tpl.innerHTML = html
+  } catch (error) {
+    throw new OpenLeafError(
+      'depth-limit',
+      '@openleaf-editor/core: the HTML could not be parsed -- it is nested too deeply, or too ' +
+        'large, for this DOM implementation to handle.',
+      { cause: error },
+    )
+  }
   assertDepthWithin(tpl.content, MAX_PARSE_DEPTH)
   return parserFor(opts?.schema ?? coreSchema()).parse(tpl.content, {
     preserveWhitespace: false,

@@ -15,7 +15,13 @@ export {
   type Policy,
 } from './policy.js'
 export { allStyleProperties, filterStyle, isAllowedDeclaration } from './css.js'
-export { isUrlAllowed, sanitizeHtml, type SanitizeOptions } from './sanitize.js'
+export {
+  MAX_SANITIZE_DEPTH,
+  SanitizeDepthError,
+  isUrlAllowed,
+  sanitizeHtml,
+  type SanitizeOptions,
+} from './sanitize.js'
 export {
   configureDOMPurify,
   embedHook,

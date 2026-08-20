@@ -1232,6 +1232,25 @@ declare global {
     'openleaf:source-open': CustomEvent<OpenLeafSourceDetail>
     'openleaf:source-close': CustomEvent<OpenLeafSourceDetail>
   }
+  /**
+   * The same three on `document` and `window`.
+   *
+   * `document.addEventListener` resolves against `DocumentEventMap`, not
+   * `HTMLElementEventMap`, so without these a delegated listener -- the ordinary
+   * way to watch every editor on a page, and the one `composed: true` now makes
+   * reliable from outside a shadow root -- was back to a bare `Event` and a cast
+   * to read `detail`.
+   */
+  interface DocumentEventMap {
+    'openleaf:change': CustomEvent<OpenLeafChangeDetail>
+    'openleaf:source-open': CustomEvent<OpenLeafSourceDetail>
+    'openleaf:source-close': CustomEvent<OpenLeafSourceDetail>
+  }
+  interface WindowEventMap {
+    'openleaf:change': CustomEvent<OpenLeafChangeDetail>
+    'openleaf:source-open': CustomEvent<OpenLeafSourceDetail>
+    'openleaf:source-close': CustomEvent<OpenLeafSourceDetail>
+  }
 }
 
 /** Idempotent: safe to import twice, or alongside a bundled copy. */

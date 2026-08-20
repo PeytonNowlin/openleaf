@@ -19,7 +19,7 @@ below.
 | Add ProseMirror plugins (behaviour, decorations, input rules, node views) | `registerEditorPlugin(factory)` | Works |
 | Add a toolbar button with active/enabled state | `registerToolbarItem(spec)` | Works |
 | Add icons | `registerIcons(paths)` | Works |
-| Push state a predicate cannot derive | `element.toolbar?.setItemState(id, …)` | Works, per editor |
+| Push state a predicate cannot derive | `element.toolbarInstance?.setItemState(id, …)` | Works, per editor |
 | Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins |
 | Reach the live view | `element.view` | Works |
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
@@ -546,7 +546,7 @@ catch-all declines the rule so ProseMirror unwraps it. Your `div.callout` has a
 class, so it never reaches that branch — but a node keyed on an attribute-free
 element will never see its content as a wrapper at all.
 
-#### If you add a normalization pass, respect `data-ol-preserved`
+#### If you add a normalization pass, respect preserved markup
 
 `serializeHtml` runs `unwrapSoleCellParagraph` over the whole output to collapse
 `<td><p>x</p></td>` back to `<td>x</td>`, so that adopting OpenLeaf does not
@@ -555,15 +555,15 @@ plain `querySelectorAll('td, th')` and therefore reached *inside* preserved
 markup — rewriting a table nested in an unrecognised wrapper that the editor had
 undertaken to return byte-identical.
 
-The fix is a marker. `rebuildOrCarry` sets `data-ol-preserved` on every rebuilt
-element during serialization, and `serializeHtml` strips the attribute before
-returning the string, so it never reaches a customer's database. Any pass you
-add over serialized output owes the same guard:
+The fix is a marker. `rebuildOrCarry` records every element it rebuilds during
+serialization in a `WeakSet`, which cannot collide with a customer's own markup
+and needs no stripping pass. Any pass you add over serialized output owes the
+same guard:
 
 ```ts
-import { PRESERVED_MARKER } from '@openleaf-editor/core'   // 'data-ol-preserved'
+import { isInsidePreserved } from '@openleaf-editor/core'
 
-if (el.closest(`[${PRESERVED_MARKER}]`)) continue
+if (isInsidePreserved(el)) continue
 ```
 
 Note the shape of the bug, because it is the shape yours will have: every
@@ -572,10 +572,13 @@ used a table at the top level. The defect lived exactly in the intersection and
 no fixture crossed the two features. **Write the fixture that crosses your
 feature with preservation**, not just the one that exercises it alone.
 
-> `PRESERVED_MARKER` is exported from `packages/core/src/preserve.ts` but is not
-> in `@openleaf-editor/core`'s index barrel or in the pinned export list, so it is not
-> importable from the package today. Flagged in
-> [section 6](#6-open-questions-for-the-maintainer).
+> The marker is no longer an attribute at all. Marking preserved output with a
+> real DOM attribute could not tell the attribute it had just added from the same
+> attribute already in somebody's document, so a customer using
+> `data-ol-preserved` had it silently deleted — destroying an attribute inside
+> preserved content, which is the exact failure the marker existed to prevent. It
+> is a `WeakSet` now, and `isInsidePreserved` is the only supported way to ask.
+> It is exported from `@openleaf-editor/core` and pinned in the export list.
 
 ### 4.2 Sanitization: a new element that nobody allowed is a new element that dies
 
@@ -877,10 +880,22 @@ each element:
 
 ```ts
 for (const el of document.querySelectorAll('openleaf-editor')) {
-  ;(el as HTMLElement & { toolbar?: { setItemState(id: string, s: object): void } })
-    .toolbar?.setItemState('callout', { enabled: false })
+  el.toolbarInstance?.setItemState('callout', { enabled: false })
 }
 ```
+
+No cast. `@openleaf-editor/element` augments `HTMLElementTagNameMap`, so
+`querySelectorAll('openleaf-editor')` yields `OpenLeafEditor` and every member is
+typed. This used to read
+`(el as HTMLElement & { toolbar?: { setItemState(id: string, s: object): void } })`
+— a *weaker* structural type, hand-written here, for a member the class already
+typed properly, because there was no augmentation anywhere in the repository.
+
+The accessor is `toolbarInstance` rather than `toolbar`. `toolbar` is the
+attribute-reflecting property, as it is on any custom element: `el.toolbar =
+'bold italic'` sets the layout. It could not be both, and it being the `Toolbar`
+object was a silent no-op in every framework binding — see the note in
+`packages/element/src/index.ts`.
 
 Prefer `isActive` / `isEnabled` wherever the answer is derivable from the
 document and the selection. Reach for `setItemState` only when it genuinely is
@@ -948,8 +963,8 @@ so a bug in a colour picker cannot take Undo and Save down with it.
 - [ ] Commands resolve node and mark types from `state.schema`, never from the
       imported `schema` singleton, and decline with `false` when a type is
       absent rather than throwing.
-- [ ] Any normalization pass you add over serialized output skips
-      `[data-ol-preserved]` subtrees.
+- [ ] Any normalization pass you add over serialized output skips subtrees
+      `isInsidePreserved` returns true for.
 - [ ] The new export and the new node name are both declared in
       `packages/core/test/public-api.test.ts`.
 
@@ -1027,10 +1042,9 @@ should say.
    need either a published build helper or a versioned `__runtime` contract.
 3. **`DEFAULT_POLICY` does not allow tables.** See the note in 4.2. A user
    following `SECURITY.md` today loses every table on save.
-4. **Directional icons.** The `DIRECTIONAL` set is private to `icons.ts`, so a
-   plugin icon cannot opt into RTL mirroring.
+4. ~~**Directional icons.**~~ Resolved: `DIRECTIONAL` is exported from
+   `@openleaf-editor/ui`, so a plugin icon can opt into RTL mirroring.
 5. **Plugin bundles are not size-gated.** Only `openleaf.min.js` is checked.
-6. **`PRESERVED_MARKER` is not exported from the package.** It is exported from
-   `preserve.ts` but absent from `packages/core/src/index.ts`, so a plugin
-   cannot import the constant it needs in order to keep out of preserved
-   markup — it would have to hard-code the string `data-ol-preserved`.
+6. ~~**`PRESERVED_MARKER` is not exported from the package.**~~ Resolved
+   differently: the marker is a `WeakSet` rather than an attribute, and
+   `isInsidePreserved` is exported from `@openleaf-editor/core`.
