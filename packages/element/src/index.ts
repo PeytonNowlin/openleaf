@@ -41,6 +41,7 @@
 
 import {
   autolinkPlugin,
+  disclosurePlugin,
   buildKeymap,
   coreSchema,
   createRegisteredPlugins,
@@ -303,6 +304,7 @@ export class OpenLeafEditor extends HTMLElement {
       keymap(buildKeymap()),
       keymap(baseKeymap),
       nonEditablePlugin(),
+      disclosurePlugin(),
     ]
     if (this.getAttribute('autolink') !== 'false') this.#basePlugins.push(autolinkPlugin())
     if (this.#visualAids) this.#basePlugins.push(visualAidsPlugin())
