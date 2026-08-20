@@ -320,11 +320,16 @@ function spanOf(col: Element): number {
  * having no width, and then saving would write that back.
  */
 export function widthsFromColgroup(html: string | null | undefined, columns: number): string[] {
-  const widths = Array.from({ length: columns }, () => '')
   const parsed = colsOf(html)
-  if (!parsed) return widths
+  if (!parsed) return Array.from({ length: columns }, () => '')
+  return widthsFromCols(parsed.cols, columns)
+}
+
+/** The same reading, from `<col>` elements somebody has already parsed. */
+function widthsFromCols(cols: readonly Element[], columns: number): string[] {
+  const widths = Array.from({ length: columns }, () => '')
   let column = 0
-  for (const col of parsed.cols) {
+  for (const col of cols) {
     const width = col.getAttribute('width') ?? ''
     for (let i = 0; i < spanOf(col); i += 1) {
       if (column < columns) widths[column] = width
@@ -356,7 +361,10 @@ export function colgroupHtmlWithWidths(
   if (!parsed) return colgroupHtmlFromWidths(widths)
 
   const wanted = widths.map((width) => width ?? '')
-  const current = widthsFromColgroup(existing, wanted.length)
+  // From the elements just parsed, not from the string again: this ran twice per
+  // table per transaction, and an HTML parse is not a cheap way to read an
+  // attribute you are already holding.
+  const current = widthsFromCols(parsed.cols, wanted.length)
   if (current.every((width, i) => width === wanted[i])) return existing ?? null
 
   let column = 0
@@ -435,6 +443,35 @@ function colgroupFromCellWidths(table: Node): string | null {
   // properties dialog patches: a column resize must not cost an inherited
   // colgroup its class or its other attributes.
   return any ? colgroupHtmlWithWidths(table.attrs['colgroup'] as string | null, widths) : null
+}
+
+/**
+ * What `colgroupFromCellWidths` last said about a given table node.
+ *
+ * The sync plugin below runs on every `docChanged` transaction and asks this
+ * question of every table in the document -- so typing a character in a
+ * paragraph rebuilt the `TableMap`, walked every cell and parsed the stored
+ * colgroup HTML, for tables the transaction had not touched. With one resized
+ * 100x20 table that was 1.8 ms of jsdom on the keystroke path.
+ *
+ * A node is a legitimate cache key because ProseMirror nodes are immutable and
+ * persistent: an edit produces new nodes along the path it touched and reuses
+ * every other node by identity, so an unchanged table IS the same object, and a
+ * changed one cannot be. The answer is a pure function of the node -- its
+ * `TableMap`, its cells' `colwidth`, its own `colgroup` attribute -- so an entry
+ * cannot go stale without the key changing with it. Weak, so a node the document
+ * has moved past is collectable.
+ */
+const colgroupForNode = new WeakMap<Node, string | null>()
+
+function cachedColgroupFromCellWidths(table: Node): string | null {
+  const known = colgroupForNode.get(table)
+  // `null` is a real answer -- "this table has no resized columns" -- so the
+  // miss test is `undefined`, not falsiness.
+  if (known !== undefined) return known
+  const computed = colgroupFromCellWidths(table)
+  colgroupForNode.set(table, computed)
+  return computed
 }
 
 /**

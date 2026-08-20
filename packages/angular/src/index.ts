@@ -52,9 +52,14 @@ export class OpenLeafComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() value: string | undefined
   @Output() readonly valueChange = new EventEmitter<string>()
 
-  private readonly onEditorChange = (): void => {
+  // The element puts the HTML on the event, so reading it here does not cost a
+  // second serialization of the document in the same frame. `host.value` is the
+  // fallback for an event dispatched by something other than the element.
+  private readonly onEditorChange = (event: Event): void => {
     const host = this.editor?.nativeElement
-    if (host) this.valueChange.emit(host.value)
+    if (!host) return
+    const detail = (event as CustomEvent<{ value?: string } | null>).detail
+    this.valueChange.emit(detail?.value ?? host.value)
   }
 
   ngAfterViewInit(): void {

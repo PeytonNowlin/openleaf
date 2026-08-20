@@ -29,8 +29,12 @@ export const OpenLeafEditor = defineComponent({
       const host = el.value
       if (!host) return
       if (props.modelValue) host.value = props.modelValue
-      host.addEventListener('openleaf:change', () => {
-        emit('update:modelValue', host.value)
+      // The element puts the HTML on the event, so reading it here does not
+      // cost a second serialization of the document in the same frame.
+      // `host.value` is the fallback for an event dispatched by anything else.
+      host.addEventListener('openleaf:change', (event) => {
+        const detail = (event as CustomEvent<{ value?: string } | null>).detail
+        emit('update:modelValue', detail?.value ?? host.value)
       })
     })
 

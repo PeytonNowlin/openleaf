@@ -96,6 +96,36 @@ const reported = new Set<string>()
  * transaction would otherwise emit thousands of identical lines and bury the
  * first one, which is the only one with a useful stack.
  */
+/**
+ * Predicate answers for one editor state, shared by every bar on the page.
+ *
+ * A page routinely carries four toolbars over one editor -- the main bar, a
+ * second bar, and two floating ones -- and each ran the whole predicate set
+ * against the same state, walking the same selection four times over. Dragging
+ * a selection across a hundred-page document made that ~480,000 node visits per
+ * pointermove, inside `dispatchTransaction`.
+ *
+ * Safe because the contract on `setItemState` already requires these callbacks
+ * to be functions of the document and selection alone: anything the state
+ * cannot express -- an upload in flight, a collab lock -- is pushed in through
+ * `setItemState` and read from `forcedActive`/`forcedEnabled` before we get
+ * here. Two bars asking the same question of the same state cannot legitimately
+ * get different answers.
+ */
+const probes = new WeakMap<EditorState, Map<string, unknown>>()
+
+function probe<T>(state: EditorState, key: string, compute: () => T): T {
+  let answers = probes.get(state)
+  if (!answers) {
+    answers = new Map<string, unknown>()
+    probes.set(state, answers)
+  }
+  if (answers.has(key)) return answers.get(key) as T
+  const value = compute()
+  answers.set(key, value)
+  return value
+}
+
 function guarded(itemId: string, kind: string, run: () => boolean): boolean {
   try {
     return run()
@@ -558,6 +588,17 @@ export class Toolbar {
   }
 
   #updateScoped(state: EditorState, tr?: Transaction): void {
+    // Nothing every predicate below reads can have changed: same document, same
+    // selection, same stored marks. They each walk the selection, so on a
+    // hundred-page Select-All this one line is the difference between 120,000
+    // node visits and none -- and metadata-only transactions (plugin pings,
+    // collaboration cursors, scroll requests) are most of them.
+    //
+    // `tr &&` is load-bearing, not defensive: mount(), a readonly change, a
+    // plugin reconfigure and setItemState all update with no transaction, and
+    // must still refresh.
+    if (tr && !tr.docChanged && !tr.selectionSet && !tr.storedMarksSet) return
+
     // Announce only on a discrete formatting transition, never on cursor
     // movement through already-formatted text. That gate is the whole
     // difference between a useful announcement and a chatty one.
@@ -572,8 +613,10 @@ export class Toolbar {
         readonly
           ? false
           : control.forcedEnabled ??
-            guarded(spec.id, 'isEnabled', () =>
-              spec.isEnabled ? spec.isEnabled(state) : spec.command ? spec.command(state) : true,
+            probe(state, `${spec.id} e`, () =>
+              guarded(spec.id, 'isEnabled', () =>
+                spec.isEnabled ? spec.isEnabled(state) : spec.command ? spec.command(state) : true,
+              ),
             )
 
       if (enabled !== control.enabled) {
@@ -587,7 +630,9 @@ export class Toolbar {
       if ((spec.kind ?? 'action') === 'toggle') {
         const active =
           control.forcedActive ??
-          guarded(spec.id, 'isActive', () => (spec.isActive ? spec.isActive(state) : false))
+          probe(state, `${spec.id} a`, () =>
+            guarded(spec.id, 'isActive', () => (spec.isActive ? spec.isActive(state) : false)),
+          )
         if (active !== control.active) {
           const previous = control.active
           control.active = active
@@ -636,22 +681,23 @@ export class Toolbar {
       return
     }
 
-    let value = ''
-    try {
-      value = spec.getValue(state)
-    } catch (error) {
-      const key = `${id}:getValue`
-      if (!reported.has(key)) {
-        reported.add(key)
-        console.error(
-          `@openleaf-editor/ui: the getValue callback for toolbar item "${id}" threw. ` +
-            'The control is shown as Default. This is a bug in whatever registered it, ' +
-            'not in the editor.',
-          error,
-        )
+    const value = probe(state, `${id} v`, () => {
+      try {
+        return spec.getValue!(state)
+      } catch (error) {
+        const key = `${id}:getValue`
+        if (!reported.has(key)) {
+          reported.add(key)
+          console.error(
+            `@openleaf-editor/ui: the getValue callback for toolbar item "${id}" threw. ` +
+              'The control is shown as Default. This is a bug in whatever registered it, ' +
+              'not in the editor.',
+            error,
+          )
+        }
+        return ''
       }
-      value = ''
-    }
+    })
 
     // Inherited sizes/families that are not in the preset list still need a
     // visible option, or the select snaps to Default and looks cleared.
@@ -665,7 +711,7 @@ export class Toolbar {
     if (select.value !== value) select.value = value
 
     const enabled = spec.isEnabled
-      ? guarded(id, 'isEnabled', () => spec.isEnabled!(state))
+      ? probe(state, `${id} e`, () => guarded(id, 'isEnabled', () => spec.isEnabled!(state)))
       : true
     select.disabled = readonly || !enabled
   }

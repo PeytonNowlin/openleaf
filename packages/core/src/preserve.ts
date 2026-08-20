@@ -237,13 +237,62 @@ export function isLosslesslyUnwrappable(el: Element): boolean {
   return true
 }
 
+/**
+ * Parsed preserved markup, per Document, keyed on the exact stored string.
+ *
+ * `toDOM` runs on every render of every preserved atom, and an HTML parse is the
+ * most expensive thing in it: a document that is half preserved markup spent
+ * roughly 4x as long serializing as the same document in plain paragraphs.
+ *
+ * Caching one is only sound because the key is the whole input. `html` is a node
+ * attribute, ProseMirror nodes are immutable, and the string was produced by
+ * `scrub` before it was ever stored -- so two calls with the same string must
+ * produce the same element, and there is no edit that can invalidate an entry
+ * without changing the key.
+ *
+ * Three properties this must keep, none of them optional:
+ *
+ *   A CLONE every time. Handing out the cached node would let one caller's
+ *   mutation -- ProseMirror appending it, a decoration setting an attribute --
+ *   poison every later render of that markup.
+ *
+ *   PER DOCUMENT. Serialization can target a Document that is not the global
+ *   one, and a node has to be owned by the document it is going into. Scoping by
+ *   Document also means the entries die with it, so a throwaway serialization
+ *   document is still collectable.
+ *
+ *   BOUNDED. The keys are document content, so an unbounded map is a leak that
+ *   grows with what the user pastes. A cap with clear-on-overflow keeps it flat;
+ *   very large strings are not cached at all, because they are both the least
+ *   likely to repeat and the most expensive to hold.
+ */
+const PARSE_CACHE_ENTRIES = 256
+const PARSE_CACHE_MAX_LENGTH = 4096
+const parseCaches = new WeakMap<Document, Map<string, Element>>()
+
 /** Rebuild a DOM element from stored markup. `<template>` is used because
  *  its parsing context permits otherwise-illegal fragments such as a bare
  *  `<tr>`, which a `<div>` container would silently discard. */
 function elementFromHtml(html: string, doc: Document): Element | null {
+  let cache = parseCaches.get(doc)
+  const hit = cache?.get(html)
+  if (hit) return hit.cloneNode(true) as Element
+
   const tpl = doc.createElement('template')
   tpl.innerHTML = html
-  return tpl.content.firstElementChild
+  const parsed = tpl.content.firstElementChild
+  if (!parsed) return null
+  if (html.length > PARSE_CACHE_MAX_LENGTH) return parsed
+
+  if (!cache) {
+    cache = new Map()
+    parseCaches.set(doc, cache)
+  }
+  if (cache.size >= PARSE_CACHE_ENTRIES) cache.clear()
+  // The master copy is the clone, so the element handed back is the freshly
+  // parsed one and the cache holds something no caller has ever touched.
+  cache.set(html, parsed.cloneNode(true) as Element)
+  return parsed
 }
 
 /**

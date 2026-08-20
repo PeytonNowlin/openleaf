@@ -323,10 +323,28 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
     }, 0)
   })
 
+  /**
+   * The colour the grid is currently showing.
+   *
+   * `update` runs on every transaction -- every keystroke -- and the work below
+   * is one style write plus an `aria-pressed` attribute per swatch, which is 64
+   * attribute writes on the default palette, plus a CSSOM round trip to
+   * normalise the value for the colour input. Almost every one of those
+   * transactions leaves the colour in force exactly where it was, so the whole
+   * body is skippable by remembering what was last painted.
+   *
+   * `undefined` rather than `null` for "nothing painted yet", because `null` is a
+   * real value here: it is what "no colour in force" reads as, and the first
+   * update has to paint it.
+   */
+  let painted: string | null | undefined
+
   return {
     el: wrap,
     update(state) {
       const current = options.active(state)
+      if (current === painted) return
+      painted = current
       // No colour in force shows the theme's own text colour, which is honest:
       // the bar is a preview of what the author would get, and what they would
       // get is inherited.
@@ -351,11 +369,22 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
  * would leave the input showing black, so it is resolved through the CSSOM --
  * which is the one piece of code on the page that already knows every colour
  * name there is.
+ *
+ * The element doing the resolving is a module singleton, built on first use. It
+ * is never attached to anything and holds one property, and building a fresh one
+ * per call put a DOM allocation on a path that runs whenever the colour in force
+ * changes. Lazily, so importing this module on a server touches no DOM.
  */
+let colorProbe: HTMLElement | undefined
+
 function normalizeForInput(color: string): string {
   if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase()
   if (typeof document === 'undefined') return '#000000'
-  const probe = document.createElement('span')
+  const probe = (colorProbe ??= document.createElement('span'))
+  // Cleared first: the CSSOM ignores a value it cannot parse, and a stale one
+  // left over from the previous call would be returned as though it were this
+  // colour's answer.
+  probe.style.color = ''
   probe.style.color = color
   const computed = probe.style.color
   const rgb = /^rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(computed)

@@ -38,8 +38,12 @@ export function OpenLeafEditor({
   useEffect(() => {
     const el = ref.current
     if (!el || !onOpenLeafChange) return
-    const onChange = (): void => {
-      onOpenLeafChange(el.value)
+    // The element puts the HTML on the event, so reading it here does not cost
+    // a second serialization of the document in the same frame. `el.value` is
+    // the fallback for an event dispatched by something other than the element.
+    const onChange = (event: Event): void => {
+      const detail = (event as CustomEvent<{ value?: string } | null>).detail
+      onOpenLeafChange(detail?.value ?? el.value)
     }
     el.addEventListener('openleaf:change', onChange)
     return () => {
