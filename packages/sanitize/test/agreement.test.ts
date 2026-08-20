@@ -1,5 +1,6 @@
 import {
   EMBED_HOSTS,
+  URL_ATTRIBUTES,
   parseHtml,
   safeAlign,
   safeAllowList,
@@ -256,5 +257,30 @@ describe('the default policy accepts everything the editor emits', () => {
       policy: DEFAULT_POLICY,
     })
     expect(out).toBe('<p>t</p>')
+  })
+})
+
+describe('the URL attribute list does not drift from content-policy', () => {
+  /*
+   * `@openleaf-editor/content-policy` exists so that the editor and the
+   * sanitizers cannot disagree about what a URL attribute is. This list is a
+   * second copy of that answer, and it had already drifted -- `background`,
+   * `longdesc` and `xlink:href` were missing, so a policy permitting one of
+   * them would have kept a `javascript:` value without a scheme check.
+   *
+   * A test rather than an import because the shapes differ -- an ordered array
+   * the adapters emit, versus a Set -- and because the drift is what needs
+   * catching, not the duplication.
+   */
+  it('covers every attribute content-policy calls a URL attribute', () => {
+    const missing = [...URL_ATTRIBUTES].filter(
+      (name) => !DEFAULT_POLICY.urlAttributes.includes(name),
+    )
+    expect(missing).toEqual([])
+  })
+
+  it('names nothing content-policy does not', () => {
+    const extra = DEFAULT_POLICY.urlAttributes.filter((name) => !URL_ATTRIBUTES.has(name))
+    expect(extra).toEqual([])
   })
 })

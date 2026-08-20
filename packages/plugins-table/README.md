@@ -65,3 +65,29 @@ you change one meanwhile.
 ## License
 
 Apache-2.0.
+
+## Toolbar item ids
+
+Installing registers the controls; it does not rearrange a custom toolbar. Name
+the ones you want in the element's `toolbar` attribute:
+
+| Id | Control |
+| --- | --- |
+| `insertTable` | Insert-table grid |
+| `tableProperties` | Table properties dialog |
+| `rowProperties` | Row properties dialog |
+| `cellProperties` | Cell properties dialog |
+| `tableCaption` | Caption dialog |
+| `addRowBefore`, `addRowAfter`, `deleteRow` | Row commands |
+| `addColumnBefore`, `addColumnAfter`, `deleteColumn` | Column commands |
+| `mergeCells`, `splitCell` | Cell merge and split |
+| `toggleHeaderRow` | Promote or demote the header row |
+| `deleteTable` | Delete the whole table |
+
+```html
+<openleaf-editor for="body"
+  toolbar="bold italic | insertTable tableProperties | source">
+</openleaf-editor>
+```
+
+An id nothing has registered logs a warning rather than being skipped silently.

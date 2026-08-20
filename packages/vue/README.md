@@ -25,15 +25,37 @@ registry -- and a node built by one is not a node type the other accepts.
 
 ## Use it
 
-```tsx
+```vue
 <script setup>
+import { ref } from 'vue'
 import { OpenLeafEditor } from '@openleaf-editor/vue'
+
 const html = ref('<p>Hello</p>')
 </script>
 
 <template>
   <OpenLeafEditor v-model="html" toolbar="bold italic | link" />
 </template>
+```
+
+### If you use the custom element directly
+
+This wrapper registers nothing with Vue's compiler, so it just works. Reaching
+for `<openleaf-editor>` in a template instead means telling Vue that it is a
+custom element, or you get `[Vue warn]: Failed to resolve component:
+openleaf-editor`:
+
+```js
+// vite.config.js
+export default {
+  plugins: [
+    vue({
+      template: {
+        compilerOptions: { isCustomElement: (tag) => tag.startsWith('openleaf-') },
+      },
+    }),
+  ],
+}
 ```
 
 ## It is a wrapper, not a port

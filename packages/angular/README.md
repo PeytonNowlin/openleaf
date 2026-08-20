@@ -25,12 +25,31 @@ registry -- and a node built by one is not a node type the other accepts.
 
 ## Use it
 
-```tsx
+`OpenLeafComponent` is standalone, so it goes in the consuming component's own
+`imports` array. Forgetting that is the single most common standalone-component
+mistake: Angular renders `<openleaf>` as an unknown element and the editor never
+appears, with no error that says why.
+
+```ts
+import { Component } from '@angular/core'
 import { OpenLeafComponent } from '@openleaf-editor/angular'
 
-// standalone component; `value` / `valueChange` support [(value)]
-<openleaf [(value)]="html" toolbar="bold italic | link"></openleaf>
+@Component({
+  selector: 'app-post-editor',
+  standalone: true,
+  imports: [OpenLeafComponent],   // <- required
+  template: `
+    <openleaf [(value)]="html" toolbar="bold italic | link"></openleaf>
+  `,
+})
+export class PostEditorComponent {
+  html = '<p>Hello</p>'
+}
 ```
+
+The selector is `openleaf`. `value` and `valueChange` are an `@Input`/`@Output`
+pair, so `[(value)]` works; `for`, `toolbar`, `toolbar2`, `menubar`, `formats`
+and `lang` are forwarded inputs.
 
 ## It is a wrapper, not a port
 

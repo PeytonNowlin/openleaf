@@ -132,4 +132,10 @@ DOMPurify hooks yourself. Both fail closed — they drop styles and iframes rath
 than trusting them — so the failure mode of getting it wrong is content loss
 rather than XSS. That is the right direction, and it is still worth not doing.
 
-See the [project README](https://github.com/PeytonNowlin/openleaf) for the rest.
+## More
+
+- [API reference](https://github.com/PeytonNowlin/openleaf/blob/main/docs/api-reference.md) —
+  every attribute, property and `openleaf:*` event.
+- [SECURITY.md](https://github.com/PeytonNowlin/openleaf/blob/main/SECURITY.md) —
+  the threat model and a baseline CSP.
+- [Project README](https://github.com/PeytonNowlin/openleaf) for the rest.

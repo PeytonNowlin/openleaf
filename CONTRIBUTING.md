@@ -27,7 +27,14 @@ That appends a line certifying the [DCO](https://developercertificate.org/):
 Signed-off-by: Your Name <your.email@example.com>
 ```
 
-Use your real name and a working email address. CI enforces this.
+Use your real name and a working email address.
+
+There is a CI job that checks every commit for a sign-off, but it is not
+currently a gate: `.github/workflows/ci.yml` runs on `workflow_dispatch` only,
+and that job is additionally `if: github.event_name == 'pull_request'`, so under
+manual dispatch it is skipped. Until push-triggered CI is restored, sign-off is
+enforced by review and by your own `git commit -s`. Please do not rely on
+something catching it.
 
 ## Getting set up
 
@@ -37,9 +44,20 @@ pnpm exec playwright install   # first time only
 pnpm verify                    # the whole gate: typecheck, unit, browsers, size
 ```
 
-`pnpm verify` is the one command to remember. It takes about thirteen seconds
-and runs exactly what CI runs, so "passes locally" and "passes CI" mean the
-same thing.
+`pnpm verify` is the one command to remember. It runs the build, the unit and
+round-trip fidelity suites, all three browser engines, and the bundle size gate.
+
+It is a **superset** of what CI runs, not a mirror of it, and the differences are
+worth knowing:
+
+- Two source guards are local-only — the check that `demo/build.mjs` reads no
+  `dist/`, and the check that no package outside core imports a schema
+  singleton. `scripts/verify.mjs` says so at the top. Both catch bugs that pass
+  on a machine that has just built and fail on a fresh checkout.
+- The DCO check is CI-only, and currently does not fire (see above).
+- **Neither runs `pnpm typecheck`.** `tsc -b` is covered by the build, but
+  `tsconfig.tests.json` is not typechecked by either gate. Run `pnpm typecheck`
+  before you push; the test files are where the type errors will be.
 
 Narrower loops:
 

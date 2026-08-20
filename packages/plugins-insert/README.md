@@ -63,3 +63,20 @@ registerLinkList([
 registerImageList([{ title: 'Hero', value: '/media/hero.jpg' }])
 registerImageClasses(['align-left', 'full-width'])
 ```
+
+## Toolbar item ids
+
+| Id | Control |
+| --- | --- |
+| `media` | Insert media (image, video, audio, allowlisted embed) |
+| `details` | Collapsible section |
+| `anchor` | Named anchor |
+| `charmap` | Character map |
+| `emoji` | Emoji picker |
+| `datetime` | Insert date and time |
+| `pagebreak` | Page break |
+| `nbsp` | Non-breaking space |
+| `snippet` | Snippet |
+
+Name the ones you want in the element's `toolbar` attribute. An id nothing has
+registered logs a warning rather than being skipped silently.

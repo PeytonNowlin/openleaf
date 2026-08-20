@@ -28,15 +28,24 @@ registry -- and a node built by one is not a node type the other accepts.
 With a bundler:
 
 ```ts
+import { installImport } from '@openleaf-editor/plugins-import'
 import { installDocxImport } from '@openleaf-editor/plugins-import-docx'
+
+installImport()      // required, and required first
 installDocxImport()
 ```
+
+`installImport()` is not optional and the order matters. This package registers a
+**converter**, not a control; the `importFile` toolbar item that reaches it
+belongs to `@openleaf-editor/plugins-import`. Call `installDocxImport()` alone
+and `.docx` conversion is registered and unreachable — there is no button.
 
 With a script tag, load it after the core bundle -- it borrows the first one's
 ProseMirror runtime rather than shipping a second copy:
 
 ```html
 <script src="/js/openleaf.min.js"></script>
+<script src="/js/openleaf-import.min.js"></script>
 <script src="/js/openleaf-import-docx.min.js"></script>
 ```
 
