@@ -6,6 +6,17 @@ The matching **schema nodes live in `@openleaf-editor/core`**, so stored `<video
 
 Iframes are stored only when their `src` is an `https:` URL on a known player host (`youtube.com/embed`, `player.vimeo.com/video`, and the rest of the allowlist). Arbitrary iframes are still dropped.
 
+> **Editor output is untrusted input.** Whatever the editor produces — and
+> whatever a user pasted into it — must be sanitized **on your server** before it
+> is stored or rendered as HTML. Client-side sanitization is a user-experience
+> feature, not a security control: anything the editor strips can be put back
+> with developer tools, because the editor runs under the user's control.
+>
+> [`@openleaf-editor/sanitize`](https://github.com/PeytonNowlin/openleaf/tree/main/packages/sanitize) ships the
+> canonical allowlist as data and generates configuration for DOMPurify, Python
+> `bleach` and PHP HTMLPurifier from it, so client and server enforce the same
+> rules. Read [SECURITY.md](https://github.com/PeytonNowlin/openleaf/blob/main/SECURITY.md) before you ship.
+
 ## Install
 
 ```bash

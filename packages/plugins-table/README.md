@@ -3,6 +3,17 @@
 Opt-in table editing: cell selection, column resizing, property dialogs,
 captions, an insert grid, a context menu, and the row and column commands.
 
+> **Editor output is untrusted input.** Whatever the editor produces — and
+> whatever a user pasted into it — must be sanitized **on your server** before it
+> is stored or rendered as HTML. Client-side sanitization is a user-experience
+> feature, not a security control: anything the editor strips can be put back
+> with developer tools, because the editor runs under the user's control.
+>
+> [`@openleaf-editor/sanitize`](https://github.com/PeytonNowlin/openleaf/tree/main/packages/sanitize) ships the
+> canonical allowlist as data and generates configuration for DOMPurify, Python
+> `bleach` and PHP HTMLPurifier from it, so client and server enforce the same
+> rules. Read [SECURITY.md](https://github.com/PeytonNowlin/openleaf/blob/main/SECURITY.md) before you ship.
+
 ## Install
 
 ```sh

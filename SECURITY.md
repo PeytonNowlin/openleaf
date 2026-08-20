@@ -2,12 +2,38 @@
 
 ## Reporting
 
-Report vulnerabilities through GitHub's private vulnerability reporting
-on this repository ("Security" -> "Report a vulnerability"). Please do
-not open a public issue for anything exploitable.
+Please do not open a public issue for anything exploitable. Use either
+of these, whichever works:
+
+1. **GitHub private vulnerability reporting** — the repository's
+   "Security" tab, "Report a vulnerability".
+2. **Email** — <peytonn98@googlemail.com>, subject line starting
+   `OPENLEAF SECURITY`. No GPG key is published yet; if you need
+   encryption, send an empty mail asking for one and we will arrange a
+   channel before you send details.
+
+Two channels rather than one, on purpose. A response commitment that
+depends on a single mechanism is only as good as that mechanism being
+switched on, and a researcher who finds the button missing and has been
+told not to open an issue is left with no route at all — which realistically
+ends in a dropped report or a full public disclosure. If option 1 is not
+available to you for any reason, option 2 always is.
 
 We aim to acknowledge within 3 working days and to ship a fix or a
 documented mitigation within 30 days for anything rated high or above.
+
+### Supported versions
+
+| Version | Supported |
+| --- | --- |
+| `0.1.0-beta.x` | Yes — current pre-release line |
+| Anything earlier | No |
+
+Every `@openleaf-editor/*` package shares one version number and is
+released together, so a fix ships across the whole set. While the project
+is `0.x` there is no long-term support branch: fixes land on the current
+line and you upgrade to get them. When a `1.0` line exists, this table
+will say how long the previous major is patched for.
 
 ## Scope and threat model
 
@@ -112,6 +138,87 @@ would otherwise be handed the camera. `sanitizeHtml()` applies the same filter.
 `HTML.SafeIframe` and a generated `URI.SafeIframeRegexp`. It strips `allow`
 outright, having no definition for it, so embeds arrive without their
 permissions rather than with too many.
+
+## Plugin trust model
+
+**A plugin is same-trust as the page that loads it. Vet plugins as
+first-party code.**
+
+There is no plugin isolation of any kind — no iframe, no worker, no
+capability object, no frozen surface. `registerEditorPlugin`,
+`registerToolbarItem` and `registerSchemaExtension` are global,
+unauthenticated registries, so any script already running on the page can
+install a plugin. This is a normal design for an editor and the same one
+every editor OpenLeaf replaces uses: a script on your page can already
+read the DOM and issue requests as the user, so sandboxing the editor's
+extension points would protect nothing that is not already lost. It is
+written down here because "defensible" and "obvious" are different things.
+
+Two consequences are specific to OpenLeaf and worth stating plainly.
+
+**The schema *is* the content policy at runtime.** OpenLeaf's protection
+against dangerous markup is that the schema does not model it — a
+`<script>` becomes a preserved atom with its content scrubbed, because
+nothing claims it. A schema extension's `parseDOM` and `toDOM` therefore
+widen what markup is permitted, directly. A plugin that adds a node type
+matching `iframe` has changed what the editor will store, for every
+document, with no separate policy edit to review.
+
+**`carryUnknownAttributes: false` opts out of the attribute scrub.** By
+default an extension node's unmodelled attributes are captured on parse
+and re-emitted on serialize, and that capture filters `on*` handlers and
+unsafe URL schemes on the way through. Setting the flag to `false` skips
+the wrapper entirely — including the filter. It exists for specs that
+model every attribute they claim and would otherwise emit duplicates; it
+is not a performance knob, and a plugin setting it is making a
+security-relevant choice.
+
+Neither of these is a reason not to use plugins. They are the reason the
+answer to "can I load this third-party plugin?" is the same as the answer
+to "can I add this third-party script tag?"
+
+## Defence in depth: a baseline CSP
+
+Everything above is about the sanitizer. A Content-Security-Policy on the
+pages that *render* editor output is the layer that holds when the
+sanitizer is wrong — and sanitizers are sometimes wrong, which is the
+premise of this whole file. It is cheap, and it contains an XSS that got
+through rather than merely logging it.
+
+A reasonable baseline for a page rendering stored OpenLeaf content:
+
+```
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'self';
+  object-src 'none';
+  base-uri 'none';
+  frame-src https://www.youtube-nocookie.com https://player.vimeo.com;
+  img-src 'self' https: data:;
+  style-src 'self';
+  require-trusted-types-for 'script';
+```
+
+Notes on the parts that matter:
+
+- **`script-src` without `'unsafe-inline'`** is the whole point. An
+  injected `<img onerror>` that survived sanitization does not run.
+- **`object-src 'none'` and `base-uri 'none'`** close two vectors that
+  sanitizer bypasses reach for and that no page needs.
+- **`frame-src`** should name the players you actually allow. It is a
+  second, independent copy of the embed allowlist, enforced by the
+  browser rather than by our code.
+- **`style-src 'self'`** blocks inline `style` attributes. OpenLeaf
+  stores alignment and colour in `style`, so this will visibly change how
+  content renders — either add a nonce or hash for the styles you serve,
+  or accept the loss knowingly. Do not reach for `'unsafe-inline'` on
+  `style-src` without noticing that it is the setting most commonly used
+  to defeat a CSP by accident.
+
+The editor itself is more constrained than the rendering page: it needs
+`style-src` to apply the declarations an author sets while editing. If
+you serve the editor under a strict `style-src`, expect alignment and
+colour to stop applying live, and test it.
 
 ### In scope
 
