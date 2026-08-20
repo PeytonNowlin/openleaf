@@ -31,7 +31,10 @@ test.describe('with the session bundle loaded', () => {
     const find = page.getByRole('search', { name: 'Find and replace' })
     await expect(find).toBeVisible()
     await find.getByRole('searchbox').fill('alpha')
-    await expect(find.getByRole('status')).toContainText('2 matches')
+    // The spoken count lives on the editor, not inside the find bar: the bar
+    // carries `hidden` until the moment it has something to say, and a region a
+    // reader has never seen is silent rather than quiet.
+    await expect(page.locator('.ol-live-region')).toContainText('2 matches')
     await find.getByRole('button', { name: 'Next' }).click()
     await find.getByRole('textbox', { name: 'Replace' }).fill('uno')
     await find.getByRole('button', { name: 'Replace all' }).click()

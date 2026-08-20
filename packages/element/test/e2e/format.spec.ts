@@ -171,7 +171,7 @@ test.describe('the colour picker', () => {
 
     await button(page, 'Text colour').click()
     await expect(popover(page)).toBeVisible()
-    await popover(page).getByRole('button', { name: 'Red', exact: true }).click()
+    await popover(page).getByRole('gridcell', { name: 'Red', exact: true }).click()
 
     await expect(popover(page)).toBeHidden()
     expect(await stored(page)).toContain('color:#dc2626')
@@ -256,10 +256,10 @@ test.describe('the colour picker', () => {
 
     await button(page, 'Text colour').click()
     await page.getByRole('dialog', { name: 'Text colour' })
-      .getByRole('button', { name: 'Blue', exact: true }).click()
+      .getByRole('gridcell', { name: 'Blue', exact: true }).click()
     await button(page, 'Highlight colour').click()
     await page.getByRole('dialog', { name: 'Highlight colour' })
-      .getByRole('button', { name: 'Yellow', exact: true }).click()
+      .getByRole('gridcell', { name: 'Yellow', exact: true }).click()
 
     const html = await stored(page)
     expect(html).toContain('color:#2563eb')
