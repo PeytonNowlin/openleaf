@@ -51,7 +51,11 @@ semantic HTML.
 - Word and Google Docs paste cleanup, including nested list reconstruction
 - Keyboard-accessible toolbar with configurable controls and themes
 - Alignment, links, images, lists, block quotes, code blocks, and source view
-- Optional tables, color controls, syntax highlighting, file import, and session tools
+- Typography in the storage format: fonts, sizes, line height, indent, direction,
+  language, sub/superscript, and list styles (see below for how to reach them)
+- Optional tables, color controls, syntax highlighting, file import, insert tools,
+  and session tools
+- React, Vue, and Angular wrappers around the same custom element
 - Shared sanitization policy for browser, Node.js, Python, and PHP integrations
 - Strict TypeScript with unit, fidelity, and cross-browser test suites
 - Apache-2.0 licensed with no feature-gated commercial edition
@@ -111,6 +115,36 @@ Appearance can be selected without rebuilding the editor or losing undo history:
 
 Built-in skins are `midnight`, `paper`, `contrast`, and `compact`. The `theme`
 attribute accepts `light`, `dark`, or `auto`.
+
+### Typography
+
+Font family and size, line height, first-line indent, text direction, per-run
+language, subscript and superscript, and list styles are in the schema. That is
+what keeps inherited markup editable: without them a stored
+`<span style="font-family:Georgia">` or `<font face="Verdana">` is claimed by the
+preservation layer and becomes an atom you can move but not edit.
+
+**There are no toolbar controls for them yet.** What exists today is:
+
+| Feature | How to reach it |
+| --- | --- |
+| Subscript / superscript | `Mod+=` / `Mod+Shift+=`, and the F1 shortcut list |
+| Indent / outdent | `Mod+]` / `Mod+[`, and the F1 shortcut list |
+| Font family, font size, line height | `setFontFamily`, `setFontSize`, `setLineHeight` |
+| Direction, language | `setDir`, `toggleDir`, `setLanguage` |
+| List style | `setListStyle` |
+| Remove all of it | `clearFormatting` |
+
+The commands are exported from `@openleaf-editor/core` and take the same
+`(state, dispatch, view)` shape as every other command, so wiring your own
+control is `registerToolbarItem` plus one of them. `FONT_FAMILIES`,
+`FONT_SIZE_PRESETS`, `LINE_HEIGHT_PRESETS` and `LIST_STYLES` are exported as
+sensible defaults for a picker, and `activeFontFamily`, `activeFontSize`,
+`activeLineHeight`, `activeIndent`, `activeDir`, `activeLanguage` and
+`activeListStyle` report the current value for one.
+
+First-party controls are the obvious next step; the storage format landed first
+deliberately, because content arriving in an archive cannot wait for a dropdown.
 
 ### Editor chrome
 
