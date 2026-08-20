@@ -35,7 +35,10 @@ describe('autolinkPlugin', () => {
 
     const plugin = autolinkPlugin()
     const handle = plugin.props.handleTextInput
-    handle?.(view, end, end, ' ')
+    // Called on the plugin the handler belongs to, which is what it declares as
+    // its `this`. The fifth argument is ProseMirror's default action; the plugin
+    // ignores it and returns false so the space is still inserted normally.
+    handle?.call(plugin, view, end, end, ' ', () => state.tr)
     expect(serializeHtml(state.doc)).toContain('<a href="https://example.org">')
   })
 })
