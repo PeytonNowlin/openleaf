@@ -425,6 +425,7 @@ export function createSchema(list: readonly SchemaExtension[] = []): Schema {
 }
 
 let cached: Schema | null = null
+let subscribed = false
 
 /**
  * The schema for the currently registered extensions.
@@ -433,12 +434,42 @@ let cached: Schema | null = null
  * "bind to this" and would be captured at import by every consumer, which is
  * exactly what made the schema impossible to extend. Memoized, and invalidated
  * whenever the registry changes.
+ *
+ * ## Why the subscription is in here and not at module scope
+ *
+ * This package declares `"sideEffects": false`, which is a literal promise that
+ * evaluating a module for its own sake changes nothing observable. The bare
+ * top-level `onSchemaExtensionsChange(() => { cached = null })` that used to sit
+ * below this function broke that promise: it mutates the listener set in the
+ * registry above, which is observable by anything that calls `notify()`.
+ *
+ * What it did *not* do, measured rather than assumed, is actually get dropped.
+ * Both rollup 4 (`treeshake.moduleSideEffects: false`) and webpack 5
+ * (`optimization.sideEffects`) keep the statement, because the arrow function
+ * writes `cached` and `cached` is read by this function -- so the tree-shaker
+ * can see the statement contributes to a live export and retains it. A probe
+ * that warms the memo, registers an extension and re-reads the schema returns
+ * the plugin's node type under both bundlers, before and after this change.
+ *
+ * It is moved anyway, because the retention depended entirely on that linkage
+ * being visible. It is not a property of the invalidator; it is a property of
+ * this particular pair of statements, and it would quietly stop holding the
+ * moment the memo is refactored -- at which point the failure is silent and
+ * total, since `coreSchema()` would keep handing back a schema built before the
+ * first `registerSchemaExtension` call. Registering on the first call costs a
+ * boolean and makes the flag true instead of true-by-luck.
+ *
+ * There is no window in which the invalidator is missing: the subscription is
+ * installed before the value it guards ever exists, and nothing can reach the
+ * memo except through here.
  */
 export function coreSchema(): Schema {
+  if (!subscribed) {
+    subscribed = true
+    onSchemaExtensionsChange(() => {
+      cached = null
+    })
+  }
   if (!cached) cached = createSchema(registeredSchemaExtensions())
   return cached
 }
-
-onSchemaExtensionsChange(() => {
-  cached = null
-})
