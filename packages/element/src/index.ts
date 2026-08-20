@@ -667,7 +667,12 @@ export class OpenLeafEditor extends HTMLElementBase {
       if (this.#formBridge.textarea) this.#formBridge.textarea.value = html
       return
     }
-    this.#replaceDocument(html)
+    // `onlyIfChanged` because a controlled framework binding writes this on
+    // every render pass. Replacing the document unconditionally would land an
+    // undo step and move the caret to the start of the document each time --
+    // which is what all three wrappers grew their own `if (host.value !== html)`
+    // guard to avoid, one guard at a time, each of which could be forgotten.
+    this.#replaceDocument(html, { onlyIfChanged: true })
   }
 
   /** Escape hatch for plugins and integrations that need the real view. */
