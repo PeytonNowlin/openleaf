@@ -4,8 +4,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { afterEach, describe, expect, it } from 'vitest'
-import { EditorState, TextSelection } from 'prosemirror-state'
+import { EditorState, Plugin, TextSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
+import { importBookmarkPlugin } from '../src/bookmark.js'
 import {
   clearFileConverters,
   convertFile,
@@ -13,7 +14,8 @@ import {
   registerFileConverter,
   textToHtml,
 } from '../src/converters.js'
-import { importFileIntoView } from '../src/import.js'
+import { importFileIntoView, importFilesIntoView } from '../src/import.js'
+import { DEFAULT_IMPORT_LIMITS, resetImportLimits, setImportLimits } from '../src/limits.js'
 import {
   acceptedExtensions,
   addAcceptedExtensions,
@@ -43,6 +45,7 @@ const through = (html: string): string => serializeHtml(parseHtml(html))
 
 afterEach(() => {
   clearFileConverters()
+  resetImportLimits()
 })
 
 describe('importing an HTML file', () => {
@@ -231,13 +234,30 @@ describe('the picker accept list', () => {
 })
 
 describe('inserting at the cursor that started the import', () => {
-  function mount(html: string): EditorView {
+  function mount(html: string, plugins: Plugin[] = []): EditorView {
     const place = document.createElement('div')
     document.body.appendChild(place)
     return new EditorView(place, {
-      state: EditorState.create({ doc: parseHtml(html) }),
+      state: EditorState.create({ doc: parseHtml(html), plugins }),
     })
   }
+
+  /** A converter that will not finish until the test says so. */
+  function slowConverter(html = '<p>IMPORTED</p>'): { dispose: () => void; finish: () => void } {
+    let finish!: () => void
+    const hang = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const dispose = registerFileConverter(async (file) => {
+      if (!file.name.startsWith('slow')) return null
+      await hang
+      return { html }
+    })
+    return { dispose, finish }
+  }
+
+  const slowFile = (name = 'slow.html'): globalThis.File =>
+    textFile('<p>ignored</p>', name, 'text/html')
 
   function posAfter(view: EditorView, text: string): number {
     let found = -1
@@ -288,5 +308,173 @@ describe('inserting at the cursor that started the import', () => {
       view.destroy()
       view.dom.remove()
     }
+  })
+
+  /*
+   * The regression this file did not catch.
+   *
+   * The test above edits mid-word, three characters from the tracked caret, so
+   * both ends of the tracked range moved the same way and the bug stayed
+   * invisible. Typing AT the caret is the case that mattered: `map(from, -1)`
+   * and `map(to, 1)` put the two ends on opposite sides of the new text, the
+   * collapsed caret silently became a range spanning it, and the insertion
+   * replaced it. The author's typing disappeared and the import looked fine.
+   *
+   * Run twice, because the two paths through `trackSelection` map the bookmark
+   * in different places: through the plugin an editor is built with, and through
+   * the temporary one added for a view that has none.
+   */
+  const installs: ReadonlyArray<readonly [string, () => Plugin[]]> = [
+    ['with the plugin the editor is built with', () => [importBookmarkPlugin()]],
+    ['on a view built without it', () => []],
+  ]
+
+  for (const [label, plugins] of installs) {
+    it(`keeps text typed at a collapsed caret during the conversion, ${label}`, async () => {
+      const { dispose, finish } = slowConverter()
+      const view = mount('<p>FIRST</p>', plugins())
+      try {
+        const caret = posAfter(view, 'FIRST')
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, caret)))
+
+        const pending = importFileIntoView(view, slowFile())
+
+        // What an author actually does during a slow import: carry on typing.
+        view.dispatch(view.state.tr.insertText('TYPED', caret))
+
+        finish()
+        expect((await pending).ok).toBe(true)
+        expect(serializeHtml(view.state.doc)).toBe('<p>FIRSTTYPED</p><p>IMPORTED</p>')
+      } finally {
+        dispose()
+        view.destroy()
+        view.dom.remove()
+      }
+    })
+  }
+
+  it('does not tear down the editor\'s plugin views to run an import', async () => {
+    /*
+     * Adding and removing a plugin around each import changed the plugin array's
+     * identity, and ProseMirror compares that array by identity: every plugin
+     * view in the editor was destroyed and rebuilt, twice per file. That
+     * discards a find query and re-tokenizes every code block, to move a caret.
+     */
+    const log: string[] = []
+    const watcher = new Plugin({
+      view() {
+        log.push('create')
+        return {
+          destroy() {
+            log.push('destroy')
+          },
+        }
+      },
+    })
+
+    const { dispose, finish } = slowConverter()
+    const view = mount('<p>FIRST</p>', [watcher, importBookmarkPlugin()])
+    try {
+      expect(log).toEqual(['create'])
+      const pending = importFileIntoView(view, slowFile())
+      finish()
+      expect((await pending).ok).toBe(true)
+      expect(log).toEqual(['create'])
+    } finally {
+      dispose()
+      view.destroy()
+      view.dom.remove()
+    }
+  })
+
+  it('reports rather than throws when the editor is destroyed mid-import', async () => {
+    const { dispose, finish } = slowConverter()
+    const view = mount('<p>FIRST</p>', [importBookmarkPlugin()])
+    const rejections: unknown[] = []
+    const record = (event: PromiseRejectionEvent): void => {
+      rejections.push(event.reason)
+    }
+    window.addEventListener('unhandledrejection', record)
+
+    try {
+      const pending = importFileIntoView(view, slowFile())
+
+      // A route change, a dialog closing -- anything that unmounts the editor
+      // while the file is still converting. `release()` used to call
+      // `view.updateState` on a view whose state was already null.
+      view.destroy()
+      finish()
+
+      const outcome = await pending
+      expect(outcome.ok).toBe(false)
+      expect(outcome.error).toMatch(/editor closed/)
+      await Promise.resolve()
+      expect(rejections).toEqual([])
+    } finally {
+      window.removeEventListener('unhandledrejection', record)
+      dispose()
+      view.dom.remove()
+    }
+  })
+
+  it('names the files a teardown abandoned instead of dropping them silently', async () => {
+    const { dispose, finish } = slowConverter()
+    const view = mount('<p>FIRST</p>', [importBookmarkPlugin()])
+    try {
+      const pending = importFilesIntoView(view, [slowFile('slow-one.html'), slowFile('slow-two.html')])
+      view.destroy()
+      finish()
+
+      const outcome = await pending
+      expect(outcome.ok).toBe(false)
+      expect(outcome.error).toContain('slow-one.html')
+      expect(outcome.error).toContain('slow-two.html')
+    } finally {
+      dispose()
+      view.dom.remove()
+    }
+  })
+
+  it('refuses a batch larger than the limit rather than importing part of it', async () => {
+    setImportLimits({ maxFiles: 2 })
+    const view = mount('<p>FIRST</p>', [importBookmarkPlugin()])
+    try {
+      const files = ['a.txt', 'b.txt', 'c.txt'].map((name) => textFile('x', name, 'text/plain'))
+      const outcome = await importFilesIntoView(view, files)
+      expect(outcome.ok).toBe(false)
+      expect(outcome.error).toMatch(/more than this editor will import/)
+      // Nothing partially imported: the document is untouched.
+      expect(serializeHtml(view.state.doc)).toBe('<p>FIRST</p>')
+    } finally {
+      view.destroy()
+      view.dom.remove()
+    }
+  })
+})
+
+describe('the size ceiling on a single file', () => {
+  it('refuses a file over the limit before any converter reads it', async () => {
+    let read = false
+    const dispose = registerFileConverter(async () => {
+      read = true
+      return { html: '<p>x</p>' }
+    })
+    setImportLimits({ maxFileBytes: 8 })
+    try {
+      await expect(
+        convertFile(textFile('rather more than eight bytes', 'big.txt', 'text/plain'), document),
+      ).rejects.toThrow(/import limit/)
+      // The check has to be on this side of the seam, or every registered
+      // converter has to remember to make it.
+      expect(read).toBe(false)
+    } finally {
+      dispose()
+    }
+  })
+
+  it('leaves an ordinary file alone', async () => {
+    setImportLimits({ maxFileBytes: DEFAULT_IMPORT_LIMITS.maxFileBytes })
+    const result = await convertFile(textFile('hello', 'notes.txt', 'text/plain'), document)
+    expect(result?.html).toBe('<p>hello</p>')
   })
 })

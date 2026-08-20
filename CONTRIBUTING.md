@@ -27,19 +27,29 @@ That appends a line certifying the [DCO](https://developercertificate.org/):
 Signed-off-by: Your Name <your.email@example.com>
 ```
 
-Use your real name and a working email address. CI enforces this.
+Use your real name and a working email address. CI enforces this: the `dco`
+job checks every commit on the pull request and fails the build if any of them
+is missing a sign-off. If you forget, `git rebase --signoff origin/main` fixes
+the whole branch.
 
 ## Getting set up
 
 ```bash
 pnpm install
 pnpm exec playwright install   # first time only
-pnpm verify                    # the whole gate: typecheck, unit, browsers, size
+pnpm verify                    # the whole gate
 ```
 
-`pnpm verify` is the one command to remember. It takes about thirteen seconds
-and runs exactly what CI runs, so "passes locally" and "passes CI" mean the
-same thing.
+`pnpm verify` is the one command to remember. It builds every package,
+type checks `src` *and* the tests, runs the unit and round-trip fidelity suites,
+runs the browser suite in all three engines, imports every published entry point
+with no DOM present, and checks the architecture guards and bundle budgets.
+
+It runs exactly what CI runs, and not by coincidence: CI shells out to the same
+script (`node scripts/verify.mjs`), so there is no second list of steps to drift
+out of sync. The single difference is the engine set -- a pull request runs
+`--quick`, which is Chromium only, and the full three-engine run happens nightly
+and on demand.
 
 Narrower loops:
 
@@ -55,9 +65,12 @@ where editor bugs actually live -- jsdom does not model selection, composition
 events, or clipboard behaviour faithfully enough to trust. Run the full
 `pnpm verify` before pushing.
 
-**CI is manual-only** at the moment (`workflow_dispatch`), so the local gate is
-the real gate. Do not push on the assumption that a remote runner will catch
-it. See the note in the README.
+**What CI runs on your pull request:** `node scripts/verify.mjs --quick` (the
+whole gate, Chromium only, a few minutes) and the DCO sign-off check. Firefox
+and WebKit run nightly on `main` and on demand from the Actions tab, so they are
+not between you and a merge -- which is exactly why you should run the full
+`pnpm verify` locally first. A WebKit regression found tomorrow morning is
+harder to place than one found before you push.
 
 ## Commit format
 

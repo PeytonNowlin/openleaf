@@ -129,3 +129,78 @@ test.describe('pasting from Google Docs', () => {
     expect(value).not.toContain('line-height')
   })
 })
+
+/**
+ * Pasting is how attacker-controlled markup reaches the editor: the author
+ * copies from a page someone else wrote. Normalization removes the dangerous
+ * parts, but that is only worth anything if it happens before the browser acts
+ * on them, and the browser acts the moment a node acquires a document with a
+ * browsing context.
+ *
+ * This has to run in a real browser. jsdom does not load images and does not
+ * compile `on*` attributes into handlers, so a payload "not firing" there is
+ * true of vulnerable code as well -- the jsdom suites in `packages/paste` and
+ * `packages/sanitize` prove the boundary crossing instead, and this proves the
+ * consequence. Against the code before this test existed, `PASTE_XSS` executed
+ * in Chromium and a request went out for the image.
+ *
+ * Firefox and WebKit skip along with the rest of the file, since they do not
+ * honour constructed clipboardData.
+ */
+test.describe('pasting attacker-controlled markup', () => {
+  /**
+   * Three payloads for three different ways out of the inert fragment.
+   *
+   * 1. a top-level image -- the fragment being appended to a live host
+   * 2. an image under `font-weight:700` -- `wrapChildren` builds a `<strong>`
+   *    and moves the image into it
+   * 3. an image in a Word list paragraph -- list reconstruction builds
+   *    `<ul>`/`<li>`/`<p>` and moves the paragraph's children into them
+   *
+   * Each records into `window.__pasteXss`, which survives the paste, so the
+   * assertion catches a handler that ran even for a node discarded straight
+   * afterwards.
+   */
+  const probe = (n: number) =>
+    `<img src="/paste-xss-probe-${n}.png" ` +
+    `onerror="(window.__pasteXss=window.__pasteXss||[]).push(${n})">`
+
+  const PASTE_XSS: Array<[string, string]> = [
+    ['a plain paste', `<p>Report</p>${probe(1)}`],
+    [
+      'a Google Docs paste',
+      '<meta charset="utf-8"><b style="font-weight:normal" id="docs-internal-guid-abc">' +
+        '<p dir="ltr" style="line-height:1.38">' +
+        `<span style="font-weight:700">${probe(2)}</span></p></b>`,
+    ],
+    [
+      'a Word paste',
+      '<p class="MsoListParagraphCxSpFirst" style="text-indent:-.25in;mso-list:l0 level1 lfo1">' +
+        '<!--[if !supportLists]--><span style="font-family:Symbol">·</span><!--[endif]-->' +
+        `Revenue up 12%${probe(3)}<o:p></o:p></p>`,
+    ],
+  ]
+
+  for (const [name, payload] of PASTE_XSS) {
+    test(`runs no handler from ${name}`, async ({ page }) => {
+      const ok = await pasteHtml(page, payload)
+      test.skip(!ok, 'this browser does not honour constructed clipboardData')
+
+      // The image itself is legitimate content and the editor renders it, so
+      // its request going out proves nothing either way. What must never happen
+      // is the handler running, and it would have run by now: the vulnerable
+      // path compiled it synchronously during normalization.
+      await page.waitForTimeout(1000)
+      const fired = await page.evaluate(
+        () => (window as unknown as { __pasteXss?: number[] }).__pasteXss ?? [],
+      )
+      expect(fired).toEqual([])
+
+      // And the attribute must not have survived into the stored value or the
+      // editor's own DOM, where it would fire on every subsequent load.
+      const value = await page.locator('#body').inputValue()
+      expect(value).not.toContain('onerror')
+      expect(await editor(page).locator('[onerror]').count()).toBe(0)
+    })
+  }
+})

@@ -101,6 +101,10 @@ importers:
         version: 1.42.2
 
   packages/paste:
+    dependencies:
+      '@openleaf-editor/content-policy':
+        specifier: workspace:*
+        version: link:../content-policy
     devDependencies:
       '@openleaf-editor/core':
         specifier: workspace:*

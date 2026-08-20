@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 /**
- * `pnpm verify` -- the full gate, run locally.
+ * `pnpm verify` -- the gate. This file IS the gate.
  *
- * This is the local equivalent of the CI workflow, which is manual-only while
- * the project is young. It runs CI's four checks in the same order and fails
- * the same way, so "it passes locally" and "it passes CI" mean the same thing.
- * If you change one, change the other. The two source guards below -- the
- * dist-dependency check and the schema-singleton check -- are local-only: they
- * read the tree rather than the build, so they cost nothing to run here.
+ * CI does not reimplement these steps; `.github/workflows/ci.yml` shells out to
+ * `node scripts/verify.mjs --quick` on every push and pull request, and to the
+ * plain three-engine form nightly. That is deliberate: the previous arrangement
+ * listed the steps in both places and they drifted -- CI grew a step named
+ * "Typecheck" that ran `pnpm -r build`, which does not typecheck a single test
+ * file. Adding a step here adds it to CI, and there is no second list to forget.
+ *
+ * The only difference between local and CI is `--quick`, which runs chromium
+ * alone instead of all three engines. Run plain `pnpm verify` before pushing.
  */
 
 import { spawnSync } from 'node:child_process'
@@ -50,18 +53,30 @@ function run(command, commandArgs) {
   if (result.status !== 0) throw new Error(`${command} ${commandArgs.join(' ')} exited ${result.status}`)
 }
 
-// 1. Typecheck. Strict TypeScript across every package, which also regenerates
-//    dist -- the only build the published packages ship.
-const typecheckOk = step('typecheck (strict, all packages)', () => {
+// 1. Build. Each package's own build script, which regenerates dist -- the only
+//    build the published packages ship -- and for several of them also emits
+//    CSS or JSON that `tsc` knows nothing about.
+//
+//    This step used to be labelled "typecheck". It was not one: each package's
+//    tsconfig is `include: ["src"]`, so building every package leaves every test
+//    file unchecked. A real TS2379 sat in a test file while this reported green.
+const buildOk = step('build (all packages, emits dist)', () => {
   run('pnpm', ['-r', 'build'])
 })
 
-// 2. Unit tests, including the round-trip fidelity corpora.
+// 2. Typecheck, for real: `tsc -b` over the package projects plus
+//    `tsc -p tsconfig.tests.json`, which is the only thing that ever type checks
+//    a test file. Nothing else in this gate reads that project.
+const typecheckOk = step('typecheck (strict, src and tests)', () => {
+  run('pnpm', ['typecheck'])
+})
+
+// 3. Unit tests, including the round-trip fidelity corpora.
 const unitOk = step('unit tests + round-trip fidelity', () => {
   run('pnpm', ['exec', 'vitest', 'run'])
 })
 
-// 3. Browser tests. Real engines, because selection, focus, clipboard and
+// 4. Browser tests. Real engines, because selection, focus, clipboard and
 //    composition do not exist in jsdom.
 const browserOk = step(
   quick ? 'browser tests (chromium only)' : 'browser tests (chromium, firefox, webkit)',
@@ -70,12 +85,12 @@ const browserOk = step(
   },
 )
 
-// 4. The bundle build must not depend on anything having been built first.
+// 5. The bundle build must not depend on anything having been built first.
 //
 //    This guard exists because the same bug shipped twice: `demo/build.mjs`
 //    reading from `packages/*/dist` passes on a machine that just ran a build and
 //    fails on a fresh checkout, which is exactly what CI is. `pnpm verify` cannot
-//    catch it by running the build, because the typecheck step above has already
+//    catch it by running the build, because the build step above has already
 //    created dist by then -- so the invariant is asserted directly instead.
 const cleanBuildOk = step('bundle build has no dist dependency', () => {
   const script = readFileSync(new URL('../demo/build.mjs', import.meta.url), 'utf8')
@@ -92,18 +107,27 @@ const cleanBuildOk = step('bundle build has no dist dependency', () => {
   return 'resolves workspace packages from source'
 })
 
-// 5. Nothing outside core may import a schema instance.
+// 6. Nothing outside core may import a schema instance.
 //
 //    `export const schema` was deleted rather than deprecated, because a
 //    retained const typechecks and then fails in the field: a node built from
 //    one schema instance is rejected by a document built from another. This
 //    guard stops it creeping back in as an import somewhere.
+//
+//    The directory list used to be a literal array of seven paths, which had
+//    already fallen behind the tree -- plugins-colour, plugins-import,
+//    plugins-import-docx, sanitize, content-policy and the three framework
+//    wrappers were all unguarded, as was every test/ directory. It walks
+//    `packages/` now, so a package added tomorrow is guarded on the day it
+//    lands rather than the day someone remembers this file.
 const schemaGuardOk = step('no schema singleton outside core', () => {
   const offenders = []
-  const roots = ['packages/element/src', 'packages/ui/src', 'packages/paste/src',
-                 'packages/plugins-table/src', 'packages/plugins-highlight/src',
-                 'packages/plugins-session/src',
-                 'packages/plugins-insert/src']
+  const roots = []
+  for (const pkg of readdirSync(new URL('../packages', import.meta.url))) {
+    if (pkg === 'core') continue
+    for (const sub of ['src', 'test']) roots.push(`packages/${pkg}/${sub}`)
+  }
+  let scanned = 0
   for (const root of roots) {
     let files
     try {
@@ -112,8 +136,9 @@ const schemaGuardOk = step('no schema singleton outside core', () => {
       continue
     }
     for (const file of files) {
-      if (typeof file !== 'string' || !file.endsWith('.ts')) continue
+      if (typeof file !== 'string' || !/\.(ts|tsx|mts)$/.test(file)) continue
       const text = readFileSync(new URL(`../${root}/${file}`, import.meta.url), 'utf8')
+      scanned += 1
       text.split('\n').forEach((line, i) => {
         if (/^import .*\bschema\b.*from ['"]@openleaf-editor\/core['"]/.test(line)) {
           offenders.push(`${root}/${file}:${i + 1}`)
@@ -127,7 +152,7 @@ const schemaGuardOk = step('no schema singleton outside core', () => {
         offenders.join(', '),
     )
   }
-  return 'all resolve from state.schema or coreSchema()'
+  return `${scanned} files across every package's src and test`
 })
 
 // 6. Package boundaries: peer ranges, one ProseMirror version, honest
@@ -227,10 +252,15 @@ const boundariesOk = step('package boundaries (peers, one ProseMirror, sideEffec
   return `${names.length} packages, ${pmRanges.size} ProseMirror packages at one range each`
 })
 
-// 7. Bundle size. The "no build step" promise means integrators load this over
+// 8. Every published entry point still imports with no DOM present, by package
+//    specifier rather than by file path, so the exports map is exercised too.
+//    See scripts/ssr-imports.mjs for why both halves of that matter.
+const ssrOk = step('SSR imports (every published entry point)', () => {
+  run('node', ['scripts/ssr-imports.mjs'])
+})
+
+// 9. Bundle size. The "no build step" promise means integrators load this over
 //    the wire, so the number is a feature and regressions should hurt.
-//    Shared with the CI workflow via scripts/bundle-budgets.mjs, so the two
-//    cannot measure different files against different numbers.
 const sizeOk = step(`bundle size budgets (${describeBudgets()})`, () => checkBundleSizes())
 
 // Summary
@@ -244,7 +274,15 @@ for (const r of results) {
 console.log(`  ${'-'.repeat(width + 26)}`)
 
 const allOk =
-  typecheckOk && unitOk && browserOk && cleanBuildOk && schemaGuardOk && boundariesOk && sizeOk
+  buildOk &&
+  typecheckOk &&
+  unitOk &&
+  browserOk &&
+  cleanBuildOk &&
+  schemaGuardOk &&
+  boundariesOk &&
+  ssrOk &&
+  sizeOk
 if (quick) {
   console.log(
     `  ${yellow('note')} --quick ran chromium only. Run plain \`pnpm verify\` before pushing.`,

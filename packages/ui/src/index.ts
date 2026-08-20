@@ -72,6 +72,7 @@ export {
   imageFilesFrom,
   imageUploaderFor,
   isUploadableImage,
+  isUploadableImageType,
   registerImageUploader,
   runUploader,
   type ImageUploadResult,
