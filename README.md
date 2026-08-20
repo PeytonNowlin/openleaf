@@ -126,13 +126,15 @@ what keeps inherited markup editable: without them a stored
 `<span style="font-family:Georgia">` or `<font face="Verdana">` is claimed by the
 preservation layer and becomes an atom you can move but not edit.
 
-**There are no toolbar controls for them yet.** What exists today is:
+The default toolbar includes font family, font size, line height, indent and
+outdent (`fontFamily`, `fontSize`, `lineHeight`, `indent`, `outdent`). Indent and
+outdent also sit in the Format menu and keep their keyboard shortcuts.
 
 | Feature | How to reach it |
 | --- | --- |
+| Font family, font size, line height | Default toolbar selects |
+| Indent / outdent | Default toolbar, Format menu, `Mod+]` / `Mod+[`, F1 list |
 | Subscript / superscript | `Mod+=` / `Mod+Shift+=`, and the F1 shortcut list |
-| Indent / outdent | `Mod+]` / `Mod+[`, and the F1 shortcut list |
-| Font family, font size, line height | `setFontFamily`, `setFontSize`, `setLineHeight` |
 | Direction, language | `setDir`, `toggleDir`, `setLanguage` |
 | List style | `setListStyle` |
 | Remove all of it | `clearFormatting` |
@@ -144,9 +146,6 @@ control is `registerToolbarItem` plus one of them. `FONT_FAMILIES`,
 sensible defaults for a picker, and `activeFontFamily`, `activeFontSize`,
 `activeLineHeight`, `activeIndent`, `activeDir`, `activeLanguage` and
 `activeListStyle` report the current value for one.
-
-First-party controls are the obvious next step; the storage format landed first
-deliberately, because content arriving in an archive cannot wait for a dropdown.
 
 ### Editor chrome
 
