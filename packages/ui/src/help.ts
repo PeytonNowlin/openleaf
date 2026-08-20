@@ -8,7 +8,7 @@
 
 import { shortcutFor, shortcuts } from '@openleaf-editor/core'
 import { ensureDialogStyles } from './dialog.js'
-import { t } from './i18n.js'
+import { t, withLocale } from './i18n.js'
 import { ensureStyles } from './styles.js'
 
 const HELP_CHROME: Array<[string, string]> = [
@@ -17,19 +17,34 @@ const HELP_CHROME: Array<[string, string]> = [
   ['F1', 'Open this help dialog'],
 ]
 
-export function promptHelp(doc: Document): void {
+/**
+ * Unique per dialog.
+ *
+ * `ol-help-title` was a constant, so a second editor's help dialog carried the
+ * same id and `aria-labelledby` resolved to whichever was first in the
+ * document -- naming this dialog after somebody else's.
+ */
+let helpCounter = 0
+
+/** `locale` is the editor's own `lang`, not the document-wide one. */
+export function promptHelp(doc: Document, locale?: string | null): void {
+  withLocale(locale, () => buildHelp(doc))
+}
+
+function buildHelp(doc: Document): void {
   ensureStyles(doc)
   ensureDialogStyles(doc)
   const previouslyFocused = doc.activeElement as HTMLElement | null
   const dialog = doc.createElement('dialog')
   dialog.className = 'ol-dialog ol-help'
-  dialog.setAttribute('aria-labelledby', 'ol-help-title')
+  const headingId = `ol-help-title-${(helpCounter += 1)}`
+  dialog.setAttribute('aria-labelledby', headingId)
 
   const form = doc.createElement('form')
   form.method = 'dialog'
 
   const heading = doc.createElement('h2')
-  heading.id = 'ol-help-title'
+  heading.id = headingId
   heading.textContent = t('Keyboard shortcuts')
   form.appendChild(heading)
 

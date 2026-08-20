@@ -596,7 +596,14 @@ export class Toolbar {
           control.active = active
           control.el.setAttribute('aria-pressed', active ? 'true' : 'false')
           if (isFormattingChange && previous !== null) {
-            transitions.push(`${spec.label} ${active ? 'on' : 'off'}`)
+            // One template key per state rather than a label glued to a bare
+            // "on"/"off". The old form pushed the RAW LOOKUP KEY, so a French
+            // editor showed "Gras" and announced "Bold on" -- and the two state
+            // words had no translation path at all. A template also keeps word
+            // order translatable, which a concatenation never can.
+            transitions.push(
+              t(active ? '{label} on' : '{label} off').replace('{label}', t(spec.label)),
+            )
           }
         }
       }
