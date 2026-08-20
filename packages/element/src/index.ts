@@ -221,6 +221,12 @@ export class OpenLeafEditor extends HTMLElementBase {
     const initialHtml = textarea?.value ?? this.innerHTML
     const nestedTextarea =
       textarea && this.contains(textarea) ? textarea : null
+    // An externally bound textarea -- the documented `for=` pattern -- stayed
+    // visible and focusable unless the integrator remembered `hidden`. Forgetting
+    // is not cosmetic: a keyboard user can tab into it, type, and have
+    // `FormBridge.sync()` overwrite every word at submit, silently, at the exact
+    // moment the work was meant to be saved. It still posts while hidden.
+    if (textarea && !nestedTextarea) textarea.hidden = true
     // Nested binding used to `innerHTML = ''` the textarea out of the document,
     // so it was no longer a successful form control. Lift it aside first, then
     // put it back hidden so the form still posts it.

@@ -92,6 +92,31 @@ describe('the name of the editable region', () => {
   })
 })
 
+describe('the bound textarea', () => {
+  it('is hidden even when it lives outside the element', () => {
+    // The nested case was already hidden. With the documented `for=` pattern the
+    // textarea stayed visible AND focusable, so a keyboard user could tab into
+    // it, type, and have FormBridge overwrite every word at submit -- silently,
+    // at the exact moment the work was meant to be saved.
+    build(`
+      <label for="body">Article body</label>
+      <textarea id="body"></textarea>
+      <openleaf-editor for="body" toolbar="none"></openleaf-editor>
+    `)
+    const textarea = document.getElementById('body') as HTMLTextAreaElement
+    expect(textarea.hidden).toBe(true)
+  })
+
+  it('still names the region it is hidden for', () => {
+    const { region } = build(`
+      <label for="body">Article body</label>
+      <textarea id="body"></textarea>
+      <openleaf-editor for="body" toolbar="none"></openleaf-editor>
+    `)
+    expect(region.getAttribute('aria-label')).toBe('Article body')
+  })
+})
+
 describe('the description of the editable region', () => {
   it('does not repeat the name it is read after', () => {
     // The name is "Rich text editor" and the description used to begin "Rich
