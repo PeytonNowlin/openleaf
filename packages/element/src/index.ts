@@ -65,6 +65,7 @@ import {
   LINK_CONTEXT_ITEMS,
   MenuBar,
   PopupMenu,
+  type MenuEntry,
   SOURCE_TOGGLE_EVENT,
   selectMenus,
   TABLE_CONTEXT_ITEMS,
@@ -88,7 +89,7 @@ import {
 import { baseKeymap } from 'prosemirror-commands'
 import { history } from 'prosemirror-history'
 import { keymap } from 'prosemirror-keymap'
-import { EditorState, Plugin, TextSelection } from 'prosemirror-state'
+import { EditorState, NodeSelection, Plugin, TextSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import { FormBridge } from './form-bridge.js'
 
@@ -153,8 +154,6 @@ export class OpenLeafEditor extends HTMLElementBase {
   #resizeObserver: ResizeObserver | null = null
   #visualAids = true
   #fullscreen = false
-  /** Set by Shift+F10 / the Menu key, read by the `contextmenu` that follows. */
-  #contextByKey = false
   /** True while a real fullscreen session is ours, as opposed to the fallback. */
   #nativeFullscreen = false
 
@@ -715,7 +714,6 @@ export class OpenLeafEditor extends HTMLElementBase {
   }
 
   #onContextPointer = (event: PointerEvent): void => {
-    this.#contextByKey = false
     const menu = this.#contextMenu
     if (!menu?.open) return
     if (event.target instanceof Node && menu.el.contains(event.target)) return
@@ -723,70 +721,86 @@ export class OpenLeafEditor extends HTMLElementBase {
   }
 
   /**
-   * Remember that the next `contextmenu` came from the keyboard.
+   * Open the context menu from the keyboard.
    *
-   * Shift+F10 and the Menu key both synthesize a `contextmenu` event, but the
-   * event itself is indistinguishable from a real secondary click in a way that
-   * is portable: `button` is 0 and `detail` is 0 for a right-click too in some
-   * engines. The key press is the only unambiguous signal, so it is recorded
-   * here and read once by the handler that follows it.
+   * Shift+F10 and the Menu key were assumed to arrive as a synthesized
+   * `contextmenu` event, and the handler was left to work out the rest. They do
+   * not, reliably: Chromium fires no `contextmenu` for Shift+F10 at all when the
+   * key is delivered to the renderer, so the documented keyboard entry point was
+   * a no-op that no test could see, because no test pressed the key.
+   *
+   * Opening straight from the key is also the only way to get the two things
+   * that follow right -- the node the caret is in, and a position to put the
+   * menu at -- because neither is recoverable from a synthesized mouse event.
    */
   #onContextKey = (event: KeyboardEvent): void => {
-    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
-      this.#contextByKey = true
-    }
-  }
-
-  /**
-   * The element the menu is about.
-   *
-   * For a pointer, that is what was clicked. For the keyboard it is emphatically
-   * NOT `event.target`: the focused element is the ProseMirror contenteditable
-   * div, and `closest()` walks UP from it, so it never finds the `<a>` or `<img>`
-   * the caret is actually in and the handler used to return in silence. The
-   * position is resolved from the selection instead, which is what the table
-   * plugin already does.
-   */
-  #contextTarget(view: EditorView): Element | null {
-    try {
-      const { node, offset } = view.domAtPos(view.state.selection.from)
-      const at = node.nodeType === 1 ? (node.childNodes[offset] ?? node) : node
-      return at instanceof Element ? at : (at.parentElement ?? null)
-    } catch {
-      return null
-    }
-  }
-
-  #onContextMenu = (event: MouseEvent): void => {
+    if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return
     const view = this.#view
-    const menu = this.#contextMenu
-    if (!view || !menu) return
-    const byKey = this.#contextByKey
-    this.#contextByKey = false
-    const clicked = event.target
-    if (!(clicked instanceof Element) || !this.#contentHost?.contains(clicked)) return
-    const target = byKey ? this.#contextTarget(view) : clicked
-    if (!target) return
-
-    const items = target.closest('a')
-      ? LINK_CONTEXT_ITEMS
-      : target.closest('img')
-        ? IMAGE_CONTEXT_ITEMS
-        : target.closest('table')
-          ? TABLE_CONTEXT_ITEMS
-          : null
-    if (!items) return
+    if (!view) return
+    if (!this.#showContext(view, this.#contextItemsAtCaret(view.state), null)) return
     event.preventDefault()
-    // `clientX/clientY` on a synthesized event are the focused element's corner
-    // at best and 0,0 at worst -- neither is where the caret is.
-    let x = event.clientX
-    let y = event.clientY
-    if (byKey || x <= 0) {
+  }
+
+  /** Open a menu, at a point for a pointer or at the caret for a key. */
+  #showContext(
+    view: EditorView,
+    items: readonly MenuEntry[] | null,
+    point: { x: number; y: number } | null,
+  ): boolean {
+    const menu = this.#contextMenu
+    if (!menu || !items) return false
+    let x = point?.x ?? 0
+    let y = point?.y ?? 0
+    // A synthesized event carries the focused element's corner at best and 0,0
+    // at worst; neither of them is where the caret is.
+    if (!point || x <= 0) {
       const coords = view.coordsAtPos(view.state.selection.from)
       x = coords.left
       y = coords.bottom
     }
     menu.show(items, x, y, { label: 'Editor menu', onClose: () => view.focus() })
+    return true
+  }
+
+  /**
+   * What the menu is about, read from the document rather than the DOM.
+   *
+   * For a pointer the answer is whatever was clicked. For the keyboard it is
+   * emphatically NOT `event.target`: the focused element is the ProseMirror
+   * contenteditable div, and `closest()` walks UP from it, so it never found the
+   * `<a>` or `<img>` the caret was in and the handler returned in silence. The
+   * selection is the only thing that knows where the caret is, and asking the
+   * document is more direct than mapping a position back to a node and walking
+   * the tree from there.
+   */
+  #contextItemsAtCaret(state: EditorState): readonly MenuEntry[] | null {
+    const selection = state.selection
+    const $from = selection.$from
+    const link = state.schema.marks['link']
+    if (link && link.isInSet($from.marks())) return LINK_CONTEXT_ITEMS
+    const node = selection instanceof NodeSelection ? selection.node : $from.nodeAfter
+    if (node?.type.name === 'image') return IMAGE_CONTEXT_ITEMS
+    for (let depth = $from.depth; depth > 0; depth -= 1) {
+      if ($from.node(depth).type.name === 'table') return TABLE_CONTEXT_ITEMS
+    }
+    return null
+  }
+
+  #onContextMenu = (event: MouseEvent): void => {
+    const view = this.#view
+    if (!view) return
+    const clicked = event.target
+    if (!(clicked instanceof Element) || !this.#contentHost?.contains(clicked)) return
+    const items = clicked.closest('a')
+      ? LINK_CONTEXT_ITEMS
+      : clicked.closest('img')
+        ? IMAGE_CONTEXT_ITEMS
+        : clicked.closest('table')
+          ? TABLE_CONTEXT_ITEMS
+          : null
+    if (this.#showContext(view, items, { x: event.clientX, y: event.clientY })) {
+      event.preventDefault()
+    }
   }
 
   #mountInline(): void {

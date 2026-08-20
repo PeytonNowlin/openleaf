@@ -206,6 +206,11 @@ export class PopupMenu {
    * A right-click near the bottom of the viewport otherwise renders it below the
    * fold, where the item the author asked for cannot be seen or scrolled to --
    * the menu is positioned, so the page does not grow to contain it.
+   *
+   * Flipping is measured against the TRIGGER, not against the point the menu was
+   * asked to open at. Those differ by the height of the trigger, and using the
+   * point puts a flipped menu on top of the menubar it came from -- covering the
+   * next menu along, which is exactly where the pointer is going.
    */
   #place(x: number, y: number): void {
     const hostBox = this.#host.getBoundingClientRect()
@@ -214,7 +219,16 @@ export class PopupMenu {
     const vw = win?.innerWidth ?? 0
     const vh = win?.innerHeight ?? 0
     const left = vw > 0 ? Math.max(4, Math.min(x, vw - box.width - 4)) : x
-    const top = vh > 0 && y + box.height > vh ? Math.max(4, y - box.height - 4) : y
+    let top = y
+    if (vh > 0 && y + box.height > vh) {
+      const above = (this.#trigger?.getBoundingClientRect().top ?? y) - 4 - box.height
+      // Above only when it genuinely fits there. Sliding a menu that fits
+      // NEITHER side up to the viewport edge lands it on its own menubar, which
+      // trades a menu below the fold for a menubar that cannot be clicked. The
+      // stylesheet caps the height, so this is the rare deep menu on a short
+      // window rather than the normal case.
+      if (above >= 4) top = above
+    }
     this.el.style.left = `${Math.round(left - hostBox.left)}px`
     this.el.style.top = `${Math.round(top - hostBox.top)}px`
   }

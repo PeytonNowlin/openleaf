@@ -152,7 +152,7 @@ test.describe('the menubar and its menus', () => {
   test('Home and End reach the ends of the menu', async ({ page }) => {
     await bar(page).getByRole('menuitem', { name: 'Edit' }).click()
     await page.keyboard.press('End')
-    expect(await focusedName(page)).toBe('Code')
+    expect(await focusedName(page)).toBe('Inline code')
     await page.keyboard.press('Home')
     expect(await focusedName(page)).toBe('Undo')
   })
@@ -166,12 +166,39 @@ test.describe('the menubar and its menus', () => {
   test('leaves focus somewhere real after an item is chosen', async ({ page }) => {
     await page.getByRole('textbox', { name: 'Post body' }).click()
     await bar(page).getByRole('menuitem', { name: 'Edit' }).click()
-    await page.getByRole('menu', { name: 'Edit' }).getByRole('menuitem', { name: 'Bold' }).click()
+    await page
+      .getByRole('menu', { name: 'Edit' })
+      .getByRole('menuitem', { name: 'Bold', exact: true })
+      .click()
     expect(await focusedTag(page)).not.toBe('body')
   })
 })
 
 test.describe('the link context menu', () => {
+  /**
+   * Put a COLLAPSED caret inside the link, by keyboard.
+   *
+   * Clicking the link is not a way to do it: Chromium does not move the caret
+   * for a click on an `<a>` inside contenteditable. Ten presses of ArrowRight
+   * from the start of the line lands between the "i" and the "n" of "linked",
+   * which is the exact state -- caret in a link, nothing selected -- that the
+   * context menu exists for and that the Link item used to refuse.
+   */
+  async function caretInLink(page: Page): Promise<void> {
+    // The assignment above is asynchronous as far as this page is concerned: the
+    // link has to exist before the caret can be walked into it.
+    await expect(page.getByRole('link', { name: 'linked' })).toBeVisible()
+    await page.getByRole('textbox', { name: 'Post body' }).click()
+    await page.keyboard.press('Home')
+    for (let i = 0; i < 10; i += 1) await page.keyboard.press('ArrowRight')
+    // The precondition, asserted rather than assumed: the toolbar's Link button
+    // reads pressed exactly when the caret is inside a link.
+    await expect(page.locator('.ol-toolbar [data-ol-id="link"]')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  }
+
   test.beforeEach(async ({ page }) => {
     await page.goto(MAIN)
     await expect(page.getByRole('textbox', { name: 'Post body' })).toBeVisible()
@@ -187,15 +214,15 @@ test.describe('the link context menu', () => {
    * found the <a> at the caret and the handler returned in silence.
    */
   test('Shift+F10 with the caret in a link opens the link menu', async ({ page }) => {
-    await page.getByRole('link', { name: 'linked' }).click()
+    await caretInLink(page)
     await page.keyboard.press('Shift+F10')
     const menu = page.getByRole('menu', { name: 'Editor menu' })
     await expect(menu).toBeVisible()
-    await expect(menu.getByRole('menuitem', { name: 'Remove link' })).toBeVisible()
+    await expect(menu.getByRole('menuitem', { name: 'Remove link', exact: true })).toBeVisible()
   })
 
   test('positions itself at the caret, not at the top-left corner', async ({ page }) => {
-    await page.getByRole('link', { name: 'linked' }).click()
+    await caretInLink(page)
     await page.keyboard.press('Shift+F10')
     const box = await page.getByRole('menu', { name: 'Editor menu' }).boundingBox()
     expect(box).not.toBeNull()
@@ -206,7 +233,7 @@ test.describe('the link context menu', () => {
   })
 
   test('Escape closes it and returns focus to the editor', async ({ page }) => {
-    await page.getByRole('link', { name: 'linked' }).click()
+    await caretInLink(page)
     await page.keyboard.press('Shift+F10')
     await expect(page.getByRole('menu', { name: 'Editor menu' })).toBeVisible()
     await page.keyboard.press('Escape')
@@ -222,20 +249,22 @@ test.describe('the link context menu', () => {
    * could not be edited from the context menu at all.
    */
   test('can actually edit the link it was opened on', async ({ page }) => {
-    await page.getByRole('link', { name: 'linked' }).click()
+    await caretInLink(page)
     await page.keyboard.press('Shift+F10')
-    const item = page.getByRole('menu', { name: 'Editor menu' }).getByRole('menuitem', { name: 'Link' })
+    const item = page
+      .getByRole('menu', { name: 'Editor menu' })
+      .getByRole('menuitem', { name: 'Link', exact: true })
     await expect(item).toHaveAttribute('aria-disabled', 'false')
     await item.click()
     await expect(page.getByRole('dialog', { name: 'Edit link' })).toBeVisible()
   })
 
   test('Remove link works from a caret inside the link', async ({ page }) => {
-    await page.getByRole('link', { name: 'linked' }).click()
+    await caretInLink(page)
     await page.keyboard.press('Shift+F10')
     await page
       .getByRole('menu', { name: 'Editor menu' })
-      .getByRole('menuitem', { name: 'Remove link' })
+      .getByRole('menuitem', { name: 'Remove link', exact: true })
       .click()
     await expect.poll(() => page.locator('#body').inputValue()).not.toContain('<a href')
   })
@@ -253,7 +282,9 @@ test.describe('focus restoration', () => {
     await expect(editor).toBeVisible()
     await editor.getByText('A stored paragraph.').click({ clickCount: 3 })
 
-    const link = page.locator('openleaf-editor .ol-toolbar').getByRole('button', { name: 'Link' })
+    const link = page
+      .locator('openleaf-editor .ol-toolbar')
+      .getByRole('button', { name: 'Link', exact: true })
     await link.click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()

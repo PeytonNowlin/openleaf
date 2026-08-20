@@ -518,6 +518,10 @@ export const CSS = `
   position: absolute;
   z-index: calc(var(--ol-z) + 20);
   min-width: 12rem;
+  /* Capped, so a deep menu opened low on a short window can be flipped above
+     its trigger instead of running off the bottom of the page. */
+  max-height: 60vh;
+  overflow-y: auto;
   margin: 0;
   padding: 4px;
   border: 1px solid var(--ol-border);
