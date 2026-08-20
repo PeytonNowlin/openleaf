@@ -43,7 +43,12 @@ package on this version -- they pin each other exactly.
   superscript, and list styles, with `clearFormatting` to remove them. Same
   reasoning as the colour marks: without them an inherited
   `<span style="font-family:Georgia">` or a `<font face="Verdana">` is claimed by
-  the preservation layer and becomes an uneditable atom.
+  the preservation layer and becomes an uneditable atom. **No toolbar controls
+  ship with this.** Subscript, superscript, indent and outdent have keyboard
+  shortcuts and appear in the F1 list; the rest are commands exported from
+  `@openleaf-editor/core` for an integrator to wire up. The storage format landed
+  first on purpose -- content already in an archive cannot wait for a dropdown --
+  and the README says exactly what is reachable how.
 - **Table editing** — table, row and cell property dialogs (border, padding,
   background, alignment, width), a caption dialog, column-width fields with a
   sync from column resize onto stored `<col>` elements, a context menu
