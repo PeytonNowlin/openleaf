@@ -12,7 +12,7 @@
  *                      is *gras* in French, *fett* in German; a "B" icon is a
  *                      translation bug wearing a costume.
  *
- * All 20 icons are a 24x24 viewBox with `stroke="currentColor"`, so they inherit
+ * All icons are a 24x24 viewBox with `stroke="currentColor"`, so they inherit
  * text colour for free and need no separate dark-mode set. Roughly 2 KB raw,
  * under 1 KB gzipped.
  *
@@ -48,6 +48,8 @@ const PATHS: Record<string, string> = {
   alignCenter: 'M3 6h18M7 12h10M5 18h14',
   alignRight: 'M3 6h18M11 12h10M7 18h14',
   alignJustify: 'M3 6h18M3 12h18M3 18h18',
+  indent: 'M3 8h18M3 12h9M3 16h18M14 10l4 2-4 2',
+  outdent: 'M3 8h18M12 12h9M3 16h18M10 10l-4 2 4 2',
   undo: 'M3 7v6h6M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13',
   redo: 'M21 7v6h-6M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13',
   source: 'M18 16l4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16',
@@ -80,6 +82,8 @@ const DIRECTIONAL: ReadonlySet<string> = new Set([
   'blockquote',
   'bulletList',
   'orderedList',
+  'indent',
+  'outdent',
 ])
 
 /*

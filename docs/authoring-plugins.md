@@ -25,7 +25,7 @@ below.
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
 | **Add a node or mark type** | — | **Not available out of tree.** Commands and HTML I/O are schema-agnostic already; schema assembly is not |
 | Add a colour grid or popover control | `registerToolbarItem` with `type: 'custom'` and a `render` function | Works — see [4.9](#49-custom-controls-own-their-own-dom-and-their-own-cleanup) |
-| Add a dropdown | — | `type: 'select'` is not implemented and renders as a button; the block-type control is special-cased by id |
+| Add a dropdown | `registerToolbarItem` with `type: 'select'`, `options`, `getValue`, `applyValue` | Works — native `<select>`, same keyboard contract as block type |
 | Add CSS for your node | — | No extension point; see [4.7](#47-there-is-no-css-extension-point) |
 
 ### Where schema extensibility actually stands
@@ -348,6 +348,24 @@ registerToolbarItem({
   isActive: (state) => inCallout(state),
   // No isEnabled. It defaults to asking `command` whether it would apply, and
   // for a wrap-or-lift toggle that is the exact right answer.
+})
+```
+
+For a preset dropdown, use `type: 'select'`. Option values should be the spelling
+the schema stores so `getValue` can match them after a round-trip:
+
+```ts
+registerToolbarItem({
+  id: 'fontFamily',
+  type: 'select',
+  label: 'Font family',
+  options: [
+    { value: '', label: 'Default' },
+    { value: 'Georgia', label: 'Georgia' },
+    { value: '"Times New Roman"', label: 'Times New Roman' },
+  ],
+  getValue: (state) => activeFontFamily(state) ?? '',
+  applyValue: (value) => setFontFamily(value === '' ? null : value),
 })
 ```
 
@@ -880,6 +898,7 @@ registerToolbarItem({
   label: 'Text colour',
   render: ({ view, host }) => ({
     el,                        // goes in the toolbar
+    focusable: mySelect,       // optional: focus target, if it is not a button
     update: (state) => { … },  // every transaction, guarded like a predicate
     destroy: () => { … },      // remove anything you put in the document
   }),
@@ -888,9 +907,14 @@ registerToolbarItem({
 
 Four constraints, each of which cost something to learn:
 
-- **Exactly one focusable `button.ol-btn` in the element you return.** That is
-  what the toolbar's roving tabindex walks. Two makes the bar two tab stops where
-  the author expects one; none makes your control unreachable by keyboard.
+- **Exactly one focusable element in what you return, and say which it is.** A
+  button-like control puts a single `button.ol-btn` in the element it returns, and
+  the toolbar's roving tabindex walks it. A control whose focus target is not a
+  toolbar button -- a native `<select>`, say, which is how the built-in block-type
+  control is built -- returns that element as `focusable` on the `ToolbarControl`
+  instead. Two focusable elements makes the bar two tab stops where the author
+  expects one; none, or one the toolbar cannot find, makes your control
+  unreachable by keyboard.
 - **Anything else lives outside the toolbar element.** The picker appends its grid
   to the host and uses `popover="manual"` for the top layer. Left inside the
   toolbar, its thirty-two swatch buttons would be found by that same query, and one

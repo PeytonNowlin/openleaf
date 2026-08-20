@@ -82,7 +82,13 @@ function main() {
     let current = {}
     try {
       current = JSON.parse(
-        execFileSync('npm', ['view', name, 'dist-tags', '--json'], { encoding: 'utf8' }),
+        execFileSync('npm', ['view', name, 'dist-tags', '--json'], {
+          encoding: 'utf8',
+          // Quiet: a package being published for the first time has no tags to
+          // read, and npm reports that as a 404 on stderr. Dumping it would make
+          // a normal first release look like a failure.
+          stdio: ['ignore', 'pipe', 'ignore'],
+        }),
       )
     } catch {
       // Unpublished, or the registry is unreachable. Fall through and let the

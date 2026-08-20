@@ -122,6 +122,8 @@ export class Toolbar {
   #view: EditorView | null = null
   #controls = new Map<string, Control>()
   #customs: MountedControl[] = []
+  /** Native selects keyed by item id (block type plus any `type: 'select'`). */
+  #selects = new Map<string, HTMLSelectElement>()
   #live: HTMLDivElement
   #liveTimer: ReturnType<typeof setTimeout> | undefined
   #layout: string
@@ -248,6 +250,7 @@ export class Toolbar {
     this.#destroyCustoms()
     this.el.replaceChildren()
     this.#controls.clear()
+    this.#selects.clear()
 
     let group = this.#newGroup()
 
@@ -266,10 +269,21 @@ export class Toolbar {
         console.warn(`@openleaf-editor/ui: no toolbar item registered for "${token}"`)
         continue
       }
-      if (spec.type === 'custom' || spec.type === 'select') {
+      if (spec.type === 'custom') {
         const el = this.#buildCustom(spec)
         if (el) group.appendChild(el)
         continue
+      }
+      if (spec.type === 'select') {
+        const el = this.#buildSelect(spec)
+        if (el) group.appendChild(el)
+        continue
+      }
+      if (spec.type && spec.type !== 'button') {
+        console.warn(
+          `@openleaf-editor/ui: toolbar item "${spec.id}" declares type "${spec.type}", ` +
+            'which is not implemented yet. It is rendering as a button.',
+        )
       }
       group.appendChild(this.#buildButton(spec))
     }
@@ -308,6 +322,11 @@ export class Toolbar {
     if (this.#view) this.update(this.#view.state)
 
     if (!focusedId) return
+    const select = this.#selects.get(focusedId)
+    if (select) {
+      select.focus()
+      return
+    }
     const control = this.#controls.get(focusedId)
     if (control) {
       const index = this.#focusables.indexOf(control.el)
@@ -399,6 +418,95 @@ export class Toolbar {
       )
       return null
     }
+  }
+
+  /**
+   * Build a `type: 'select'` control from the item's options.
+   *
+   * Same keyboard contract as the block-type select: it is a second tab stop,
+   * owns its own arrow keys, and only returns focus to the content when the
+   * author commits by pointer.
+   */
+  #buildSelect(spec: ToolbarItemSpec): HTMLSelectElement | null {
+    if (!spec.options || !spec.getValue || !spec.applyValue) {
+      console.warn(
+        `@openleaf-editor/ui: toolbar item "${spec.id}" declares type "select" but is ` +
+          'missing options, getValue, or applyValue, so there is nothing to build.',
+      )
+      return null
+    }
+
+    const select = this.#doc.createElement('select')
+    select.className = spec.selectMod ? `ol-select ol-select--${spec.selectMod}` : 'ol-select'
+    select.setAttribute('aria-label', t(spec.label))
+    select.dataset['olId'] = spec.id
+    select.title = t(spec.label)
+
+    for (const choice of spec.options) {
+      const option = this.#doc.createElement('option')
+      option.value = choice.value
+      option.textContent = t(choice.label)
+      select.appendChild(option)
+    }
+
+    this.#wireSelectInteraction(select, () => {
+      const view = this.#view
+      if (!view || !spec.applyValue) return
+      const command = spec.applyValue(select.value)
+      command(view.state, view.dispatch, view)
+    })
+
+    this.#selects.set(spec.id, select)
+    return select
+  }
+
+  /**
+   * Shared select wiring: keep pointer vs keyboard focus behaviour identical
+   * across every native list in the bar.
+   */
+  #wireSelectInteraction(select: HTMLSelectElement, apply: () => void): void {
+    select.addEventListener('mousedown', (event) => event.stopPropagation())
+
+    /**
+     * Whether the pending change came from a pointer rather than the keyboard.
+     *
+     * This distinction is load-bearing. In Firefox, and on macOS generally,
+     * arrow keys on a closed `<select>` change its value on every press. If the
+     * change handler returned focus to the content unconditionally, a keyboard
+     * user arrowing through the options would be thrown back into the document
+     * on the first press -- making the control unusable by keyboard while
+     * working perfectly with a mouse. Caught by a cross-browser test that
+     * passed in Chromium and failed in Firefox.
+     */
+    let pointerDriven = false
+    select.addEventListener('pointerdown', () => {
+      pointerDriven = true
+    })
+
+    select.addEventListener('keydown', (event) => {
+      pointerDriven = false
+      if (event.key === 'Enter') {
+        // A <select> inside a <form> submits it on Enter. The editor almost
+        // always sits inside the host's form, so this would post a half-written
+        // article.
+        event.preventDefault()
+        this.returnFocusToContent()
+      }
+    })
+
+    select.addEventListener('change', () => {
+      const view = this.#view
+      if (!view) return
+      if (this.#host.hasAttribute('readonly')) return
+      apply()
+      // Return the caret to the content only when the author committed the
+      // choice by pointer. Keyboard users keep focus and leave with Tab or
+      // Escape.
+      if (pointerDriven) {
+        pointerDriven = false
+        view.focus()
+      }
+    })
   }
 
   /* -------------------------------------------------------------- *
@@ -504,8 +612,62 @@ export class Toolbar {
       })
     }
 
+    if (this.#selects.size > 0) {
+      const readonly = this.#host.hasAttribute('readonly')
+      // Only declared `type: 'select'` items live here. Block type is a rendered
+      // control and keeps its own state in sync through its ToolbarControl.
+      for (const [id, select] of this.#selects) {
+        this.#syncRegisteredSelect(id, select, state, readonly)
+      }
+    }
 
     if (transitions.length > 0) this.#announce(transitions.join(', '))
+  }
+
+  #syncRegisteredSelect(
+    id: string,
+    select: HTMLSelectElement,
+    state: EditorState,
+    readonly: boolean,
+  ): void {
+    const spec = getToolbarItem(id)
+    if (!spec?.getValue) {
+      select.disabled = readonly
+      return
+    }
+
+    let value = ''
+    try {
+      value = spec.getValue(state)
+    } catch (error) {
+      const key = `${id}:getValue`
+      if (!reported.has(key)) {
+        reported.add(key)
+        console.error(
+          `@openleaf-editor/ui: the getValue callback for toolbar item "${id}" threw. ` +
+            'The control is shown as Default. This is a bug in whatever registered it, ' +
+            'not in the editor.',
+          error,
+        )
+      }
+      value = ''
+    }
+
+    // Inherited sizes/families that are not in the preset list still need a
+    // visible option, or the select snaps to Default and looks cleared.
+    if (value !== '' && ![...select.options].some((option) => option.value === value)) {
+      const option = this.#doc.createElement('option')
+      option.value = value
+      option.textContent = value
+      select.appendChild(option)
+    }
+
+    if (select.value !== value) select.value = value
+
+    const enabled = spec.isEnabled
+      ? guarded(id, 'isEnabled', () => spec.isEnabled!(state))
+      : true
+    select.disabled = readonly || !enabled
   }
 
   /**
@@ -617,7 +779,14 @@ export class Toolbar {
       this.#focusables[this.#rovingIndex]?.focus()
       return
     }
-    // A toolbar containing only a select/custom control has no roving buttons.
+    // A toolbar of only selects or custom controls has no roving buttons. The
+    // shortcut is still documented; swallowing it with nowhere to go would make
+    // a valid `toolbar` attribute a silent no-op.
+    const declared = this.#selects.values().next().value
+    if (declared) {
+      declared.focus()
+      return
+    }
     this.#customs.find(({ control }) => control.focusable)?.control.focusable?.focus()
   }
 
