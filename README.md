@@ -197,8 +197,12 @@ First-party wrappers keep the same element underneath:
 ```ts
 import { OpenLeafEditor } from '@openleaf-editor/react'
 import { OpenLeafEditor as VueOpenLeaf } from '@openleaf-editor/vue'
-import { OpenLeafComponent } from '@openleaf-editor/angular'
 ```
+
+Angular has no wrapper package: it consumes the custom element directly, with
+`CUSTOM_ELEMENTS_SCHEMA` and a short directive for `[(value)]`. See
+[packages/angular](packages/angular) for the recipe and for why the wrapper that
+used to be published was withdrawn.
 
 ## Optional plugins
 
@@ -267,7 +271,6 @@ package owns, so on its own there is no control to reach it through.
 | [`@openleaf-editor/content-policy`](packages/content-policy) | URL, CSS, and embed rules shared by the editor and the sanitizers |
 | [`@openleaf-editor/react`](packages/react) | React wrapper around the custom element |
 | [`@openleaf-editor/vue`](packages/vue) | Vue 3 wrapper around the custom element |
-| [`@openleaf-editor/angular`](packages/angular) | Angular wrapper around the custom element |
 | [`@openleaf-editor/plugins-table`](packages/plugins-table) | Table editing controls and behavior |
 | [`@openleaf-editor/plugins-colour`](packages/plugins-colour) | Text and highlight color pickers |
 | [`@openleaf-editor/plugins-highlight`](packages/plugins-highlight) | Code highlighting and formatted source view |

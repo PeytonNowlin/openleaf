@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 const HARNESS = '/packages/element/test/e2e/harness-import.html'
 
 const editor = (page: Page) => page.getByRole('textbox', { name: 'Post body' })
-const value = (page: Page) => page.locator('#body').inputValue()
+const value = (page: Page) => stored(page)
 
 /** A Word "Save as Web Page" export, which is where the real value is. */
 const WORD_EXPORT = `<html xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -99,7 +100,7 @@ test.describe('dropping a file', () => {
   test('tells the author what happened', async ({ page }) => {
     await dropFile(page, 'notes.txt', 'text/plain', 'Imported line')
     await expect
-      .poll(() => page.locator('.ol-import-status').textContent(), { timeout: 3000 })
+      .poll(() => page.locator('.ol-live-region').textContent(), { timeout: 3000 })
       .toContain('imported')
   })
 
@@ -107,7 +108,7 @@ test.describe('dropping a file', () => {
     // Declining loudly beats inserting nothing and leaving the author guessing.
     await dropFile(page, 'sheet.xlsx', 'application/octet-stream', 'binary-ish')
     await expect
-      .poll(() => page.locator('.ol-import-status').textContent(), { timeout: 3000 })
+      .poll(() => page.locator('.ol-live-region').textContent(), { timeout: 3000 })
       .toContain('not a format')
   })
 

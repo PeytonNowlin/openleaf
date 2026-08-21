@@ -25,6 +25,16 @@ import type { FormatSpec } from '@openleaf-editor/core'
 /** What a custom `run` handler receives. */
 export interface ToolbarContext {
   view: EditorView
+  /**
+   * The id this item was registered under.
+   *
+   * A custom control must put it in `data-ol-id`, which is what the toolbar
+   * reads back to restore focus across a re-render. Every custom control in the
+   * tree wrote its human LABEL there instead, so focus restoration silently
+   * failed for all of them -- passing the id here is what makes getting it right
+   * the default rather than something each plugin has to remember.
+   */
+  id?: string
   /** The `<openleaf-editor>` element, for dispatching events or hosting dialogs. */
   host: HTMLElement
   /** Extra host-defined block formats available to select controls. */

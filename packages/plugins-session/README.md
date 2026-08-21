@@ -63,8 +63,9 @@ Installing does **not** rearrange your toolbar. Name the items you want:
 
 Once the plugin is loaded, every editor on the page:
 
-- Writes a draft to `localStorage` (debounced) keyed by the page path and the bound textarea id.
+- Writes a draft to `localStorage` (debounced) keyed by the page path, the query string, and the bound textarea id. The query string is part of the key so `/admin/edit?id=1` and `?id=2` are separate drafts; set a `draft-key` attribute on the editor to choose the key yourself.
 - Offers to restore that draft on load when it differs from the HTML the textarea carried.
+- Deletes drafts older than seven days, sweeping the stored keys when an editor starts.
 - Warns before the tab closes if the document differs from the last save (form submit or a successful Save action).
 
 ```ts
@@ -77,6 +78,8 @@ installSessionTools({
 ```
 
 Set `restore: false` if the server is the only source of truth and a browser draft would be surprising.
+
+A draft is the whole document, held in plaintext in `localStorage`. Any script on the origin can read it, as can anyone with the machine, and nothing here encrypts it. On a shared or kiosk machine, or for a document whose content is itself sensitive, turn `autosave` off rather than relying on the seven-day expiry.
 
 ## Save as a callback
 

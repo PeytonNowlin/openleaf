@@ -9,30 +9,11 @@
  * the author should not have to dismiss anything to carry on typing.
  */
 
-const REGION_CLASS = 'ol-import-status'
-
-function region(host: HTMLElement): HTMLElement {
-  const existing = host.querySelector<HTMLElement>(`.${REGION_CLASS}`)
-  if (existing) return existing
-
-  const el = host.ownerDocument.createElement('div')
-  el.className = `${REGION_CLASS} ol-live`
-  el.setAttribute('role', 'status')
-  el.setAttribute('aria-live', 'polite')
-  el.setAttribute('aria-atomic', 'true')
-  host.appendChild(el)
-  return el
-}
-
-export function announce(host: HTMLElement, message: string): void {
-  const el = region(host)
-  el.textContent = ''
-  // Cleared first so an identical message is announced again rather than
-  // being treated as unchanged.
-  setTimeout(() => {
-    el.textContent = message
-  }, 50)
-}
+// The region itself is the editor's, not this plugin's. Two polite regions on
+// one host race each other and a screen reader reads whichever it noticed, in
+// whichever order -- which is why this used to build a second one and why it
+// no longer does.
+export { announce } from '@openleaf-editor/ui'
 
 export function describeOutcome(
   fileCount: number,

@@ -35,8 +35,37 @@
  * and attributes you intend to keep. `policyForPreserved()` is the helper for
  * that, and it is deliberately explicit: there is no "allow whatever the editor
  * emitted" mode, because that is not a policy, it is a wish.
+ *
+ * ## The same interaction, one layer in
+ *
+ * The section above says "preserved elements", and reading it you would look
+ * for the unfamiliar tags in your content and widen the policy for those. That
+ * is no longer the whole of it. Core carries the attributes it does not model
+ * on **its own** nodes too (`coreNodesWithCarriedAttributes` in
+ * `packages/core/src/extensions.ts`), so a perfectly ordinary paragraph now
+ * round-trips as:
+ *
+ * ```html
+ * <p class="lead" data-cms="7" style="letter-spacing:0.05em">
+ * ```
+ *
+ * There is no unfamiliar tag to notice. `p` is in this policy already, allowing
+ * `dir` and `style` for three declarations, so `class`, `data-cms` and the
+ * `letter-spacing` are stripped on the server -- content the editor went out of
+ * its way to keep, deleted one layer later, with nothing in the markup to hint
+ * that the policy needed widening.
+ *
+ * `policyForCarriedAttributes()` is the same mechanism as `policyForPreserved`
+ * under a name that fits the case: you are not naming preserved tags, you are
+ * naming residue on tags the policy already knows. Both are explicit for the
+ * same reason -- the editor faithfully carries whatever an author pasted, so
+ * "allow what the editor emitted" is not a policy. And both stop at the same
+ * line: naming `letter-spacing` does not admit it, because a declaration is
+ * only ever permitted by a checker in css.ts that knows what a safe value of it
+ * looks like.
  */
 
+import { DROP_WITH_CONTENT } from '@openleaf-editor/content-policy/elements'
 import { deepFreeze } from './freeze.js'
 
 export interface ElementPolicy {
@@ -205,9 +234,18 @@ export const DEFAULT_POLICY: Policy = deepFreeze({
      * keeps them: they are what tells a screen reader which cells a header
      * governs, and stripping them turns a navigable table into a grid of
      * unrelated values.
+     *
+     * `bgcolor` is the carried-attribute case in miniature. The schema reads it
+     * into `background-color` and, since it does not model the attribute
+     * itself, carries it as residue -- so the editor emits both, and a policy
+     * listing only the declaration keeps half of what it stored. It is a colour
+     * word or a hex triplet with no URL in it, which is why it can be allowed
+     * at all.
      */
     table: {
-      attributes: ['border', 'cellpadding', 'cellspacing', 'width', 'align', 'summary', 'class', 'style'],
+      attributes: [
+        'border', 'cellpadding', 'cellspacing', 'width', 'align', 'summary', 'class', 'bgcolor', 'style',
+      ],
       styleProperties: ['background-color', 'width', 'height'],
     },
     /*
@@ -224,20 +262,20 @@ export const DEFAULT_POLICY: Policy = deepFreeze({
     tbody: {},
     tfoot: {},
     tr: {
-      attributes: ['class', 'align', 'valign', 'style'],
+      attributes: ['class', 'align', 'valign', 'bgcolor', 'style'],
       styleProperties: ['background-color', 'height'],
     },
     td: {
       attributes: [
         'colspan', 'rowspan', 'data-colwidth',
-        'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr', 'style',
+        'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr', 'bgcolor', 'style',
       ],
       styleProperties: ['background-color', 'padding'],
     },
     th: {
       attributes: [
         'colspan', 'rowspan', 'data-colwidth',
-        'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr', 'style',
+        'align', 'valign', 'width', 'height', 'class', 'scope', 'headers', 'abbr', 'bgcolor', 'style',
       ],
       styleProperties: ['background-color', 'padding'],
     },
@@ -255,9 +293,16 @@ export const DEFAULT_POLICY: Policy = deepFreeze({
   // them would have kept a `javascript:` value unchecked. `content-policy`
   // exists so the editor and the sanitizers cannot disagree about this; two
   // hand-maintained copies is exactly the divergence it was written to stop.
+  //
+  // `srcdoc` is deliberately NOT here, and its absence is the point. It holds a
+  // whole HTML document rather than a URL, so a scheme check finds no scheme,
+  // concludes "relative, therefore safe", and waves it through -- which is how
+  // an inline `<script>` rode into a same-origin frame. It is refused outright
+  // instead, by `NEVER_CARRY_ATTRIBUTES` in content-policy. Listing it here
+  // would be harmless only for as long as no element's policy permits it.
   urlAttributes: [
     'href', 'src', 'action', 'formaction', 'data', 'poster', 'background',
-    'cite', 'longdesc', 'srcdoc', 'xlink:href', 'ping',
+    'cite', 'longdesc', 'xlink:href', 'ping',
   ],
 
   // `data:` is absent deliberately. `data:text/html` is a full XSS vector, and
@@ -267,11 +312,11 @@ export const DEFAULT_POLICY: Policy = deepFreeze({
 
   allowRelativeUrls: true,
 
-  dropWithContent: [
-    'script', 'style', 'frame', 'frameset', 'object', 'embed',
-    'applet', 'form', 'input', 'button', 'select', 'textarea', 'option',
-    'link', 'meta', 'base', 'noscript', 'template', 'svg', 'math',
-  ],
+  // Spread from content-policy rather than written out again. This list and
+  // core's `NEVER_PRESERVE` are the same decision made in two packages; they
+  // were kept in step by hand and drifted, which is how the editor came to store
+  // `<svg>` and `<math>` that this list says to delete.
+  dropWithContent: [...DROP_WITH_CONTENT],
 })
 
 /**
@@ -355,6 +400,37 @@ export function policyForPreserved(
     urlSchemes: [...base.urlSchemes],
     dropWithContent: [...base.dropWithContent],
   }
+}
+
+/**
+ * Extend a policy to cover the residue core carries on its own nodes.
+ *
+ * Mechanically identical to `policyForPreserved` -- same merge, same refusal to
+ * allow a `dropWithContent` element -- and separate because the two cases do
+ * not look alike from where an integrator sits. `policyForPreserved` asks
+ * "which unfamiliar tags does my content contain?", and you answer it by
+ * looking for `<drupal-media>`. This one asks "which attributes ride along on
+ * the tags I already allow?", where there is no unfamiliar tag to find: the
+ * markup is `<p>`, and what goes missing is the `class` on it.
+ *
+ * ```ts
+ * const policy = policyForCarriedAttributes(DEFAULT_POLICY, {
+ *   p: ['class', 'data-cms'],
+ *   h2: ['class'],
+ *   // The object form, when a declaration has to survive as well.
+ *   blockquote: { attributes: ['style'], styleProperties: ['padding'] },
+ * })
+ * ```
+ *
+ * Widening, never replacing: `{ p: ['class'] }` adds `class` to what `p`
+ * already allowed. As with its sibling, a property named here still needs a
+ * checker in css.ts, and there is no "allow any value" mode.
+ */
+export function policyForCarriedAttributes(
+  base: Policy,
+  additions: Record<string, string[] | ElementPolicy>,
+): Policy {
+  return policyForPreserved(base, additions)
 }
 
 /** Every attribute permitted on an element under a policy. */

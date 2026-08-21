@@ -33,10 +33,17 @@
   "files": [
     "dist"
   ],
+  "sideEffects": [
+    "**/*.css"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/emit-css.mjs"
   },
-  "dependencies": {
+  "peerDependencies": {
+    "@openleaf-editor/core": "workspace:^",
+    "prosemirror-state": "^1.4.3"
+  },
+  "devDependencies": {
     "@openleaf-editor/core": "workspace:*",
     "prosemirror-state": "^1.4.3",
     "prosemirror-view": "^1.37.0"

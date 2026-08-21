@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   configureDOMPurify,
   DEFAULT_POLICY,
+  policyForCarriedAttributes,
   policyForPreserved,
   sanitizeHtml,
   toBleachConfig,
@@ -171,6 +172,66 @@ describe('the preservation interaction', () => {
     const extended = policyForPreserved(DEFAULT_POLICY, { div: ['class'] })
     expect(extended.elements['div']).toBeDefined()
     expect(DEFAULT_POLICY.elements['div']).toBeUndefined()
+  })
+})
+
+describe('the carried-attribute interaction', () => {
+  /*
+   * The same trap as above, one layer in. Core carries the attributes it does
+   * not model on its OWN nodes now, so `<p class="lead">` survives the editor
+   * and arrives at the server -- where a policy shaped around preserved
+   * *elements* has no entry for it, because `p` was never the element anybody
+   * thought needed widening.
+   */
+  const LEAD = '<p class="lead" data-cms="7" style="padding: 4px;">Lead.</p>'
+
+  it('the DEFAULT policy strips carried residue from a plain <p>', () => {
+    const out = clean(LEAD)
+    expect(out).not.toContain('class="lead"')
+    expect(out).not.toContain('data-cms')
+    expect(out).not.toContain('padding')
+    expect(out).toContain('Lead.')
+  })
+
+  it('policyForCarriedAttributes keeps it once the integrator says so', () => {
+    const policy = policyForCarriedAttributes(DEFAULT_POLICY, {
+      p: { attributes: ['class', 'data-cms', 'style'], styleProperties: ['padding'] },
+    })
+    expect(clean(LEAD, policy)).toBe(LEAD)
+  })
+
+  it('does not admit a declaration that has no checker, however it is named', () => {
+    // The line both helpers stop at: naming a property is not the same as
+    // knowing what a safe value of it looks like.
+    const policy = policyForCarriedAttributes(DEFAULT_POLICY, {
+      p: { attributes: ['style'], styleProperties: ['letter-spacing'] },
+    })
+    expect(clean('<p style="letter-spacing: 0.05em;">Lead.</p>', policy)).toBe('<p>Lead.</p>')
+  })
+
+  it('widens an element rather than replacing what it already allowed', () => {
+    const policy = policyForCarriedAttributes(DEFAULT_POLICY, { p: ['class'] })
+    const html = '<p class="lead" dir="ltr" style="text-align: center;">Lead.</p>'
+    expect(clean(html, policy)).toBe(html)
+  })
+
+  it('still strips dangerous attributes from a widened core element', () => {
+    const policy = policyForCarriedAttributes(DEFAULT_POLICY, { p: ['class'] })
+    const out = clean('<p class="ok" onclick="alert(1)">t</p>', policy)
+    expect(out).toContain('class="ok"')
+    expect(out).not.toMatch(/onclick/i)
+  })
+
+  it('refuses an element from the dropWithContent list, like its sibling', () => {
+    expect(() => policyForCarriedAttributes(DEFAULT_POLICY, { script: [] })).toThrow(
+      /dropWithContent/,
+    )
+  })
+
+  it('does not mutate the policy it extends', () => {
+    const extended = policyForCarriedAttributes(DEFAULT_POLICY, { p: ['class'] })
+    expect(extended.elements['p']?.attributes).toContain('class')
+    expect(DEFAULT_POLICY.elements['p']?.attributes).not.toContain('class')
   })
 })
 

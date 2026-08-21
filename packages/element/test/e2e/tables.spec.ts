@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 const CORE_ONLY = '/packages/element/test/e2e/harness.html'
 const WITH_TABLES = '/packages/element/test/e2e/harness-tables.html'
 
 const editor = (page: Page) => page.getByRole('textbox', { name: 'Post body' })
 const toolbar = (page: Page) => page.getByRole('toolbar', { name: 'Formatting' })
-const value = (page: Page) => page.locator('#body').inputValue()
+const value = (page: Page) => stored(page)
 
 /**
  * Both configurations are tested, because both ship. A regression that only

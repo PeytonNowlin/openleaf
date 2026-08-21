@@ -18,6 +18,7 @@
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
     "./css": { "types": "./dist/css.d.ts", "import": "./dist/css.js" },
+    "./elements": { "types": "./dist/elements.d.ts", "import": "./dist/elements.js" },
     "./embed": { "types": "./dist/embed.d.ts", "import": "./dist/embed.js" },
     "./freeze": { "types": "./dist/freeze.d.ts", "import": "./dist/freeze.js" },
     "./url": { "types": "./dist/url.d.ts", "import": "./dist/url.js" }

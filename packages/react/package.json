@@ -3,23 +3,34 @@
   "version": "0.1.0-beta.2",
   "description": "React wrapper for the OpenLeaf custom element. The editor itself stays framework-free.",
   "license": "Apache-2.0",
-  "publishConfig": { "access": "public" },
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/PeytonNowlin/openleaf.git",
     "directory": "packages/react"
   },
   "homepage": "https://peytonnowlin.github.io/openleaf/",
-  "bugs": { "url": "https://github.com/PeytonNowlin/openleaf/issues" },
+  "bugs": {
+    "url": "https://github.com/PeytonNowlin/openleaf/issues"
+  },
   "type": "module",
   "engines": { "node": ">=20" },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
-  "files": ["dist"],
-  "scripts": { "build": "tsc -p tsconfig.json" },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
   "peerDependencies": {
     "react": ">=18"
   },
@@ -28,6 +39,8 @@
   },
   "devDependencies": {
     "@types/react": "^19.1.8",
-    "react": "^19.1.0"
+    "@types/react-dom": "^19.2.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.2.8"
   }
 }

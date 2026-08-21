@@ -54,13 +54,33 @@ export const BUDGETS_KB = {
   // 110 against a measured 107.7: the headroom is deliberate. A budget that
   // passes by tens of bytes fails on the next contributor's unrelated patch --
   // 108 left three hundred bytes, which is that trap rather than a limit.
-  'openleaf.min.js': 110,
+  //
+  // Raised for the accessibility and correctness series. What bought the bytes,
+  // in the order it landed: visible focus indicators and the contrast fixes
+  // (a second border token, the forced-colours block, the menu focus ring), a
+  // keyboard-operable overflow panel that holds the real controls instead of
+  // clones, the preservation-layer drop lists, and the per-keystroke work.
+  //
+  // None of it is storage format this time, which is a change from every rise
+  // above -- it is the editor being operable without a mouse and legible at the
+  // contrast ratios WCAG asks for. That is not decoration to be traded against
+  // a number, so the number moved.
+  //
+  // Note es2022 (#74) gave 1.6 KB back first, so this rise is smaller than the
+  // work in it; the series is a net +6.7 over 108, not over 110.
+  //
+  // 118 against a measured 114.7, which is the same ~3 KB of deliberate
+  // headroom the paragraph above argues for: enough that the next unrelated
+  // patch does not fail on it, not so much that a real regression hides in it.
+  'openleaf.min.js': 118,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
   'openleaf-import.min.js': 12,
   // Larger than the editor, which is exactly why it is a separate file.
   'openleaf-import-docx.min.js': 140,
+  // 9.2/10 after find/replace and the announcement work. The tightest budget in
+  // the tree; raise it deliberately rather than shaving the feature if it goes.
   'openleaf-session.min.js': 10,
   'openleaf-insert.min.js': 20,
 }

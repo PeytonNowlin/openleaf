@@ -1,7 +1,7 @@
 import { EditorState, TextSelection } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
+import { CARRIED_ATTR } from '../src/extensions.js'
 import {
-  CARRIED_ATTR,
   coreSchema,
   parseFormatList,
   parseHtml,

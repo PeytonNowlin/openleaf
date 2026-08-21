@@ -109,16 +109,89 @@ function safeStyleValue(property: string, value: string | undefined): string | n
 
 function readStyle(el: Element, properties: readonly string[]): string | null {
   const declarations = parseDeclarations(el.getAttribute('style'))
+  const bgcolor = safeColor(el.getAttribute('bgcolor'))
   const out = new Map<string, string>()
   for (const name of properties) {
     const safe = safeStyleValue(name, declarations.get(name))
-    if (safe) out.set(name, safe)
-  }
-  if (!out.has('background-color')) {
-    const bg = safeColor(el.getAttribute('bgcolor'))
-    if (bg) out.set('background-color', bg)
+    /*
+     * `bgcolor` is the legacy spelling of `background-color`, read only when
+     * the declaration itself is absent.
+     *
+     * Resolved INSIDE the loop so that the result is in `properties` order
+     * whichever spelling it came from. Filling it in afterwards -- which is
+     * what this did -- appended the background last when it came from the
+     * attribute and emitted it first when it came from the declaration. A cell
+     * carrying both a `bgcolor` and a `padding` therefore serialized in one
+     * order on the first save and the other on the second: the round trip was
+     * not a fixed point, so the markup churned on every save, forever, with a
+     * real diff each time and nothing to show for it.
+     */
+    const value = safe ?? (name === 'background-color' ? bgcolor : null)
+    if (value) out.set(name, value)
   }
   return serializeDeclarations(out)
+}
+
+/**
+ * Remove from a node's carried residue every declaration the node itself
+ * consumed, and nothing else.
+ *
+ * The counterpart to `readStyle`. Because `style` is always carried verbatim
+ * (see extensions.ts for why a composite attribute cannot be "claimed" by a
+ * spec), a cell that stored `background-color:red;border:1px solid red` holds
+ * the whole string in residue and the background in its own attribute. Emitting
+ * both would write the background twice.
+ *
+ * The test is `safeTableStyleValue(...) !== null`, not "is this property in the
+ * list", and the difference is the point: `readStyle` drops a value it cannot
+ * validate, so `width:calc(100% - 3px)` never reached the node's attribute and
+ * must therefore stay in the residue. Matching on the property name alone would
+ * delete it from both places and lose it.
+ *
+ * `bgcolor` and `vertical-align` go for the same reason one level up: both are
+ * folded into a modelled attribute on the way in, so leaving the original in the
+ * residue emits two spellings of one fact -- which is the state `<td bgcolor>`
+ * was actually in, coming back as `style="background-color:#f00" bgcolor="#f00"`.
+ * This is the trade `scrubModelledStyle` already makes for `<p align="center">`:
+ * stored content converges on the spelling that is still valid HTML.
+ */
+function scrubTableStyle(properties: readonly string[], cell: boolean) {
+  return (carried: Record<string, string>): void => {
+    const style = carried['style']
+    if (style !== undefined) {
+      const declarations = parseDeclarations(style)
+      const before = declarations.size
+      for (const name of properties) {
+        const value = declarations.get(name)
+        if (value !== undefined && safeTableStyleValue(name, value) !== null) {
+          declarations.delete(name)
+        }
+      }
+      if (cell) {
+        const valign = declarations.get('vertical-align')
+        if (valign !== undefined && safeVAlign(valign) !== null) {
+          declarations.delete('vertical-align')
+        }
+      }
+      // Nothing consumed means nothing to rewrite: leave the author's spelling
+      // alone, for the same reason `scrubModelledStyle` does.
+      if (declarations.size !== before) {
+        const rest = serializeDeclarations(declarations)
+        if (rest !== null) carried['style'] = rest
+        else delete carried['style']
+      }
+    }
+    const bgcolor = carried['bgcolor']
+    if (bgcolor !== undefined && safeColor(bgcolor) !== null) delete carried['bgcolor']
+  }
+}
+
+/** The residue scrubs for the table node types, keyed by schema node name. */
+export const CARRIED_STYLE_SCRUBS: Record<string, (carried: Record<string, string>) => void> = {
+  table: scrubTableStyle(TABLE_STYLE_PROPS, false),
+  table_row: scrubTableStyle(ROW_STYLE_PROPS, false),
+  table_cell: scrubTableStyle(CELL_STYLE_PROPS, true),
+  table_header: scrubTableStyle(CELL_STYLE_PROPS, true),
 }
 
 function readAttrs(el: Element, names: readonly string[]): Record<string, string | null> {
@@ -276,6 +349,88 @@ function appendFurniture(table: Element, html: string, doc: Document, inert: boo
   }
 }
 
+/**
+ * `<thead>` and `<tfoot>`: recorded as row COUNTS, restored on serialization.
+ *
+ * The wrappers were skipped on parse and never written back, so every save
+ * flattened a grouped table into one undifferentiated `<tbody>`. That is not a
+ * cosmetic loss. `<thead>` is what makes a header repeat at the top of each page
+ * when a long table is printed, it is the hook `position: sticky` header CSS and
+ * every `thead th` selector in a site's stylesheet attach to, and it is the
+ * structural cue that tells assistive technology which rows label the data.
+ * Opening and saving an inherited document changed how the page rendered and
+ * printed, in a way nothing in the editor showed.
+ *
+ * A count rather than a wrapper node, for the reason spelled out above
+ * `readFurniture`: `prosemirror-tables` computes its cell map with
+ * `height = table.childCount` and reads `table.child(row)` as a row, so a
+ * `thead` node between the table and its rows would shift every coordinate the
+ * library derives and break cell selection, column resizing and the row and
+ * column commands. The rows stay direct children; only the knowledge of where
+ * the groups were is stored beside them.
+ *
+ * Counted from the ends and only from the ends. A `<tfoot>` written before its
+ * `<tbody>` -- required by HTML 4, still common in old content -- leaves rows
+ * that are not trailing, so no footer is recorded and that table keeps today's
+ * behaviour. The alternative is taking the last N rows regardless and moving
+ * somebody's data into a `<tfoot>` it never belonged to, which is worse than the
+ * loss it would be fixing.
+ */
+const tableSectionRows = new WeakMap<Element, { header: number; footer: number }>()
+
+/**
+ * Row counts for a `<table>` element this module rendered, or undefined.
+ *
+ * The serialization pass in html.ts needs to know how many of a table's rows
+ * came out of a `<thead>`, and `toDOM` cannot tell it in the output: ProseMirror
+ * allows exactly one `contentDOM`, so rows cannot flow into two sections. The
+ * count therefore travels beside the DOM rather than inside it.
+ *
+ * Out of band for the same reason `preservedElements` is (see preserve.ts): a
+ * `data-` attribute stripped after the fact cannot distinguish the attribute
+ * this code just added from the identical attribute in a customer's document,
+ * and deleting theirs is a worse bug than the one being fixed. A WeakMap cannot
+ * collide with content and needs no cleanup pass.
+ */
+export function tableSectionRowCounts(el: Element): { header: number; footer: number } | undefined {
+  return tableSectionRows.get(el)
+}
+
+/**
+ * Count the rows a table's own `<thead>` and `<tfoot>` contribute.
+ *
+ * Direct children only, at both levels. `querySelectorAll` would attribute a
+ * nested table's header to the outer table and lift the wrong rows on the way
+ * out -- a nested table is the case where being off by a row is silent and
+ * permanent.
+ *
+ * The rows are walked in the order the parser will see them, because that is the
+ * order they will be in on the node. A `<thead>` that is not first, or a
+ * `<tfoot>` that is not last, contributes nothing: the counts describe a leading
+ * and a trailing run, and anything else cannot be expressed as one.
+ */
+function readSectionRows(el: Element): { header: number; footer: number } {
+  const owners: string[] = []
+  for (const child of Array.from(el.children)) {
+    const name = child.nodeName.toLowerCase()
+    if (name === 'tr') {
+      owners.push('tbody')
+      continue
+    }
+    if (name !== 'thead' && name !== 'tbody' && name !== 'tfoot') continue
+    for (const row of Array.from(child.children)) {
+      if (row.nodeName.toLowerCase() === 'tr') owners.push(name)
+    }
+  }
+  let header = 0
+  while (header < owners.length && owners[header] === 'thead') header += 1
+  let footer = 0
+  while (footer < owners.length - header && owners[owners.length - 1 - footer] === 'tfoot') {
+    footer += 1
+  }
+  return { header, footer }
+}
+
 export const table: NodeSpec = {
   content: 'table_row+',
   tableRole: 'table',
@@ -285,17 +440,24 @@ export const table: NodeSpec = {
     ...legacyDefaults(TABLE_LEGACY_ATTRS),
     caption: { default: null },
     colgroup: { default: null },
+    headerRows: { default: 0 },
+    footerRows: { default: 0 },
     style: { default: null },
   },
   parseDOM: [
     {
       tag: 'table',
-      getAttrs: (dom) => ({
-        ...readAttrs(dom as Element, TABLE_LEGACY_ATTRS),
-        caption: readFurniture(dom as Element, ['caption']),
-        colgroup: readFurniture(dom as Element, ['colgroup', 'col']),
-        style: readStyle(dom as Element, TABLE_STYLE_PROPS),
-      }),
+      getAttrs: (dom) => {
+        const sections = readSectionRows(dom as Element)
+        return {
+          ...readAttrs(dom as Element, TABLE_LEGACY_ATTRS),
+          caption: readFurniture(dom as Element, ['caption']),
+          colgroup: readFurniture(dom as Element, ['colgroup', 'col']),
+          headerRows: sections.header,
+          footerRows: sections.footer,
+          style: readStyle(dom as Element, TABLE_STYLE_PROPS),
+        }
+      },
     },
     /*
      * `tbody`, `thead` and `tfoot` are SKIPPED rather than ignored: the wrapper
@@ -305,6 +467,12 @@ export const table: NodeSpec = {
      * These rules also have to exist because the preservation layer's catch-all
      * would otherwise claim a `<tbody>` as unrecognised markup and produce an
      * opaque atom that `table_row+` refuses to accept.
+     *
+     * Skipping loses which group each row was in, which is why `headerRows` and
+     * `footerRows` are counted separately in `getAttrs` and put back on the way
+     * out. Attributes ON the wrapper -- a `<thead class="sticky">` -- are still
+     * dropped; recording the grouping is the fidelity win worth having, and a
+     * second residue channel for an element that is not a node is not.
      */
     { tag: 'tbody', skip: true },
     { tag: 'thead', skip: true },
@@ -327,7 +495,14 @@ export const table: NodeSpec = {
     const caption = node.attrs['caption'] as string | null
     const colgroup = node.attrs['colgroup'] as string | null
     const style = node.attrs['style'] as string | null
-    if (!caption && !colgroup && !style) return ['table', attrs, ['tbody', 0]]
+    const header = (node.attrs['headerRows'] as number) || 0
+    const footer = (node.attrs['footerRows'] as number) || 0
+    // A table with sections has to take the element path even when it has no
+    // furniture: the row counts are keyed by the element, and the array path
+    // never produces one to key them by.
+    if (!caption && !colgroup && !style && !header && !footer) {
+      return ['table', attrs, ['tbody', 0]]
+    }
 
     /*
      * Furniture forces a real element rather than an output-spec array, because
@@ -348,6 +523,15 @@ export const table: NodeSpec = {
 
     const tbody = doc.createElement('tbody')
     table.appendChild(tbody)
+    /*
+     * Every row goes into the one `<tbody>`, including the header rows, and the
+     * split back into `<thead>`/`<tfoot>` happens after serialization in
+     * html.ts. It cannot happen here: a node has exactly one `contentDOM`, so
+     * there is no output spec that means "the first two rows here, the rest
+     * there". This is also why the editor shows a grouped table as one body --
+     * the grouping survives the save, it just is not visible while typing.
+     */
+    if (header || footer) tableSectionRows.set(table, { header, footer })
     return { dom: table, contentDOM: tbody }
   },
 }

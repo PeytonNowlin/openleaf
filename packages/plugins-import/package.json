@@ -32,14 +32,19 @@
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
-  "dependencies": {
-    "@openleaf-editor/core": "workspace:*",
-    "@openleaf-editor/paste": "workspace:*",
-    "@openleaf-editor/ui": "workspace:*",
+  "peerDependencies": {
+    "@openleaf-editor/core": "workspace:^",
+    "@openleaf-editor/paste": "workspace:^",
+    "@openleaf-editor/ui": "workspace:^",
     "prosemirror-state": "^1.4.3",
     "prosemirror-view": "^1.37.0"
   },
   "devDependencies": {
-    "mammoth": "^1.8.0"
+    "@openleaf-editor/core": "workspace:*",
+    "@openleaf-editor/paste": "workspace:*",
+    "@openleaf-editor/ui": "workspace:*",
+    "mammoth": "^1.8.0",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-view": "^1.37.0"
   }
 }

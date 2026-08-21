@@ -7,6 +7,11 @@
  * "end.start" match across a break the author cannot see as one string. Nor do
  * they span an inline leaf -- an image, a hard break -- because a match that
  * covered one would take it with it on Replace.
+ *
+ * Every offset in that concatenated text has to name a document position, so the
+ * index carries a parallel `pos` table with one entry per UTF-16 code unit. That
+ * table is the reason case folding happens per code point while the text is
+ * built rather than with one `toLowerCase()` at the end: see `foldText`.
  */
 
 import type { Mark, Node as PMNode } from 'prosemirror-model'
@@ -23,12 +28,40 @@ export interface SearchState {
   caseSensitive: boolean
   matches: SearchMatch[]
   index: number
+  /**
+   * How many matches the transaction that produced this state replaced.
+   *
+   * Zero on every other transaction. Replacing rebuilds the matches against the
+   * new document, which finds none of the old ones, so the count of what was
+   * done has to be carried out of the command rather than recovered afterwards.
+   */
+  replaced: number
+  /**
+   * The decorations for `matches`, built once here.
+   *
+   * `props.decorations` is asked on every view update, doc change or not, and
+   * rebuilding a set of tens of thousands of inline decorations each time was
+   * enough to be felt. Note what this does and does not save: a view update that
+   * carries no search meta -- a scroll, a focus, a plain selection change -- now
+   * costs nothing, but stepping between hits still rebuilds the set, because the
+   * current match wears a different class and every decoration is rebuilt to
+   * move it. What stepping no longer does is search the document again, which
+   * was the larger half of that cost.
+   */
+  decorations: DecorationSet
 }
 
 export const searchKey = new PluginKey<SearchState>('openleaf-search')
 
 export function emptySearchState(): SearchState {
-  return { query: '', caseSensitive: false, matches: [], index: -1 }
+  return {
+    query: '',
+    caseSensitive: false,
+    matches: [],
+    index: -1,
+    replaced: 0,
+    decorations: DecorationSet.empty,
+  }
 }
 
 /** Stands in for an inline leaf, so a query cannot match straight through one. */
@@ -36,37 +69,142 @@ const ATOM = '\uFFFC'
 
 interface TextIndex {
   text: string
-  /** Document position for each character in `text`. -1 marks a boundary. */
+  /** Document position for each code unit in `text`. -1 marks a boundary. */
   pos: number[]
 }
 
-function indexText(doc: PMNode): TextIndex {
-  let text = ''
+/**
+ * Lowercases one code point without changing how many code units it occupies.
+ *
+ * `String.prototype.toLowerCase` is not length-preserving. Across the whole of
+ * Unicode exactly one code point expands -- U+0130 `İ`, which lowercases to `i`
+ * plus a combining dot above -- and none contract. Folding a whole string with
+ * it slides every character after an `İ` one place out of step with the position
+ * table: searching "İstanbul hello" for "hello" found nothing, and Replace All
+ * rewrote the range one character to the left, eating the space and a letter.
+ *
+ * Truncating `İ` to the width it came in at drops the combining dot, so it folds
+ * to a plain `i`. That is what lets a query typed as "istanbul" find "İstanbul",
+ * which is the point, but it cuts both ways: a query of `İ` folds to `i` and so
+ * also matches every plain `i` in the document. Turkish casing does treat the
+ * two as one letter, and no other fold can misplace a match, but a one-character
+ * `İ` query replacing every `i` on the page is a surprise worth knowing about.
+ *
+ * Final sigma is mapped explicitly. Greek lowercases U+03A3 `Σ` to `ς` at the
+ * end of a word and `σ` elsewhere, a rule that needs the surrounding text and so
+ * cannot exist in a per-code-point fold: `Σ` always became `σ` while `ς` never
+ * folded, which stopped "ΜΑΘΗΤΗΣ" matching a query of "μαθητης" in either
+ * direction. Since `-ος`, `-ης` and `-ας` are the commonest Greek noun endings,
+ * that is most of the language. Folding both forms to `σ` -- which is what
+ * Unicode's own simple case folding does, `03C2; C; 03C3` -- settles it in one
+ * code unit, so the position table is untouched.
+ */
+function foldCodePoint(raw: string, units: number): string {
+  if (raw === 'ς') return 'σ'
+  const lower = raw.toLowerCase()
+  if (lower.length === units) return lower
+  if (lower.length > units) return lower.slice(0, units)
+  return raw
+}
+
+/**
+ * Case-folds a string code point by code point, preserving its code unit length.
+ *
+ * Both sides of the search go through this, so the query and the document fold
+ * the same way. That matters more than which way it folds: a whole-string
+ * `toLowerCase()` on one side and a per-code-point fold on the other would
+ * disagree about exactly the characters this file exists to get right.
+ */
+function foldText(input: string): string {
+  const chunks: string[] = []
+  let runStart = 0
+  let at = 0
+
+  while (at < input.length) {
+    const code = input.charCodeAt(at)
+    // ASCII is the overwhelming majority of most documents, and `A`-`Z` is the
+    // only part of it that folds -- worth spending a comparison to skip a slice
+    // and a `toLowerCase` call per character.
+    if (code < 0x80) {
+      if (code >= 0x41 && code <= 0x5a) {
+        if (runStart < at) chunks.push(input.slice(runStart, at))
+        chunks.push(String.fromCharCode(code + 0x20))
+        runStart = at + 1
+      }
+      at += 1
+      continue
+    }
+
+    let units = 1
+    if (code >= 0xd800 && code <= 0xdbff && at + 1 < input.length) {
+      const trail = input.charCodeAt(at + 1)
+      // A lone high surrogate is left as the single unit it is. Folding the pair
+      // as a unit is what lets a non-BMP character -- Deseret, Adlam, Warang
+      // Citi -- fold at all; per code unit, each half is unchanged.
+      if (trail >= 0xdc00 && trail <= 0xdfff) units = 2
+    }
+
+    const raw = input.slice(at, at + units)
+    const folded = foldCodePoint(raw, units)
+    if (folded !== raw) {
+      if (runStart < at) chunks.push(input.slice(runStart, at))
+      chunks.push(folded)
+      runStart = at + units
+    }
+    at += units
+  }
+
+  if (chunks.length === 0) return input
+  if (runStart < input.length) chunks.push(input.slice(runStart))
+  return chunks.join('')
+}
+
+function indexText(doc: PMNode, fold: boolean): TextIndex {
+  // Accumulated in a list rather than with `+=`. V8 represents a `+=` chain as
+  // an unflattened rope, and `endsWith` cannot run on a rope -- asking it once
+  // per block flattened the entire accumulated string, making the walk
+  // O(characters x blocks). The two locals below answer the same questions
+  // without ever looking at the accumulated text.
+  const parts: string[] = []
   const pos: number[] = []
+  let emitted = false
+  let lastWasSeparator = false
 
   doc.nodesBetween(0, doc.content.size, (node, nodePos) => {
-    if (node.isBlock && text.length > 0 && !text.endsWith('\n')) {
-      text += '\n'
+    // Whether a separator was just written, rather than whether the last
+    // character is a newline. A code block is parsed with its whitespace intact,
+    // so its text can genuinely end in a newline -- reading the character could
+    // not tell that from a separator, suppressed the one before the next block,
+    // and left the two blocks adjacent in the index. A query of "a\nb" then
+    // matched across the boundary and Replace All swallowed the block after it.
+    if (node.isBlock && emitted && !lastWasSeparator) {
+      parts.push('\n')
       pos.push(-1)
+      lastWasSeparator = true
     }
-    if (node.isText && node.text) {
-      for (let i = 0; i < node.text.length; i += 1) {
-        text += node.text[i]
-        pos.push(nodePos + i)
-      }
+
+    const text = node.isText ? node.text : undefined
+    if (text !== undefined && text.length > 0) {
+      parts.push(fold ? foldText(text) : text)
+      for (let i = 0; i < text.length; i += 1) pos.push(nodePos + i)
+      emitted = true
+      lastWasSeparator = false
       return true
     }
+
     // An inline leaf contributes no text of its own. Skipping it silently would
     // leave the characters either side adjacent in the index, so "hello" would
     // match across the image in `<p>hel<img>lo</p>` and Replace would delete it.
     if (node.isInline) {
-      text += ATOM
+      parts.push(ATOM)
       pos.push(-1)
+      emitted = true
+      lastWasSeparator = false
     }
     return true
   })
 
-  return { text, pos }
+  return { text: parts.join(''), pos }
 }
 
 export function findMatches(
@@ -76,14 +214,28 @@ export function findMatches(
 ): SearchMatch[] {
   if (query.length === 0) return []
 
-  const { text, pos } = indexText(doc)
-  const hay = options.caseSensitive === true ? text : text.toLowerCase()
-  const needle = options.caseSensitive === true ? query : query.toLowerCase()
+  const caseSensitive = options.caseSensitive === true
+  let { text, pos } = indexText(doc, !caseSensitive)
+  let needle = caseSensitive ? query : foldText(query)
+
+  // Match offsets are looked up in `pos` by their offset in `text`, so the two
+  // must hold exactly one entry per code unit. `foldText` guarantees it by
+  // construction and this is the only check on it -- deliberately at the whole
+  // document, because a per-node repair would quietly make one node behave
+  // differently from the rest and this fallback would never run. If a change
+  // ever breaks the guarantee, the whole search degrades to an exact one rather
+  // than indexing into a table that no longer lines up and handing Replace a
+  // range that is off by the drift.
+  if (text.length !== pos.length) {
+    ;({ text, pos } = indexText(doc, false))
+    needle = query
+  }
+
   const matches: SearchMatch[] = []
   let start = 0
 
-  while (start <= hay.length - needle.length) {
-    const at = hay.indexOf(needle, start)
+  while (start <= text.length - needle.length) {
+    const at = text.indexOf(needle, start)
     if (at < 0) break
 
     let crosses = false
@@ -98,27 +250,33 @@ export function findMatches(
     if (!crosses && fromPos !== undefined && last !== undefined && fromPos >= 0 && last >= 0) {
       matches.push({ from: fromPos, to: last + 1 })
     }
+    // Advancing past the whole needle is what keeps matches disjoint, which
+    // `replaceAll` relies on to rewrite them without remapping.
     start = at + Math.max(needle.length, 1)
   }
 
   return matches
 }
 
-function rebuild(state: EditorState, current: SearchState): SearchState {
-  const matches = findMatches(state.doc, current.query, { caseSensitive: current.caseSensitive })
-  let index = current.index
-  if (matches.length === 0) index = -1
-  else if (index >= matches.length) index = matches.length - 1
-  return { ...current, matches, index }
-}
-
-function decorationSet(doc: PMNode, search: SearchState): DecorationSet {
-  const decorations = search.matches.map((match, i) =>
+function decorationSet(doc: PMNode, matches: SearchMatch[], index: number): DecorationSet {
+  if (matches.length === 0) return DecorationSet.empty
+  const decorations = matches.map((match, i) =>
     Decoration.inline(match.from, match.to, {
-      class: i === search.index ? 'ol-find-hit ol-find-hit-current' : 'ol-find-hit',
+      class: i === index ? 'ol-find-hit ol-find-hit-current' : 'ol-find-hit',
     }),
   )
-  return decorations.length === 0 ? DecorationSet.empty : DecorationSet.create(doc, decorations)
+  return DecorationSet.create(doc, decorations)
+}
+
+function clampIndex(index: number, count: number): number {
+  if (count === 0) return -1
+  return index >= count ? count - 1 : index
+}
+
+function rebuild(state: EditorState, current: SearchState): SearchState {
+  const matches = findMatches(state.doc, current.query, { caseSensitive: current.caseSensitive })
+  const index = clampIndex(current.index, matches.length)
+  return { ...current, matches, index, decorations: decorationSet(state.doc, matches, index) }
 }
 
 export function searchPlugin(): Plugin {
@@ -128,15 +286,41 @@ export function searchPlugin(): Plugin {
       init: () => emptySearchState(),
       apply(tr, previous, _old, state) {
         const meta = tr.getMeta(searchKey) as Partial<SearchState> | undefined
-        const next: SearchState = meta ? { ...previous, ...meta } : previous
-        if (tr.docChanged || meta) return rebuild(state, next)
-        return next
+
+        if (!meta) {
+          if (tr.docChanged) return rebuild(state, { ...previous, replaced: 0 })
+          // Nothing the search cares about moved, so the matches and the set
+          // built from them still stand. `replaced` is the one thing that must
+          // not survive: it is feedback for one transaction, not a fact.
+          return previous.replaced === 0 ? previous : { ...previous, replaced: 0 }
+        }
+
+        const next: SearchState = { ...previous, replaced: 0, ...meta }
+        // Nothing that decides what matches has moved: same query, same folding,
+        // same document, and the meta is not handing us a list of its own.
+        const matchesStillStand =
+          next.query === previous.query &&
+          next.caseSensitive === previous.caseSensitive &&
+          meta.matches === undefined &&
+          !tr.docChanged
+        if (matchesStillStand) {
+          // Stepping between hits changes only which one is current. Searching
+          // the document again for that is the cost paid on every press of Next
+          // on a document with a lot of hits.
+          const index = clampIndex(next.index, previous.matches.length)
+          return {
+            ...next,
+            matches: previous.matches,
+            index,
+            decorations: decorationSet(state.doc, previous.matches, index),
+          }
+        }
+        return rebuild(state, next)
       },
     },
     props: {
       decorations(state) {
-        const search = searchKey.getState(state)
-        return search ? decorationSet(state.doc, search) : DecorationSet.empty
+        return searchKey.getState(state)?.decorations ?? DecorationSet.empty
       },
     },
   })
@@ -218,15 +402,27 @@ export function replaceCurrent(replacement: string): Command {
   return (state, dispatch) => {
     const search = searchKey.getState(state)
     if (!search) return false
-    const match = search.matches[search.index]
-    if (!match) return false
+    // Opening the find bar leaves no current match -- `setSearch` sets -1 -- so
+    // without this Replace did nothing at all until Next had been pressed, on a
+    // button that was never disabled and reported nothing back. Replace now acts
+    // on the hit Next would have taken you to.
+    const index = search.index >= 0 ? search.index : stepMatch(state, 1)
+    const match = index === null ? undefined : search.matches[index]
+    if (!match || index === null) return false
     if (!dispatch) return true
 
     const marks = marksAt(state.doc, match.from)
     let tr = state.tr
     if (replacement.length === 0) tr = tr.delete(match.from, match.to)
     else tr = tr.replaceWith(match.from, match.to, state.schema.text(replacement, marks))
-    dispatch(tr.setMeta(searchKey, { query: search.query, caseSensitive: search.caseSensitive }))
+    dispatch(
+      tr.setMeta(searchKey, {
+        query: search.query,
+        caseSensitive: search.caseSensitive,
+        index,
+        replaced: 1,
+      }),
+    )
     return true
   }
 }
@@ -237,17 +433,28 @@ export function replaceAll(replacement: string): Command {
     if (!search || search.matches.length === 0) return false
     if (!dispatch) return true
 
+    const count = search.matches.length
     let tr = state.tr
-    for (let i = search.matches.length - 1; i >= 0; i -= 1) {
+    // Back to front, and with the original positions. Matches are disjoint and
+    // in ascending order, so replacing a later one cannot move an earlier one --
+    // mapping each position through the accumulated steps asked `Mapping.map` to
+    // walk every step taken so far, twice per match, which made a document-wide
+    // replace quadratic in the number of hits.
+    for (let i = count - 1; i >= 0; i -= 1) {
       const match = search.matches[i]
       if (!match) continue
-      const mappedFrom = tr.mapping.map(match.from)
-      const mappedTo = tr.mapping.map(match.to)
-      const marks = marksAt(tr.doc, mappedFrom)
-      if (replacement.length === 0) tr = tr.delete(mappedFrom, mappedTo)
-      else tr = tr.replaceWith(mappedFrom, mappedTo, state.schema.text(replacement, marks))
+      const marks = marksAt(state.doc, match.from)
+      if (replacement.length === 0) tr = tr.delete(match.from, match.to)
+      else tr = tr.replaceWith(match.from, match.to, state.schema.text(replacement, marks))
     }
-    dispatch(tr.setMeta(searchKey, { query: search.query, caseSensitive: search.caseSensitive, index: -1 }))
+    dispatch(
+      tr.setMeta(searchKey, {
+        query: search.query,
+        caseSensitive: search.caseSensitive,
+        index: -1,
+        replaced: count,
+      }),
+    )
     return true
   }
 }

@@ -801,13 +801,20 @@ import { OpenLeafEditor } from '@openleaf-editor/react'
 import { OpenLeafEditor } from '@openleaf-editor/vue'
 &lt;OpenLeafEditor v-model="html" toolbar="bold italic | link" /&gt;
 
-// Angular — standalone component, [(value)] two-way binding
-import { OpenLeafComponent } from '@openleaf-editor/angular'
-&lt;openleaf [(value)]="html" toolbar="bold italic | link"&gt;&lt;/openleaf&gt;</pre>
+// Angular — the element directly, with CUSTOM_ELEMENTS_SCHEMA
+import '@openleaf-editor/element'
+&lt;openleaf-editor toolbar="bold italic | link" aria-label="Post body"&gt;&lt;/openleaf-editor&gt;</pre>
 
 <p>
-  If you are not using a framework, skip all three. The element works on its own
-  and that is the supported path, not a fallback.
+  There is no Angular wrapper package. Angular consumes custom elements natively,
+  and a short directive in your own app covers <code>[(value)]</code> — see
+  <a href="https://github.com/PeytonNowlin/openleaf/tree/main/packages/angular">packages/angular</a>
+  for the recipe.
+</p>
+
+<p>
+  If you are not using a framework, skip the wrappers. The element works on its
+  own and that is the supported path, not a fallback.
 </p>
 
 <h2 id="use">Using it</h2>
@@ -861,8 +868,14 @@ import { OpenLeafComponent } from '@openleaf-editor/angular'
   var output = document.getElementById('output')
   var bound = document.getElementById('body')
 
-  function renderOutput() {
-    output.textContent = bound.value
+  /* The event carries the HTML, so a listener that wants it does not have to
+   * wait for the textarea to catch up -- the textarea is written at submit, at
+   * teardown and on a short trailing timer, not on every keystroke. Reading
+   * `bound.value` is the fallback for the first render, where there is no
+   * event. */
+  function renderOutput(event) {
+    var detail = event && event.detail
+    output.textContent = detail && typeof detail.value === 'string' ? detail.value : bound.value
   }
   renderOutput()
   main.addEventListener('openleaf:change', renderOutput)

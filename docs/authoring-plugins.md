@@ -32,7 +32,7 @@ is the better illustration, it says so.
 | Add ProseMirror plugins (behaviour, decorations, input rules, node views) | `registerEditorPlugin(factory)` | Works |
 | Add a toolbar button with active/enabled state | `registerToolbarItem(spec)` | Works |
 | Add icons | `registerIcons(paths)` | Works |
-| Push state a predicate cannot derive | `element.toolbar?.setItemState(id, …)` | Works, per editor |
+| Push state a predicate cannot derive | `element.toolbarInstance?.setItemState(id, …)` | Works, per editor |
 | Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins |
 | Reach the live view | `element.view` | Works |
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
@@ -903,14 +903,14 @@ Every bundle carries a budget in `BUDGETS_KB` in `scripts/bundle-budgets.mjs`,
 and the gate fails on the first one over. Gzipped, measured against budget:
 
 ```
-openleaf.min.js            108.1 / 110
-openleaf-tables.min.js      17.9 /  25
-openleaf-import-docx.min.js 122.9 / 140
-openleaf-session.min.js      7.1 /  10
-openleaf-highlight.min.js    6.1 /  15
-openleaf-insert.min.js       5.0 /  20
-openleaf-colour.min.js       3.7 /  15
-openleaf-import.min.js       2.8 /  12
+openleaf.min.js            114.7 / 118
+openleaf-import-docx.min.js 123.8 / 140
+openleaf-tables.min.js       18.1 /  25
+openleaf-session.min.js       9.2 /  10
+openleaf-highlight.min.js     6.7 /  15
+openleaf-insert.min.js        5.9 /  20
+openleaf-colour.min.js        5.4 /  15
+openleaf-import.min.js        3.3 /  12
 ```
 
 Run `node scripts/bundle-budgets.mjs` for the current numbers rather than
@@ -1014,10 +1014,22 @@ each element:
 
 ```ts
 for (const el of document.querySelectorAll('openleaf-editor')) {
-  ;(el as HTMLElement & { toolbar?: { setItemState(id: string, s: object): void } })
-    .toolbar?.setItemState('callout', { enabled: false })
+  el.toolbarInstance?.setItemState('callout', { enabled: false })
 }
 ```
+
+No cast. `@openleaf-editor/element` augments `HTMLElementTagNameMap`, so
+`querySelectorAll('openleaf-editor')` yields `OpenLeafEditor` and every member is
+typed. This used to read
+`(el as HTMLElement & { toolbar?: { setItemState(id: string, s: object): void } })`
+— a *weaker* structural type, hand-written here, for a member the class already
+typed properly, because there was no augmentation anywhere in the repository.
+
+The accessor is `toolbarInstance` rather than `toolbar`. `toolbar` is the
+attribute-reflecting property, as it is on any custom element: `el.toolbar =
+'bold italic'` sets the layout. It could not be both, and it being the `Toolbar`
+object was a silent no-op in every framework binding — see the note in
+`packages/element/src/index.ts`.
 
 Prefer `isActive` / `isEnabled` wherever the answer is derivable from the
 document and the selection. Reach for `setItemState` only when it genuinely is

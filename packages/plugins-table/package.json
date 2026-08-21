@@ -28,17 +28,22 @@
   "files": [
     "dist"
   ],
+  "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
-  "dependencies": {
+  "peerDependencies": {
+    "@openleaf-editor/core": "workspace:^",
+    "@openleaf-editor/ui": "workspace:^",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-tables": "^1.6.4"
+  },
+  "devDependencies": {
     "@openleaf-editor/core": "workspace:*",
     "@openleaf-editor/ui": "workspace:*",
-    "prosemirror-keymap": "^1.2.2",
     "prosemirror-model": "^1.24.1",
     "prosemirror-state": "^1.4.3",
     "prosemirror-tables": "^1.6.4",
-    "prosemirror-transform": "^1.10.2",
     "prosemirror-view": "^1.37.0"
   }
 }

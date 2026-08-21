@@ -37,6 +37,7 @@ import {
   parseHtml,
   roundTrip,
   safeColor,
+  safeListStyle,
   serializeHtml,
   setBackgroundColor,
   setTextAlign,
@@ -457,6 +458,41 @@ describe('safeColor', () => {
       '',
     ]) {
       expect(safeColor(value)).toBeNull()
+    }
+  })
+})
+
+describe('safeListStyle', () => {
+  it('maps the spellings a list style can arrive in', () => {
+    expect(safeListStyle('disc')).toBe('disc')
+    expect(safeListStyle('DISC')).toBe('disc')
+    expect(safeListStyle('lower-latin')).toBe('lower-alpha')
+    expect(safeListStyle('upper-latin')).toBe('upper-alpha')
+    expect(safeListStyle('lower-greek')).toBe('lower-greek')
+    expect(safeListStyle(' square ')).toBe('square')
+  })
+
+  it('keeps the HTML `type` letters case-sensitive', () => {
+    // `a` and `A` are different lists, so the exact spelling has to win over
+    // the lowercased fallback.
+    expect(safeListStyle('a')).toBe('lower-alpha')
+    expect(safeListStyle('A')).toBe('upper-alpha')
+    expect(safeListStyle('i')).toBe('lower-roman')
+    expect(safeListStyle('I')).toBe('upper-roman')
+    expect(safeListStyle('1')).toBe('decimal')
+  })
+
+  it('does not answer with something off Object.prototype', () => {
+    // The alias table used to be an object literal, so `<ol type="constructor">`
+    // round-tripped to `list-style-type:function Object() { [native code] }`.
+    for (const key of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__']) {
+      expect(safeListStyle(key)).toBeNull()
+    }
+  })
+
+  it('refuses anything that is not a known list style', () => {
+    for (const value of ['', 'none', 'url(https://evil.example/x)', 'disc;position:fixed']) {
+      expect(safeListStyle(value)).toBeNull()
     }
   })
 })

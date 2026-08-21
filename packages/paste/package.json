@@ -32,6 +32,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
+  "dependencies": {
+    "@openleaf-editor/content-policy": "workspace:*"
+  },
   "devDependencies": {
     "@openleaf-editor/core": "workspace:*"
   }

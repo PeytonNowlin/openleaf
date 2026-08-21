@@ -8,7 +8,7 @@
 
 import { shortcutFor, shortcuts } from '@openleaf-editor/core'
 import { ensureDialogStyles } from './dialog.js'
-import { t } from './i18n.js'
+import { t, withLocale } from './i18n.js'
 import { ensureStyles } from './styles.js'
 
 const HELP_CHROME: Array<[string, string]> = [
@@ -17,19 +17,39 @@ const HELP_CHROME: Array<[string, string]> = [
   ['F1', 'Open this help dialog'],
 ]
 
-export function promptHelp(doc: Document): void {
+/**
+ * Unique per dialog.
+ *
+ * `ol-help-title` was a constant, so a second editor's help dialog carried the
+ * same id and `aria-labelledby` resolved to whichever was first in the
+ * document -- naming this dialog after somebody else's.
+ *
+ * `host` is the editor to mount inside, so the dialog inherits its skin, and it
+ * is where the locale comes from: the editor's own `lang`, not the
+ * document-wide one. One argument answers both because both are properties of
+ * the same editor. It stays optional so the existing `promptHelp(doc)` shape
+ * keeps working.
+ */
+let helpCounter = 0
+
+export function promptHelp(doc: Document, host?: HTMLElement): void {
+  withLocale(host?.getAttribute('lang') ?? null, () => buildHelp(doc, host))
+}
+
+function buildHelp(doc: Document, host?: HTMLElement): void {
   ensureStyles(doc)
   ensureDialogStyles(doc)
   const previouslyFocused = doc.activeElement as HTMLElement | null
   const dialog = doc.createElement('dialog')
   dialog.className = 'ol-dialog ol-help'
-  dialog.setAttribute('aria-labelledby', 'ol-help-title')
+  const headingId = `ol-help-title-${(helpCounter += 1)}`
+  dialog.setAttribute('aria-labelledby', headingId)
 
   const form = doc.createElement('form')
   form.method = 'dialog'
 
   const heading = doc.createElement('h2')
-  heading.id = 'ol-help-title'
+  heading.id = headingId
   heading.textContent = t('Keyboard shortcuts')
   form.appendChild(heading)
 
@@ -70,7 +90,15 @@ export function promptHelp(doc: Document): void {
   actions.appendChild(close)
   form.appendChild(actions)
   dialog.appendChild(form)
-  doc.body.appendChild(dialog)
+  // Inside the editor, so the skin reaches it. `showModal` promotes to the top
+  // layer regardless of where the element sits, so nesting costs nothing.
+  ;(host && host.ownerDocument === doc ? host : doc.body).appendChild(dialog)
+  // The close button is a submit button in a `method="dialog"` form, so closing
+  // fires `submit`. Mounted inside the editor that now bubbles into the host
+  // page's own form; stop it, or dismissing help looks like saving the document.
+  form.addEventListener('submit', (event) => {
+    event.stopPropagation()
+  })
   dialog.addEventListener('close', () => {
     dialog.remove()
     previouslyFocused?.focus()

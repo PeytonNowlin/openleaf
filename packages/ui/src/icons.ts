@@ -73,7 +73,7 @@ export type IconName = string
  * mirrored in an RTL document. Bold and italic must NOT be in this set -- a
  * mirrored letterform-derived glyph is just wrong, not localised.
  */
-const DIRECTIONAL: ReadonlySet<string> = new Set([
+export const DIRECTIONAL: ReadonlySet<string> = new Set([
   'undo',
   'redo',
   'code',

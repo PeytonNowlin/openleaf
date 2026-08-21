@@ -194,6 +194,24 @@ const RGB_CHANNELS = /^rgba?\(\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3
 export function safeColor(value: string | null | undefined): string | null {
   if (!value) return null
   // Collapsed rather than stripped: `rgb(255 0 0)` needs its separators.
+  //
+  // Do not delete this line, and do not move it below the matches that follow.
+  // It is a security control as much as a normalization: the collapse is what
+  // bounds their cost, so anything matched before it runs is unprotected.
+  //
+  // FUNCTIONAL and RGB_CHANNELS
+  // are both ambiguous about whitespace: FUNCTIONAL puts `\s*` immediately
+  // before a character class that itself contains `\s`, and RGB_CHANNELS
+  // separates channels with `\s*[,\s]\s*`. Fed a raw run of N spaces that
+  // ultimately fails to match, either pattern makes the engine try every way
+  // of dividing that run between the adjacent quantifiers, which is quadratic.
+  // Measured against the bare patterns: `rgb(` plus 32k spaces costs
+  // FUNCTIONAL 399 ms, and `rgb(1` plus 64k spaces then a non-digit costs
+  // RGB_CHANNELS 1,614 ms. Delete this line and safeColor itself takes 24.7
+  // SECONDS on a 256k run. Collapsing first means the patterns only ever see a
+  // single space, and safeColor stays linear -- 0.2 ms at 256k. Style
+  // values arrive from pasted HTML, so the input is attacker-influenceable and
+  // the bound has to hold. Regression test: packages/content-policy/test/css.test.ts.
   const candidate = value.trim().replace(/\s+/g, ' ')
   if (candidate === '') return null
 
@@ -395,30 +413,38 @@ export function indentCss(levels: number): string {
   return `${levels * INDENT_EM}em`
 }
 
-const LIST_STYLE_ALIASES: Record<string, ListStyle> = {
-  disc: 'disc',
-  circle: 'circle',
-  square: 'square',
-  decimal: 'decimal',
-  'lower-roman': 'lower-roman',
-  'upper-roman': 'upper-roman',
-  'lower-alpha': 'lower-alpha',
-  'upper-alpha': 'upper-alpha',
-  'lower-latin': 'lower-alpha',
-  'upper-latin': 'upper-alpha',
-  'lower-greek': 'lower-greek',
-  // HTML `type` on <ol>.
-  a: 'lower-alpha',
-  A: 'upper-alpha',
-  i: 'lower-roman',
-  I: 'upper-roman',
-  '1': 'decimal',
-}
+/**
+ * A Map, not an object literal, because the lookup key is author-controlled.
+ * An object inherits `Object.prototype`, so `aliases['constructor']` answers
+ * with the `Object` constructor and `<ol type="constructor">` round-tripped to
+ * `list-style-type:function Object() { [native code] }`. A Map has no
+ * prototype keys to find.
+ */
+const LIST_STYLE_ALIASES = new Map<string, ListStyle>([
+  ['disc', 'disc'],
+  ['circle', 'circle'],
+  ['square', 'square'],
+  ['decimal', 'decimal'],
+  ['lower-roman', 'lower-roman'],
+  ['upper-roman', 'upper-roman'],
+  ['lower-alpha', 'lower-alpha'],
+  ['upper-alpha', 'upper-alpha'],
+  ['lower-latin', 'lower-alpha'],
+  ['upper-latin', 'upper-alpha'],
+  ['lower-greek', 'lower-greek'],
+  // HTML `type` on <ol>. Case matters here: `a` and `A` are different lists,
+  // so the exact spelling is tried before the lowercased one.
+  ['a', 'lower-alpha'],
+  ['A', 'upper-alpha'],
+  ['i', 'lower-roman'],
+  ['I', 'upper-roman'],
+  ['1', 'decimal'],
+])
 
 export function safeListStyle(value: string | null | undefined): ListStyle | null {
   if (!value) return null
   const candidate = value.trim()
-  return LIST_STYLE_ALIASES[candidate] ?? LIST_STYLE_ALIASES[candidate.toLowerCase()] ?? null
+  return LIST_STYLE_ALIASES.get(candidate) ?? LIST_STYLE_ALIASES.get(candidate.toLowerCase()) ?? null
 }
 
 /**
@@ -491,19 +517,46 @@ export function modelledValue(property: string, value: string): string | null {
  * violations. A CSSOM write is not blocked -- the same distinction that makes the
  * toolbar's constructable stylesheet CSP-safe.
  *
- * So: set the attribute, then check whether the browser honoured it, and fall
- * back to `cssText` if it did not. Under an ordinary CSP the author's spelling
- * survives; under a strict one the formatting still renders, at the cost of the
- * normalization. Getting both right in the environment that has both is not
- * possible, and of the two, "it renders" has to win.
+ * So: ask once whether this document parses `style` attributes at all, and fall
+ * back to `cssText` where it does not. Under an ordinary CSP the author's
+ * spelling survives; under a strict one the formatting still renders, at the
+ * cost of the normalization. Getting both right in the environment that has both
+ * is not possible, and of the two, "it renders" has to win.
+ *
+ * ## Why the question is asked once, not per element
+ *
+ * Reading `el.style.length` is not free: it is what forces the CSSOM to parse
+ * the declaration that was just set. Doing it per element meant every styled
+ * node and every colour or font mark paid a CSSOM parse on every serialize --
+ * the exact work the `setAttribute` route exists to avoid. Whether the attribute
+ * is honoured is a property of the DOCUMENT's policy, not of the element, so one
+ * probe per document answers it for every element in it.
+ *
+ * Per document rather than per module: serialization can target a Document other
+ * than the global one, a detached document need not carry the page's policy, and
+ * a `WeakMap` keyed on the Document neither leaks nor decides on one document's
+ * behalf what another one does. Lazily, so importing this module on a server
+ * touches no DOM.
  */
+const parsesStyleAttribute = new WeakMap<Document, boolean>()
+
+function honoursStyleAttribute(doc: Document): boolean {
+  const known = parsesStyleAttribute.get(doc)
+  if (known !== undefined) return known
+  const probe = doc.createElement('span')
+  probe.setAttribute('style', 'color:red')
+  // A declaration that is unambiguously valid, so a zero length can only mean
+  // the attribute was set and not parsed -- the CSP-blocked case.
+  const honoured = (probe.style?.length ?? 0) > 0
+  parsesStyleAttribute.set(doc, honoured)
+  return honoured
+}
+
 export function applyStyleAttribute(el: Element, css: string): void {
   el.setAttribute('style', css)
+  if (honoursStyleAttribute(el.ownerDocument)) return
   const style = (el as HTMLElement).style
-  // `length` is zero when the attribute was set but not parsed, which is exactly
-  // the CSP-blocked case. It is also zero if the declaration was invalid, where
-  // falling through costs nothing because there was nothing to render.
-  if (style && style.length === 0) style.cssText = css
+  if (style) style.cssText = css
 }
 
 /**

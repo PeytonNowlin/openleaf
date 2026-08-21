@@ -29,7 +29,13 @@
 
 import type { NodeSpec } from 'prosemirror-model'
 import { isFullyModelledStyle, safeLang } from './css.js'
-import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
+import { DROP_WITH_CONTENT } from './elements.js'
+import {
+  URL_ATTRIBUTES,
+  isEventHandlerAttribute,
+  isNeverCarriedAttribute,
+  isSafeUrl,
+} from './url.js'
 
 /**
  * Elements that are never preserved, and whose contents are discarded with them.
@@ -48,27 +54,37 @@ import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
  * `ignore` rather than `skip`: the element AND its contents go. Skipping would
  * unwrap `<script>alert(1)</script>` into the literal text "alert(1)" appearing
  * in the document, which is a different kind of wrong.
+ *
+ * Spread from `@openleaf-editor/content-policy` rather than written out here.
+ * This list and the sanitize policy's `dropWithContent` are the same decision
+ * made in two packages, they were maintained by hand, and they drifted: `<svg>`
+ * and `<math>` were on the sanitizer's list and missing from this one, so the
+ * editor stored exactly the markup the server was configured to delete. Sharing
+ * the constant is what makes that drift impossible rather than merely unlikely.
+ *
+ * Exported so the divergence can be asserted in a test as well as prevented by
+ * construction. Not re-exported from the package index: it is an internal
+ * invariant, and the shared list itself is public in content-policy.
  */
-const NEVER_PRESERVE: readonly string[] = [
-  'script',
-  'style',
-  'frame',
-  'frameset',
-  'object',
-  'embed',
-  'applet',
-  'form',
-  'input',
-  'button',
-  'select',
-  'textarea',
-  'option',
-  'link',
-  'meta',
-  'base',
-  'noscript',
-  'template',
-]
+export const NEVER_PRESERVE: readonly string[] = [...DROP_WITH_CONTENT]
+
+/**
+ * Tags that must not survive *inside* a preserved subtree either.
+ *
+ * `iframe` is here and not in `NEVER_PRESERVE` because the two answer different
+ * questions. At the top level an iframe is claimed by the modelled embed node
+ * when its `src` is an allowlisted player, and ignored otherwise -- a
+ * priority-100 drop rule would outrank the embed node and delete legitimate
+ * players. Inside preserved markup there is no such question: the subtree is
+ * stored as an opaque string and re-emitted verbatim, so nothing re-checks the
+ * frame on the way out.
+ *
+ * That gap was the bypass. `<iframe src="https://evil.example/">` on its own was
+ * dropped; wrapped in a `<div class="c">` it round-tripped byte-identical, with
+ * `allow="camera; microphone; geolocation"` intact. One attribute on a wrapper
+ * defeated both the host allowlist and the permissions filter.
+ */
+const NEVER_INSIDE_PRESERVED: ReadonlySet<string> = new Set([...NEVER_PRESERVE, 'iframe'])
 
 /** Parse rules that drop dangerous elements before any other rule sees them. */
 const dropRules = NEVER_PRESERVE.map((tag) => ({ tag, ignore: true, priority: 100 }))
@@ -147,7 +163,7 @@ export function scrub(el: Element): string {
 
   const visit = (node: Element): void => {
     for (const child of Array.from(node.children)) {
-      if (NEVER_PRESERVE.includes(child.nodeName.toLowerCase())) {
+      if (NEVER_INSIDE_PRESERVED.has(child.nodeName.toLowerCase())) {
         child.remove()
         continue
       }
@@ -155,6 +171,13 @@ export function scrub(el: Element): string {
     }
     for (const attr of Array.from(node.attributes)) {
       if (isEventHandlerAttribute(attr.name)) {
+        node.removeAttribute(attr.name)
+        continue
+      }
+      // Before the URL question, not as a case of it: `srcdoc` is a document
+      // rather than a URL, and asking a scheme checker about a document gets
+      // "no scheme, therefore relative, therefore safe".
+      if (isNeverCarriedAttribute(attr.name)) {
         node.removeAttribute(attr.name)
         continue
       }
@@ -237,13 +260,62 @@ export function isLosslesslyUnwrappable(el: Element): boolean {
   return true
 }
 
+/**
+ * Parsed preserved markup, per Document, keyed on the exact stored string.
+ *
+ * `toDOM` runs on every render of every preserved atom, and an HTML parse is the
+ * most expensive thing in it: a document that is half preserved markup spent
+ * roughly 4x as long serializing as the same document in plain paragraphs.
+ *
+ * Caching one is only sound because the key is the whole input. `html` is a node
+ * attribute, ProseMirror nodes are immutable, and the string was produced by
+ * `scrub` before it was ever stored -- so two calls with the same string must
+ * produce the same element, and there is no edit that can invalidate an entry
+ * without changing the key.
+ *
+ * Three properties this must keep, none of them optional:
+ *
+ *   A CLONE every time. Handing out the cached node would let one caller's
+ *   mutation -- ProseMirror appending it, a decoration setting an attribute --
+ *   poison every later render of that markup.
+ *
+ *   PER DOCUMENT. Serialization can target a Document that is not the global
+ *   one, and a node has to be owned by the document it is going into. Scoping by
+ *   Document also means the entries die with it, so a throwaway serialization
+ *   document is still collectable.
+ *
+ *   BOUNDED. The keys are document content, so an unbounded map is a leak that
+ *   grows with what the user pastes. A cap with clear-on-overflow keeps it flat;
+ *   very large strings are not cached at all, because they are both the least
+ *   likely to repeat and the most expensive to hold.
+ */
+const PARSE_CACHE_ENTRIES = 256
+const PARSE_CACHE_MAX_LENGTH = 4096
+const parseCaches = new WeakMap<Document, Map<string, Element>>()
+
 /** Rebuild a DOM element from stored markup. `<template>` is used because
  *  its parsing context permits otherwise-illegal fragments such as a bare
  *  `<tr>`, which a `<div>` container would silently discard. */
 function elementFromHtml(html: string, doc: Document): Element | null {
+  let cache = parseCaches.get(doc)
+  const hit = cache?.get(html)
+  if (hit) return hit.cloneNode(true) as Element
+
   const tpl = doc.createElement('template')
   tpl.innerHTML = html
-  return tpl.content.firstElementChild
+  const parsed = tpl.content.firstElementChild
+  if (!parsed) return null
+  if (html.length > PARSE_CACHE_MAX_LENGTH) return parsed
+
+  if (!cache) {
+    cache = new Map()
+    parseCaches.set(doc, cache)
+  }
+  if (cache.size >= PARSE_CACHE_ENTRIES) cache.clear()
+  // The master copy is the clone, so the element handed back is the freshly
+  // parsed one and the cache holds something no caller has ever touched.
+  cache.set(html, parsed.cloneNode(true) as Element)
+  return parsed
 }
 
 /**
@@ -393,6 +465,50 @@ export const unknownBlock: NodeSpec = {
 }
 
 /**
+ * Where the inline catch-all is allowed to fire.
+ *
+ * ProseMirror matches `context` against the parent node the content is being
+ * parsed INTO, and the naive list -- paragraph and heading -- described the
+ * wrong thing. It named the nodes that hold inline content, when what the rule
+ * needs to name is every node that can END UP holding it.
+ *
+ * `list_item` is `paragraph block*`, so its implicit paragraph does not exist
+ * until some inline content arrives to force it. An unknown element that is the
+ * FIRST child of an `<li>` therefore sees a context of `.../list_item/`, the
+ * inline rule declines, and `unknownBlock` claims a block-level atom inside a
+ * container whose content expression cannot hold one. ProseMirror's recovery is
+ * to close the list and emit the atom as a sibling, so
+ * `<ol><li><ins>a</ins></li><li>b</li></ol>` came back as an emptied `<ol>`, an
+ * escaped `<ins>`, and a `<ul>` -- the list's contents gone and its very type
+ * changed. The identical element with a single character of text before it
+ * round-tripped perfectly, which is what kept this invisible: position was the
+ * whole trigger.
+ *
+ * `summary` and `figcaption` fail the same way for the same reason, and
+ * `blockquote`, `table_cell` and `table_header` are listed so that a first-child
+ * unknown element is wrapped in a paragraph exactly as it is when text precedes
+ * it. Those three could hold the block atom legally, so they were not losing
+ * content -- but "what you get depends on whether you typed a character first"
+ * is not a rule anybody can hold in their head, and consistency here costs
+ * nothing.
+ *
+ * Naming containers explicitly rather than dropping the context altogether:
+ * without it the inline rule would outrank `unknownBlock` everywhere, and a
+ * genuinely block-level unknown element at the top of the document would become
+ * an inline atom inside a paragraph the author never had.
+ */
+const INLINE_CONTEXT = [
+  'paragraph/',
+  'heading/',
+  'summary/',
+  'figcaption/',
+  'list_item/',
+  'table_cell/',
+  'table_header/',
+  'blockquote/',
+].join('|')
+
+/**
  * Inline preserved content, for unrecognised markup appearing inside a
  * paragraph -- the `<o:p>` and `<w:sdt>` debris of a Word paste, custom
  * inline web components, legacy `<font>` runs.
@@ -416,7 +532,7 @@ export const unknownInline: NodeSpec = {
       // the block rule cannot claim inline debris and split the paragraph
       // that contained it.
       priority: 1,
-      context: 'paragraph/|heading/',
+      context: INLINE_CONTEXT,
       getAttrs(dom) {
         const el = dom as Element
         if (isLosslesslyUnwrappable(el)) return false
