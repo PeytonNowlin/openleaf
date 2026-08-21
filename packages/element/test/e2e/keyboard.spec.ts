@@ -203,17 +203,30 @@ test.describe('the link context menu', () => {
     await expect(page.getByRole('link', { name: 'linked' })).toBeVisible()
     await page.getByRole('textbox', { name: 'Post body' }).click()
     await page.evaluate(() => {
-      const link = document.querySelector('.ol-content a')
-      const text = link?.firstChild
-      if (!text) throw new Error('no link text to put the caret in')
-      const range = document.createRange()
-      // Between the "i" and the "n" of "linked": inside the link, and far
-      // enough from either edge that no engine rounds out of it.
-      range.setStart(text, 3)
-      range.collapse(true)
-      const selection = window.getSelection()
-      selection?.removeAllRanges()
-      selection?.addRange(range)
+      const el = document.querySelector('openleaf-editor') as HTMLElement & {
+        view?: {
+          state: { doc: any; selection: any; tr: any }
+          dispatch(tr: unknown): void
+          focus(): void
+        }
+      }
+      const view = el.view
+      if (!view) throw new Error('no view to place the caret in')
+      // The position of the link's own text, read from the DOCUMENT rather than
+      // from the DOM. Setting a DOM Range and waiting for ProseMirror to notice
+      // is a race -- it syncs off `selectionchange` -- and it lost that race
+      // under load in Firefox.
+      let at: number | null = null
+      view.state.doc.descendants((node: any, pos: number) => {
+        if (at !== null || !node.isText) return
+        if (node.marks.some((mark: any) => mark.type.name === 'link')) at = pos + 3
+      })
+      if (at === null) throw new Error('no link in the document to put the caret in')
+      const TextSelection = view.state.selection.constructor as {
+        create(doc: unknown, anchor: number): unknown
+      }
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)))
+      view.focus()
     })
     // The precondition, asserted rather than assumed: the toolbar's Link button
     // reads pressed exactly when the caret is inside a link.
