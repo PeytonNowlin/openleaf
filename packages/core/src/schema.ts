@@ -9,7 +9,7 @@
  */
 
 import { Schema, type Attrs, type DOMOutputSpec, type MarkSpec, type NodeSpec } from 'prosemirror-model'
-import { applyStyleAttribute, indentCss, indentLevels, isFullyModelledStyle, parseDeclarations, safeAlign, safeColor, safeDir, safeFontFamily, safeFontSize, safeLang, safeLineHeight, safeListStyle, serializeDeclarations, type Align, type Dir, type ListStyle } from './css.js'
+import { INLINE_STYLE_PROPERTIES, applyStyleAttribute, indentCss, indentLevels, isFullyModelledStyle, modelledValue, parseDeclarations, safeAlign, safeColor, safeDir, safeFontFamily, safeFontSize, safeLang, safeLineHeight, safeListStyle, serializeDeclarations, type Align, type Dir, type ListStyle } from './css.js'
 import { serializationTarget, unknownBlock, unknownInline } from './preserve.js'
 import {
   audio,
@@ -124,14 +124,33 @@ function textBlockToDOM(tag: string, attrs: Attrs): DOMOutputSpec {
   return Object.keys(domAttrs).length > 0 ? [tag, domAttrs, 0] : [tag, 0]
 }
 
+/**
+ * The `start` of an ordered list, or null when the attribute is not a number.
+ *
+ * `Number('abc')` is `NaN`, and `NaN` is a perfectly good value to store on a
+ * node -- so `<ol start="abc">` was stored as `NaN` and serialized as the string
+ * `start="NaN"`, turning a value the browser ignores into one it still ignores
+ * but that is now in the customer's database with our fingerprints on it.
+ * Returning null instead lets extensions.ts carry the original spelling as
+ * residue, so the attribute survives without being interpreted.
+ *
+ * Exported so that the carry mechanism asks the same question this does. Two
+ * copies of "is this a valid start" is how they would disagree and emit the
+ * attribute twice, or neither time.
+ */
+export function listStart(value: string | null | undefined): number | null {
+  if (value === null || value === undefined) return null
+  const parsed = Number.parseInt(value.trim(), 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function listAttrs(el: Element, ordered: boolean): { start?: number; listStyle: ListStyle | null } {
   const declarations = parseDeclarations(el.getAttribute('style'))
   const fromStyle = safeListStyle(declarations.get('list-style-type') ?? null)
   const fromType = safeListStyle(el.getAttribute('type'))
   const listStyle = fromStyle ?? fromType
   if (!ordered) return { listStyle }
-  const start = el.getAttribute('start')
-  return { start: start ? Number(start) : 1, listStyle }
+  return { start: listStart(el.getAttribute('start')) ?? 1, listStyle }
 }
 
 function listToDOM(tag: 'ul' | 'ol', attrs: Attrs): DOMOutputSpec {
@@ -344,6 +363,33 @@ export const coreNodes: Record<string, NodeSpec> = {
   unknown_inline: unknownInline,
 }
 
+/**
+ * True when a `<span>` carries nothing but formatting the mark set can express.
+ *
+ * The question a TAG rule on a mark has to ask, and the reason it is not
+ * `isFullyModelledStyle` alone: `background` is the shorthand Word writes, and
+ * the rule below reads it through `el.style.backgroundColor`, so the CSSOM has
+ * already expanded it and it is genuinely modelled even though the declaration
+ * name is not in the modelled list. Refusing it would turn every highlighted
+ * Word paste into an opaque atom.
+ *
+ * Any other attribute, or any declaration a mark cannot hold, and the answer is
+ * no -- because a mark that claims the element has nowhere to keep the rest.
+ */
+function isSpanOnlyStyling(el: Element): boolean {
+  for (const attr of Array.from(el.attributes)) {
+    if (attr.name !== 'style') return false
+  }
+  const declarations = parseDeclarations(el.getAttribute('style'))
+  if (declarations.size === 0) return false
+  for (const [name, value] of declarations) {
+    if (name === 'background') continue
+    if (!INLINE_STYLE_PROPERTIES.includes(name)) return false
+    if (modelledValue(name, value) === null) return false
+  }
+  return true
+}
+
 /** The base mark specs. */
 export const coreMarks: Record<string, MarkSpec> = {
   strong: {
@@ -436,6 +482,16 @@ export const coreMarks: Record<string, MarkSpec> = {
         tag: 'span',
         getAttrs(dom) {
           const el = dom as HTMLElement
+          // Only when the span is nothing but formatting this mark can hold.
+          // A tag rule CONSUMES the element, and a mark has nowhere to put the
+          // rest of it, so claiming `<span class="hl" style="background-color:
+          // #ffff00">` deleted the class outright -- and `style="background-
+          // color:#ffff00;letter-spacing:1px"` lost the letter-spacing the same
+          // way, with no residue, because a mark is not a node and the carry
+          // mechanism never sees it. Declining leaves the element to the
+          // preservation layer, which keeps it whole. This is the same bargain
+          // `font[color]` and `span[lang]` already strike a few lines away.
+          if (!isSpanOnlyStyling(el)) return false
           const fromAttr = parseDeclarations(el.getAttribute('style')).get('background-color')
           const color = safeColor(el.style.backgroundColor) ?? safeColor(fromAttr)
           return color ? { color } : false

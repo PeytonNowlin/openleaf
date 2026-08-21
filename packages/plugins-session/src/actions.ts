@@ -51,6 +51,9 @@ export async function saveDocument(host: EditorHost): Promise<boolean> {
   const event = new CustomEvent(SAVE_EVENT, {
     bubbles: true,
     cancelable: true,
+    // Without `composed`, a host that puts the editor inside its own shadow
+    // root never sees this and every save silently falls back to the default.
+    composed: true,
     detail: { html },
   })
   host.dispatchEvent(event)
@@ -95,7 +98,7 @@ function submitForm(form: HTMLFormElement): boolean {
 }
 
 export function previewDocument(host: EditorHost): void {
-  showPreview(host.ownerDocument, host.value)
+  showPreview(host.ownerDocument, host.value, host)
 }
 
 export function printDocument(host: EditorHost): void {
@@ -106,7 +109,7 @@ export function printDocument(host: EditorHost): void {
 export function showWordCount(host: EditorHost): void {
   const view = host.view
   if (!view) return
-  showStats(host.ownerDocument, documentStats(view.state.doc))
+  showStats(host.ownerDocument, documentStats(view.state.doc), host)
 }
 
 export async function newDocument(host: EditorHost, isDirty: () => boolean): Promise<boolean> {
@@ -116,7 +119,7 @@ export async function newDocument(host: EditorHost, isDirty: () => boolean): Pro
       message: 'This will clear the editor. Unsaved changes will be lost.',
       confirmLabel: 'Clear editor',
       danger: true,
-    })
+    }, host)
     if (!ok) return false
   }
   host.value = ''

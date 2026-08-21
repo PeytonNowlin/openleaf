@@ -7,6 +7,7 @@
  */
 
 import { serializeHtml } from '@openleaf-editor/core'
+import { announce, liveRegion, t, withLocale } from '@openleaf-editor/ui'
 import type { Node as PMNode } from 'prosemirror-model'
 import { Plugin, type EditorState } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
@@ -25,6 +26,7 @@ import {
   clearDraft,
   defaultStorage,
   draftStorageKey,
+  purgeDrafts,
   readDraft,
   writeDraft,
   type DraftStorage,
@@ -157,6 +159,21 @@ function button(doc: Document, label: string): HTMLButtonElement {
   return el
 }
 
+/**
+ * A UI string in this editor's own language, with `{name}` placeholders filled.
+ *
+ * A template rather than concatenation, because "2 of 7" is not two words in
+ * every language and neither is the order they come in.
+ */
+function say(host: HTMLElement, source: string, values: Record<string, string> = {}): string {
+  return withLocale(host.getAttribute('lang'), () =>
+    t(source).replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole),
+  )
+}
+
+/** How much of the surrounding sentence to read with a match. */
+const MATCH_CONTEXT = 40
+
 export function sessionChrome(options: SessionOptions = {}): Plugin {
   const autosave = options.autosave !== false
   const warn = options.warnBeforeLeave !== false
@@ -199,6 +216,11 @@ function attachSession(
   const key = draftStorageKey(host)
   let timer: ReturnType<typeof setTimeout> | undefined
   let countTimer: ReturnType<typeof setTimeout> | undefined
+
+  // Only the key for this page is ever read back, so a draft for a page nobody
+  // returns to would sit in storage for good. Attaching an editor is the one
+  // moment this library reliably gets, and the sweep is a walk of the keys.
+  purgeDrafts(options.storage)
 
   /**
    * The HTML the editor is showing right now.
@@ -311,7 +333,9 @@ function attachSession(
 
   const renderCount = (): void => {
     countTimer = undefined
-    status.textContent = formatWordCount(documentStats(view.state.doc))
+    status.textContent = withLocale(host.getAttribute('lang'), () =>
+      formatWordCount(documentStats(view.state.doc), host.getAttribute('lang')),
+    )
   }
 
   /**
@@ -409,7 +433,7 @@ async function offerRestore(
     title: 'Restore unsaved draft',
     message: `A draft from ${when} is saved in this browser. Restore it?`,
     confirmLabel: 'Restore draft',
-  })
+  }, host)
   if (!ok) return
   host.value = html
   handle.update()
@@ -417,15 +441,25 @@ async function offerRestore(
 
 function buildFindBar(host: EditorHost, view: EditorView): { root: HTMLElement; open: () => void; close: () => void; sync: () => void } {
   const doc = host.ownerDocument
+  const text = (source: string, values?: Record<string, string>): string =>
+    say(host, source, values)
+
   const root = doc.createElement('div')
   root.className = 'ol-find'
   root.hidden = true
   root.setAttribute('role', 'search')
-  root.setAttribute('aria-label', 'Find and replace')
+  root.setAttribute('aria-label', text('Find and replace'))
+
+  // Mounted now, and on the HOST rather than in the bar. The count used to be a
+  // live region INSIDE this subtree, which carries `hidden` until the moment it
+  // has something to say -- so `open()` unhid the subtree and populated it in
+  // one task and the first result count was very likely swallowed. A region a
+  // reader has never seen is not a quiet region, it is a silent one.
+  liveRegion(host)
 
   const findLabel = doc.createElement('label')
   const findText = doc.createElement('span')
-  findText.textContent = 'Find'
+  findText.textContent = text('Find')
   const findInput = doc.createElement('input')
   findInput.type = 'search'
   findInput.name = 'find'
@@ -433,7 +467,7 @@ function buildFindBar(host: EditorHost, view: EditorView): { root: HTMLElement; 
 
   const replaceLabel = doc.createElement('label')
   const replaceText = doc.createElement('span')
-  replaceText.textContent = 'Replace'
+  replaceText.textContent = text('Replace')
   const replaceInput = doc.createElement('input')
   replaceInput.type = 'text'
   replaceInput.name = 'replace'
@@ -445,19 +479,20 @@ function buildFindBar(host: EditorHost, view: EditorView): { root: HTMLElement; 
   caseBox.type = 'checkbox'
   caseBox.name = 'matchCase'
   const caseSpan = doc.createElement('span')
-  caseSpan.textContent = 'Match case'
+  caseSpan.textContent = text('Match case')
   caseLabel.append(caseBox, caseSpan)
 
+  // Visual only now. What is spoken goes to the host's region, which is not
+  // inside a subtree that is hidden for most of its life.
   const count = doc.createElement('span')
   count.className = 'ol-find-count'
-  count.setAttribute('role', 'status')
-  count.setAttribute('aria-live', 'polite')
+  count.setAttribute('aria-hidden', 'true')
 
-  const prev = button(doc, 'Previous')
-  const next = button(doc, 'Next')
-  const replace = button(doc, 'Replace')
-  const replaceAllBtn = button(doc, 'Replace all')
-  const closeBtn = button(doc, 'Close')
+  const prev = button(doc, text('Previous'))
+  const next = button(doc, text('Next'))
+  const replace = button(doc, text('Replace'))
+  const replaceAllBtn = button(doc, text('Replace all'))
+  const closeBtn = button(doc, text('Close'))
 
   root.append(findLabel, replaceLabel, caseLabel, count, prev, next, replace, replaceAllBtn, closeBtn)
 
@@ -480,42 +515,98 @@ function buildFindBar(host: EditorHost, view: EditorView): { root: HTMLElement; 
     view.focus()
   }
 
+  /**
+   * The text around a match, so the announcement carries the match itself.
+   *
+   * Jumping to a result moved the SELECTION but not DOM focus -- focus stays in
+   * the input, so a screen reader's reading cursor never goes near the
+   * highlight. The author heard "2 of 7" and was then asked to press Replace on
+   * text they had no way to read.
+   */
+  const contextAround = (from: number, to: number): string => {
+    const { doc: pmDoc } = view.state
+    const start = Math.max(0, from - MATCH_CONTEXT)
+    const end = Math.min(pmDoc.content.size, to + MATCH_CONTEXT)
+    return pmDoc.textBetween(start, end, ' ', ' ').trim()
+  }
+
+  /** The last thing said, so an unrelated keystroke does not repeat it. */
+  let spoken = ''
+
   const sync = (): void => {
     const search = searchKey.getState(view.state)
+    const hits = search ? search.matches.length : 0
+    // A button that does nothing when pressed is worse than one that says it
+    // cannot: Replace was reachable with no current match and silently returned.
+    prev.disabled = hits === 0
+    next.disabled = hits === 0
+    replace.disabled = hits === 0
+    replaceAllBtn.disabled = hits === 0
+
     if (!search || search.query.length === 0) {
       count.textContent = ''
+      spoken = ''
       return
     }
-    if (search.matches.length === 0) {
-      count.textContent = 'No matches'
-      return
+
+    // `replaced` is reported before the match count, because replacing rebuilds
+    // the matches against the new document and finds none of the old ones --
+    // reporting that as "No matches" made a successful Replace all read as a
+    // failure.
+    let message: string
+    if (search.replaced > 0) {
+      message = say(host, '{n} replaced', { n: String(search.replaced) })
+      count.textContent = message
+    } else if (search.matches.length === 0) {
+      message = say(host, 'No matches')
+      count.textContent = message
+    } else {
+      const total = String(search.matches.length)
+      const current = search.index >= 0 ? search.index + 1 : 0
+      const match = search.index >= 0 ? search.matches[search.index] : undefined
+      if (current > 0 && match) {
+        count.textContent = say(host, '{current} of {total}', { current: String(current), total })
+        message = say(host, '{current} of {total}: {context}', {
+          current: String(current),
+          total,
+          context: contextAround(match.from, match.to),
+        })
+      } else {
+        message = say(host, '{total} matches', { total })
+        count.textContent = message
+      }
     }
-    const current = search.index >= 0 ? search.index + 1 : 0
-    count.textContent =
-      current > 0 ? `${current} of ${search.matches.length}` : `${search.matches.length} matches`
+
+    // Guarded on the text, not on an event: `sync` runs on every transaction,
+    // and repeating an identical count over the author's typing is the reason
+    // announcements get switched off.
+    if (message !== spoken) {
+      spoken = message
+      announce(host, message)
+    }
   }
 
   findInput.addEventListener('input', applyQuery)
   caseBox.addEventListener('change', applyQuery)
+  // Escape delegated on the bar, not bound to two of its eight controls. Bound
+  // per input, the author who had tabbed to Next, Replace or the case checkbox
+  // pressed Escape and nothing happened.
+  root.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    close()
+  })
   findInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       if (event.shiftKey) findPrev(view.state, view.dispatch)
       else findNext(view.state, view.dispatch)
     }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      close()
-    }
   })
   replaceInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       replaceCurrent(replaceInput.value)(view.state, view.dispatch)
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      close()
     }
   })
   prev.addEventListener('click', () => findPrev(view.state, view.dispatch))

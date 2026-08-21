@@ -179,6 +179,71 @@ describe('list reconstruction', () => {
   })
 })
 
+describe('marker matching is linear in the marker length', () => {
+  /**
+   * A Word list paragraph whose marker span holds a long whitespace run ending
+   * in a character that is not a list delimiter.
+   *
+   * This is the shape that used to be quadratic. The ordered-marker pattern
+   * once read `^\s*[([]?\s*(...)`, and when the optional bracket matched empty
+   * the two adjacent whitespace runs could be divided N+1 ways across N spaces.
+   * Every division then failed at the missing delimiter, so the engine tried
+   * them all: ~4x the time for 2x the input, 3.7 s at 64 KB and 13.3 s at
+   * 128 KB, on a single thread with no way to interrupt it.
+   *
+   * Nothing here is exotic from the parser's point of view -- it is ordinary
+   * Word markup, which is exactly why the defect survived a well-tested list
+   * algorithm. Genuine Word markers are a couple of characters long, so no
+   * real document ever walked into the bad case.
+   */
+  function whitespaceMarker(spaces: number): string {
+    return (
+      '<p class="MsoListParagraph" style="mso-list:l0 level1 lfo1">' +
+      `<span style="mso-list:Ignore">${' '.repeat(spaces)}z</span>` +
+      'Item</p>'
+    )
+  }
+
+  /** The same payload in Word's other marker form, fenced by conditional comments. */
+  function whitespaceMarkerComments(spaces: number): string {
+    return (
+      '<p class="MsoListParagraphCxSpFirst" style="text-indent:-.25in;mso-list:l0 level1 lfo1">' +
+      `<!--[if !supportLists]--><span style="font-family:Symbol">${' '.repeat(spaces)}z</span>` +
+      '<!--[endif]-->Item<o:p></o:p></p>'
+    )
+  }
+
+  it('normalizes a 98 KB whitespace marker in well under 50 ms', () => {
+    // Both marker forms, because findMarker has two independent ways of
+    // producing an unbounded string and the guard has to cover both.
+    for (const build of [whitespaceMarker, whitespaceMarkerComments]) {
+      // Warm the JIT so the budget measures the algorithm and not first-call
+      // compilation of everything normalizeWord touches.
+      normalizeWord(build(1024))
+
+      const html = build(98 * 1024)
+      const started = performance.now()
+      normalizeWord(html)
+      const elapsed = performance.now() - started
+
+      // Measured at ~2 ms after the fix and ~9,300 ms before it, so 50 ms is
+      // far enough above the real cost to survive a loaded CI box while still
+      // being three orders of magnitude below the regression it guards.
+      expect(elapsed).toBeLessThan(50)
+    }
+  })
+
+  it('still reads a marker that is merely padded, not pathological', () => {
+    // The 64-character cap must not clip a real marker. Word pads with a
+    // handful of non-breaking spaces, which plainText turns into spaces.
+    const html =
+      '<p class="MsoListParagraph" style="mso-list:l0 level1 lfo1">' +
+      '<span style="mso-list:Ignore">&nbsp;&nbsp;(iv)&nbsp;&nbsp;&nbsp; </span>' +
+      'Fourth</p>'
+    expect(normalizeWord(html)).toMatch(/<ol[ >]/)
+  })
+})
+
 describe('junk removal', () => {
   const messy =
     '<p class="MsoNormal" style="margin-bottom:0in;line-height:normal">' +

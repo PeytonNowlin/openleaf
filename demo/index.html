@@ -801,13 +801,20 @@ import { OpenLeafEditor } from '@openleaf-editor/react'
 import { OpenLeafEditor } from '@openleaf-editor/vue'
 &lt;OpenLeafEditor v-model="html" toolbar="bold italic | link" /&gt;
 
-// Angular — standalone component, [(value)] two-way binding
-import { OpenLeafComponent } from '@openleaf-editor/angular'
-&lt;openleaf [(value)]="html" toolbar="bold italic | link"&gt;&lt;/openleaf&gt;</pre>
+// Angular — the element directly, with CUSTOM_ELEMENTS_SCHEMA
+import '@openleaf-editor/element'
+&lt;openleaf-editor toolbar="bold italic | link" aria-label="Post body"&gt;&lt;/openleaf-editor&gt;</pre>
 
 <p>
-  If you are not using a framework, skip all three. The element works on its own
-  and that is the supported path, not a fallback.
+  There is no Angular wrapper package. Angular consumes custom elements natively,
+  and a short directive in your own app covers <code>[(value)]</code> — see
+  <a href="https://github.com/PeytonNowlin/openleaf/tree/main/packages/angular">packages/angular</a>
+  for the recipe.
+</p>
+
+<p>
+  If you are not using a framework, skip the wrappers. The element works on its
+  own and that is the supported path, not a fallback.
 </p>
 
 <h2 id="use">Using it</h2>

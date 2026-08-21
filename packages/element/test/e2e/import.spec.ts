@@ -100,7 +100,7 @@ test.describe('dropping a file', () => {
   test('tells the author what happened', async ({ page }) => {
     await dropFile(page, 'notes.txt', 'text/plain', 'Imported line')
     await expect
-      .poll(() => page.locator('.ol-import-status').textContent(), { timeout: 3000 })
+      .poll(() => page.locator('.ol-live-region').textContent(), { timeout: 3000 })
       .toContain('imported')
   })
 
@@ -108,7 +108,7 @@ test.describe('dropping a file', () => {
     // Declining loudly beats inserting nothing and leaving the author guessing.
     await dropFile(page, 'sheet.xlsx', 'application/octet-stream', 'binary-ish')
     await expect
-      .poll(() => page.locator('.ol-import-status').textContent(), { timeout: 3000 })
+      .poll(() => page.locator('.ol-live-region').textContent(), { timeout: 3000 })
       .toContain('not a format')
   })
 

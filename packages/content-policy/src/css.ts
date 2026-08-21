@@ -194,6 +194,24 @@ const RGB_CHANNELS = /^rgba?\(\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3
 export function safeColor(value: string | null | undefined): string | null {
   if (!value) return null
   // Collapsed rather than stripped: `rgb(255 0 0)` needs its separators.
+  //
+  // Do not delete this line, and do not move it below the matches that follow.
+  // It is a security control as much as a normalization: the collapse is what
+  // bounds their cost, so anything matched before it runs is unprotected.
+  //
+  // FUNCTIONAL and RGB_CHANNELS
+  // are both ambiguous about whitespace: FUNCTIONAL puts `\s*` immediately
+  // before a character class that itself contains `\s`, and RGB_CHANNELS
+  // separates channels with `\s*[,\s]\s*`. Fed a raw run of N spaces that
+  // ultimately fails to match, either pattern makes the engine try every way
+  // of dividing that run between the adjacent quantifiers, which is quadratic.
+  // Measured against the bare patterns: `rgb(` plus 32k spaces costs
+  // FUNCTIONAL 399 ms, and `rgb(1` plus 64k spaces then a non-digit costs
+  // RGB_CHANNELS 1,614 ms. Delete this line and safeColor itself takes 24.7
+  // SECONDS on a 256k run. Collapsing first means the patterns only ever see a
+  // single space, and safeColor stays linear -- 0.2 ms at 256k. Style
+  // values arrive from pasted HTML, so the input is attacker-influenceable and
+  // the bound has to hold. Regression test: packages/content-policy/test/css.test.ts.
   const candidate = value.trim().replace(/\s+/g, ' ')
   if (candidate === '') return null
 
@@ -395,30 +413,38 @@ export function indentCss(levels: number): string {
   return `${levels * INDENT_EM}em`
 }
 
-const LIST_STYLE_ALIASES: Record<string, ListStyle> = {
-  disc: 'disc',
-  circle: 'circle',
-  square: 'square',
-  decimal: 'decimal',
-  'lower-roman': 'lower-roman',
-  'upper-roman': 'upper-roman',
-  'lower-alpha': 'lower-alpha',
-  'upper-alpha': 'upper-alpha',
-  'lower-latin': 'lower-alpha',
-  'upper-latin': 'upper-alpha',
-  'lower-greek': 'lower-greek',
-  // HTML `type` on <ol>.
-  a: 'lower-alpha',
-  A: 'upper-alpha',
-  i: 'lower-roman',
-  I: 'upper-roman',
-  '1': 'decimal',
-}
+/**
+ * A Map, not an object literal, because the lookup key is author-controlled.
+ * An object inherits `Object.prototype`, so `aliases['constructor']` answers
+ * with the `Object` constructor and `<ol type="constructor">` round-tripped to
+ * `list-style-type:function Object() { [native code] }`. A Map has no
+ * prototype keys to find.
+ */
+const LIST_STYLE_ALIASES = new Map<string, ListStyle>([
+  ['disc', 'disc'],
+  ['circle', 'circle'],
+  ['square', 'square'],
+  ['decimal', 'decimal'],
+  ['lower-roman', 'lower-roman'],
+  ['upper-roman', 'upper-roman'],
+  ['lower-alpha', 'lower-alpha'],
+  ['upper-alpha', 'upper-alpha'],
+  ['lower-latin', 'lower-alpha'],
+  ['upper-latin', 'upper-alpha'],
+  ['lower-greek', 'lower-greek'],
+  // HTML `type` on <ol>. Case matters here: `a` and `A` are different lists,
+  // so the exact spelling is tried before the lowercased one.
+  ['a', 'lower-alpha'],
+  ['A', 'upper-alpha'],
+  ['i', 'lower-roman'],
+  ['I', 'upper-roman'],
+  ['1', 'decimal'],
+])
 
 export function safeListStyle(value: string | null | undefined): ListStyle | null {
   if (!value) return null
   const candidate = value.trim()
-  return LIST_STYLE_ALIASES[candidate] ?? LIST_STYLE_ALIASES[candidate.toLowerCase()] ?? null
+  return LIST_STYLE_ALIASES.get(candidate) ?? LIST_STYLE_ALIASES.get(candidate.toLowerCase()) ?? null
 }
 
 /**

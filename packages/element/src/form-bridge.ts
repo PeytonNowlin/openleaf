@@ -15,6 +15,8 @@ export class FormBridge {
   #textarea: HTMLTextAreaElement | null = null
   #form: HTMLFormElement | null = null
   #dirty = false
+  /** The last string this bridge wrote, so a foreign write is detectable. */
+  #written: string | null = null
   #timer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
@@ -48,6 +50,16 @@ export class FormBridge {
 
   attach(): void {
     this.detach()
+    // Re-resolve a `for=` binding that could not be resolved at build time. A
+    // wrapper builds the element while it is still detached, and a detached
+    // root has no `getElementById`, so `bind()` found nothing and every later
+    // write went nowhere -- the editor looked right and the textarea it posts
+    // still held the server's original HTML.
+    //
+    // Safe here in a way `rebind()` is not: this only re-runs for an explicit
+    // `for`, whose id lookup is unambiguous, where the nested
+    // `querySelector('textarea')` can match the source box instead.
+    if (!this.#textarea && this.host.getAttribute('for')) this.bind()
     this.#form = this.#textarea?.form ?? this.host.closest('form')
     this.#form?.addEventListener('submit', this.#onSubmit)
     this.#form?.addEventListener('formdata', this.#onFormData)
@@ -72,11 +84,24 @@ export class FormBridge {
     this.attach()
   }
 
-  /** Write the document to the textarea now, whether or not it has changed. */
-  sync(): void {
+  /**
+   * Write the document into the textarea.
+   *
+   * `value` is an optional already-serialized copy. The keystroke path has one
+   * in hand -- it is about to put the same string in the change event's detail
+   * -- and serializing the document twice per keystroke was measurable on a
+   * large post.
+   *
+   * An explicit sync also cancels a pending debounced one and clears the dirty
+   * flag: the write it was going to make has just happened.
+   */
+  sync(value?: string): void {
     this.#cancel()
     this.#dirty = false
-    if (this.#textarea) this.#textarea.value = this.readValue()
+    if (!this.#textarea) return
+    const html = value ?? this.readValue()
+    this.#textarea.value = html
+    this.#written = html
   }
 
   /**
@@ -98,9 +123,19 @@ export class FormBridge {
     }, SYNC_DELAY_MS)
   }
 
-  /** Write the document to the textarea if, and only if, it has changed. */
+  /**
+   * Write the document to the textarea if, and only if, it would differ.
+   *
+   * Two ways it can: the document changed since the last write, or something
+   * outside wrote to the textarea itself -- a script, a server re-render, a
+   * test. The second is why this cannot be a bare dirty check. Comparing
+   * against the string last written costs a string compare and no
+   * serialization, so the flush points stay free when nothing has moved.
+   */
   flush(): void {
-    if (this.#dirty) this.sync()
+    const foreign =
+      this.#textarea !== null && this.#written !== null && this.#textarea.value !== this.#written
+    if (this.#dirty || foreign) this.sync()
     else this.#cancel()
   }
 

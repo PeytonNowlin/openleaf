@@ -20,7 +20,9 @@
  * retry a whole new dialog.
  */
 
-import { ensureStyles } from './styles.js'
+import { isSafeUrl } from '@openleaf-editor/core'
+import { t, withLocale } from './i18n.js'
+import { ensureStyles, registerStyles } from './styles.js'
 import { IMAGE_ACCEPT, dimension, type ImageUploadResult } from './upload.js'
 import {
   filePickerFor,
@@ -77,35 +79,83 @@ export interface FieldSpec {
   fills?: string
 }
 
+/**
+ * A commit failure.
+ *
+ * `field` names the control the message is about, when there is one. Without it
+ * a failed submit could only mark the FIRST field invalid and focus it, which is
+ * a guess -- and a wrong `aria-invalid` is worse for a screen reader user than
+ * none, because it sends them to correct a field that was already right.
+ */
+export interface CommitError {
+  error: string
+  field?: string
+}
+
 /** What a commit attempt produced: a value to resolve with, or a message to show. */
 type Commit<T> = (
   values: Record<string, string>,
   files: Record<string, File | undefined>,
-) => Promise<{ value: T } | { error: string }> | { value: T } | { error: string }
+) => Promise<{ value: T } | CommitError> | { value: T } | CommitError
 
+/**
+ * Shown when an address fails `isSafeUrl` -- `javascript:`, `data:`, `vbscript:`
+ * and anything else outside the scheme allowlist.
+ *
+ * It names the editor's own limit rather than accusing the author, because the
+ * common case is a pasted tracking link or an intranet scheme, not an attack.
+ */
+const UNSTORABLE_ADDRESS = 'That address is not one the editor can store.'
+
+/*
+ * Every colour reads the internal `--ol-*` token first and the public
+ * `--openleaf-*` name only as a fallback.
+ *
+ * That order matters because of where the dialog now lives. It used to be
+ * appended to `document.body`, outside `.ol-editor`, where none of the editor's
+ * tokens are in scope -- so `var(--openleaf-color-surface, #fff)` always took
+ * the hardcoded light fallback and `<openleaf-editor skin="midnight">` plus the
+ * Link button produced a white dialog with #1f2328 text sitting on a #0d1117
+ * editor. Mounted inside the host (see `showForm`), the skin's public tokens
+ * reach it directly.
+ *
+ * The public names alone would still not be enough, because the dark palette
+ * that `theme="dark"` installs is written in the *internal* names -- it is a set
+ * of `--ol-*` declarations whose values are `var(--openleaf-*, <dark>)`. Reading
+ * `--ol-surface` therefore resolves all four cases (light default, system dark,
+ * `theme="dark"`, and any skin) through one variable, and the `--openleaf-*`
+ * fallback still covers a dialog rendered outside a host.
+ *
+ * `.ol-error` was the one colour here that was not a token, and the one colour
+ * that has to be read: #cf222e is 5.36:1 on white but 3.53:1 on the dark
+ * surface. It is `--ol-danger` now, which resolves to #ff8182 (7.85:1) there.
+ */
 const DIALOG_CSS = `
 .ol-dialog {
   box-sizing: border-box;
   max-width: min(28rem, calc(100vw - 2rem));
   padding: 0;
-  border: 1px solid var(--openleaf-color-border, #d1d9e0);
-  border-radius: var(--openleaf-radius, 6px);
-  background: var(--openleaf-color-surface, #fff);
-  color: var(--openleaf-color-text, #1f2328);
-  font-family: var(--openleaf-font, system-ui, -apple-system, sans-serif);
-  font-size: var(--openleaf-font-size, 14px);
+  border: 1px solid var(--ol-border-strong, var(--openleaf-color-border-strong, #6e7781));
+  border-radius: var(--ol-radius, var(--openleaf-radius, 6px));
+  background: var(--ol-surface, var(--openleaf-color-surface, #fff));
+  color: var(--ol-text, var(--openleaf-color-text, #1f2328));
+  font-family: var(--ol-font, var(--openleaf-font, system-ui, -apple-system, sans-serif));
+  font-size: var(--ol-font-size, var(--openleaf-font-size, 14px));
 }
 .ol-dialog::backdrop { background: rgb(0 0 0 / 40%); }
 .ol-dialog form { display: grid; gap: 12px; padding: 16px; margin: 0; }
 .ol-dialog h2 { margin: 0; font-size: 1.1em; }
-.ol-dialog label { display: grid; gap: 4px; font-weight: 500; }
-.ol-dialog .ol-hint { font-weight: 400; font-size: .9em; opacity: .75; }
+/* The field, not the label, is the grid: the hint sits between the two as the
+   control's DESCRIPTION rather than folding into its accessible name. */
+.ol-dialog .ol-field { display: grid; gap: 4px; }
+.ol-dialog label { font-weight: 500; }
+.ol-dialog .ol-hint { font-weight: 400; font-size: .9em; opacity: .8; }
 .ol-dialog input[type="text"], .ol-dialog input[type="url"], .ol-dialog input[type="file"],
 .ol-dialog input[type="color"], .ol-dialog input[type="number"], .ol-dialog select {
   box-sizing: border-box; width: 100%; padding: 6px 8px;
-  border: 1px solid var(--openleaf-color-border, #d1d9e0);
-  border-radius: var(--openleaf-radius, 4px);
-  background: var(--openleaf-color-surface, #fff);
+  border: 1px solid var(--ol-border-strong, var(--openleaf-color-border-strong, #6e7781));
+  border-radius: var(--ol-radius, var(--openleaf-radius, 4px));
+  background: var(--ol-surface, var(--openleaf-color-surface, #fff));
   color: inherit; font: inherit;
 }
 .ol-dialog input[type="color"] { height: 2.25rem; padding: 2px; }
@@ -114,44 +164,42 @@ const DIALOG_CSS = `
 .ol-dialog .ol-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .ol-dialog button {
   box-sizing: border-box; padding: 6px 12px; margin: 0;
-  border: 1px solid var(--openleaf-color-border, #d1d9e0);
-  border-radius: var(--openleaf-radius, 4px);
+  border: 1px solid var(--ol-border-strong, var(--openleaf-color-border-strong, #6e7781));
+  border-radius: var(--ol-radius, var(--openleaf-radius, 4px));
   background: transparent; color: inherit; font: inherit; cursor: pointer;
   appearance: none; -webkit-appearance: none;
 }
 .ol-dialog button[value="ok"] {
-  border-color: var(--openleaf-color-accent, #0550ae);
-  background: var(--openleaf-color-accent, #0550ae);
-  color: #fff;
+  border-color: var(--ol-accent, var(--openleaf-color-accent, #0550ae));
+  background: var(--ol-accent, var(--openleaf-color-accent, #0550ae));
+  color: var(--ol-surface, var(--openleaf-color-surface, #fff));
 }
 .ol-dialog button:focus-visible {
-  outline: 2px solid var(--openleaf-color-focus, #0969da); outline-offset: 1px;
+  outline: var(--ol-focus-width, 2px) solid var(--ol-focus, var(--openleaf-color-focus, #0969da));
+  outline-offset: 1px;
 }
 .ol-dialog button[aria-disabled="true"] { opacity: .55; cursor: default; }
-.ol-dialog .ol-error { color: #cf222e; font-size: .9em; min-height: 1.2em; }
+.ol-dialog .ol-error { color: var(--ol-danger, #cf222e); font-size: .9em; min-height: 1.2em; }
 .ol-dialog .ol-progress { font-size: .9em; opacity: .8; min-height: 1.2em; }
 `
 
-let dialogStylesReady = false
-
+/**
+ * Install the dialog sheet.
+ *
+ * Delegates to `registerStyles` rather than repeating the constructable-sheet
+ * dance, which also removes this file's `<style>`-element fallback. That
+ * fallback contradicted the invariant argued at the top of `styles.ts`: a
+ * `<style>` element is blocked by exactly the `style-src 'self'` policies that
+ * would need it, and it fails silently. `registerStyles` warns instead, once,
+ * naming the stylesheet to link.
+ *
+ * It also deduplicates per *document* by the CSS text, where the flag this used
+ * to keep was module-global -- so a second document (an iframe, a print view)
+ * previously got the dialog markup with none of its styles.
+ */
 export function ensureDialogStyles(doc: Document): void {
   ensureStyles(doc)
-  if (dialogStylesReady) return
-  try {
-    if (typeof CSSStyleSheet !== 'undefined' && 'replaceSync' in CSSStyleSheet.prototype) {
-      const sheet = new CSSStyleSheet()
-      sheet.replaceSync(DIALOG_CSS)
-      doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
-      dialogStylesReady = true
-      return
-    }
-  } catch {
-    /* fall through */
-  }
-  const style = doc.createElement('style')
-  style.textContent = DIALOG_CSS
-  doc.head.appendChild(style)
-  dialogStylesReady = true
+  registerStyles(DIALOG_CSS, doc)
 }
 
 /**
@@ -175,8 +223,39 @@ function showForm<T>(
     busyLabel?: string
     /** A button that fills fields from a shared file picker. */
     browse?: { label: string; fill: () => Promise<Record<string, string> | null> }
+    /**
+     * The editor's own `lang`.
+     *
+     * Scoped rather than global, for the reason the toolbar already gives: two
+     * editors with different languages on one page must not overwrite each
+     * other. Without it this whole file was English -- including the accessible
+     * names of Cancel and Save, and every hint a screen reader reads as the
+     * description of a field.
+     */
+    locale?: string | null
+    /** The editor to mount inside. See `dialogParent`. */
+    host?: HTMLElement
   } = {},
   commit: Commit<T> = () => ({ error: 'This form has nothing to do.' }),
+): Promise<T | null> {
+  const locale = options.locale ?? null
+  return withLocale(locale, () => buildForm(doc, locale, title, fields, options, commit))
+}
+
+function buildForm<T>(
+  doc: Document,
+  locale: string | null,
+  title: string,
+  fields: FieldSpec[],
+  options: {
+    extraCheckbox?: { name: string; label: string; hint?: string; checked?: boolean }
+    note?: string
+    busyLabel?: string
+    browse?: { label: string; fill: () => Promise<Record<string, string> | null> }
+    locale?: string | null
+    host?: HTMLElement
+  },
+  commit: Commit<T>,
 ): Promise<T | null> {
   ensureDialogStyles(doc)
   const previouslyFocused = doc.activeElement as HTMLElement | null
@@ -188,8 +267,11 @@ function showForm<T>(
   form.method = 'dialog'
 
   const heading = doc.createElement('h2')
-  heading.textContent = title
-  const headingId = `ol-dlg-${Math.abs(hash(title))}`
+  heading.textContent = t(title)
+  // A counter, not a hash of the title. Two dialogs with the same title -- two
+  // editors on one page, or a prompt reopened -- produced the same id, and
+  // `aria-labelledby` then resolved to whichever came first in the document.
+  const headingId = nextDialogId('t')
   heading.id = headingId
   dialog.setAttribute('aria-labelledby', headingId)
   form.appendChild(heading)
@@ -197,22 +279,38 @@ function showForm<T>(
   if (options.note) {
     const note = doc.createElement('div')
     note.className = 'ol-hint'
-    note.textContent = options.note
+    note.textContent = t(options.note)
     form.appendChild(note)
   }
 
   const inputs = new Map<string, HTMLInputElement | HTMLSelectElement>()
+  /** Each control's own hint id, so the error can be added without losing it. */
+  const described = new Map<string, string[]>()
   for (const field of fields) {
+    const wrap = doc.createElement('div')
+    wrap.className = 'ol-field'
+
+    const controlId = nextDialogId('c')
     const label = doc.createElement('label')
-    const text = doc.createElement('span')
-    text.textContent = field.label
-    label.appendChild(text)
+    label.htmlFor = controlId
+    label.textContent = t(field.label)
+    wrap.appendChild(label)
+
+    const describedBy: string[] = []
     if (field.hint) {
+      // Outside the <label>, and referenced instead of contained. As a child of
+      // the label it folded into the accessible NAME, so the address field was
+      // called "Address For example https://example.org, /about, or
+      // mailto:someone@example.org" -- which is not a name anybody can use.
+      const hintId = nextDialogId('h')
       const hint = doc.createElement('span')
+      hint.id = hintId
       hint.className = 'ol-hint'
-      hint.textContent = field.hint
-      label.appendChild(hint)
+      hint.textContent = t(field.hint)
+      wrap.appendChild(hint)
+      describedBy.push(hintId)
     }
+
     let control: HTMLInputElement | HTMLSelectElement
     if (field.options) {
       const select = doc.createElement('select')
@@ -220,7 +318,7 @@ function showForm<T>(
       for (const option of field.options) {
         const item = doc.createElement('option')
         item.value = option.value
-        item.textContent = option.label
+        item.textContent = t(option.label)
         if (option.value === (field.value ?? '')) item.selected = true
         select.appendChild(item)
       }
@@ -236,13 +334,18 @@ function showForm<T>(
       }
       control = input
     }
+    control.id = controlId
     // `required` is deliberately not set on the element. The browser's own
     // validation bubble cannot be read by a screen reader in every engine and
     // cannot express "one of these two fields"; the commit step reports into a
-    // live region instead.
-    label.appendChild(control)
+    // live region instead. `aria-required` still has to say so, though -- the
+    // omission left the field announcing nothing about being mandatory.
+    if (field.required === true) control.setAttribute('aria-required', 'true')
+    if (describedBy.length > 0) control.setAttribute('aria-describedby', describedBy.join(' '))
+    described.set(field.name, describedBy)
+    wrap.appendChild(control)
     inputs.set(field.name, control)
-    form.appendChild(label)
+    form.appendChild(wrap)
   }
 
   // Wired after the loop, so a chooser can fill a field declared after it.
@@ -259,19 +362,27 @@ function showForm<T>(
   if (options.browse) {
     const browse = doc.createElement('button')
     browse.type = 'button'
-    browse.textContent = options.browse.label
+    browse.textContent = t(options.browse.label)
     browse.addEventListener('click', () => {
-      void options.browse?.fill().then((filled) => {
-        if (!filled) return
-        for (const [name, value] of Object.entries(filled)) {
-          const control = inputs.get(name)
-          if (control && control instanceof HTMLInputElement && control.type !== 'file') {
-            control.value = value
-          } else if (control) {
-            control.value = value
+      void options.browse
+        ?.fill()
+        .then((filled) => {
+          if (!filled) return
+          for (const [name, value] of Object.entries(filled)) {
+            const control = inputs.get(name)
+            if (control && control instanceof HTMLInputElement && control.type !== 'file') {
+              control.value = value
+            } else if (control) {
+              control.value = value
+            }
           }
-        }
-      })
+        })
+        // A picker is integrator code, so it can reject -- and it does when it
+        // hands back an address the editor will not store. Without this the
+        // failure was an unhandled rejection and the author saw nothing happen.
+        .catch((thrown: unknown) => {
+          error.textContent = messageFrom(thrown)
+        })
     })
     form.appendChild(browse)
   }
@@ -286,14 +397,19 @@ function showForm<T>(
     checkbox.checked = options.extraCheckbox.checked === true
     wrap.appendChild(checkbox)
     const span = doc.createElement('span')
-    span.textContent = options.extraCheckbox.label
+    span.textContent = t(options.extraCheckbox.label)
     wrap.appendChild(span)
     form.appendChild(wrap)
     if (options.extraCheckbox.hint) {
+      const hintId = nextDialogId('h')
       const hint = doc.createElement('div')
+      hint.id = hintId
       hint.className = 'ol-hint'
-      hint.textContent = options.extraCheckbox.hint
+      hint.textContent = t(options.extraCheckbox.hint)
       form.appendChild(hint)
+      // The new-window warning is the reason this hint exists; a checkbox that
+      // does not point at it is a checkbox whose warning is never read.
+      checkbox.setAttribute('aria-describedby', hintId)
     }
   }
 
@@ -307,24 +423,31 @@ function showForm<T>(
   form.appendChild(progress)
 
   const error = doc.createElement('div')
+  const errorId = nextDialogId('e')
+  error.id = errorId
   error.className = 'ol-error'
   error.setAttribute('role', 'alert')
   form.appendChild(error)
+
+  // Translated once, in scope. `setBusy` runs after an await, long outside any
+  // synchronous locale scope, so reading these later would give English.
+  const saveLabel = t('Save')
+  const busyLabel = t(options.busyLabel ?? 'Working…')
 
   const actions = doc.createElement('div')
   actions.className = 'ol-actions'
   const cancel = doc.createElement('button')
   cancel.type = 'button'
-  cancel.textContent = 'Cancel'
+  cancel.textContent = t('Cancel')
   const ok = doc.createElement('button')
   ok.type = 'submit'
   ok.value = 'ok'
-  ok.textContent = 'Save'
+  ok.textContent = saveLabel
   actions.append(cancel, ok)
   form.appendChild(actions)
 
   dialog.appendChild(form)
-  doc.body.appendChild(dialog)
+  dialogParent(doc, options.host).appendChild(dialog)
 
   return new Promise((resolve) => {
     let busy = false
@@ -345,8 +468,28 @@ function showForm<T>(
         // screen reader user loses track of where they are mid-upload.
         button.setAttribute('aria-disabled', value ? 'true' : 'false')
       }
-      ok.textContent = value ? (options.busyLabel ?? 'Working…') : 'Save'
-      progress.textContent = value ? (options.busyLabel ?? 'Working…') : ''
+      ok.textContent = value ? busyLabel : saveLabel
+      progress.textContent = value ? busyLabel : ''
+    }
+
+    /**
+     * Show a failure, and put a screen reader user on the field it is about.
+     *
+     * `role="alert"` announces the text; `aria-invalid` plus the description is
+     * what makes the field itself say what is wrong when they arrive on it.
+     */
+    const showError = (failure: CommitError): void => {
+      error.textContent = failure.error
+      for (const [name, control] of inputs) {
+        const own = described.get(name) ?? []
+        const invalid = failure.field !== undefined && failure.field === name
+        control.setAttribute('aria-invalid', invalid ? 'true' : 'false')
+        const ids = invalid ? [...own, errorId] : own
+        if (ids.length > 0) control.setAttribute('aria-describedby', ids.join(' '))
+        else control.removeAttribute('aria-describedby')
+      }
+      const target = failure.field ? inputs.get(failure.field) : undefined
+      ;(target ?? firstControl())?.focus()
     }
 
     cancel.addEventListener('click', () => {
@@ -362,6 +505,13 @@ function showForm<T>(
 
     form.addEventListener('submit', (event) => {
       event.preventDefault()
+      // And stop it propagating, which `preventDefault` alone does not. Mounted
+      // inside the editor the dialog is usually inside the page's own <form>,
+      // and `submit` bubbles: without this, saving a link would reach the host
+      // page's submit listeners. In this repo that is the session plugin's,
+      // which treats a submit as "the document has been saved" and deletes the
+      // autosave draft -- from a dialog that saved nothing to the server.
+      event.stopPropagation()
       if (busy) return
 
       const values: Record<string, string> = {}
@@ -375,16 +525,17 @@ function showForm<T>(
       error.textContent = ''
       let outcome: ReturnType<Commit<T>>
       try {
-        outcome = commit(values, files)
+        // In scope: the messages a commit produces are the ones a screen reader
+        // reads, so they are translated in the editor's language, not the page's.
+        outcome = withLocale(locale, () => commit(values, files))
       } catch (thrown) {
-        error.textContent = messageFrom(thrown)
+        showError({ error: messageFrom(thrown) })
         return
       }
 
       if (!(outcome instanceof Promise)) {
         if ('error' in outcome) {
-          error.textContent = outcome.error
-          focusFirst()
+          showError(outcome)
           return
         }
         finish(outcome.value)
@@ -396,46 +547,76 @@ function showForm<T>(
         .then((settled) => {
           setBusy(false)
           if ('error' in settled) {
-            error.textContent = settled.error
-            focusFirst()
+            showError(settled)
             return
           }
           finish(settled.value)
         })
         .catch((thrown: unknown) => {
           setBusy(false)
-          error.textContent = messageFrom(thrown)
+          showError({ error: messageFrom(thrown) })
         })
     })
 
-    const focusFirst = (): void => {
-      const first = fields[0] ? inputs.get(fields[0].name) : undefined
-      first?.focus()
-    }
+    const firstControl = (): HTMLInputElement | HTMLSelectElement | undefined =>
+      fields[0] ? inputs.get(fields[0].name) : undefined
 
     dialog.showModal()
-    focusFirst()
-    const first = fields[0] ? inputs.get(fields[0].name) : undefined
+    const first = firstControl()
+    first?.focus()
     if (first instanceof HTMLInputElement && first.type !== 'file') first.select()
   })
+}
+
+/**
+ * Where a modal should be mounted.
+ *
+ * Inside the editor host, so the skin's tokens reach it -- `showModal()` puts
+ * the element in the top layer regardless of where it sits in the tree, so
+ * nesting costs nothing in stacking or clipping and buys the whole palette.
+ * `document.body` remains the fallback for a caller with no host (the unit
+ * tests, and any integrator calling `promptFields` directly).
+ *
+ * The host is verified to be in the same document, because a dialog appended
+ * across documents would be adopted out of the one whose stylesheet was just
+ * installed.
+ */
+function dialogParent(doc: Document, host?: HTMLElement): HTMLElement {
+  return host && host.ownerDocument === doc ? host : doc.body
 }
 
 /** A failure message worth showing an author, from whatever was thrown. */
 function messageFrom(thrown: unknown): string {
   const message = thrown instanceof Error ? thrown.message : String(thrown)
-  return message === '' ? 'Something went wrong.' : message
+  return message === '' ? t('Something went wrong.') : message
 }
 
-function hash(value: string): number {
-  let out = 0
-  for (let i = 0; i < value.length; i += 1) out = (out * 31 + value.charCodeAt(i)) | 0
-  return out
+/**
+ * Unique ids for one dialog's parts.
+ *
+ * Previously a hash of the title, so two dialogs with the same title -- two
+ * editors on a page, or the same prompt reopened -- shared ids and every
+ * `aria-labelledby` resolved to whichever was first in the document.
+ */
+let idCounter = 0
+
+function nextDialogId(kind: string): string {
+  idCounter += 1
+  return `ol-dlg-${kind}${idCounter}`
 }
 
 export interface PromptFormOptions {
   extraCheckbox?: { name: string; label: string; hint?: string; checked?: boolean }
   note?: string
   busyLabel?: string
+  /** The editor's own `lang`, so two editors on a page do not share a language. */
+  locale?: string | null
+  /**
+   * The editor the dialog belongs to. Pass it: the dialog is mounted inside
+   * this element so the skin's tokens reach it, and without it the dialog is
+   * painted in the default light palette whatever the editor looks like.
+   */
+  host?: HTMLElement
 }
 
 /**
@@ -462,6 +643,7 @@ export async function promptForLink(
 ): Promise<LinkResult | null> {
   const listed = listedLinks()
   const picker = host ? filePickerFor(host) : null
+  const locale = host?.getAttribute('lang') ?? null
   const fields: FieldSpec[] = [
     ...(listed.length > 0
       ? [
@@ -495,6 +677,8 @@ export async function promptForLink(
     existing?.href ? 'Edit link' : 'Insert link',
     fields,
     {
+      locale,
+      ...(host ? { host } : {}),
       extraCheckbox: {
         name: 'newWindow',
         label: 'Open in a new window',
@@ -510,6 +694,9 @@ export async function promptForLink(
               fill: async () => {
                 const picked = await picker({ kind: 'file', host })
                 if (!picked) return null
+                if (!isSafeUrl(picked.url)) {
+                  throw new Error('The file picker returned an address the editor will not store.')
+                }
                 return { href: picked.url, title: picked.title ?? '' }
               },
             },
@@ -520,7 +707,11 @@ export async function promptForLink(
       // The address field alone: choosing from the list writes into it, so there
       // is no second place a destination can hide.
       const href = values['href'] || ''
-      if (!href) return { error: 'Enter an address for the link.' }
+      if (!href) return { error: t('Enter an address for the link.'), field: 'href' }
+      // `setLink` declines this too, but a command that declines closes the
+      // dialog and does nothing visible. Reporting here keeps the dialog open
+      // with the address still in the field, so the author can see and fix it.
+      if (!isSafeUrl(href)) return { error: t(UNSTORABLE_ADDRESS), field: 'href' }
       const newWindow = values['newWindow'] === 'on'
       return {
         value: {
@@ -556,6 +747,14 @@ export async function promptForImage(
   const listed = listedImages()
   const classes = listedImageClasses()
   const picker = host ? filePickerFor(host) : null
+  const locale = host?.getAttribute('lang') ?? null
+  // Interpolated strings are translated here rather than in the form builder,
+  // because a template plus a value is one string the catalog has to own -- and
+  // this is the only place that has the value.
+  const inLocale = (source: string, values: Record<string, string> = {}): string =>
+    withLocale(locale, () =>
+      t(source).replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole),
+    )
 
   const describe: FieldSpec = {
     name: 'alt',
@@ -589,7 +788,10 @@ export async function promptForImage(
       label: 'CSS classes',
       type: 'text',
       value: existing?.className ?? '',
-      hint: classes.length > 0 ? `Suggested: ${classes.join(', ')}` : 'Optional class names, separated by spaces.',
+      hint:
+        classes.length > 0
+          ? inLocale('Suggested: {classes}', { classes: classes.join(', ') })
+          : 'Optional class names, separated by spaces.',
     },
     {
       name: 'caption',
@@ -660,11 +862,13 @@ export async function promptForImage(
     file ? 'Describe this image' : 'Insert image',
     fields,
     {
+      locale,
+      ...(host ? { host } : {}),
       extraCheckbox: {
         name: 'decorative',
         label: 'This image is decorative and needs no description',
       },
-      ...(file ? { note: `Ready to upload: ${file.name}` } : {}),
+      ...(file ? { note: inLocale('Ready to upload: {file}', { file: file.name }) } : {}),
       busyLabel: 'Uploading…',
       ...(picker && host
         ? {
@@ -673,6 +877,9 @@ export async function promptForImage(
               fill: async () => {
                 const picked = await picker({ kind: 'image', host })
                 if (!picked) return null
+                if (!isSafeUrl(picked.url)) {
+                  throw new Error('The image picker returned an address the editor will not store.')
+                }
                 return { src: picked.url, alt: picked.alt ?? '', title: picked.title ?? '' }
               },
             },
@@ -684,10 +891,18 @@ export async function promptForImage(
       const src = values['src'] || ''
 
       if (!chosen && !src) {
-        return { error: upload ? 'Choose a file or enter an image address.' : 'Enter an image address.' }
+        return {
+          error: upload
+            ? t('Choose a file or enter an image address.')
+            : t('Enter an image address.'),
+          field: upload && files['file'] !== undefined ? 'file' : 'src',
+        }
       }
+      // Only a typed or picked address needs checking here; a file goes through
+      // `runUploader`, which already refuses what the editor will not store.
+      if (src !== '' && !isSafeUrl(src)) return { error: UNSTORABLE_ADDRESS }
       if (!values['alt'] && values['decorative'] !== 'on') {
-        return { error: 'Add alternative text, or tick the decorative box.' }
+        return { error: t('Add alternative text, or tick the decorative box.'), field: 'alt' }
       }
 
       const alt = values['decorative'] === 'on' ? '' : (values['alt'] ?? '')

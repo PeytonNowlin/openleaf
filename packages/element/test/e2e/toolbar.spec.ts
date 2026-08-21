@@ -145,8 +145,13 @@ test.describe('the keyboard model', () => {
   test('the whole toolbar is a single tab stop', async ({ page }) => {
     // Without a roving tabindex, Tab from the content walks a keyboard user
     // through twenty buttons before they reach anything else.
-    const tabbable = await toolbar(page).locator('button').evaluateAll((els) =>
-      els.filter((el) => (el as HTMLButtonElement).tabIndex === 0).length,
+    //
+    // Counting `button` alone is what let this pass while the contract was
+    // broken: the default layout has FOUR <select> controls in it, each of them
+    // a native tab stop, so the bar was five tab stops and the assertion could
+    // not see four of them.
+    const tabbable = await toolbar(page).locator('button, select').evaluateAll((els) =>
+      els.filter((el) => (el as HTMLElement).tabIndex === 0).length,
     )
     expect(tabbable).toBe(1)
   })
@@ -201,18 +206,33 @@ test.describe('the keyboard model', () => {
     await expect.poll(() => page.locator('#body').inputValue()).toContain('<strong>')
   })
 
-  test('the select owns its own arrow keys rather than the roving handler', async ({ page }) => {
-    // The conflict this resolves: on the select, Left/Right have two competing
-    // owners. Intercepting them for roving would break value changing; not
-    // intercepting them would break the toolbar contract. The select is
-    // therefore its own tab stop and keeps its native key handling.
-    const select = page.getByRole('combobox', { name: 'Paragraph style' })
-    expect(await select.evaluate((el) => (el as HTMLSelectElement).tabIndex)).toBe(0)
+  test('arrow keys reach the selects instead of jumping over them', async ({ page }) => {
+    // ArrowRight from Redo used to land on Bold, skipping four controls -- and
+    // the editable region's own description tells a screen reader user to press
+    // Alt+F10 and arrow through the bar, so paragraph style, font family, font
+    // size and line height could be arrowed past forever without being found.
+    await editor(page).click()
+    await page.keyboard.press('Alt+F10')
+    await page.keyboard.press('ArrowRight')
+    expect(await focusedName(page)).toBe('Redo')
+    await page.keyboard.press('ArrowRight')
+    expect(await focusedName(page)).toBe('Paragraph style')
+    await page.keyboard.press('ArrowRight')
+    expect(await focusedName(page)).toBe('Font family')
+    await page.keyboard.press('ArrowLeft')
+    expect(await focusedName(page)).toBe('Paragraph style')
+  })
 
+  test('leaves the select the keys it needs to be a select', async ({ page }) => {
+    // The APG resolution for a select in a toolbar: the toolbar takes Left and
+    // Right, and everything the control uses for its own value -- Up/Down,
+    // Home/End, typeahead -- is left alone.
+    const select = page.getByRole('combobox', { name: 'Paragraph style' })
     await editor(page).getByText('A stored paragraph.').click()
     await select.focus()
-    await page.keyboard.press('ArrowRight')
-    // Focus must still be on the select, not moved along the toolbar.
+    await page.keyboard.press('Home')
+    expect(await focusedName(page)).toBe('Paragraph style')
+    await page.keyboard.press('End')
     expect(await focusedName(page)).toBe('Paragraph style')
   })
 })
