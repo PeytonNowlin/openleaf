@@ -1531,6 +1531,18 @@ export class OpenLeafEditor extends HTMLElementBase {
     const urls = contentCssUrls(this.getAttribute('content-css'))
     if (urls.length === 0) return
     await loadContentCss(this.ownerDocument, urls)
+    // Adopting a stylesheet changes the layout and dispatches no transaction,
+    // so anything positioned in viewport coordinates is now pointing at where
+    // the caret used to be. The floating bars are the only such thing, and an
+    // editor that opens empty shows the insert bar immediately -- placed before
+    // this sheet had loaded, and left 215px adrift of the caret until the
+    // selection next moved.
+    //
+    // Guarded on the view: the load is asynchronous and the editor can have been
+    // torn down, or rebuilt, while it was in flight.
+    const view = this.#view
+    if (!view || view.isDestroyed) return
+    this.#floating?.update(view.state)
   }
 
   #applyFullscreen(active: boolean): void {

@@ -104,6 +104,46 @@ test.describe('the demo page', () => {
     expect(shown).toBe(true)
   })
 
+  /*
+   * `content-css` loads asynchronously and adopting the sheet dispatches no
+   * transaction, so a bar positioned at mount is pointing at where the caret was
+   * before the stylesheet changed the metrics. Measured on a sheet that moves the
+   * first paragraph down: 215px adrift before the reposition, 55px after -- the
+   * offset the placement intends.
+   */
+  test('realigns the insert bar once the content stylesheet settles', async ({ page }) => {
+    await page.route('**/probe-shift.css', (route) =>
+      route.fulfill({
+        contentType: 'text/css',
+        body: '.ol-content .ProseMirror p { margin-top: 260px; font-size: 34px; }',
+      }),
+    )
+    await page.goto(DEMO)
+    await expect(page.locator('openleaf-editor[for="body"] .ProseMirror')).toBeVisible({ timeout: 15000 })
+    await page.evaluate(() => {
+      const wrap = document.createElement('div')
+      wrap.id = 'shift-wrap'
+      document.body.appendChild(wrap)
+      wrap.innerHTML =
+        '<openleaf-editor id="shift" insert-toolbar="image" content-css="/probe-shift.css"></openleaf-editor>'
+    })
+    // Polled, not slept on. The stylesheet is fetched and adopted
+    // asynchronously, and how long that takes is the engine's business.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const bar = document.querySelector('#shift .ol-toolbar.ol-floating') as HTMLElement | null
+            const para = document.querySelector('#shift .ProseMirror p') as HTMLElement | null
+            if (!bar || !para) return Number.POSITIVE_INFINITY
+            return Math.round(Math.abs(bar.getBoundingClientRect().top - para.getBoundingClientRect().top))
+          }),
+        { timeout: 10000 },
+      )
+      .toBeLessThan(120)
+    await page.evaluate(() => document.getElementById('shift-wrap')?.remove())
+  })
+
   test('shows the menubar the chrome section documents', async ({ page }) => {
     await page.goto(DEMO)
     const bar = host(page, 'chrome-body').getByRole('menubar')
