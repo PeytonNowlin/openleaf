@@ -78,6 +78,32 @@ test.describe('the demo page', () => {
     await expect(floating).toBeVisible()
   })
 
+  /*
+   * The other half of the `hidden` fix, and the reason it needed a second look.
+   *
+   * The insert bar exists for a caret sitting in an empty block, which is the
+   * state a new post opens in -- so it has to be right at MOUNT, not after the
+   * first transaction. `FloatingToolbars.mount()` did not position from the
+   * state it was mounted with, and nothing noticed while `hidden` did nothing:
+   * the bar was painted regardless, so a missing initial position looked like a
+   * working feature. Found by review, kept honest here.
+   */
+  test('shows the insert bar on an editor that opens on an empty block', async ({ page }) => {
+    await page.goto(DEMO)
+    await expect(page.locator('openleaf-editor[for="body"] .ProseMirror')).toBeVisible({ timeout: 15000 })
+    const shown = await page.evaluate(async () => {
+      const wrap = document.createElement('div')
+      document.body.appendChild(wrap)
+      wrap.innerHTML = '<openleaf-editor id="probe" insert-toolbar="image"></openleaf-editor>'
+      await new Promise((r) => setTimeout(r, 400))
+      const bar = document.querySelector('#probe .ol-toolbar.ol-floating') as HTMLElement | null
+      const visible = !!bar && getComputedStyle(bar).display !== 'none'
+      wrap.remove()
+      return visible
+    })
+    expect(shown).toBe(true)
+  })
+
   test('shows the menubar the chrome section documents', async ({ page }) => {
     await page.goto(DEMO)
     const bar = host(page, 'chrome-body').getByRole('menubar')

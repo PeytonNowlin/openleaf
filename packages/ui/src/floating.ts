@@ -62,6 +62,16 @@ export class FloatingToolbars {
     this.#view = view
     this.#selection?.mount(view)
     this.#insert?.mount(view)
+    // Position from the state we are mounted with, not from the first
+    // transaction after it. An editor that opens on an empty paragraph -- a new
+    // post, the commonest way to meet one -- has the caret in exactly the place
+    // the insert bar exists for, and waiting for a transaction meant it did not
+    // appear until the author did something else first.
+    //
+    // This was invisible while `hidden` did nothing: both bars were painted
+    // whatever the state said, so the missing initial position looked like a
+    // working feature. Fixing the CSS is what made it observable.
+    this.#position(view.state)
   }
 
   /** Follow the host's `lang` when it changes, as the main bar already does. */
