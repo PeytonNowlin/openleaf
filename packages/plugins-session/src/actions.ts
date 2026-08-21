@@ -51,6 +51,9 @@ export async function saveDocument(host: EditorHost): Promise<boolean> {
   const event = new CustomEvent(SAVE_EVENT, {
     bubbles: true,
     cancelable: true,
+    // Without `composed`, a host that puts the editor inside its own shadow
+    // root never sees this and every save silently falls back to the default.
+    composed: true,
     detail: { html },
   })
   host.dispatchEvent(event)

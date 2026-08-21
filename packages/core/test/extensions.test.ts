@@ -1,8 +1,8 @@
 import { TextSelection, EditorState, type Command } from 'prosemirror-state'
 import type { NodeSpec } from 'prosemirror-model'
 import { afterEach, describe, expect, it } from 'vitest'
+import { CARRIED_ATTR } from '../src/extensions.js'
 import {
-  CARRIED_ATTR,
   activeHeadingLevel,
   coreSchema,
   createSchema,

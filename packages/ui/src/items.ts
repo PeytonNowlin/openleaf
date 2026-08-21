@@ -422,7 +422,7 @@ export function registerDefaultItems(): void {
     // that escape hatch exists.
     isActive: () => false,
     run: ({ host }) => {
-      host.dispatchEvent(new CustomEvent(SOURCE_TOGGLE_EVENT, { bubbles: true }))
+      host.dispatchEvent(new CustomEvent(SOURCE_TOGGLE_EVENT, { bubbles: true, composed: true }))
     },
   })
 
@@ -434,7 +434,7 @@ export function registerDefaultItems(): void {
     icon: 'fullscreen',
     isActive: () => false,
     run: ({ host }) => {
-      host.dispatchEvent(new CustomEvent(FULLSCREEN_TOGGLE_EVENT, { bubbles: true }))
+      host.dispatchEvent(new CustomEvent(FULLSCREEN_TOGGLE_EVENT, { bubbles: true, composed: true }))
     },
   })
 
@@ -446,7 +446,7 @@ export function registerDefaultItems(): void {
     icon: 'visualAids',
     isActive: () => false,
     run: ({ host }) => {
-      host.dispatchEvent(new CustomEvent(VISUAL_AIDS_TOGGLE_EVENT, { bubbles: true }))
+      host.dispatchEvent(new CustomEvent(VISUAL_AIDS_TOGGLE_EVENT, { bubbles: true, composed: true }))
     },
   })
 
