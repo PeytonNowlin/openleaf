@@ -69,8 +69,11 @@ describe('parseHtml', () => {
     const error = thrownBy(() => parseHtml('<div>'.repeat(20_000) + 'x'))
     expect(isOpenLeafError(error, 'depth-limit')).toBe(true)
     expect(error).not.toBeInstanceOf(RangeError)
-    // Generous: jsdom's own parser takes seconds to build a tree this deep.
-  }, 30_000)
+    // Generous, and it has to be: jsdom's own parser takes seconds to build a
+    // tree this deep, and a shared CI runner is several times slower again --
+    // 8s locally overran a 30s budget there. The depth is the assertion (20,000
+    // is where the RangeError used to come from), so the budget moves, not it.
+  }, 120_000)
 })
 
 describe('serializeHtml', () => {

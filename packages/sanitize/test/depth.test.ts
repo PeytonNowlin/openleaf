@@ -53,7 +53,7 @@ describe('deeply nested input', () => {
       expect(thrown).not.toBeInstanceOf(RangeError)
       // Generous: jsdom's own parser takes seconds to build a tree this deep,
       // which is the cost of proving the refusal happens rather than a crash.
-    }, 30_000)
+    }, 120_000)
   }
 
   it('draws the line exactly at the limit', () => {
