@@ -128,28 +128,111 @@ function imageView(node: PMNode, view: EditorView, getPos: () => number | undefi
     )
   }
 
+  /*
+   * The drag is a CSS preview, and exactly one transaction at the end.
+   *
+   * Dispatching per `pointermove` was the obvious implementation and the wrong
+   * one twice over. A pointer reports at 60-120 Hz, and every one of those was a
+   * `docChanged` transaction: the full per-keystroke bill -- plugin
+   * `appendTransaction`s, decoration rebuilds, the host's change listener --
+   * ninety times a second, on a document the author was not editing. And each
+   * one landed in the undo history, so a two-second drag cost the author a
+   * hundred and eighty presses of Ctrl-Z to get back past it.
+   *
+   * So the drag paints `img.style` instead, coalesced to one write per animation
+   * frame because paint is the only thing that consumes it and the browser only
+   * paints once per frame anyway. The document learns the final size once, on
+   * `pointerup`, which is also the only size the author ever meant.
+   */
   let dragging = false
   let startX = 0
   let startWidth = 0
+  let previewWidth = 0
+  let moved = false
+  let frame = 0
+
+  const win = (): (Window & typeof globalThis) | null => wrap.ownerDocument.defaultView
+
+  /** Pixel height that keeps the image's aspect ratio, or null if it is unknown. */
+  const heightFor = (width: number): string | null => {
+    const ratio = img.naturalHeight && img.naturalWidth ? img.naturalHeight / img.naturalWidth : 0
+    return ratio ? String(Math.round(width * ratio)) : null
+  }
+
+  const paint = (): void => {
+    frame = 0
+    if (!dragging) return
+    img.style.width = `${previewWidth}px`
+    const height = heightFor(previewWidth)
+    if (height !== null) img.style.height = `${height}px`
+  }
+
+  /** Drop the preview so the node's own attributes are what shows again. */
+  const clearPreview = (): void => {
+    if (frame !== 0) win()?.cancelAnimationFrame(frame)
+    frame = 0
+    img.style.removeProperty('width')
+    img.style.removeProperty('height')
+  }
 
   const onMove = (event: PointerEvent): void => {
     if (!dragging) return
-    resizeTo(startWidth + (event.clientX - startX))
+    previewWidth = Math.max(16, Math.round(startWidth + (event.clientX - startX)))
+    moved = true
+    const frames = win()
+    if (!frames?.requestAnimationFrame) {
+      paint()
+      return
+    }
+    if (frame === 0) frame = frames.requestAnimationFrame(paint)
+  }
+
+  const stop = (): void => {
+    if (!dragging) return
+    dragging = false
+    clearPreview()
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onUp)
   }
 
   const onUp = (): void => {
-    dragging = false
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', onUp)
+    const commit = dragging && moved
+    const width = previewWidth
+    stop()
+    if (!commit) return
+    const pos = getPos()
+    if (pos === undefined) return
+    view.dispatch(
+      view.state.tr.setNodeMarkup(pos, undefined, {
+        ...view.state.doc.nodeAt(pos)?.attrs,
+        width: String(width),
+        height: heightFor(width),
+      }),
+    )
   }
 
   handle.addEventListener('pointerdown', (event) => {
     event.preventDefault()
     dragging = true
+    moved = false
     startX = event.clientX
     startWidth = img.getBoundingClientRect().width
+    previewWidth = startWidth
+    // The pointer belongs to the handle until it is released, so a fast drag
+    // that outruns the cursor -- or leaves the editor entirely -- still reports
+    // to us instead of to whatever it happens to be over. Guarded because jsdom
+    // has no pointer capture; the window listeners below are what makes the
+    // fallback work, and capture retargets events without stopping them
+    // reaching an ancestor, so both paths see the same stream.
+    try {
+      handle.setPointerCapture(event.pointerId)
+    } catch {
+      /* No pointer capture here. The window listeners are the whole fallback. */
+    }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
   })
 
   handle.addEventListener('keydown', (event) => {
@@ -197,7 +280,10 @@ function imageView(node: PMNode, view: EditorView, getPos: () => number | undefi
       return true
     },
     destroy() {
-      onUp()
+      // `stop`, not `onUp`: a node view torn down mid-drag must not dispatch
+      // into a view that is being dismantled, and the size the author was
+      // dragging towards is not one they ever committed to.
+      stop()
     },
   }
 }

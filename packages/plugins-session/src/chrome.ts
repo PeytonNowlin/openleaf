@@ -8,7 +8,8 @@
 
 import { serializeHtml } from '@openleaf-editor/core'
 import { announce, liveRegion, t, withLocale } from '@openleaf-editor/ui'
-import { Plugin } from 'prosemirror-state'
+import type { Node as PMNode } from 'prosemirror-model'
+import { Plugin, type EditorState } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import {
   editorHost,
@@ -59,7 +60,13 @@ interface SessionHandle {
   closeFind: () => void
   markClean: () => void
   isDirty: () => boolean
-  update: () => void
+  /**
+   * `prevState` is the state this update replaced, as ProseMirror hands it to a
+   * plugin view. Omitted for the calls that are not view updates -- the first
+   * paint, and a restored draft -- which is what tells them apart from a caret
+   * move and lets them render the count immediately instead of debouncing it.
+   */
+  update: (prevState?: EditorState) => void
   destroy: () => void
 }
 
@@ -72,9 +79,34 @@ interface SessionHandle {
 const SOURCE_OPEN_EVENT = 'openleaf:source-open'
 const SOURCE_CLOSE_EVENT = 'openleaf:source-close'
 
+/** Milliseconds a burst of typing coalesces into one recount. */
+const COUNT_DEBOUNCE_MS = 250
+
 interface Baseline {
   /** The HTML as of the last save. */
   html: string
+  /**
+   * The document as of the last save.
+   *
+   * The dirty check used to be a full serialization of the whole document, run
+   * on every autosave tick and again inside `beforeunload` for every editor on
+   * the page -- a hundred-page document cost about forty milliseconds to decide
+   * it had not changed. Comparing nodes answers the common case (nothing has
+   * changed) without building a string, and `Node.eq` short-circuits on
+   * identity, which is what a document nobody has typed into actually is.
+   *
+   * Null only until the first baseline is taken.
+   */
+  doc: PMNode | null
+  /**
+   * Set when the author edits HTML in the source box.
+   *
+   * Those edits land in a textarea and dispatch no transaction, so the document
+   * comparison cannot see them and would report a clean session. The flag sends
+   * the check back to the string comparison, and clears itself the moment that
+   * comparison proves the session clean again.
+   */
+  sourceEdited: boolean
   /** Whether a stored draft has already been offered for this host. */
   offeredRestore: boolean
 }
@@ -94,10 +126,10 @@ const baselines = new WeakMap<HTMLElement, Baseline>()
 const live = new Set<SessionHandle>()
 const guardedWindows = new WeakSet<Window>()
 
-function baselineFor(host: EditorHost, html: () => string): Baseline {
+function baselineFor(host: EditorHost, html: () => string, doc: PMNode): Baseline {
   const existing = baselines.get(host)
   if (existing) return existing
-  const created: Baseline = { html: html(), offeredRestore: false }
+  const created: Baseline = { html: html(), doc, sourceEdited: false, offeredRestore: false }
   baselines.set(host, created)
   return created
 }
@@ -161,7 +193,7 @@ export function sessionChrome(options: SessionOptions = {}): Plugin {
         storage,
       })
       return {
-        update: () => handle.update(),
+        update: (_view, prevState) => handle.update(prevState),
         destroy: () => handle.destroy(),
       }
     },
@@ -183,6 +215,7 @@ function attachSession(
   const win = doc.defaultView
   const key = draftStorageKey(host)
   let timer: ReturnType<typeof setTimeout> | undefined
+  let countTimer: ReturnType<typeof setTimeout> | undefined
 
   // Only the key for this page is ever read back, so a draft for a page nobody
   // returns to would sit in storage for good. Attaching an editor is the one
@@ -201,7 +234,7 @@ function attachSession(
    */
   const currentHtml = (): string => (host.view ? host.value : serializeHtml(view.state.doc))
 
-  const baseline = baselineFor(host, currentHtml)
+  const baseline = baselineFor(host, currentHtml, view.state.doc)
 
   const findBar = buildFindBar(host, view)
   const status = doc.createElement('div')
@@ -213,12 +246,35 @@ function attachSession(
   else host.prepend(findBar.root)
   host.appendChild(status)
 
-  const isDirty = (): boolean => currentHtml() !== baseline.html
+  /**
+   * True when the document is provably the saved one, without building a string.
+   *
+   * Only the "clean" answer is taken from the node comparison. A document that
+   * differs structurally still falls through to the string comparison, because
+   * `host.value` -- not `view.state.doc` -- is the authority while the source
+   * box is open, and because two different node trees can still serialize to
+   * the same HTML. Being slower to say "dirty" costs a serialization the author
+   * has already earned by typing; being wrong about "clean" costs their work.
+   */
+  const cleanByDoc = (): boolean =>
+    !baseline.sourceEdited && baseline.doc !== null && baseline.doc.eq(view.state.doc)
+
+  const isDirty = (): boolean => {
+    if (cleanByDoc()) return false
+    const dirty = currentHtml() !== baseline.html
+    if (!dirty) baseline.sourceEdited = false
+    return dirty
+  }
 
   const persist = (): void => {
     if (!options.autosave) return
+    if (cleanByDoc()) {
+      clearDraft(options.storage, key)
+      return
+    }
     const html = currentHtml()
     if (html === baseline.html) {
+      baseline.sourceEdited = false
       clearDraft(options.storage, key)
       return
     }
@@ -231,8 +287,14 @@ function attachSession(
     timer = setTimeout(persist, options.debounceMs)
   }
 
-  const onSubmit = (): void => {
+  const markSaved = (): void => {
     baseline.html = currentHtml()
+    baseline.doc = view.state.doc
+    baseline.sourceEdited = false
+  }
+
+  const onSubmit = (): void => {
+    markSaved()
     clearDraft(options.storage, key)
   }
 
@@ -245,7 +307,12 @@ function attachSession(
   // keeps source-mode edits autosaved and keeps them counted as unsaved on the
   // way out of the tab.
   let sourceArea: HTMLTextAreaElement | null = null
-  const onSourceInput = (): void => schedule()
+  const onSourceInput = (): void => {
+    // The document does not move while the source box is open, so the node
+    // comparison would call this clean. Say so explicitly.
+    baseline.sourceEdited = true
+    schedule()
+  }
   const onSourceOpen = (event: Event): void => {
     const area = (event as CustomEvent<{ textarea?: HTMLTextAreaElement }>).detail?.textarea
     if (!area) return
@@ -264,23 +331,52 @@ function attachSession(
   host.addEventListener(SOURCE_OPEN_EVENT, onSourceOpen)
   host.addEventListener(SOURCE_CLOSE_EVENT, onSourceClose)
 
+  const renderCount = (): void => {
+    countTimer = undefined
+    status.textContent = withLocale(host.getAttribute('lang'), () =>
+      formatWordCount(documentStats(view.state.doc), host.getAttribute('lang')),
+    )
+  }
+
+  /**
+   * Recount after the typing stops.
+   *
+   * The status line is decoration -- `aria-hidden`, no live region, nobody is
+   * waiting on it -- and counting words is a walk of the whole document. Doing
+   * that between two keystrokes spends a third of a frame on a number that is
+   * about to be wrong again.
+   */
+  const scheduleCount = (): void => {
+    if (countTimer !== undefined) clearTimeout(countTimer)
+    countTimer = setTimeout(renderCount, COUNT_DEBOUNCE_MS)
+  }
+
   const handle: SessionHandle = {
     host,
     openFind: () => findBar.open(),
     closeFind: () => findBar.close(),
     markClean: () => {
-      baseline.html = currentHtml()
+      markSaved()
       clearDraft(options.storage, key)
     },
     isDirty,
-    update: () => {
-      status.textContent = withLocale(host.getAttribute('lang'), () =>
-        formatWordCount(documentStats(view.state.doc), host.getAttribute('lang')),
-      )
+    update: (prevState) => {
+      // A caret move, a click, a drag-selection and a plugin-state change all
+      // arrive here as updates. Only a changed document can change the count or
+      // the draft, and comparing documents is an identity check in the case
+      // that matters, because a selection-only transaction reuses the node.
+      const changed = prevState === undefined || !prevState.doc.eq(view.state.doc)
       findBar.sync()
+      if (!changed) return
+      // The first paint and a restored draft have no previous state and no
+      // typing to coalesce with, so they render straight away rather than
+      // leaving the status line blank for a quarter of a second.
+      if (prevState === undefined) renderCount()
+      else scheduleCount()
       if (options.autosave) schedule()
     },
     destroy: () => {
+      if (countTimer !== undefined) clearTimeout(countTimer)
       if (timer !== undefined) clearTimeout(timer)
       persist()
       form?.removeEventListener('submit', onSubmit)

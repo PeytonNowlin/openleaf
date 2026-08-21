@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 const HARNESS = '/packages/element/test/e2e/harness.html'
 
@@ -9,7 +10,7 @@ function editor(page: Page) {
 
 /** Current textarea value -- what the server would actually receive. */
 function submittedValue(page: Page) {
-  return page.locator('#body').inputValue()
+  return stored(page)
 }
 
 test.beforeEach(async ({ page }) => {

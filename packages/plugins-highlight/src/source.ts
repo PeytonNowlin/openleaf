@@ -62,14 +62,31 @@ export function formatIfLossless(html: string): string {
   }
 }
 
+/**
+ * Above this many characters the backdrop is plain text.
+ *
+ * The same guard `codeblock.ts` puts on a single block, for the same reason and
+ * with the same number. This file had none at all: a 261 KB document -- an
+ * ordinary long article, not a pathological paste -- rebuilt roughly six
+ * thousand spans inside a `white-space: pre-wrap` `<pre>` on every keystroke,
+ * and the caret sits in a transparent textarea directly on top of it, so the
+ * relayout is visible as the author types. Uncoloured source is a small loss;
+ * a source view that stutters is not.
+ */
+const MAX_SOURCE_HIGHLIGHT_LENGTH = 20_000
+
 /** Render tokens into the backdrop element. */
 function paint(view: HTMLElement, source: string): void {
   view.replaceChildren()
   const doc = view.ownerDocument
-  const tokens = highlight(source, 'html')
+  const tokens = source.length > MAX_SOURCE_HIGHLIGHT_LENGTH ? null : highlight(source, 'html')
 
   if (!tokens) {
     view.textContent = source
+    // The trailing-newline fix below applies to the plain path too: without it
+    // the backdrop is a line short of the textarea and the colours -- or here,
+    // the plain text -- sit above the caret.
+    if (source.endsWith('\n')) view.appendChild(doc.createTextNode(' '))
     return
   }
 
@@ -121,17 +138,42 @@ export function enhanceSourceTextarea(textarea: HTMLTextAreaElement): () => void
   parent.insertBefore(wrapper, textarea)
   wrapper.append(view, textarea)
 
-  const repaint = (): void => paint(view, textarea.value)
+  /**
+   * Repaint once per frame, however fast the author types.
+   *
+   * `input` fires per keystroke and the repaint is a full re-tokenize plus a
+   * rebuild of every node in the backdrop. Nothing between two frames can be
+   * seen, so a burst of typing coalesces into the one repaint that gets painted.
+   */
+  let frame = 0
+  const win = doc.defaultView
+  const repaintNow = (): void => {
+    frame = 0
+    paint(view, textarea.value)
+  }
+  const repaint = (): void => {
+    if (!win?.requestAnimationFrame) {
+      repaintNow()
+      return
+    }
+    if (frame === 0) frame = win.requestAnimationFrame(repaintNow)
+  }
   const syncScroll = (): void => {
     view.scrollTop = textarea.scrollTop
     view.scrollLeft = textarea.scrollLeft
   }
 
-  repaint()
+  // The first paint is synchronous: the box is about to be shown, and a frame
+  // of unhighlighted source reads as a flash rather than as coalescing.
+  repaintNow()
   textarea.addEventListener('input', repaint)
   textarea.addEventListener('scroll', syncScroll)
 
   const teardown = (): void => {
+    // A queued frame outlives the listeners and would paint into a backdrop
+    // that has already been taken out of the document.
+    if (frame !== 0) win?.cancelAnimationFrame(frame)
+    frame = 0
     textarea.removeEventListener('input', repaint)
     textarea.removeEventListener('scroll', syncScroll)
     attached.delete(textarea)

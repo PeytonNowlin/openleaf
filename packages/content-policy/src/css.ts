@@ -517,19 +517,46 @@ export function modelledValue(property: string, value: string): string | null {
  * violations. A CSSOM write is not blocked -- the same distinction that makes the
  * toolbar's constructable stylesheet CSP-safe.
  *
- * So: set the attribute, then check whether the browser honoured it, and fall
- * back to `cssText` if it did not. Under an ordinary CSP the author's spelling
- * survives; under a strict one the formatting still renders, at the cost of the
- * normalization. Getting both right in the environment that has both is not
- * possible, and of the two, "it renders" has to win.
+ * So: ask once whether this document parses `style` attributes at all, and fall
+ * back to `cssText` where it does not. Under an ordinary CSP the author's
+ * spelling survives; under a strict one the formatting still renders, at the
+ * cost of the normalization. Getting both right in the environment that has both
+ * is not possible, and of the two, "it renders" has to win.
+ *
+ * ## Why the question is asked once, not per element
+ *
+ * Reading `el.style.length` is not free: it is what forces the CSSOM to parse
+ * the declaration that was just set. Doing it per element meant every styled
+ * node and every colour or font mark paid a CSSOM parse on every serialize --
+ * the exact work the `setAttribute` route exists to avoid. Whether the attribute
+ * is honoured is a property of the DOCUMENT's policy, not of the element, so one
+ * probe per document answers it for every element in it.
+ *
+ * Per document rather than per module: serialization can target a Document other
+ * than the global one, a detached document need not carry the page's policy, and
+ * a `WeakMap` keyed on the Document neither leaks nor decides on one document's
+ * behalf what another one does. Lazily, so importing this module on a server
+ * touches no DOM.
  */
+const parsesStyleAttribute = new WeakMap<Document, boolean>()
+
+function honoursStyleAttribute(doc: Document): boolean {
+  const known = parsesStyleAttribute.get(doc)
+  if (known !== undefined) return known
+  const probe = doc.createElement('span')
+  probe.setAttribute('style', 'color:red')
+  // A declaration that is unambiguously valid, so a zero length can only mean
+  // the attribute was set and not parsed -- the CSP-blocked case.
+  const honoured = (probe.style?.length ?? 0) > 0
+  parsesStyleAttribute.set(doc, honoured)
+  return honoured
+}
+
 export function applyStyleAttribute(el: Element, css: string): void {
   el.setAttribute('style', css)
+  if (honoursStyleAttribute(el.ownerDocument)) return
   const style = (el as HTMLElement).style
-  // `length` is zero when the attribute was set but not parsed, which is exactly
-  // the CSP-blocked case. It is also zero if the declaration was invalid, where
-  // falling through costs nothing because there was nothing to render.
-  if (style && style.length === 0) style.cssText = css
+  if (style) style.cssText = css
 }
 
 /**

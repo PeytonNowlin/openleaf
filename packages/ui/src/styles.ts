@@ -108,7 +108,10 @@ export function markStylesExternal(): void {
 }
 
 const injected = new WeakSet<Document>()
-const registered = new Map<Document, Set<string>>()
+// WeakMap, like its sibling above: a strong Map here pins every Document this
+// module has ever styled -- every iframe, every closed print preview -- for the
+// life of the page. Only get/set are used, so nothing needs to iterate it.
+const registered = new WeakMap<Document, Set<string>>()
 let warned = false
 
 /**

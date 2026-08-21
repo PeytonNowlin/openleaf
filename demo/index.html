@@ -868,8 +868,14 @@ import '@openleaf-editor/element'
   var output = document.getElementById('output')
   var bound = document.getElementById('body')
 
-  function renderOutput() {
-    output.textContent = bound.value
+  /* The event carries the HTML, so a listener that wants it does not have to
+   * wait for the textarea to catch up -- the textarea is written at submit, at
+   * teardown and on a short trailing timer, not on every keystroke. Reading
+   * `bound.value` is the fallback for the first render, where there is no
+   * event. */
+  function renderOutput(event) {
+    var detail = event && event.detail
+    output.textContent = detail && typeof detail.value === 'string' ? detail.value : bound.value
   }
   renderOutput()
   main.addEventListener('openleaf:change', renderOutput)

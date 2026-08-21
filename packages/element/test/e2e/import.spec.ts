@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 const HARNESS = '/packages/element/test/e2e/harness-import.html'
 
 const editor = (page: Page) => page.getByRole('textbox', { name: 'Post body' })
-const value = (page: Page) => page.locator('#body').inputValue()
+const value = (page: Page) => stored(page)
 
 /** A Word "Save as Web Page" export, which is where the real value is. */
 const WORD_EXPORT = `<html xmlns:o="urn:schemas-microsoft-com:office:office">

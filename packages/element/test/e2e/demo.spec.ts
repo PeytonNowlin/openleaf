@@ -12,6 +12,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test'
+import { stored as storedValue } from './stored.js'
 
 const DEMO = '/demo/index.html'
 
@@ -78,16 +79,16 @@ test.describe('the demo page', () => {
   // text rather than becoming an atom, and converts to the modelled spelling.
   test('keeps the typography sample editable and modelled', async ({ page }) => {
     await page.goto(DEMO)
-    const stored = await page.locator('#typo').inputValue()
-    expect(stored).toContain('font-family:Verdana')
-    expect(stored).not.toContain('<font')
+    const typo = await storedValue(page, 'typo')
+    expect(typo).toContain('font-family:Verdana')
+    expect(typo).not.toContain('<font')
     const content = host(page, 'typo').getByRole('textbox')
     await content.click()
     // No trailing space in the typed text: a space at the end of a text run is
     // stored as a non-breaking one in some engines, which is a whitespace
     // question and not what this test is asking.
     await page.keyboard.type('typed')
-    await expect.poll(() => page.locator('#typo').inputValue()).toContain('typed')
+    await expect.poll(() => storedValue(page, 'typo')).toContain('typed')
   })
 
   /*
@@ -99,7 +100,7 @@ test.describe('the demo page', () => {
   test('toggles the collapsible section, and stores the state', async ({ page }) => {
     await page.goto(DEMO)
     const det = host(page, 'insert-body').locator('details').first()
-    const stored = () => page.locator('#insert-body').inputValue()
+    const stored = () => storedValue(page, 'insert-body')
     await expect(det).toBeVisible()
 
     expect(await det.evaluate((d: HTMLDetailsElement) => d.open)).toBe(false)
@@ -118,7 +119,7 @@ test.describe('the demo page', () => {
     const det = host(page, 'insert-body').locator('details').first()
     await det.locator('summary').click()
     await page.keyboard.type('XX')
-    await expect.poll(() => page.locator('#insert-body').inputValue()).toContain('XX')
+    await expect.poll(() => storedValue(page, 'insert-body')).toContain('XX')
   })
 
   // Typing on the front door. Clicked by its text rather than its centre: the
@@ -130,7 +131,7 @@ test.describe('the demo page', () => {
     await expect(content).toBeVisible({ timeout: 15000 })
     await content.getByText('Try editing this').click()
     await page.keyboard.type('AUDIT')
-    await expect.poll(() => page.locator('#body').inputValue()).toContain('AUDIT')
+    await expect.poll(() => storedValue(page)).toContain('AUDIT')
     await expect.poll(() => page.locator('#output').textContent()).toContain('AUDIT')
   })
 
@@ -145,9 +146,9 @@ test.describe('the demo page', () => {
     await content.click()
     await page.keyboard.press('ControlOrMeta+a')
     await editor.locator('[data-ol-id="fontFamily"]').selectOption('Georgia')
-    await expect.poll(() => page.locator('#typo').inputValue()).toContain('font-family:Georgia')
+    await expect.poll(() => storedValue(page, 'typo')).toContain('font-family:Georgia')
     await editor.locator('[data-ol-id="indent"]').click()
-    await expect.poll(() => page.locator('#typo').inputValue()).toContain('padding-inline-start')
+    await expect.poll(() => storedValue(page, 'typo')).toContain('padding-inline-start')
   })
 
   test('switches every skin the page offers', async ({ page }) => {

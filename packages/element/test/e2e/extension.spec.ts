@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 const HARNESS = '/packages/element/test/e2e/harness-extension.html'
 
 const editor = (page: Page) => page.getByRole('textbox', { name: 'Post body' })
-const value = (page: Page) => page.locator('#body').inputValue()
+const value = (page: Page) => stored(page)
 
 /** Node type names in the live document. */
 function nodeTypes(page: Page): Promise<string[]> {

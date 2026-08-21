@@ -45,17 +45,11 @@
     "prosemirror-model": "^1.24.1",
     "prosemirror-schema-list": "^1.5.1",
     "prosemirror-state": "^1.4.3",
+    "prosemirror-transform": "^1.10.2",
     "prosemirror-view": "^1.37.0"
   },
   "devDependencies": {
-    "prosemirror-commands": "^1.6.2",
-    "prosemirror-history": "^1.4.1",
-    "prosemirror-model": "^1.24.1",
-    "prosemirror-schema-list": "^1.5.1",
-    "prosemirror-state": "^1.4.3",
-    "prosemirror-view": "^1.37.0"
-  },
-  "devDependencies": {
-    "prosemirror-tables": "^1.6.4"
+    "prosemirror-tables": "^1.6.4",
+    "prosemirror-transform": "^1.10.2"
   }
 }

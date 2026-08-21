@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 const HARNESS = '/packages/element/test/e2e/harness.html'
 
@@ -80,7 +81,7 @@ test.describe('pasting from Microsoft Word', () => {
     const ok = await pasteHtml(page, WORD_LIST)
     test.skip(!ok, 'this browser does not honour constructed clipboardData')
 
-    const value = await page.locator('#body').inputValue()
+    const value = await stored(page)
 
     expect(value).toContain('<ul>')
     expect(value).toContain('Revenue up 12%')
@@ -94,7 +95,7 @@ test.describe('pasting from Microsoft Word', () => {
     const ok = await pasteHtml(page, WORD_LIST)
     test.skip(!ok, 'this browser does not honour constructed clipboardData')
 
-    const value = await page.locator('#body').inputValue()
+    const value = await stored(page)
     expect(value).not.toContain('·')
     expect(value).not.toMatch(/mso-|Mso|Symbol|Courier|o:p/i)
     expect(value).not.toContain('style=')
@@ -122,7 +123,7 @@ test.describe('pasting from Google Docs', () => {
     const ok = await pasteHtml(page, GDOCS_BOLD)
     test.skip(!ok, 'this browser does not honour constructed clipboardData')
 
-    const value = await page.locator('#body').inputValue()
+    const value = await stored(page)
     expect(value).toContain('<strong>bold</strong>')
     expect(value).not.toContain('<strong>Plain and ')
     expect(value).not.toContain('docs-internal-guid')

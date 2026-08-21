@@ -50,6 +50,14 @@ export class ToolbarOverflow {
   #panel: HTMLDivElement
   #observer: ResizeObserver | null = null
   #onLayout: (() => void) | undefined
+  /**
+   * A pending coalesced layout.
+   *
+   * A ResizeObserver fires once per observed element, so a ten-group bar paid
+   * for ten layouts in one frame. One rAF collapses them, and the frame is
+   * cancelled on destroy so a queued layout cannot run against a torn-down bar.
+   */
+  #frame: number | null = null
 
   constructor(toolbar: HTMLElement, host: HTMLElement, doc: Document, onLayout?: () => void) {
     this.#toolbar = toolbar
@@ -92,7 +100,7 @@ export class ToolbarOverflow {
     toolbar.appendChild(this.#more)
 
     if (typeof ResizeObserver !== 'undefined') {
-      this.#observer = new ResizeObserver(() => this.layout())
+      this.#observer = new ResizeObserver(() => this.#schedule())
       this.#observer.observe(toolbar)
     }
     this.layout()
@@ -107,7 +115,33 @@ export class ToolbarOverflow {
     this.layout()
   }
 
+  /**
+   * Coalesce resize notifications into one layout per frame.
+   *
+   * The observer watches the very element `layout` resizes, so an unthrottled
+   * callback fed itself: hiding a group changes the bar's size, which notifies
+   * the observer, which lays out again. A frame is the right budget for work
+   * whose only purpose is deciding what the next paint shows.
+   */
+  #schedule(): void {
+    if (this.#frame !== null) return
+    const win = this.#toolbar.ownerDocument.defaultView
+    if (!win?.requestAnimationFrame) {
+      this.layout()
+      return
+    }
+    this.#frame = win.requestAnimationFrame(() => {
+      this.#frame = null
+      this.layout()
+    })
+  }
+
   destroy(): void {
+    // A queued frame outlives destroy() and would lay out a torn-down bar.
+    if (this.#frame !== null) {
+      this.#toolbar.ownerDocument.defaultView?.cancelAnimationFrame(this.#frame)
+      this.#frame = null
+    }
     this.#observer?.disconnect()
     this.#close()
     this.#restore()
@@ -121,29 +155,47 @@ export class ToolbarOverflow {
     this.#more.hidden = true
     this.#close()
 
+    // READ. Every measurement is taken here, while the bar is fully expanded,
+    // because a width read after a style write forces the browser to lay the
+    // whole bar out again. The old loop alternated the two once per group, so a
+    // ten-group bar paid for ten layouts -- from a ResizeObserver watching the
+    // element it was resizing.
     const budget = this.#toolbar.clientWidth
     if (budget === 0) return
-
     const groups = this.#groups()
-    let moved = false
-    for (let i = groups.length - 1; i >= 0; i -= 1) {
-      if (this.#toolbar.scrollWidth <= budget + 1) break
+    const total = this.#toolbar.scrollWidth
+    const widths = groups.map((group) => group.offsetWidth)
+    const gap =
+      Number.parseFloat(
+        this.#toolbar.ownerDocument.defaultView?.getComputedStyle(this.#toolbar).columnGap ?? '',
+      ) || 0
+
+    // COMPUTE. In overflow mode the bar is a nowrap flex row with one uniform
+    // gap, so moving the last k groups out takes exactly their widths and k
+    // gaps off the scroll width. Nothing has to be re-measured between them.
+    let used = total
+    let count = 0
+    while (used > budget + 1 && count < groups.length) {
+      used -= (widths[groups.length - 1 - count] ?? 0) + gap
+      count += 1
+    }
+    if (count === 0) return
+
+    // WRITE. Backwards, inserted at the front, so the panel keeps the bar's
+    // order. The controls themselves move -- they are not cloned -- which is
+    // what makes the panel operable rather than a picture of the bar.
+    for (let i = groups.length - 1; i >= groups.length - count; i -= 1) {
       const group = groups[i]
-      if (!group) break
-      // Backwards, inserted at the front: the panel keeps the bar's order.
-      this.#panel.insertBefore(group, this.#panel.firstChild)
-      moved = true
+      if (group) this.#panel.insertBefore(group, this.#panel.firstChild)
     }
 
-    if (moved) {
-      this.#more.hidden = false
-      // A separator whose group left would otherwise sit at the end of the bar
-      // as a rule with nothing on either side of it.
-      let prev = this.#more.previousElementSibling
-      while (prev instanceof HTMLElement && prev.classList.contains('ol-sep')) {
-        prev.hidden = true
-        prev = prev.previousElementSibling
-      }
+    this.#more.hidden = false
+    // A separator whose group left would otherwise sit at the end of the bar
+    // as a rule with nothing on either side of it.
+    let prev = this.#more.previousElementSibling
+    while (prev instanceof HTMLElement && prev.classList.contains('ol-sep')) {
+      prev.hidden = true
+      prev = prev.previousElementSibling
     }
     this.#onLayout?.()
     void this.#host

@@ -233,6 +233,17 @@ export class OpenLeafEditor extends HTMLElementBase {
   /** The Alt+F10 hint, when there is a toolbar for it to describe. */
   #hint: HTMLSpanElement | null = null
   #sourceArea: HTMLTextAreaElement | null = null
+  /**
+   * The last serialization, keyed on the document it came from.
+   *
+   * A ProseMirror document is persistent and immutable, so identity is a sound
+   * cache key: the same node can only ever serialize to the same string. Within
+   * one frame `value` is read several times over -- the change event, a
+   * framework wrapper comparing against its controlled value, an autosave --
+   * and each read used to repeat a full `DOMSerializer` pass over the whole
+   * document.
+   */
+  #serialized: { doc: import('prosemirror-model').Node; html: string } | null = null
   #sourceMode = false
   #deferred = false
   /** True between a completed #build() and its #teardown(). Makes teardown once-only. */
@@ -284,6 +295,8 @@ export class OpenLeafEditor extends HTMLElementBase {
   #unwatchPlugins: (() => void) | undefined
   #unwatchSchema: (() => void) | undefined
   #resizeObserver: ResizeObserver | null = null
+  /** Pending autoresize frame, so a burst of observations relays out once. */
+  #resizeFrame = 0
   #visualAids = true
   /** Whether the aids plugin was installed at all. Build-time, like the attribute. */
   #visualAidsAvailable = true
@@ -476,6 +489,9 @@ export class OpenLeafEditor extends HTMLElementBase {
       dispatchTransaction: (tr) => {
         const view = this.#view
         if (!view) return
+        // Named so the change event's `value` getter, which has its own `this`,
+        // can reach the element.
+        const host = this
         view.updateState(view.state.apply(tr))
 
         // Persistence comes FIRST, and deliberately so. The document is already
@@ -487,11 +503,13 @@ export class OpenLeafEditor extends HTMLElementBase {
         // would stop silently and the author would lose work.
         if (tr.docChanged) {
           this.#docTouched = true
-          // Serialized once and used twice: the textarea and the event detail
-          // want the same string, and this runs on every keystroke.
-          const value = this.value
-          this.#formBridge.sync(value)
-          this.#emitChange(value)
+          // Noted, not serialized. The textarea is written at submit, at
+          // teardown, and on a short trailing timer -- see FormBridge. Writing
+          // it here re-serialized the whole document on every keystroke, which
+          // was the single largest per-keystroke cost in the editor and was
+          // read by nothing until the form was posted.
+          this.#formBridge.markDirty()
+          this.#emitChange()
         }
 
         // Passing the transaction lets the toolbar tell a formatting change from
@@ -712,6 +730,15 @@ export class OpenLeafEditor extends HTMLElementBase {
    */
   #destroyChrome(): void {
     this.removeEventListener('contextmenu', this.#onContextMenu)
+    this.ownerDocument.removeEventListener('pointerdown', this.#onContextPointer, true)
+    this.removeEventListener('focusin', this.#onInlineFocus)
+    this.removeEventListener('focusout', this.#onInlineBlur)
+    this.#resizeObserver?.disconnect()
+    this.#resizeObserver = null
+    if (this.#resizeFrame) cancelAnimationFrame(this.#resizeFrame)
+    this.#resizeFrame = 0
+    this.#unwatchPlugins?.()
+    this.#unwatchSchema?.()
     this.#floating?.destroy()
     this.#floating = null
     this.#contextMenu?.destroy()
@@ -746,12 +773,27 @@ export class OpenLeafEditor extends HTMLElementBase {
   }
 
 
-  #emitChange(value: string): void {
+  /**
+   * Announce that the document changed.
+   *
+   * `value` is a getter, not a string. A listener that only wants to know
+   * *that* the document changed -- an autosave marking a draft dirty, a
+   * "unsaved changes" flag -- does not pay to find out what it changed to, and
+   * serializing a large document was the single largest per-keystroke cost in
+   * the editor. A listener that does want it reads `detail.value` and gets the
+   * cached string `get value` already holds, so the wrappers pay once.
+   */
+  #emitChange(): void {
+    const host = this
     this.dispatchEvent(
       new CustomEvent('openleaf:change', {
         bubbles: true,
         composed: true,
-        detail: { value },
+        detail: {
+          get value(): string {
+            return host.value
+          },
+        },
       }),
     )
   }
@@ -867,7 +909,16 @@ export class OpenLeafEditor extends HTMLElementBase {
     if (!this.#view) {
       return this.#pendingValue ?? this.#formBridge.textarea?.value ?? this.#initialHtml ?? ''
     }
-    return serializeHtml(this.#view.state.doc)
+    // Cached against the document it was produced from. `value` is read by the
+    // change event's detail, by the form bridge and by the host, often several
+    // times for one keystroke, and serializing a large document is the most
+    // expensive thing this class does.
+    const doc = this.#view.state.doc
+    const cached = this.#serialized
+    if (cached && cached.doc === doc) return cached.html
+    const html = serializeHtml(doc)
+    this.#serialized = { doc, html }
+    return html
   }
 
   set value(html: string) {
@@ -898,6 +949,12 @@ export class OpenLeafEditor extends HTMLElementBase {
       onlyIfChanged: true,
       addToHistory: this.#docTouched || !this.#isEmptyDocument(),
     })
+    // Written through to the textarea now rather than on the trailing timer.
+    // The debounce exists for the keystroke path; a programmatic assignment is
+    // rare, and a host that sets `.value` and then reads the bound textarea in
+    // the same tick -- which every wrapper does on mount -- must not see the
+    // document it just replaced.
+    this.#formBridge.sync()
   }
 
   /** An untouched editor holds one empty text block -- what a wrapper mounts. */
@@ -1429,21 +1486,41 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.classList.remove('ol-inline-active')
   }
 
+  /**
+   * Grow the canvas with the document.
+   *
+   * `height: auto` followed by a `scrollHeight` read is a forced synchronous
+   * layout of the entire content, and it happens inside a `ResizeObserver`
+   * watching the element the write resizes -- so an unbatched version relaid
+   * out the document on every observation, and each write invited the next
+   * observation. Coalescing into one animation frame collapses a burst into a
+   * single relayout, and skipping an unchanged height stops the write that
+   * would re-notify the observer for nothing.
+   */
   #mountAutoresize(): void {
     const host = this.#contentHost
     const view = this.#view
     if (!host || !view || !this.hasAttribute('autoresize')) return
+    // Cached: `querySelector` on every observation walks the whole canvas.
+    let pm: HTMLElement | null = null
+    let last = ''
     const apply = (): void => {
-      const pm = host.querySelector<HTMLElement>('.ProseMirror')
+      this.#resizeFrame = 0
+      if (!pm?.isConnected) pm = host.querySelector<HTMLElement>('.ProseMirror')
       if (!pm) return
       pm.style.height = 'auto'
-      pm.style.height = `${pm.scrollHeight}px`
+      const height = `${pm.scrollHeight}px`
+      if (height === last) return
+      last = height
+      pm.style.height = height
     }
     apply()
-    if (typeof ResizeObserver !== 'undefined') {
-      this.#resizeObserver = new ResizeObserver(apply)
-      this.#resizeObserver.observe(host)
-    }
+    if (typeof ResizeObserver === 'undefined') return
+    this.#resizeObserver = new ResizeObserver(() => {
+      if (this.#resizeFrame) return
+      this.#resizeFrame = requestAnimationFrame(apply)
+    })
+    this.#resizeObserver.observe(host)
   }
 
   async #mountContentCss(): Promise<void> {

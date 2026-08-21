@@ -12,7 +12,6 @@ import {
   activeFontSize,
   activeLineHeight,
   activeLink,
-  activeTextAlign,
   FONT_FAMILIES,
   FONT_SIZE_PRESETS,
   indent,
@@ -56,6 +55,51 @@ import { blockTypeControl } from './block-type.js'
 export const SOURCE_TOGGLE_EVENT = 'openleaf:toggle-source'
 export const FULLSCREEN_TOGGLE_EVENT = 'openleaf:toggle-fullscreen'
 export const VISUAL_AIDS_TOGGLE_EVENT = 'openleaf:toggle-visual-aids'
+
+/** Whether anything in the selection can be aligned, and the alignment in force. */
+type AlignFacts = { readonly any: boolean; readonly align: Align | null }
+
+const alignCache = new WeakMap<EditorState, AlignFacts>()
+
+/**
+ * One selection walk per state, shared by every alignment button on every bar.
+ *
+ * Each of the four buttons used to answer `isEnabled` by dry-running its own
+ * command, and `toggleTextAlign` walks the selection twice on its own -- twelve
+ * identical walks of every selected block, per transaction, per toolbar. With
+ * two bars and two floating bars over a Select-All on a hundred-page document
+ * that was ~48,000 wasted node visits inside `dispatchTransaction`.
+ *
+ * Keyed on the state, so the second, third and fourth toolbar reading the same
+ * transaction pay nothing. Membership is "carries an align attribute", exactly
+ * as core decides it, so a plugin block that opts in still works.
+ */
+function alignFacts(state: EditorState): AlignFacts {
+  const hit = alignCache.get(state)
+  if (hit) return hit
+  let any = false
+  let mixed = false
+  let align: Align | null = null
+  const { from, to } = state.selection
+  state.doc.nodesBetween(from, to, (node) => {
+    if (!node.isTextblock) return true
+    if (Object.hasOwn(node.attrs, 'align')) {
+      const value = (node.attrs['align'] as Align | null) ?? null
+      if (!any) {
+        any = true
+        align = value
+      } else if (value !== align) {
+        // Mixed reports null, like core: showing the first block's value as the
+        // state of all of them is a lie the author acts on.
+        mixed = true
+      }
+    }
+    return false
+  })
+  const facts: AlignFacts = { any, align: mixed ? null : align }
+  alignCache.set(state, facts)
+  return facts
+}
 
 /** Register the built-in items. Idempotent. */
 /**
@@ -290,7 +334,11 @@ export function registerDefaultItems(): void {
       label: item.label,
       icon: item.icon,
       command: toggleTextAlign(item.align),
-      isActive: (state) => activeTextAlign(state) === item.align,
+      // Both predicates come off one cached walk. Without the explicit
+      // isEnabled the toolbar dry-runs `command`, and toggleTextAlign walks the
+      // selection twice on its own -- see alignFacts.
+      isEnabled: (state) => alignFacts(state).any,
+      isActive: (state) => alignFacts(state).align === item.align,
       shortcut: item.label,
     })
   }

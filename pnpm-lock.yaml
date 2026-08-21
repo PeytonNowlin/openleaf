@@ -59,6 +59,9 @@ importers:
       prosemirror-tables:
         specifier: ^1.6.4
         version: 1.8.5
+      prosemirror-transform:
+        specifier: ^1.10.2
+        version: 1.12.0
 
   packages/element:
     devDependencies:

@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 const HARNESS = '/packages/element/test/e2e/harness-session.html'
 const CORE_ONLY = '/packages/element/test/e2e/harness.html'
 
 const editor = (page: Page) => page.getByRole('textbox', { name: 'Post body' })
 const toolbar = (page: Page) => page.getByRole('toolbar', { name: 'Formatting' })
-const value = (page: Page) => page.locator('#body').inputValue()
+const value = (page: Page) => stored(page)
 
 test.describe('core bundle alone', () => {
   test.beforeEach(async ({ page }) => {

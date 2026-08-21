@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 const HARNESS = '/packages/element/test/e2e/harness-chrome.html'
 
@@ -8,7 +9,7 @@ const main = (page: Page) => page.getByRole('textbox', { name: 'Post body' })
 // appended before it.
 const mainToolbar = (page: Page) =>
   page.locator('openleaf-editor[for="body"] > .ol-toolbar').first()
-const value = (page: Page) => page.locator('#body').inputValue()
+const value = (page: Page) => stored(page)
 
 test.beforeEach(async ({ page }) => {
   await page.goto(HARNESS)
