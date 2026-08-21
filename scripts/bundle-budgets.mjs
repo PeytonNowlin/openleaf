@@ -67,7 +67,11 @@ export const BUDGETS_KB = {
   // a number, so the number moved.
   //
   // Note es2022 (#74) gave 1.6 KB back first, so this rise is smaller than the
-  // work in it; the series is a net +4-ish over 108, not over 110.
+  // work in it; the series is a net +6.7 over 108, not over 110.
+  //
+  // 118 against a measured 114.7, which is the same ~3 KB of deliberate
+  // headroom the paragraph above argues for: enough that the next unrelated
+  // patch does not fail on it, not so much that a real regression hides in it.
   'openleaf.min.js': 118,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
@@ -75,6 +79,8 @@ export const BUDGETS_KB = {
   'openleaf-import.min.js': 12,
   // Larger than the editor, which is exactly why it is a separate file.
   'openleaf-import-docx.min.js': 140,
+  // 9.2/10 after find/replace and the announcement work. The tightest budget in
+  // the tree; raise it deliberately rather than shaving the feature if it goes.
   'openleaf-session.min.js': 10,
   'openleaf-insert.min.js': 20,
 }

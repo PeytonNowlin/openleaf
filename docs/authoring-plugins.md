@@ -1,14 +1,27 @@
 # Authoring schemas and plugins
 
-How to extend OpenLeaf: what the extension points are today, which ones do not
-exist yet, and the interactions that will cost you a day if nobody tells you
-about them first.
+How to extend OpenLeaf: what the extension points are, what they cost, and the
+interactions that will take a day out of your week if nobody tells you about
+them first.
 
 This document describes the code as it is in the tree today, not the code as it
 is planned. Where something is missing, it says so and says what to do instead.
-Every code example here is adapted from `packages/plugins-table`, which is the
-only real plugin in the tree and the reference implementation for everything
-below.
+
+The reference implementations are the seven plugins in this repository:
+
+| Package | What it adds |
+|---|---|
+| `plugins-table` | Table editing: cell selection, column resize, property dialogs, the insert grid |
+| `plugins-insert` | Media embeds, collapsible sections, anchors, character map, emoji, page breaks, snippets, image resize |
+| `plugins-session` | Find and replace, word count, autosave and restore, save, print, preview, new document |
+| `plugins-colour` | Text and highlight colour, as a keyboard-navigable swatch picker |
+| `plugins-highlight` | Syntax highlighting for code blocks, and a formatted source view |
+| `plugins-import` | HTML and plain-text file import, plus the converter seam |
+| `plugins-import-docx` | Word `.docx` import, on top of `plugins-import` |
+
+`plugins-table` is the one most examples below are adapted from, because it is
+the only one that exercises every extension point at once. Where another plugin
+is the better illustration, it says so.
 
 ---
 
@@ -23,73 +36,119 @@ below.
 | Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins |
 | Reach the live view | `element.view` | Works |
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
-| **Add a node or mark type** | — | **Not available out of tree.** Commands and HTML I/O are schema-agnostic already; schema assembly is not |
+| **Add a node or mark type** | `registerSchemaExtension({ id, nodes, marks })` | Works — see [1.1](#11-schema-extensions), and note the timing rule: register **before** the editor is built |
+| Replace a built-in node or mark | `registerSchemaExtension` with `replaces: ['name']` | Works. A clash without `replaces` throws, deliberately |
+| Translate your labels | `t()` and `registerTranslations` | Works — see [4.10](#410-every-string-you-ship-is-a-translatable-string) |
 | Add a colour grid or popover control | `registerToolbarItem` with `type: 'custom'` and a `render` function | Works — see [4.9](#49-custom-controls-own-their-own-dom-and-their-own-cleanup) |
 | Add a dropdown | `registerToolbarItem` with `type: 'select'`, `options`, `getValue`, `applyValue` | Works — native `<select>`, same keyboard contract as block type |
-| Add CSS for your node | — | No extension point; see [4.7](#47-there-is-no-css-extension-point) |
+| Add CSS for your node | `registerStyles(css)` | Works — adopted stylesheets, no `<style>` fallback; see [4.7](#47-css-goes-through-registerstyles-from-your-own-bundle) |
 
-### Where schema extensibility actually stands
+### 1.1 Schema extensions
 
-Half of it has landed, which is worth being precise about because it changes how
-you write your plugin's commands.
-
-**What is already schema-agnostic.** Commands no longer capture the schema at
-module load. They resolve types per call from `state.schema`, and decline rather
-than throw when a type is absent:
+A plugin contributes node and mark types out of tree:
 
 ```ts
-function nodeIn(state: EditorState, name: string): NodeType | undefined {
-  return state.schema.nodes[name]
-}
+import { registerSchemaExtension } from '@openleaf-editor/core'
+
+registerSchemaExtension({
+  id: 'acme/callout',        // stable and unique; namespace it
+  nodes: { callout },        // NodeSpec, by schema name
+  marks: {},                 // MarkSpec, same shape
+})
 ```
 
-`parseHtml` and `serializeHtml` take an optional `schema` in `HtmlIOOptions`,
-and `serializeHtml` defaults to `node.type.schema` — the document's own — so a
-document built on an extended schema serializes with a serializer that knows its
-node types. Before this, `DOMSerializer.fromSchema` was built once at module
-level and threw `this.nodes[node.type.name] is not a function` the first time it
-met a plugin node.
+It returns an unregister function. `packages/core/src/extensions.ts` is the
+whole implementation and is worth reading; the four rules that will actually
+affect you are these.
 
-**What has not landed.** Schema *assembly*. `packages/core/src/schema.ts` still
-ends with:
+**Register before the editor is built.** A ProseMirror `Schema` is immutable,
+and `EditorState.reconfigure` — the mechanism that lets a late-loading plugin
+add *behaviour* to an open editor — takes the schema from the old state and
+cannot change it. So schema extension is not "register and the editors update";
+it is "register before an editor is built, or wait for the next one". The
+element defers building its view until the document's scripts have run, which
+covers every documented integration, and warns rather than failing silently if
+you miss the window:
 
-```ts
-export const schema = new Schema({ nodes, marks })
-```
+> a schema extension registered after this editor was built, so its node types
+> are not available here. […] load the plugin script before the editor, or
+> reload the page. Editors created from now on will have it.
 
-built once from two object literals in that file, and `<openleaf-editor>` still
-calls `parseHtml(initialHtml)` and `createRegisteredPlugins(schema)` against
-that singleton. Nothing in `@openleaf-editor/core`'s public surface accepts a
-`NodeSpec` or a `MarkSpec` — `packages/core/test/public-api.test.ts` pins the
-whole export list and fails on additions on purpose. So there is still no
-supported way for an out-of-tree package to get a node into the schema the
-editor element builds.
+This is the one respect in which schema extensions differ from
+`registerEditorPlugin` and `registerToolbarItem`, both of which apply to live
+editors. Code-split your *plugins* freely; load your *schema* eagerly.
 
-Until that half lands, **contributing a node type means editing `@openleaf-editor/core` and
-shipping it in the core bundle.** That is not a workaround; it is exactly what
-tables did, and `packages/core/src/tables.ts` explains why the split ended up
-there rather than where it looked like it should be:
+**Collisions throw, deliberately.** `registerToolbarItem` is last-wins, because
+a button is UI and replacing one is a feature. A node type is a *storage
+format*: two definitions of `footnote` mean two serializations of the same
+content chosen by script-tag order, and whichever loses has already written
+documents in its shape. Declare `replaces: ['footnote']` to opt in.
+
+**No priority, and no positioning hint.** The preservation layer's catch-all
+rules sit at priority 0 and 1, so a rule at the default priority already beats
+them for free — and `createSchema` throws on any extension rule at priority ≤ 1
+rather than let you tie with the catch-all and have insertion order decide.
+Nodes are appended, never prepended, because a leading `group: 'block'` node
+becomes the document's `defaultType` and every new document would start with
+your widget.
+
+**Unmodelled attributes are carried for you.** Adding a node type strictly
+*reduces* fidelity for the tag it claims: before your node existed, the
+preservation layer kept the element and every attribute on it; afterwards the
+spec keeps only what it declares, so a callout modelling `class` silently drops
+the `id` and `data-analytics` that used to survive. So the residue is captured
+on parse and merged back on serialize, applied at schema-build time — an author
+cannot opt out by forgetting. `carryUnknownAttributes: false` opts out
+explicitly, and [is security-relevant](#42-sanitization-a-new-element-that-nobody-allowed-is-a-new-element-that-dies)
+because the capture is also where `on*` handlers and unsafe URLs are filtered.
+
+Everything downstream of the schema is already schema-agnostic. Commands resolve
+types per call from `state.schema` and decline rather than throw when a type is
+absent; `parseHtml` and `serializeHtml` take an optional `schema` in
+`HtmlIOOptions`, and `serializeHtml` defaults to `node.type.schema` — the
+document's own — so a document built on an extended schema serializes with a
+serializer that knows its node types.
+
+### 1.2 In core or in your plugin?
+
+Extensions being available out of tree does not mean every node belongs there.
+The question is whether the markup **already exists in content your users have**.
+
+`packages/core/src/tables.ts` states the case:
 
 > without these node types, a `<table>` in stored content is claimed by the
 > preservation layer and becomes a single opaque atom. It round-trips
 > faithfully — but it is *uneditable*.
 
-The same reasoning applies to any node type that can appear in content a
-customer already has. If stored documents contain your markup, the node spec
-belongs in core so that every deployment reads it correctly, and only the
-*editing machinery* — commands, toolbar, node views, resize handles — is opt-in.
-If your markup can only ever be created by your own plugin, the argument is
-weaker, but the mechanism is the same one either way today.
+"We read your tables but you may not touch them" is not something you can tell a
+CMS. If stored documents contain your markup, the node spec wants to be in core
+so that **every** deployment reads it correctly whether or not your plugin is
+installed, and only the *editing machinery* — commands, toolbar, node views,
+resize handles — is opt-in. That is the tables split, and the insert package's
+`<figure>`, `<details>` and media nodes are there for the same reason.
+
+If your markup can only ever be created by your own plugin, a schema extension
+in your own package is exactly right, and it costs core nothing. That is the
+case `registerSchemaExtension` exists for.
+
+The middle case — markup that exists in *your customers'* content but not
+everyone's — is also a schema extension. Ship it in your package, and make sure
+your package is loaded on every page that renders those documents, not only the
+ones with your toolbar button.
 
 ---
 
 ## 2. The three delivery models
 
-| Model | Ships as | Can contribute a node? | Use when |
-|---|---|---|---|
-| Second script tag, shared runtime | An IIFE bundle loaded after `openleaf.min.js` | No | The integrator has no build step — a PHP template, a Django form, a WordPress theme |
-| ESM import | A normal npm package | No | The integrator already runs a bundler |
-| In-repo package | A `packages/*` workspace package plus a core change | Yes | The feature needs schema, or belongs in the project |
+All three can contribute a node type. They differ in how the plugin reaches the
+same copy of `@openleaf-editor/core` as the editor — which is not optional,
+because two copies means two registries and two schemas.
+
+| Model | Ships as | Use when |
+|---|---|---|
+| Second script tag, shared runtime | An IIFE bundle loaded after `openleaf.min.js` | The integrator has no build step — a PHP template, a Django form, a WordPress theme |
+| ESM import | A normal npm package | The integrator already runs a bundler |
+| In-repo package | A `packages/*` workspace package | The node type belongs in core's base schema — see [1.2](#12-in-core-or-in-your-plugin) — or the feature belongs in the project |
 
 ### 2.1 Second script tag
 
@@ -122,7 +181,7 @@ So a third party who wants to ship a script-tag plugin today has to copy that
 esbuild plugin and depend on an interface that carries no compatibility promise.
 If you are outside this repository, prefer the ESM model until a supported
 version of this exists. This is an open item for the maintainer, listed in
-[section 6](#6-open-questions-for-the-maintainer).
+[section 6](#6-known-gaps).
 
 ### 2.2 ESM import
 
@@ -149,20 +208,41 @@ up. `registerToolbarItem` has the matching mechanism via `onRegistryChange`, and
 the toolbar re-renders. Without both of those, a lazily loaded plugin's buttons
 would appear and do nothing, or never appear at all.
 
+**Schema extensions are the exception**, and it is the one thing to get right
+about this model: `registerSchemaExtension` cannot reach an editor that already
+exists, because a document's schema is fixed when its editor is created. If your
+plugin contributes a node type, its module has to be imported eagerly — not
+behind a `import()` that resolves after the element upgrades. Split the toolbar
+and commands out lazily if you like; the schema registration goes in the eager
+half. See [1.1](#11-schema-extensions).
+
 ### 2.3 In-repo package
 
-This is the only model that can contribute schema today, and it is what
-section 3 works through. The shape, copied from tables:
+Use this when the node type belongs in core's *base* schema — see
+[1.2](#12-in-core-or-in-your-plugin) — rather than being contributed by an
+extension. The shape, copied from tables:
 
 ```
 packages/core/src/<feature>.ts        the NodeSpec — ships in every deployment
-packages/core/src/schema.ts           register it in the nodes map
+packages/core/src/schema.ts           register it in coreNodes
 packages/core/src/index.ts            export it
 packages/core/test/public-api.test.ts declare the new export and node name
 packages/plugins-<feature>/           commands, icons, toolbar items — opt-in
 demo/entry-<feature>.ts               `install<Feature>()` on load
 demo/build.mjs                        a second `build()` call for the bundle
+scripts/bundle-budgets.mjs            a budget for that bundle
 ```
+
+Note `coreNodes`, not `schema`. `packages/core/src/schema.ts` ends with
+`export const baseSchema`, built from the `coreNodes` and `coreMarks` maps; the
+old `schema` singleton was **deleted** rather than deprecated, because a
+retained const typechecks and then fails in the field — a node built from one
+schema instance is rejected by a document built from another. Two guards keep it
+deleted: `public-api.test.ts` pins the export list, and `scripts/verify.mjs` has
+a "no schema singleton outside core" step that fails on any package importing a
+`schema` binding from `@openleaf-editor/core`. The runtime schema is
+`coreSchema()`, a memoized *function* over the registered extensions, invalidated
+whenever the registry changes.
 
 ---
 
@@ -179,18 +259,13 @@ That fixture is the acceptance test for this whole exercise. Before the change,
 it round-trips byte-identically as an `unknown_block`. After the change, it must
 still round-trip byte-identically, now as an editable `callout`.
 
-### 3.1 The node spec — `packages/core/src/callout.ts`
+### 3.1 The node spec — `packages/plugins-callout/src/schema.ts`
+
+In the plugin package, not in core: `div.callout` is markup this plugin's users
+have, not markup every OpenLeaf deployment has. See
+[1.2](#12-in-core-or-in-your-plugin) for when that answer flips.
 
 ```ts
-/**
- * Callout node.
- *
- * In core rather than in the opt-in plugin for the same reason the table nodes
- * are: `<div class="callout">` already exists in stored content, and without a
- * node type for it the preservation layer claims it and the author gets an atom
- * they cannot edit.
- */
-
 import type { NodeSpec } from 'prosemirror-model'
 
 export const callout: NodeSpec = {
@@ -228,29 +303,31 @@ export const callout: NodeSpec = {
 }
 ```
 
-No `priority` is set. The default is 50 and the preservation catch-all is at 0,
-so this wins. [Section 4.1](#41-the-preservation-layer-is-a-catch-all-you-have-to-beat)
-explains exactly when you do need to think about priority, and what happens when
-you get it wrong.
+No `priority` is set, and you must not set one. The default is 50 and the
+preservation catch-all is at 0, so this already wins;
+`createSchema` throws on any extension rule at priority ≤ 1 rather than let you
+tie with the catch-all.
+[Section 4.1](#41-the-preservation-layer-is-a-catch-all-you-have-to-beat)
+explains what happens when a rule loses that race.
 
-Register it in `packages/core/src/schema.ts`, alongside where the table nodes
-are registered:
+Note also what the spec does **not** declare: `data-analytics`, `id`, or
+whatever else a 2011 theme put on that div. It does not have to. Extension nodes
+carry unmodelled attributes through the round trip by default — see
+[1.1](#11-schema-extensions) — so claiming a tag no longer costs the author every
+attribute you did not think of.
+
+Register it:
 
 ```ts
-import { callout } from './callout.js'
+import { registerSchemaExtension } from '@openleaf-editor/core'
+import { callout } from './schema.js'
 
-const nodes: Record<string, NodeSpec> = {
-  // …
-  callout,
-  unknown_block: unknownBlock,
-  unknown_inline: unknownInline,
-}
+registerSchemaExtension({ id: 'acme/callout', nodes: { callout } })
 ```
 
-Then export it from `packages/core/src/index.ts`, and add both `'callout'` (the
-export) and `'callout'` (the node name) to the two lists in
-`packages/core/test/public-api.test.ts`. That test fails on *addition* on
-purpose — "a new export is a new promise" — so the failure is the design working.
+That call goes in the eagerly-imported half of your package. A schema extension
+registered after an editor exists cannot reach it — the editor logs a warning
+saying so, rather than failing silently.
 
 ### 3.2 The command — `packages/plugins-callout/src/index.ts`
 
@@ -331,7 +408,7 @@ Constraints the built-in set follows and yours should too, from
 - If your icon's meaning depends on reading direction it needs to be in the
   `DIRECTIONAL` set in `icons.ts` to be mirrored in RTL documents. That set is
   private to core today, so a plugin icon cannot opt into mirroring — another
-  item for [section 6](#6-open-questions-for-the-maintainer).
+  item for [section 6](#6-known-gaps).
 
 ### 3.4 The toolbar item
 
@@ -546,7 +623,7 @@ catch-all declines the rule so ProseMirror unwraps it. Your `div.callout` has a
 class, so it never reaches that branch — but a node keyed on an attribute-free
 element will never see its content as a wrapper at all.
 
-#### If you add a normalization pass, respect preserved markup
+#### If you add a normalization pass, guard it with `isInsidePreserved`
 
 `serializeHtml` runs `unwrapSoleCellParagraph` over the whole output to collapse
 `<td><p>x</p></td>` back to `<td>x</td>`, so that adopting OpenLeaf does not
@@ -555,30 +632,37 @@ plain `querySelectorAll('td, th')` and therefore reached *inside* preserved
 markup — rewriting a table nested in an unrecognised wrapper that the editor had
 undertaken to return byte-identical.
 
-The fix is a marker. `rebuildOrCarry` records every element it rebuilds during
-serialization in a `WeakSet`, which cannot collide with a customer's own markup
-and needs no stripping pass. Any pass you add over serialized output owes the
-same guard:
+Any pass you add over the editor's DOM or its serialized output owes the same
+guard:
 
 ```ts
 import { isInsidePreserved } from '@openleaf-editor/core'
 
-if (isInsidePreserved(el)) continue
+for (const el of host.querySelectorAll('td, th')) {
+  if (isInsidePreserved(el)) continue
+  // …your normalization…
+}
 ```
 
-Note the shape of the bug, because it is the shape yours will have: every
-preservation test used a wrapper containing a paragraph, and every table test
-used a table at the top level. The defect lived exactly in the intersection and
-no fixture crossed the two features. **Write the fixture that crosses your
-feature with preservation**, not just the one that exercises it alone.
+The predicate is true for an element rebuilt from preserved markup and for
+anything nested inside one, and false for everything the schema models itself.
 
-> The marker is no longer an attribute at all. Marking preserved output with a
-> real DOM attribute could not tell the attribute it had just added from the same
-> attribute already in somebody's document, so a customer using
-> `data-ol-preserved` had it silently deleted — destroying an attribute inside
-> preserved content, which is the exact failure the marker existed to prevent. It
-> is a `WeakSet` now, and `isInsidePreserved` is the only supported way to ask.
-> It is exported from `@openleaf-editor/core` and pinned in the export list.
+**Do not look for a marker attribute.** The first implementation of this did use
+one — `data-ol-preserved`, set on rebuild and stripped before returning the
+string — and it had to be abandoned, because the stripping pass could not tell
+the attribute it had just written from the same attribute occurring in a
+customer's document. A customer who happened to use `data-ol-preserved` had it
+silently deleted, which is precisely the failure the marker existed to prevent,
+wearing a different costume. It is now a `WeakSet`, which cannot collide with
+content, needs no cleanup pass, and holds its entries weakly so a
+serialization's throwaway DOM is still collectable. `isInsidePreserved` is the
+only supported way to ask.
+
+Note the shape of the original bug, because it is the shape yours will have:
+every preservation test used a wrapper containing a paragraph, and every table
+test used a table at the top level. The defect lived exactly in the intersection
+and no fixture crossed the two features. **Write the fixture that crosses your
+feature with preservation**, not just the one that exercises it alone.
 
 ### 4.2 Sanitization: a new element that nobody allowed is a new element that dies
 
@@ -591,11 +675,12 @@ about your node, and default-safe means default-strip. From `SECURITY.md`:
 
 There are two different obligations here and they have different answers.
 
-#### Your node is in core's schema, so extend `DEFAULT_POLICY`
+#### Your node is in core's base schema, so extend `DEFAULT_POLICY`
 
-Every plugin node ships in core's schema today, which means the editor emits it
-for *everyone*. The policy is supposed to be "exactly what OpenLeaf's own schema
-can emit, and nothing else", so a new node type is a new policy entry:
+If the node ships in `coreNodes` — see [1.2](#12-in-core-or-in-your-plugin) —
+the editor emits it for *everyone*, and `DEFAULT_POLICY` is supposed to describe
+what OpenLeaf's own schema can emit. So a new base-schema node type is a new
+policy entry:
 
 ```ts
 elements: {
@@ -634,6 +719,36 @@ End-to-end on purpose — "comparing two lists of tag names would pass while an
 attribute the schema emits is quietly stripped". **Add a `SCHEMA_NATIVE` entry
 exercising every attribute your `toDOM` can emit.** Include the awkward ones;
 that is what the check is for.
+
+That table gap is fixed: `DEFAULT_POLICY` now allows the full table set —
+`table`, `caption`, `colgroup`, `col`, `thead`, `tbody`, `tfoot`, `tr`, `td`,
+`th`, with the attributes and style properties each needs. It is cited here as
+the failure mode to design against, not as a live warning.
+
+#### Your node is a schema extension, so ship a policy fragment
+
+If the node comes from `registerSchemaExtension` rather than core, it is **not**
+in `DEFAULT_POLICY` and must not be — the default policy describes what a
+default deployment emits, and yours is not one. Integrators who install your
+plugin have to widen their own policy, which means your README has to hand them
+the exact call:
+
+```ts
+import { DEFAULT_POLICY, policyForPreserved } from '@openleaf-editor/sanitize'
+import { CALLOUT_POLICY } from '@openleaf-editor/plugins-callout'
+
+const policy = policyForPreserved(DEFAULT_POLICY, CALLOUT_POLICY)
+```
+
+Exporting the fragment as data beats documenting a snippet to copy: a snippet
+drifts from your `toDOM` the first time you add an attribute, and nothing fails
+when it does. Run the same `agreement.test.ts` round-trip against
+`policyForPreserved(DEFAULT_POLICY, YOUR_FRAGMENT)` and the drift becomes a test
+failure in your package instead of stripped content in somebody's database.
+
+The same applies to `sanitizeHtml`'s unconditional rejections: `on*`,
+`srcdoc`, `formaction`, `ping` and `xlink:href` are dropped whatever a policy
+says, so do not model an attribute matching those and expect it to survive.
 
 #### Markup only the preservation layer carries, so document `policyForPreserved`
 
@@ -784,18 +899,37 @@ For nodes, there is less machinery and more judgement:
 
 ### 4.5 The bundle budget
 
+Every bundle carries a budget in `BUDGETS_KB` in `scripts/bundle-budgets.mjs`,
+and the gate fails on the first one over. Gzipped, measured against budget:
+
 ```
-openleaf.min.js            292.5 KB min     92.6 KB gzip
-openleaf-tables.min.js      53.3 KB min     17.1 KB gzip
-openleaf-colour.min.js        9.7 KB min      3.7 KB gzip
+openleaf.min.js            114.7 / 118
+openleaf-import-docx.min.js 123.8 / 140
+openleaf-tables.min.js       18.1 /  25
+openleaf-session.min.js       9.2 /  10
+openleaf-highlight.min.js     6.7 /  15
+openleaf-insert.min.js        5.9 /  20
+openleaf-colour.min.js        5.4 /  15
+openleaf-import.min.js        3.3 /  12
 ```
 
-The gate in `scripts/bundle-budgets.mjs` fails above **94 KB gzipped for the core
-bundle**, so there is about 1.4 KB of headroom. Assume you have none — and read
-the raise from 90 to 92 as the cautionary tale it is: alignment, colour and image
-upload cost 3.1 KB between them, the colour picker had to move out to its own
-bundle, and the budget still went up. Captions and cell style then cost another
-raise, for the same reason table nodes live in core.
+Run `node scripts/bundle-budgets.mjs` for the current numbers rather than
+trusting the ones above; that command is the gate, so its output cannot be
+stale.
+
+Assume the core headroom is zero. Read its history as the cautionary tale it is:
+the budget started at 90, went to 92 when alignment, colour and image upload
+cost 3.1 KB between them — the colour *picker* having already moved out to its
+own bundle — then again for table captions and cell style, then again for editor
+chrome, then to 110 for typography. Every one of those raises had the same
+justification, which is the same one in [1.2](#12-in-core-or-in-your-plugin):
+the markup is in content people already have, so core has to read it or it
+degrades to an uneditable atom. That argument is real and it is also the argument
+every proposal makes, so it is the one to check hardest against your own feature.
+
+`openleaf-import-docx` is larger than the entire editor. That is exactly why it
+is a separate file, and it is the model for anything with a heavy dependency:
+the cost lands only on the deployments that asked for it.
 
 - **Icons go through `registerIcons`, from your own bundle.** Eleven table icons
   are about a kilobyte, and `icons.ts` keeps `PATHS` mutable specifically so a
@@ -808,10 +942,10 @@ raise, for the same reason table nodes live in core.
 - **`node demo/build.mjs --sizes` attributes bytes per package.** Use it before
   and after. An aggregate gate tells you the bundle no longer fits but not which
   feature spent the budget, so the blame lands on whatever shipped last.
-- **Every bundle is gated**, not just core. `BUDGETS_KB` in
-  `scripts/bundle-budgets.mjs` carries one number per file, because an opt-in
-  bundle that grows without limit defeats the point of making it opt-in. Add
-  yours there when you add the build step.
+- **Add your own budget when you add your build step.** A bundle with no entry
+  in `BUDGETS_KB` is not measured, and an opt-in bundle that grows without limit
+  defeats the point of making it opt-in. Set the number close to what you
+  actually measure — a generous budget is not a budget.
 
 ### 4.6 Keyboard bindings cannot shadow core bindings
 
@@ -947,6 +1081,66 @@ Four constraints, each of which cost something to learn:
 once, and the rest of the toolbar keeps working. Do not rely on that — it is there
 so a bug in a colour picker cannot take Undo and Save down with it.
 
+### 4.10 Every string you ship is a translatable string
+
+`@openleaf-editor/ui` has an i18n layer, and a plugin that ignores it ships
+labels that cannot be translated by anyone. The design is deliberately low
+ceremony, so there is very little to do — but it is not nothing.
+
+**English source text is the lookup key.** There is no message-id indirection
+and no catalog to bump before a button can ship: a missing translation falls
+back to the string itself, so a new control always shows something an author can
+read.
+
+**Toolbar labels are translated for you.** `Toolbar` calls `t(spec.label)` when
+it renders, so pass the plain English string and do *not* call `t()` yourself at
+registration time:
+
+```ts
+registerToolbarItem({
+  id: 'callout',
+  label: 'Callout',        // right: translated at render, per editor
+  // label: t('Callout'),  // wrong: resolved once, at module load
+})
+```
+
+The distinction matters because each editor carries its own `lang`. The toolbar
+renders inside `withLocale(editorLang, …)`, so two editors with different
+languages on one page each get their own labels. A string resolved at
+registration is resolved once, in whatever locale happened to be current, and
+both editors get that one.
+
+**Everything you build yourself, you translate yourself.** Dialog text, menu
+entries, live-region announcements, error messages — anything that does not go
+through a toolbar `label` — needs an explicit `t()`:
+
+```ts
+import { t } from '@openleaf-editor/ui'
+
+throw new Error(t('That file is too large.'))
+```
+
+`promptFields` and the other `ui` dialog helpers translate the specs you hand
+them, so field labels and button text are already covered.
+
+**Ship your catalogs, and let hosts override them.**
+`registerTranslations(locale, messages)` overlays a locale and last registration
+wins, which is how an integrator replaces one phrase without forking your
+catalog. Register from your `install…()` function so a host that loads your
+plugin gets the translations with it:
+
+```ts
+registerTranslations('fr', { Callout: 'Encadré' })
+```
+
+Registration notifies listeners, so a catalog registered after the editors were
+built — the ordinary case for a script tag — still reaches them.
+
+**What not to do.** Do not concatenate. `t('Deleted ') + n + t(' rows')` is
+untranslatable into any language whose word order differs from English, which is
+most of them. Build the whole sentence as one key and interpolate into the
+result.
+
 ---
 
 ## 5. Checklist before you submit
@@ -960,13 +1154,17 @@ so a bug in a colour picker cannot take Undo and Save down with it.
 - [ ] Your tag is not on the `NEVER_PRESERVE` list in `preserve.ts`.
 - [ ] Any URL-bearing attribute is checked with `isSafeUrl`, and `getAttrs`
       returns `false` when the check fails, the way `image` and `link` do.
-- [ ] Commands resolve node and mark types from `state.schema`, never from the
-      imported `schema` singleton, and decline with `false` when a type is
-      absent rather than throwing.
-- [ ] Any normalization pass you add over serialized output skips subtrees
-      `isInsidePreserved` returns true for.
-- [ ] The new export and the new node name are both declared in
-      `packages/core/test/public-api.test.ts`.
+- [ ] Commands resolve node and mark types from `state.schema`, never from a
+      captured schema instance, and decline with `false` when a type is absent
+      rather than throwing.
+- [ ] Any normalization pass you add over the editor's DOM or its serialized
+      output skips subtrees where `isInsidePreserved()` is true.
+- [ ] `registerSchemaExtension` is called from the eagerly-imported half of your
+      package, not from behind a lazy `import()`.
+- [ ] Your extension `id` is namespaced, and you have decided whether any name
+      clash should `replace` or throw.
+- [ ] If the node ships in core's base schema instead, the new export and the
+      new node name are both declared in `packages/core/test/public-api.test.ts`.
 
 **Fidelity**
 
@@ -985,10 +1183,16 @@ so a bug in a colour picker cannot take Undo and Save down with it.
 
 **Sanitization**
 
-- [ ] `DEFAULT_POLICY` allows every element and attribute your `toDOM` can emit.
-- [ ] `SCHEMA_NATIVE` in `packages/sanitize/test/agreement.test.ts` has an entry
-      exercising your node, including its awkward attributes, and the sanitizer
-      is a no-op over it.
+- [ ] A base-schema node: `DEFAULT_POLICY` allows every element and attribute
+      your `toDOM` can emit, and `SCHEMA_NATIVE` in
+      `packages/sanitize/test/agreement.test.ts` has an entry exercising it,
+      awkward attributes included, over which the sanitizer is a no-op.
+- [ ] A schema extension: you export a policy fragment as data, and your own
+      tests round-trip through
+      `policyForPreserved(DEFAULT_POLICY, YOUR_FRAGMENT)` so drift from your
+      `toDOM` is a test failure rather than stripped content.
+- [ ] Nothing you model is named `on*`, `srcdoc`, `formaction`, `ping` or
+      `xlink:href` — `sanitizeHtml` drops those whatever the policy says.
 - [ ] If you also depend on preserved markup, your README documents the exact
       `policyForPreserved()` call your users need.
 - [ ] You have confirmed none of your elements are on `dropWithContent`.
@@ -1016,10 +1220,12 @@ so a bug in a colour picker cannot take Undo and Save down with it.
 - [ ] `install…()` is idempotent behind a module-level flag.
 - [ ] `registerEditorPlugin` is given a factory, and is not called at all if the
       plugin contributes no ProseMirror plugins.
-- [ ] Icons and machinery are in the plugin bundle; only the node spec is in
-      core.
-- [ ] `node demo/build.mjs --sizes` shows the core bundle still under 90 KB
-      gzipped, and you know how much of the delta is yours.
+- [ ] Icons and machinery are in the plugin bundle. Only a node spec that
+      belongs in the *base* schema is in core -- see section 1.2.
+- [ ] `node scripts/bundle-budgets.mjs` passes, your bundle has its own entry in
+      `BUDGETS_KB`, and you know how much of any core delta is yours.
+- [ ] Every user-visible string goes through `t()` or a toolbar `label`, and
+      your catalogs are registered from `install...()`.
 - [ ] `demo/build.mjs` reads no `dist/`.
 - [ ] Commits are Conventional and signed off with `git commit -s`.
 - [ ] `pnpm verify` passes — typecheck, unit and fidelity, three browser
@@ -1027,24 +1233,50 @@ so a bug in a colour picker cannot take Undo and Save down with it.
 
 ---
 
-## 6. Open questions for the maintainer
+## 6. Known gaps
 
-Flagged rather than guessed at, because the answers change what this document
-should say.
+Not open questions -- things this document would rather be able to tell you and
+cannot. Each is a real limitation you may hit.
 
-1. **Schema assembly.** Commands and HTML I/O are decoupled from the singleton
-   as of `8fd04c7`; schema construction and the element's wiring are not. Until
-   that half lands, every node type ships in core. When it lands, sections 1,
-   2.3 and 3.1 need rewriting, and the CSS gap in 4.7 probably wants solving in
-   the same pass.
-2. **A supported script-tag plugin path.** `__runtime` is explicitly not public
-   API and `shareRuntime()` is not published. Third-party script-tag plugins
-   need either a published build helper or a versioned `__runtime` contract.
-3. **`DEFAULT_POLICY` does not allow tables.** See the note in 4.2. A user
-   following `SECURITY.md` today loses every table on save.
-4. ~~**Directional icons.**~~ Resolved: `DIRECTIONAL` is exported from
-   `@openleaf-editor/ui`, so a plugin icon can opt into RTL mirroring.
-5. **Plugin bundles are not size-gated.** Only `openleaf.min.js` is checked.
-6. ~~**`PRESERVED_MARKER` is not exported from the package.**~~ Resolved
-   differently: the marker is a `WeakSet` rather than an attribute, and
-   `isInsidePreserved` is exported from `@openleaf-editor/core`.
+1. **A supported script-tag plugin path.** The rewriting that lets a second
+   script tag share the first one's runtime is done by `shareRuntime()` in
+   `demo/build.mjs`, a private build helper in this repository. `__runtime` is
+   documented in `global.ts` as explicitly not public API. A third party
+   shipping a script-tag plugin today has to copy that esbuild plugin and depend
+   on an interface carrying no compatibility promise. Prefer the ESM model until
+   a published build helper or a versioned `__runtime` contract exists.
+2. **No `<style>` fallback for CSS.** `registerStyles` uses `adoptedStyleSheets`
+   only. That is deliberate — a `<style>` fallback is blocked by exactly the
+   strict-CSP configurations that would need it, and fails silently — but it
+   means a browser without `adoptedStyleSheets` gets `'unavailable'` and no
+   styles. See [4.7](#47-css-goes-through-registerstyles-from-your-own-bundle).
+3. **Directional icons.** The `DIRECTIONAL` set is private to `icons.ts`, so a
+   plugin icon cannot opt into RTL mirroring.
+4. **Keyboard bindings cannot shadow core bindings.** See
+   [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings).
+5. **Nothing announces a node type to a screen reader.** There is no per-node
+   live-region mechanism; the toolbar's live region announces mark and block
+   transitions only. If your node needs to announce itself, that is new work.
+
+---
+
+## 7. If this document is wrong
+
+It has been wrong before, and the way it went wrong is worth knowing about,
+because it is the failure mode of every document like this.
+
+`registerSchemaExtension` landed four commits after this file was first written.
+The file was edited five times afterwards and none of those edits noticed, so
+for fifty-odd commits it told plugin authors that the single thing they most
+wanted to do was impossible -- while the feature sat exported in the barrel. It
+also prescribed importing a `PRESERVED_MARKER` constant that has never existed
+in any commit, and warned that `DEFAULT_POLICY` did not allow tables and would
+lose every table on save, at a time when it allowed the full table set. A false
+data-loss warning is worse than no warning, in a project whose governance ranks
+silent content loss above security defects.
+
+So: **the code is the authority, this file is a convenience.** If they disagree,
+the code is right and this file is a bug. Please report it as one. Every
+mechanism named here is exported from `@openleaf-editor/core` or
+`@openleaf-editor/ui` and is checkable in `dist/index.d.ts` in about ten seconds,
+which is a good habit to have before building on any sentence below.

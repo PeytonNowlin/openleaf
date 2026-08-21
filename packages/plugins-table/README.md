@@ -3,6 +3,17 @@
 Opt-in table editing: cell selection, column resizing, property dialogs,
 captions, an insert grid, a context menu, and the row and column commands.
 
+> **Editor output is untrusted input.** Whatever the editor produces — and
+> whatever a user pasted into it — must be sanitized **on your server** before it
+> is stored or rendered as HTML. Client-side sanitization is a user-experience
+> feature, not a security control: anything the editor strips can be put back
+> with developer tools, because the editor runs under the user's control.
+>
+> [`@openleaf-editor/sanitize`](https://github.com/PeytonNowlin/openleaf/tree/main/packages/sanitize) ships the
+> canonical allowlist as data and generates configuration for DOMPurify, Python
+> `bleach` and PHP HTMLPurifier from it, so client and server enforce the same
+> rules. Read [SECURITY.md](https://github.com/PeytonNowlin/openleaf/blob/main/SECURITY.md) before you ship.
+
 ## Install
 
 ```sh
@@ -54,3 +65,29 @@ you change one meanwhile.
 ## License
 
 Apache-2.0.
+
+## Toolbar item ids
+
+Installing registers the controls; it does not rearrange a custom toolbar. Name
+the ones you want in the element's `toolbar` attribute:
+
+| Id | Control |
+| --- | --- |
+| `insertTable` | Insert-table grid |
+| `tableProperties` | Table properties dialog |
+| `rowProperties` | Row properties dialog |
+| `cellProperties` | Cell properties dialog |
+| `tableCaption` | Caption dialog |
+| `addRowBefore`, `addRowAfter`, `deleteRow` | Row commands |
+| `addColumnBefore`, `addColumnAfter`, `deleteColumn` | Column commands |
+| `mergeCells`, `splitCell` | Cell merge and split |
+| `toggleHeaderRow` | Promote or demote the header row |
+| `deleteTable` | Delete the whole table |
+
+```html
+<openleaf-editor for="body"
+  toolbar="bold italic | insertTable tableProperties | source">
+</openleaf-editor>
+```
+
+An id nothing has registered logs a warning rather than being skipped silently.

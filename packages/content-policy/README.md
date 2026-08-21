@@ -14,6 +14,28 @@ while that meant the rules were written twice, kept honest by a test that
 compared the two copies answer for answer. This package is the shared original
 instead: one definition, both sides importing it.
 
+**Where that is not yet literally true.** CSS, embeds, URL-safety and the
+freeze helper are imported from here by both sides. `@openleaf-editor/sanitize`
+still carries its own scheme check in `sanitize.ts`, because its policies are
+caller-supplied data and the scheme list is a policy field rather than a
+constant — and `DEFAULT_POLICY.urlAttributes` is an ordered array the adapters
+emit as configuration, not this package's `Set`. Those two are genuine second
+copies. Both are pinned by tests in `packages/sanitize/test/agreement.test.ts`
+that fail on drift, which is the same guarantee by a different route; the
+`urlAttributes` copy had in fact already drifted, missing `background`,
+`longdesc` and `xlink:href`, which is why the test exists.
+
+> **Editor output is untrusted input.** Whatever the editor produces — and
+> whatever a user pasted into it — must be sanitized **on your server** before it
+> is stored or rendered as HTML. Client-side sanitization is a user-experience
+> feature, not a security control: anything the editor strips can be put back
+> with developer tools, because the editor runs under the user's control.
+>
+> [`@openleaf-editor/sanitize`](https://github.com/PeytonNowlin/openleaf/tree/main/packages/sanitize) ships the
+> canonical allowlist as data and generates configuration for DOMPurify, Python
+> `bleach` and PHP HTMLPurifier from it, so client and server enforce the same
+> rules. Read [SECURITY.md](https://github.com/PeytonNowlin/openleaf/blob/main/SECURITY.md) before you ship.
+
 ## Install
 
 ```sh

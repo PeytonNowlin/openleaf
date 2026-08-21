@@ -66,6 +66,7 @@
  */
 
 import { DROP_WITH_CONTENT } from '@openleaf-editor/content-policy/elements'
+import { deepFreeze } from './freeze.js'
 
 export interface ElementPolicy {
   /** Attribute names permitted on this element, beyond the global ones. */
@@ -116,13 +117,36 @@ export interface Policy {
 }
 
 /**
- * The default policy: exactly what OpenLeaf's own schema can emit, and nothing
- * else.
+ * The default policy: what OpenLeaf's *modelled* node and mark types emit.
+ *
+ * It used to say "exactly what OpenLeaf's own schema can emit, and nothing
+ * else". That was wrong in the dangerous direction. The schema also emits
+ * everything the preservation layer kept -- a `<drupal-media>`, a `div` with a
+ * load-bearing class, a `<font>` run from 2011 -- and this policy rejects all of
+ * it. So a reader who took the sentence at face value concluded the default was
+ * sufficient for their content, and lost the preserved half of it on first save.
+ * That is the trap `SECURITY.md` names, and the comment was walking readers into
+ * it. Preserved markup is `policyForPreserved`'s job, explicitly.
  *
  * Kept deliberately narrow. Widening a policy is a decision an integrator makes
  * knowingly; narrowing one after content has been stored is a migration.
+ *
+ * ## Frozen, deeply, and why that is not decoration
+ *
+ * This is a module-level singleton that every `sanitizeHtml()` call in the
+ * process reads by default. Unfrozen, one line anywhere on the page --
+ * `DEFAULT_POLICY.globalAttributes.push('onclick')`, or
+ * `DEFAULT_POLICY.dropWithContent.length = 0` -- silently reconfigures the
+ * sanitizer for every subsequent call, with nothing in any call site changed and
+ * nothing to see in review. On a Node server that is a gadget: a single
+ * write primitive anywhere in the process turns the shared allowlist off for
+ * every request that follows, for the lifetime of the process.
+ *
+ * Freezing turns that from a silent, permanent, process-wide reconfiguration
+ * into a `TypeError` at the line that tried it. An integrator who genuinely
+ * wants a different policy has `policyForPreserved`, which returns a new one.
  */
-export const DEFAULT_POLICY: Policy = {
+export const DEFAULT_POLICY: Policy = deepFreeze({
   version: 3,
 
   elements: {
@@ -263,7 +287,23 @@ export const DEFAULT_POLICY: Policy = {
   // the page. Allow them per element, where you have decided which values.
   globalAttributes: [],
 
-  urlAttributes: ['href', 'src', 'action', 'formaction', 'data', 'poster', 'cite', 'ping', 'srcdoc'],
+  // Kept in step with `URL_ATTRIBUTES` in @openleaf-editor/content-policy, and
+  // pinned by a test. This list had already drifted from it -- `background`,
+  // `longdesc` and `xlink:href` were missing, so a policy that permitted one of
+  // them would have kept a `javascript:` value unchecked. `content-policy`
+  // exists so the editor and the sanitizers cannot disagree about this; two
+  // hand-maintained copies is exactly the divergence it was written to stop.
+  //
+  // `srcdoc` is deliberately NOT here, and its absence is the point. It holds a
+  // whole HTML document rather than a URL, so a scheme check finds no scheme,
+  // concludes "relative, therefore safe", and waves it through -- which is how
+  // an inline `<script>` rode into a same-origin frame. It is refused outright
+  // instead, by `NEVER_CARRY_ATTRIBUTES` in content-policy. Listing it here
+  // would be harmless only for as long as no element's policy permits it.
+  urlAttributes: [
+    'href', 'src', 'action', 'formaction', 'data', 'poster', 'background',
+    'cite', 'longdesc', 'xlink:href', 'ping',
+  ],
 
   // `data:` is absent deliberately. `data:text/html` is a full XSS vector, and
   // separating safe data URLs from dangerous ones by sniffing the media type is
@@ -277,7 +317,7 @@ export const DEFAULT_POLICY: Policy = {
   // were kept in step by hand and drifted, which is how the editor came to store
   // `<svg>` and `<math>` that this list says to delete.
   dropWithContent: [...DROP_WITH_CONTENT],
-}
+})
 
 /**
  * Extend a policy to cover markup kept by the preservation layer.
@@ -301,12 +341,29 @@ export const DEFAULT_POLICY: Policy = {
  * A property named here still has to have a checker in css.ts, and there is
  * deliberately no "allow any value" mode: `styleProperties: ['background']`
  * without one permits nothing, rather than permitting `url(...)`.
+ *
+ * The result is a deep copy. It used to be `{ ...base, elements }`, which
+ * copied `elements` one level and shared `dropWithContent`, `urlSchemes`,
+ * `urlAttributes` and `globalAttributes` **by reference** -- so a caller who
+ * adjusted the "extended" policy was reaching into `DEFAULT_POLICY` and
+ * changing it for every other consumer in the process. Deriving a policy is
+ * supposed to leave the one you derived it from alone.
  */
 export function policyForPreserved(
   base: Policy,
   additions: Record<string, string[] | ElementPolicy>,
 ): Policy {
-  const elements: Record<string, ElementPolicy> = { ...base.elements }
+  // Copy every element entry, not just the map: the entries this call does not
+  // touch would otherwise still be the base policy's own objects, holding the
+  // base policy's own `attributes` array.
+  const elements: Record<string, ElementPolicy> = {}
+  for (const [name, element] of Object.entries(base.elements)) {
+    elements[name] = {
+      ...element,
+      ...(element.attributes ? { attributes: [...element.attributes] } : {}),
+      ...(element.styleProperties ? { styleProperties: [...element.styleProperties] } : {}),
+    }
+  }
 
   for (const [tag, addition] of Object.entries(additions)) {
     const name = tag.toLowerCase()
@@ -335,7 +392,14 @@ export function policyForPreserved(
     }
   }
 
-  return { ...base, elements }
+  return {
+    ...base,
+    elements,
+    globalAttributes: [...base.globalAttributes],
+    urlAttributes: [...base.urlAttributes],
+    urlSchemes: [...base.urlSchemes],
+    dropWithContent: [...base.dropWithContent],
+  }
 }
 
 /**

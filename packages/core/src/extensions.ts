@@ -89,6 +89,19 @@ export interface SchemaExtension {
    * So unmodelled attributes are captured on parse and merged back on
    * serialize, by default, at schema-build time -- which means an author cannot
    * opt out by forgetting.
+   *
+   * ## Setting this to `false` is security-relevant
+   *
+   * The capture is also where `on*` handlers and unsafe URL schemes are
+   * filtered out of the residue -- see `withCarriedAttributes` below. Turning
+   * the carry off skips the wrapper entirely, and with it that filter, so a
+   * spec's own `getAttrs` becomes the only thing standing between pasted
+   * `onclick` and the stored document.
+   *
+   * It exists for specs that already model every attribute they claim, where
+   * carrying would emit the same value twice. It is not a performance knob, and
+   * a plugin that sets it is making a decision `SECURITY.md` documents under
+   * "Plugin trust model". If you set it, your `getAttrs` owns the scrub.
    */
   readonly carryUnknownAttributes?: boolean
 }

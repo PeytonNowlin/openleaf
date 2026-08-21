@@ -307,3 +307,92 @@ describe('adapters keep the runtimes in agreement', () => {
     expect(toHtmlPurifierConfig(policy)).toContain('drupal-media[data-entity-uuid]')
   })
 })
+
+/**
+ * The hardening below is all defence in depth: under DEFAULT_POLICY every one
+ * of these cases was already handled. The point is that each was handled as an
+ * *emergent property* of the allowlist happening to be narrow, so a caller who
+ * widened one element's attribute list -- a supported, documented thing to do
+ * -- silently lost the protection. A denial that holds only while nobody uses
+ * the extension mechanism is not a security property.
+ */
+describe('protections that do not depend on the policy staying narrow', () => {
+  it('strips on* handlers even when a policy explicitly permits them', () => {
+    const policy = policyForPreserved(DEFAULT_POLICY, { div: ['class', 'onclick'] })
+    const out = sanitizeHtml('<div class="k" onclick="alert(1)">x</div>', { policy })
+    expect(out).not.toContain('onclick')
+    expect(out).toContain('class="k"')
+  })
+
+  it('strips srcdoc, formaction and ping even when permitted', () => {
+    const policy = policyForPreserved(DEFAULT_POLICY, {
+      div: ['srcdoc', 'formaction', 'ping'],
+    })
+    const out = sanitizeHtml(
+      '<div srcdoc="<script>alert(1)</script>" formaction="/x" ping="/y">x</div>',
+      { policy },
+    )
+    expect(out).not.toContain('srcdoc')
+    expect(out).not.toContain('formaction')
+    expect(out).not.toContain('ping')
+  })
+
+  it('removes HTML comments rather than re-emitting them verbatim', () => {
+    // Inert as parsed here, and live the moment a downstream template layer
+    // unwraps or regex-strips comments -- a routine thing for one to do.
+    const out = clean('<p>a</p><!--<img src=x onerror=alert(1)>--><p>b</p>')
+    expect(out).not.toContain('<!--')
+    expect(out).not.toContain('onerror')
+    expect(out).toBe('<p>a</p><p>b</p>')
+  })
+
+  it('removes comments nested inside allowed elements too', () => {
+    expect(clean('<p>a<!-- secret -->b</p>')).toBe('<p>ab</p>')
+  })
+})
+
+describe('the shared policy objects are immutable', () => {
+  it('refuses a write to DEFAULT_POLICY', () => {
+    // Unfrozen this was a process-wide switch: one line anywhere on the page
+    // reconfigured every later sanitizeHtml() call, with no call site changed.
+    expect(() => {
+      ;(DEFAULT_POLICY.globalAttributes as string[]).push('onclick')
+    }).toThrow(TypeError)
+    expect(DEFAULT_POLICY.globalAttributes).toHaveLength(0)
+  })
+
+  it('refuses a write to a nested element policy', () => {
+    expect(() => {
+      ;(DEFAULT_POLICY.elements['a']?.attributes as string[]).push('onclick')
+    }).toThrow(TypeError)
+  })
+
+  it('gives policyForPreserved a policy that does not alias the base', () => {
+    const derived = policyForPreserved(DEFAULT_POLICY, { div: ['class'] })
+    expect(derived.dropWithContent).not.toBe(DEFAULT_POLICY.dropWithContent)
+    expect(derived.urlSchemes).not.toBe(DEFAULT_POLICY.urlSchemes)
+    expect(derived.urlAttributes).not.toBe(DEFAULT_POLICY.urlAttributes)
+    expect(derived.globalAttributes).not.toBe(DEFAULT_POLICY.globalAttributes)
+    expect(derived.elements['a']).not.toBe(DEFAULT_POLICY.elements['a'])
+
+    // And mutating the derived one leaves the default alone, which is the
+    // whole reason the copy has to be deep.
+    derived.urlSchemes.push('javascript')
+    expect(DEFAULT_POLICY.urlSchemes).not.toContain('javascript')
+  })
+})
+
+describe('the DOMPurify config keeps DOMPurify’s own hardening', () => {
+  it('unions FORBID_CONTENTS rather than replacing the default', () => {
+    // DOMPurify merges config by assignment, so returning the bare
+    // dropWithContent list silently dropped the mXSS defence its maintainers
+    // chose -- losing somebody else's hardening as a side effect of naming two
+    // tags of our own.
+    const contents = toDOMPurifyConfig(DEFAULT_POLICY).FORBID_CONTENTS
+    for (const tag of ['annotation-xml', 'foreignobject', 'noembed', 'noframes', 'xmp', 'mtext']) {
+      expect(contents).toContain(tag)
+    }
+    // And still carries our own additions.
+    for (const tag of DEFAULT_POLICY.dropWithContent) expect(contents).toContain(tag)
+  })
+})

@@ -48,8 +48,12 @@ semantic HTML.
 - Framework-free `<openleaf-editor>` custom element
 - Ordinary HTML input and output—no proprietary document format
 - Content preservation for legacy and application-specific markup
-- Word and Google Docs paste cleanup, including nested list reconstruction
-- Keyboard-accessible toolbar with configurable controls and themes
+- Word and Google Docs paste cleanup, including nested list reconstruction from
+  Word's flat, style-encoded list paragraphs (Google's clipboard HTML already
+  carries real `<ul>`/`<ol>` nesting and needs none)
+- Configurable, themeable toolbar. The buttons are one tab stop with a roving
+  tabindex; the preset `<select>` controls (block type, font, size, line height)
+  are each their own tab stop, and image resize is pointer-only today
 - Alignment, fonts, sizes, line height, indent, links, images, lists, block
   quotes, code blocks, and source view
 - Typography in the storage format: fonts, sizes, line height, indent, direction,
@@ -58,8 +62,13 @@ semantic HTML.
 - Optional tables, color controls, syntax highlighting, file import, insert tools,
   and session tools
 - React, Vue, and Angular wrappers around the same custom element
-- Shared sanitization policy for browser, Node.js, Python, and PHP integrations
-- Strict TypeScript with unit, fidelity, and cross-browser test suites
+- Shared sanitization policy for browser, Node.js, Python, and PHP integrations.
+  `sanitizeHtml` needs a DOM: in Node, pass `{ document }` (from jsdom or
+  similar). The Python and PHP adapters emit configuration *source text*, so
+  regenerating it after a policy upgrade needs Node in the build
+- Strict TypeScript, with unit, round-trip fidelity and cross-browser suites
+  over the editor and its plugins. The framework wrappers (`react`, `vue`,
+  `angular`) and `content-policy` have no tests of their own yet
 - Apache-2.0 licensed with no feature-gated commercial edition
 
 ## Quick start
@@ -141,7 +150,11 @@ outdent also sit in the Format menu and keep their keyboard shortcuts.
 
 The commands are exported from `@openleaf-editor/core` and take the same
 `(state, dispatch, view)` shape as every other command, so wiring your own
-control is `registerToolbarItem` plus one of them. `FONT_FAMILIES`,
+control is `registerToolbarItem` plus one of them. `registerToolbarItem` is
+re-exported from `@openleaf-editor/element`, so it needs no extra install — and
+on a plain `<script>` integration it is on `window.OpenLeaf`. It originates in
+`@openleaf-editor/ui`, if you would rather depend on that directly.
+`FONT_FAMILIES`,
 `FONT_SIZE_PRESETS`, `LINE_HEIGHT_PRESETS` and `LIST_STYLES` are exported as
 sensible defaults for a picker, and `activeFontFamily`, `activeFontSize`,
 `activeLineHeight`, `activeIndent`, `activeDir`, `activeLanguage` and
@@ -226,7 +239,25 @@ installInsertTools()
 ```
 
 Installing a plugin registers its capabilities; it does not rearrange a custom
-toolbar. Add the plugin controls to the `toolbar` attribute where you want them.
+toolbar. Add the plugin controls to the `toolbar` attribute where you want them,
+by id:
+
+| Plugin | Toolbar item ids |
+| --- | --- |
+| `plugins-table` | `insertTable`, `tableProperties`, `rowProperties`, `cellProperties`, `tableCaption`, `addRowBefore`, `addRowAfter`, `deleteRow`, `addColumnBefore`, `addColumnAfter`, `deleteColumn`, `mergeCells`, `splitCell`, `toggleHeaderRow`, `deleteTable` |
+| `plugins-insert` | `media`, `details`, `anchor`, `charmap`, `emoji`, `datetime`, `pagebreak`, `nbsp`, `snippet` |
+| `plugins-session` | `find`, `wordCount`, `save`, `preview`, `print`, `newDocument` |
+| `plugins-colour` | `textColour`, `highlightColour` |
+| `plugins-import` | `importFile` |
+| `plugins-import-docx` | none — it registers a converter behind `importFile` |
+| `plugins-highlight` | none — it changes how code blocks render |
+
+An id in the `toolbar` string that nothing has registered produces a
+`console.warn` rather than being silently skipped, so a typo is visible.
+
+`plugins-import-docx` needs `plugins-import` installed **and** `installImport()`
+called first: it registers a converter with the `importFile` control that
+package owns, so on its own there is no control to reach it through.
 
 ## Packages
 
@@ -248,8 +279,16 @@ toolbar. Add the plugin controls to the `toolbar` attribute where you want them.
 | [`@openleaf-editor/plugins-session`](packages/plugins-session) | Find and replace, word count, autosave, save, print, preview, and new document |
 | [`@openleaf-editor/plugins-insert`](packages/plugins-insert) | Media, details, anchors, character map, emoji, snippets, and image resize |
 
-For schema extensions and custom toolbar items, see
-[Authoring OpenLeaf plugins](docs/authoring-plugins.md).
+## Documentation
+
+- [API reference](docs/api-reference.md) — the element's attributes,
+  properties, and `openleaf:*` events.
+- [Authoring plugins](docs/authoring-plugins.md) — schema extensions, toolbar
+  items, and the interactions that will cost you a day.
+- [SECURITY.md](SECURITY.md) — the threat model, the plugin trust model, and a
+  baseline CSP.
+- [GOVERNANCE.md](GOVERNANCE.md) — the licence, the DCO, and the product
+  covenants.
 
 ## Content fidelity
 

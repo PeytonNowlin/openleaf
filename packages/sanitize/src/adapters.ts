@@ -80,6 +80,34 @@ export interface DOMPurifyHooks {
  * Without the flag, stored embeds are removed rather than trusted. That is
  * content loss, and it is the safe direction of the two.
  */
+/**
+ * DOMPurify's own default `FORBID_CONTENTS`, transcribed.
+ *
+ * Transcribed rather than imported because this package deliberately does not
+ * depend on DOMPurify -- it emits configuration for a sanitizer the integrator
+ * installs, and half its point is to be usable by a PHP or Python shop that
+ * never runs it.
+ *
+ * The list is the mXSS defence DOMPurify's maintainers chose: the elements
+ * whose children the HTML parser re-interprets in a different context, so
+ * hoisting those children out on removal is what turns inert text into markup.
+ * Most of these are already in `ALLOWED_TAGS` for our policy and so are never
+ * removed at all, which is exactly why carrying the whole list costs nothing.
+ *
+ * Source: `DEFAULT_FORBID_CONTENTS` in cure53/DOMPurify `src/purify.ts`. If a
+ * later DOMPurify adds an entry, the union below is stale rather than wrong --
+ * it can only forbid more content than a bare default, never less. (DOMPurify
+ * 3.3+ has `ADD_FORBID_CONTENTS`, which would express this directly; it is not
+ * used here because an older DOMPurify ignores an unknown key silently, and the
+ * failure mode of that is `dropWithContent` quietly not applying.)
+ */
+const DOMPURIFY_FORBID_CONTENTS = [
+  'annotation-xml', 'audio', 'colgroup', 'desc', 'foreignobject', 'head',
+  'iframe', 'math', 'mi', 'mn', 'mo', 'ms', 'mtext', 'noembed', 'noframes',
+  'noscript', 'plaintext', 'script', 'selectedcontent', 'style', 'svg',
+  'template', 'thead', 'title', 'video', 'xmp',
+]
+
 export function toDOMPurifyConfig(
   policy: Policy,
   options: { embedHook?: boolean; styleHook?: boolean } = {},
@@ -107,11 +135,22 @@ export function toDOMPurifyConfig(
     // KEEP_CONTENT unwraps unknown wrappers (a styling div) so their text
     // survives. dropWithContent is the exception: those elements and
     // everything in them must go. FORBID_CONTENTS is that exception.
-    FORBID_CONTENTS: forbidden,
-    // `on*` handlers are removed by DOMPurify unconditionally; naming them here
-    // documents the intent and survives a future config change.
+    //
+    // Unioned with DOMPurify's own default, never replacing it: DOMPurify
+    // merges config by assignment, so returning the bare `dropWithContent` list
+    // silently removed `annotation-xml`, `foreignobject`, `noembed`, `noframes`,
+    // `plaintext`, `xmp` and the MathML text containers from the mXSS defence
+    // its maintainers chose. Losing somebody else's hardening as a side effect
+    // of naming two tags of our own is not a trade this package gets to make.
+    FORBID_CONTENTS: [...new Set([...DOMPURIFY_FORBID_CONTENTS, ...forbidden])],
     // Style carries alignment and colour, but is forbidden unless the caller
     // confirms the property-filtering hook is installed.
+    //
+    // `on*` is not listed. DOMPurify removes event handlers unconditionally and
+    // an earlier comment here claimed the list named them as belt-and-braces --
+    // it did not, so the comment documented a defence that was not there. The
+    // reference enforcer in sanitize.ts now carries that check for its own path;
+    // here the honest statement is that this relies on DOMPurify.
     FORBID_ATTR: options.styleHook === true
       ? ['srcdoc', 'formaction', 'ping']
       : ['srcdoc', 'formaction', 'ping', 'style'],

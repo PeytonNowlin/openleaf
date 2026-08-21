@@ -36,7 +36,11 @@
  *   autoresize       grow the canvas with the document
  *   toolbar-overflow collapse overflowing groups into a More menu
  *   readonly         render but do not allow editing
+ *   autolink         `false` to stop URLs becoming links on space or Enter
+ *   visualaids       `false` to hide the guides for invisible structure
  *   aria-label       accessible name for the editable region
+ *
+ * See `docs/api-reference.md` for the properties, methods and events too.
  */
 
 import {
@@ -1642,6 +1646,33 @@ export {
   type ImageUploader,
   type ListedResource,
   type PickedResource,
+} from '@openleaf-editor/ui'
+
+/**
+ * Re-exported because it is the documented way to add a toolbar control and it
+ * lived in a package no install command mentions.
+ *
+ * `registerToolbarItem` is exported from `@openleaf-editor/ui`, which is a
+ * transitive dependency of this package and appears in no `npm install` line in
+ * any README. So the one extension point an integrator is most likely to reach
+ * for was reachable only by guessing at a package name. It is already in this
+ * bundle; re-exporting it costs nothing and means `registerToolbarItem` is
+ * available wherever `<openleaf-editor>` is -- including from
+ * `window.OpenLeaf` in a plain `<script>` integration, which has no other route
+ * to it at all.
+ *
+ * `t` comes with it: a custom control's label is translated by the toolbar, but
+ * anything the control builds itself has to be translated by the control.
+ */
+export {
+  registerIcons,
+  registerStyles,
+  registerToolbarItem,
+  t,
+  type ToolbarContext,
+  type ToolbarControl,
+  type ToolbarItemSpec,
+  type ToolbarSelectOption,
 } from '@openleaf-editor/ui'
 
 declare global {

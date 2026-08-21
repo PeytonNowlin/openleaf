@@ -12,6 +12,7 @@
   "homepage": "https://peytonnowlin.github.io/openleaf/",
   "bugs": { "url": "https://github.com/PeytonNowlin/openleaf/issues" },
   "type": "module",
+  "engines": { "node": ">=20" },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -19,6 +20,7 @@
     "./css": { "types": "./dist/css.d.ts", "import": "./dist/css.js" },
     "./elements": { "types": "./dist/elements.d.ts", "import": "./dist/elements.js" },
     "./embed": { "types": "./dist/embed.d.ts", "import": "./dist/embed.js" },
+    "./freeze": { "types": "./dist/freeze.d.ts", "import": "./dist/freeze.js" },
     "./url": { "types": "./dist/url.d.ts", "import": "./dist/url.js" }
   },
   "files": ["dist"],

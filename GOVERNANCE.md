@@ -23,18 +23,35 @@ are accepted under the [Developer Certificate of Origin](CONTRIBUTING.md)
 (DCO), which certifies a contributor's right to submit their work but
 **does not transfer copyright to anyone.**
 
-The consequence is the guarantee:
+The consequence is structural:
 
-> Copyright in OpenLeaf is distributed across every contributor who has
-> ever had a patch merged. No individual, company, or foundation holds
-> sufficient rights to relicense the project. A future maintainer who
-> wanted to move OpenLeaf to a proprietary or copyleft license could not
-> do so without the individual permission of every contributor.
+> Copyright in OpenLeaf stays with each contributor who wrote the code.
+> It is never assigned to a maintainer, a company, or a foundation. Any
+> future move to a proprietary or copyleft license would require the
+> individual permission of every contributor whose work remained in the
+> tree.
 
-This is not a promise about our intentions. It is a statement about our
-capabilities. A CLA that assigns copyright to a steward is the specific
-legal instrument that makes a rug-pull possible; we have declined to
-create one.
+**Where the project actually stands today.** This section is written to
+be checked, so check it: `git shortlog -sne HEAD` is the whole answer.
+OpenLeaf currently has one contributor. That means the guarantee above is
+today a statement about structure and intent, not yet a practical
+obstacle -- a sole contributor holds the rights to their own work and
+could relicense it. Saying otherwise would be the one claim in this
+document most likely to be relied on and most damaging if wrong, so it is
+not said.
+
+What the DCO does is decide the trajectory in advance, at the moment when
+the decision is cheap and reversible. Every contributor who lands a patch
+keeps their copyright, so relicensing becomes progressively harder as the
+project grows, and there is no mechanism by which it becomes easier. A
+CLA assigning copyright to a steward is the specific legal instrument
+that makes a rug-pull possible no matter how many contributors there are.
+We have declined to create one, and that decision is not ours to quietly
+reverse later: adding a CLA would require every existing contributor to
+sign it.
+
+Read the guarantee, then, as what it is -- a commitment about the shape
+of the project rather than a claim about its present size.
 
 ## 3. Product covenants
 
@@ -48,8 +65,12 @@ For as long as this project bears the name OpenLeaf:
 3. **No phone-home.** The editor makes no network request that the
    integrator did not explicitly configure. No telemetry, no analytics,
    no usage reporting, no version check.
-4. **No required cloud service.** Every feature, including real-time
-   collaboration, works fully on infrastructure you control.
+4. **No required cloud service.** Every feature works fully on
+   infrastructure you control. OpenLeaf has no real-time collaboration
+   today; if it is ever added, it ships under this covenant too, which
+   means a self-hosted backend and no OpenLeaf-operated service in the
+   path. Collaboration is the usual place editors put a paid cloud tier,
+   so it is named here to be explicit that this covenant would cover it.
 5. **No open-core.** Revenue, if any is ever sought, comes from services
    adjacent to the software -- support contracts, hosted infrastructure,
    sponsorship, prioritized development -- never from withholding

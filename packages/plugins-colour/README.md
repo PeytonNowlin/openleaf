@@ -6,6 +6,17 @@ This is a **beta** (`0.1.0-beta.2`). Keep every `@openleaf-editor/*` package on 
 same version — they pin each other exactly, and mixing versions installs two copies
 of the schema and the toolbar registry.
 
+> **Editor output is untrusted input.** Whatever the editor produces — and
+> whatever a user pasted into it — must be sanitized **on your server** before it
+> is stored or rendered as HTML. Client-side sanitization is a user-experience
+> feature, not a security control: anything the editor strips can be put back
+> with developer tools, because the editor runs under the user's control.
+>
+> [`@openleaf-editor/sanitize`](https://github.com/PeytonNowlin/openleaf/tree/main/packages/sanitize) ships the
+> canonical allowlist as data and generates configuration for DOMPurify, Python
+> `bleach` and PHP HTMLPurifier from it, so client and server enforce the same
+> rules. Read [SECURITY.md](https://github.com/PeytonNowlin/openleaf/blob/main/SECURITY.md) before you ship.
+
 ## What is in this package, and what is not
 
 The `text_color` and `background_color` **marks are not here.** They are in

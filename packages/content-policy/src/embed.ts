@@ -14,6 +14,7 @@
  * an allowlist of schemes: mixed content is not an embed, it is a warning.
  */
 
+import { deepFreeze } from './freeze.js'
 import { isSafeUrl } from './url.js'
 
 export interface EmbedHostRule {
@@ -29,8 +30,13 @@ export interface EmbedHostRule {
  * Each rule is a known player page, not a whole site. `youtube.com/` would
  * let an author embed `youtube.com/watch` as a nested YouTube UI; `/embed/`
  * is the documented iframe URL.
+ *
+ * Frozen, not merely `readonly`: this list is the entire difference between an
+ * iframe the editor renders and an attacker-controlled page nested inside the
+ * document, and `readonly` is a compile-time annotation that a plain JavaScript
+ * consumer or a single cast walks straight past. See `freeze.ts`.
  */
-export const EMBED_HOSTS: readonly EmbedHostRule[] = [
+export const EMBED_HOSTS: readonly EmbedHostRule[] = deepFreeze([
   { host: 'youtube.com', path: /^\/embed\// },
   { host: 'youtube-nocookie.com', path: /^\/embed\// },
   { host: 'player.vimeo.com', path: /^\/video\// },
@@ -39,9 +45,9 @@ export const EMBED_HOSTS: readonly EmbedHostRule[] = [
   { host: 'w.soundcloud.com', path: /^\/player\/?/ },
   { host: 'open.spotify.com', path: /^\/embed\// },
   { host: 'google.com', path: /^\/maps\/embed/ },
-]
+])
 
-export const EMBED_ALLOW_TOKENS = [
+export const EMBED_ALLOW_TOKENS = deepFreeze([
   'accelerometer',
   'autoplay',
   'clipboard-write',
@@ -50,7 +56,7 @@ export const EMBED_ALLOW_TOKENS = [
   'gyroscope',
   'picture-in-picture',
   'web-share',
-] as const
+] as const)
 
 const ALLOW_TOKENS = new Set<string>(EMBED_ALLOW_TOKENS)
 
