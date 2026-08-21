@@ -61,14 +61,14 @@ semantic HTML.
   height, and indent; see below for the rest)
 - Optional tables, color controls, syntax highlighting, file import, insert tools,
   and session tools
-- React, Vue, and Angular wrappers around the same custom element
+- React and Vue wrappers around the same custom element; Angular consumes it
+  directly, with `CUSTOM_ELEMENTS_SCHEMA` (see below)
 - Shared sanitization policy for browser, Node.js, Python, and PHP integrations.
   `sanitizeHtml` needs a DOM: in Node, pass `{ document }` (from jsdom or
   similar). The Python and PHP adapters emit configuration *source text*, so
   regenerating it after a policy upgrade needs Node in the build
 - Strict TypeScript, with unit, round-trip fidelity and cross-browser suites
-  over the editor and its plugins. The framework wrappers (`react`, `vue`,
-  `angular`) and `content-policy` have no tests of their own yet
+  over the editor and its plugins, and over the `react` and `vue` wrappers
 - Apache-2.0 licensed with no feature-gated commercial edition
 
 ## Quick start

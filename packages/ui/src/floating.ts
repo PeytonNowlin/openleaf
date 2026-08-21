@@ -20,6 +20,7 @@ export class FloatingToolbars {
   #host: HTMLElement
   #doc: Document
   #view: EditorView | null = null
+  #resize: ResizeObserver | null = null
   #selection: Toolbar | null
   #insert: Toolbar | null
 
@@ -62,6 +63,29 @@ export class FloatingToolbars {
     this.#view = view
     this.#selection?.mount(view)
     this.#insert?.mount(view)
+    // Position from the state we are mounted with, not from the first
+    // transaction after it. An editor that opens on an empty paragraph -- a new
+    // post, the commonest way to meet one -- has the caret in exactly the place
+    // the insert bar exists for, and waiting for a transaction meant it did not
+    // appear until the author did something else first.
+    //
+    // This was invisible while `hidden` did nothing: both bars were painted
+    // whatever the state said, so the missing initial position looked like a
+    // working feature. Fixing the CSS is what made it observable.
+    this.#position(view.state)
+
+    // Reposition when the editor's box actually changes, rather than chasing
+    // each thing that can change it. An editor revealed from a hidden tab, a
+    // web font swapping in after its stylesheet was adopted, a container
+    // resize -- none of them dispatch an editor transaction, and all of them
+    // move the caret out from under a bar placed in viewport coordinates.
+    if (typeof ResizeObserver !== 'undefined') {
+      this.#resize = new ResizeObserver(() => {
+        const current = this.#view
+        if (current && !current.isDestroyed) this.#position(current.state)
+      })
+      this.#resize.observe(view.dom)
+    }
   }
 
   /** Follow the host's `lang` when it changes, as the main bar already does. */
@@ -77,6 +101,8 @@ export class FloatingToolbars {
   }
 
   destroy(): void {
+    this.#resize?.disconnect()
+    this.#resize = null
     this.#selection?.destroy()
     this.#insert?.destroy()
     this.#selection?.el.remove()
@@ -86,6 +112,16 @@ export class FloatingToolbars {
   #position(state: EditorState): void {
     const view = this.#view
     if (!view) return
+    // No layout, no placement. An editor built under a `display: none` ancestor
+    // -- a hidden tab, a collapsed dialog -- measures every caret at 0,0, and a
+    // bar shown there sits in the corner of the page rather than by the text.
+    // It stays hidden until the box exists; the observer above brings it back.
+    const box = view.dom.getBoundingClientRect()
+    if (box.width === 0 && box.height === 0) {
+      if (this.#selection) this.#selection.el.hidden = true
+      if (this.#insert) this.#insert.el.hidden = true
+      return
+    }
     const empty = state.selection.empty
     if (this.#selection) {
       this.#selection.el.hidden = empty

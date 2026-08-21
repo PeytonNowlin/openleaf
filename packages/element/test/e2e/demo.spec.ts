@@ -55,6 +55,169 @@ test.describe('the demo page', () => {
     expect(await grids.evaluateAll((els) => els.every((e) => getComputedStyle(e).display === 'none'))).toBe(true)
   })
 
+  /*
+   * The floating bars are `hidden` at rest, and `hidden` was not enough. The
+   * base `.ol-toolbar` rule sets `display: flex`, and a class selector outranks
+   * the UA stylesheet's `[hidden]`, so both bars were laid out over the prose on
+   * a page nobody had selected anything on. The same trap as `.ol-insert-grid`
+   * above, one element over.
+   */
+  test('keeps the floating bars hidden until there is a selection', async ({ page }) => {
+    await page.goto(DEMO)
+    const pm = host(page, 'chrome-body').locator('.ProseMirror')
+    await expect(pm).toBeVisible({ timeout: 15000 })
+    const floating = host(page, 'chrome-body').locator('.ol-toolbar.ol-floating').first()
+    await expect(floating).toBeHidden()
+
+    await pm.locator('p').first().click()
+    await page.keyboard.down('Shift')
+    for (let i = 0; i < 12; i += 1) await page.keyboard.press('ArrowRight')
+    await page.keyboard.up('Shift')
+    // Still shows when it should: a rule that hid it always would pass the
+    // assertion above and break the feature.
+    await expect(floating).toBeVisible()
+  })
+
+  /*
+   * The other half of the `hidden` fix, and the reason it needed a second look.
+   *
+   * The insert bar exists for a caret sitting in an empty block, which is the
+   * state a new post opens in -- so it has to be right at MOUNT, not after the
+   * first transaction. `FloatingToolbars.mount()` did not position from the
+   * state it was mounted with, and nothing noticed while `hidden` did nothing:
+   * the bar was painted regardless, so a missing initial position looked like a
+   * working feature. Found by review, kept honest here.
+   */
+  test('shows the insert bar on an editor that opens on an empty block', async ({ page }) => {
+    await page.goto(DEMO)
+    await expect(page.locator('openleaf-editor[for="body"] .ProseMirror')).toBeVisible({ timeout: 15000 })
+    const shown = await page.evaluate(async () => {
+      const wrap = document.createElement('div')
+      document.body.appendChild(wrap)
+      wrap.innerHTML = '<openleaf-editor id="probe" insert-toolbar="image"></openleaf-editor>'
+      await new Promise((r) => setTimeout(r, 400))
+      const bar = document.querySelector('#probe .ol-toolbar.ol-floating') as HTMLElement | null
+      const visible = !!bar && getComputedStyle(bar).display !== 'none'
+      wrap.remove()
+      return visible
+    })
+    expect(shown).toBe(true)
+  })
+
+  /*
+   * `content-css` loads asynchronously and adopting the sheet dispatches no
+   * transaction, so a bar positioned at mount is pointing at where the caret was
+   * before the stylesheet changed the metrics. Measured on a sheet that moves the
+   * first paragraph down: 215px adrift before the reposition, 55px after -- the
+   * offset the placement intends.
+   */
+  test('realigns the insert bar once the content stylesheet settles', async ({ page }) => {
+    await page.route('**/probe-shift.css', (route) =>
+      route.fulfill({
+        contentType: 'text/css',
+        body: '.ol-content .ProseMirror p { margin-top: 260px; font-size: 34px; }',
+      }),
+    )
+    await page.goto(DEMO)
+    await expect(page.locator('openleaf-editor[for="body"] .ProseMirror')).toBeVisible({ timeout: 15000 })
+    await page.evaluate(() => {
+      const wrap = document.createElement('div')
+      wrap.id = 'shift-wrap'
+      document.body.appendChild(wrap)
+      wrap.innerHTML =
+        '<openleaf-editor id="shift" insert-toolbar="image" content-css="/probe-shift.css"></openleaf-editor>'
+    })
+    // Polled, not slept on. The stylesheet is fetched and adopted
+    // asynchronously, and how long that takes is the engine's business.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const bar = document.querySelector('#shift .ol-toolbar.ol-floating') as HTMLElement | null
+            const para = document.querySelector('#shift .ProseMirror p') as HTMLElement | null
+            if (!bar || !para) return Number.POSITIVE_INFINITY
+            return Math.round(Math.abs(bar.getBoundingClientRect().top - para.getBoundingClientRect().top))
+          }),
+        { timeout: 10000 },
+      )
+      .toBeLessThan(120)
+    await page.evaluate(() => document.getElementById('shift-wrap')?.remove())
+  })
+
+  /*
+   * And every OTHER editor on the page. `loadContentCss` adopts the sheet on the
+   * shared Document and `scopeContentCss` rewrites its selectors to match every
+   * `.ol-editor`, so a sibling that never named a stylesheet is moved by one --
+   * measured at 215px adrift when only the loading editor was repositioned.
+   */
+  test('realigns a sibling editor the adopted stylesheet also moved', async ({ page }) => {
+    await page.route('**/probe-sibling.css', (route) =>
+      route.fulfill({
+        contentType: 'text/css',
+        body: '.ol-content .ProseMirror p { margin-top: 260px; font-size: 34px; }',
+      }),
+    )
+    await page.goto(DEMO)
+    await expect(page.locator('openleaf-editor[for="body"] .ProseMirror')).toBeVisible({ timeout: 15000 })
+    await page.evaluate(() => {
+      const wrap = document.createElement('div')
+      wrap.id = 'sib-wrap'
+      document.body.appendChild(wrap)
+      // The sibling carries no `content-css` of its own.
+      wrap.innerHTML =
+        '<openleaf-editor id="sib" insert-toolbar="image"></openleaf-editor>' +
+        '<openleaf-editor id="sib-loader" insert-toolbar="image" content-css="/probe-sibling.css"></openleaf-editor>'
+    })
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const bar = document.querySelector('#sib .ol-toolbar.ol-floating') as HTMLElement | null
+            const para = document.querySelector('#sib .ProseMirror p') as HTMLElement | null
+            if (!bar || !para) return Number.POSITIVE_INFINITY
+            return Math.round(Math.abs(bar.getBoundingClientRect().top - para.getBoundingClientRect().top))
+          }),
+        { timeout: 10000 },
+      )
+      .toBeLessThan(120)
+    await page.evaluate(() => document.getElementById('sib-wrap')?.remove())
+  })
+
+  /*
+   * An editor built under a `display: none` ancestor -- a hidden tab, a
+   * collapsed dialog, the ordinary shape of a CMS form -- measures every caret
+   * at 0,0. It used to show the insert bar there anyway: visible inside a hidden
+   * tab, then 96px adrift of the text once the tab was revealed, because
+   * revealing a container dispatches no editor transaction.
+   *
+   * A ResizeObserver on the editor's own box is what fixes it, and it closes the
+   * class rather than the case: a web font swapping in, a container resizing and
+   * a stylesheet being adopted all move the caret the same way and none of them
+   * is a transaction either.
+   */
+  test('places the insert bar only once the editor has layout', async ({ page }) => {
+    await page.goto(DEMO)
+    await expect(page.locator('openleaf-editor[for="body"] .ProseMirror')).toBeVisible({ timeout: 15000 })
+    const result = await page.evaluate(async () => {
+      const wrap = document.createElement('div')
+      wrap.id = 'tab-wrap'
+      wrap.style.display = 'none'
+      document.body.appendChild(wrap)
+      wrap.innerHTML = '<openleaf-editor id="tabbed" insert-toolbar="image"></openleaf-editor>'
+      await new Promise((r) => setTimeout(r, 500))
+      const bar = () => document.querySelector('#tabbed .ol-toolbar.ol-floating') as HTMLElement
+      const hiddenWhileHidden = getComputedStyle(bar()).display === 'none'
+      wrap.style.display = ''
+      await new Promise((r) => setTimeout(r, 600))
+      const para = document.querySelector('#tabbed .ProseMirror p') as HTMLElement
+      const gap = Math.round(Math.abs(bar().getBoundingClientRect().top - para.getBoundingClientRect().top))
+      wrap.remove()
+      return { hiddenWhileHidden, shownAfter: true, gap }
+    })
+    expect(result.hiddenWhileHidden).toBe(true)
+    expect(result.gap).toBeLessThan(120)
+  })
+
   test('shows the menubar the chrome section documents', async ({ page }) => {
     await page.goto(DEMO)
     const bar = host(page, 'chrome-body').getByRole('menubar')

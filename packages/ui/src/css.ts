@@ -619,6 +619,14 @@ export const CSS = `
   margin: 4px 0;
   background: var(--ol-border);
 }
+/* \`display: flex\` on .ol-toolbar above outranks the UA's \`[hidden]\` rule --
+   a class selector beats an attribute selector on specificity -- so setting
+   \`el.hidden = true\` in floating.ts styled a hidden bar and showed it anyway.
+   Both floating bars sat over the prose at rest, with no selection to format.
+   The overflow panel needed the same rule for the same reason; see below. */
+.ol-editor .ol-toolbar.ol-floating[hidden] {
+  display: none;
+}
 .ol-editor .ol-toolbar.ol-floating {
   position: absolute;
   flex-wrap: nowrap;

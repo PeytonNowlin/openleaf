@@ -144,7 +144,7 @@
   </p>
   <p class="badges">
     <span class="badge">Apache-2.0</span>
-    <span class="badge">107 KB gzipped</span>
+    <span class="badge">115 KB gzipped</span>
     <span class="badge">No framework</span>
     <span class="badge">Built on ProseMirror</span>
     <span class="badge"><a href="https://github.com/PeytonNowlin/openleaf">Source on GitHub</a></span>
@@ -304,7 +304,7 @@ const ratio = width / height   // division, not a regex
 </p>
 
 <pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
-&lt;script src="/js/openleaf-tables.min.js"&gt;&lt;/script&gt;   &lt;!-- 12.8 KB, optional --&gt;</pre>
+&lt;script src="/js/openleaf-tables.min.js"&gt;&lt;/script&gt;   &lt;!-- 18.1 KB, optional --&gt;</pre>
 
 <p>
   The table above is live — click into it and use the table controls in the
@@ -339,13 +339,13 @@ const ratio = width / height   // division, not a regex
 </p>
 
 <p>
-  <strong>The colour picker is a 3.7 KB opt-in bundle.</strong> The swatch grid,
+  <strong>The colour picker is a 5.4 KB opt-in bundle.</strong> The swatch grid,
   its keyboard model and its popover are the part with real weight, and the core
   bundle's budget is a hard number:
 </p>
 
 <pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
-&lt;script src="/js/openleaf-colour.min.js"&gt;&lt;/script&gt;   &lt;!-- 3.7 KB, optional --&gt;</pre>
+&lt;script src="/js/openleaf-colour.min.js"&gt;&lt;/script&gt;   &lt;!-- 5.4 KB, optional --&gt;</pre>
 
 <p>
   Every swatch is a real button with the colour's <em>name</em> as its accessible
@@ -512,7 +512,7 @@ registerToolbarItem({
 </p>
 
 <pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
-&lt;script src="/js/openleaf-insert.min.js"&gt;&lt;/script&gt;   &lt;!-- 5.0 KB, optional --&gt;</pre>
+&lt;script src="/js/openleaf-insert.min.js"&gt;&lt;/script&gt;   &lt;!-- 5.9 KB, optional --&gt;</pre>
 
 <div style="margin-top:1rem">
   <label for="insert-body" class="visually-hidden">Insert sample</label>
@@ -546,7 +546,7 @@ grid, and Insert media — a poster frame and alternate sources are all on the d
 
 <h2 id="highlighting">Syntax highlighting and source formatting</h2>
 <p class="lede">
-  A second opt-in bundle, 6.1 KB. It colours code blocks and it formats the HTML
+  A second opt-in bundle, 6.7 KB. It colours code blocks and it formats the HTML
   source view — which is arguably the bigger win.
 </p>
 
@@ -561,7 +561,7 @@ grid, and Insert media — a poster frame and alternate sources are all on the d
 </p>
 
 <pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
-&lt;script src="/js/openleaf-highlight.min.js"&gt;&lt;/script&gt;   &lt;!-- 6.1 KB, optional --&gt;</pre>
+&lt;script src="/js/openleaf-highlight.min.js"&gt;&lt;/script&gt;   &lt;!-- 6.7 KB, optional --&gt;</pre>
 
 <p>
   The built-in tokenizer covers HTML, CSS and JavaScript in 1.9 KB — which is the
@@ -574,7 +574,7 @@ grid, and Insert media — a poster frame and alternate sources are all on the d
 
 <h2 id="import">Importing a file</h2>
 <p class="lede">
-  A third opt-in bundle, 2.8 KB. A toolbar button and drag-and-drop.
+  A third opt-in bundle, 3.3 KB. A toolbar button and drag-and-drop.
 </p>
 
 <p>
@@ -609,14 +609,14 @@ grid, and Insert media — a poster frame and alternate sources are all on the d
 
 <p>
   <code>.docx</code> works, and it is a <em>separate</em> bundle. Measured:
-  mammoth is 122.9 KB gzipped, larger than the entire editor, so a site that only
+  mammoth is 123.8 KB gzipped, larger than the entire editor, so a site that only
   imports HTML must not pay for it. Load one more script and Word documents work;
   do not, and they do not.
 </p>
 
 <pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
-&lt;script src="/js/openleaf-import.min.js"&gt;&lt;/script&gt;        &lt;!-- 2.8 KB --&gt;
-&lt;script src="/js/openleaf-import-docx.min.js"&gt;&lt;/script&gt;   &lt;!-- 122.9 KB, Word only --&gt;</pre>
+&lt;script src="/js/openleaf-import.min.js"&gt;&lt;/script&gt;        &lt;!-- 3.3 KB --&gt;
+&lt;script src="/js/openleaf-import-docx.min.js"&gt;&lt;/script&gt;   &lt;!-- 123.8 KB, Word only --&gt;</pre>
 
 <p>
   Images are the one thing that does not come across. Word embeds them in the

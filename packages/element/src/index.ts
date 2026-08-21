@@ -1530,7 +1530,36 @@ export class OpenLeafEditor extends HTMLElementBase {
   async #mountContentCss(): Promise<void> {
     const urls = contentCssUrls(this.getAttribute('content-css'))
     if (urls.length === 0) return
-    await loadContentCss(this.ownerDocument, urls)
+    // Captured before the await, for the reason `#boundDoc` exists: `adoptNode`
+    // reassigns `ownerDocument`, so an editor moved across documents while the
+    // fetch was in flight would adopt the sheet into one document and then go
+    // looking for editors in another.
+    const doc = this.ownerDocument
+    await loadContentCss(doc, urls)
+
+    // Adopting a stylesheet changes the layout and dispatches no transaction, so
+    // anything positioned in viewport coordinates is now pointing at where the
+    // caret used to be. The floating bars are the only such thing, and an editor
+    // that opens empty shows the insert bar immediately -- placed before this
+    // sheet loaded, and left 215px adrift of the caret until the selection moved.
+    //
+    // Every editor on the document, not just this one: `loadContentCss` adopts
+    // the sheet on the shared `Document` and `scopeContentCss` rewrites its
+    // selectors to `.ol-editor .ol-content .ProseMirror ...`, so one editor
+    // naming a stylesheet moves the caret in all of them.
+    //
+    // By class rather than by tag: `defineOpenLeafEditor(tag)` takes a name, so
+    // a subclass can be registered as anything, and the sheet reaches it through
+    // `.ol-editor` whatever it is called. `instanceof` keeps that honest.
+    //
+    // Guarded per editor, because any of them can have been torn down or rebuilt
+    // while the fetch was in flight.
+    for (const element of doc.querySelectorAll('.ol-editor')) {
+      if (!(element instanceof OpenLeafEditor)) continue
+      const view = element.#view
+      if (!view || view.isDestroyed) continue
+      element.#floating?.update(view.state)
+    }
   }
 
   #applyFullscreen(active: boolean): void {
