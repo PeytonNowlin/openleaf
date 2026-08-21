@@ -55,6 +55,29 @@ test.describe('the demo page', () => {
     expect(await grids.evaluateAll((els) => els.every((e) => getComputedStyle(e).display === 'none'))).toBe(true)
   })
 
+  /*
+   * The floating bars are `hidden` at rest, and `hidden` was not enough. The
+   * base `.ol-toolbar` rule sets `display: flex`, and a class selector outranks
+   * the UA stylesheet's `[hidden]`, so both bars were laid out over the prose on
+   * a page nobody had selected anything on. The same trap as `.ol-insert-grid`
+   * above, one element over.
+   */
+  test('keeps the floating bars hidden until there is a selection', async ({ page }) => {
+    await page.goto(DEMO)
+    const pm = host(page, 'chrome-body').locator('.ProseMirror')
+    await expect(pm).toBeVisible({ timeout: 15000 })
+    const floating = host(page, 'chrome-body').locator('.ol-toolbar.ol-floating').first()
+    await expect(floating).toBeHidden()
+
+    await pm.locator('p').first().click()
+    await page.keyboard.down('Shift')
+    for (let i = 0; i < 12; i += 1) await page.keyboard.press('ArrowRight')
+    await page.keyboard.up('Shift')
+    // Still shows when it should: a rule that hid it always would pass the
+    // assertion above and break the feature.
+    await expect(floating).toBeVisible()
+  })
+
   test('shows the menubar the chrome section documents', async ({ page }) => {
     await page.goto(DEMO)
     const bar = host(page, 'chrome-body').getByRole('menubar')
