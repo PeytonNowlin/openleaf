@@ -183,6 +183,41 @@ test.describe('the demo page', () => {
     await page.evaluate(() => document.getElementById('sib-wrap')?.remove())
   })
 
+  /*
+   * An editor built under a `display: none` ancestor -- a hidden tab, a
+   * collapsed dialog, the ordinary shape of a CMS form -- measures every caret
+   * at 0,0. It used to show the insert bar there anyway: visible inside a hidden
+   * tab, then 96px adrift of the text once the tab was revealed, because
+   * revealing a container dispatches no editor transaction.
+   *
+   * A ResizeObserver on the editor's own box is what fixes it, and it closes the
+   * class rather than the case: a web font swapping in, a container resizing and
+   * a stylesheet being adopted all move the caret the same way and none of them
+   * is a transaction either.
+   */
+  test('places the insert bar only once the editor has layout', async ({ page }) => {
+    await page.goto(DEMO)
+    await expect(page.locator('openleaf-editor[for="body"] .ProseMirror')).toBeVisible({ timeout: 15000 })
+    const result = await page.evaluate(async () => {
+      const wrap = document.createElement('div')
+      wrap.id = 'tab-wrap'
+      wrap.style.display = 'none'
+      document.body.appendChild(wrap)
+      wrap.innerHTML = '<openleaf-editor id="tabbed" insert-toolbar="image"></openleaf-editor>'
+      await new Promise((r) => setTimeout(r, 500))
+      const bar = () => document.querySelector('#tabbed .ol-toolbar.ol-floating') as HTMLElement
+      const hiddenWhileHidden = getComputedStyle(bar()).display === 'none'
+      wrap.style.display = ''
+      await new Promise((r) => setTimeout(r, 600))
+      const para = document.querySelector('#tabbed .ProseMirror p') as HTMLElement
+      const gap = Math.round(Math.abs(bar().getBoundingClientRect().top - para.getBoundingClientRect().top))
+      wrap.remove()
+      return { hiddenWhileHidden, shownAfter: true, gap }
+    })
+    expect(result.hiddenWhileHidden).toBe(true)
+    expect(result.gap).toBeLessThan(120)
+  })
+
   test('shows the menubar the chrome section documents', async ({ page }) => {
     await page.goto(DEMO)
     const bar = host(page, 'chrome-body').getByRole('menubar')
