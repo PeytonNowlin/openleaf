@@ -33,12 +33,13 @@ The consequence is structural:
 
 **Where the project actually stands today.** This section is written to
 be checked, so check it: `git shortlog -sne HEAD` is the whole answer.
-OpenLeaf currently has one contributor. That means the guarantee above is
-today a statement about structure and intent, not yet a practical
-obstacle -- a sole contributor holds the rights to their own work and
-could relicense it. Saying otherwise would be the one claim in this
-document most likely to be relied on and most damaging if wrong, so it is
-not said.
+OpenLeaf currently has two contributors. The guarantee above has
+therefore started to bind -- relicensing is no longer something any one
+person can decide -- but two people can still agree, so it remains closer
+to a statement about structure and intent than a practical obstacle.
+Treat it as a real constraint that is not yet a strong one. Claiming more
+than that would be the one claim in this document most likely to be
+relied on and most damaging if wrong, so it is not claimed.
 
 What the DCO does is decide the trajectory in advance, at the moment when
 the decision is cheap and reversible. Every contributor who lands a patch

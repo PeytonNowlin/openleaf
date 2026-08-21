@@ -1,0 +1,10 @@
+# Canonical contributor identities.
+#
+# GOVERNANCE.md section 2 invites readers to verify the contributor count
+# with `git shortlog -sne HEAD`. Without this file that command reports one
+# line per author/email pair rather than one per person, because commits
+# have landed under mixed-case and GitHub noreply addresses. Each canonical
+# address below is the one that contributor uses in their DCO sign-off.
+
+Peyton Nowlin <peytonn98@googlemail.com> <Peytonn98@Googlemail.com>
+David Ayers <evilchinesefood@gmail.com> <7140632+evilchinesefood@users.noreply.github.com>
