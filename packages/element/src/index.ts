@@ -1538,11 +1538,29 @@ export class OpenLeafEditor extends HTMLElementBase {
     // this sheet had loaded, and left 215px adrift of the caret until the
     // selection next moved.
     //
-    // Guarded on the view: the load is asynchronous and the editor can have been
-    // torn down, or rebuilt, while it was in flight.
-    const view = this.#view
-    if (!view || view.isDestroyed) return
-    this.#floating?.update(view.state)
+    // EVERY editor on the document, not just this one. `loadContentCss` adopts
+    // the sheet on the shared `Document`, and `scopeContentCss` rewrites its
+    // selectors to `.ol-editor .ol-content .ProseMirror ...` -- which matches
+    // every editor on the page, not the one that named the file. A sibling with
+    // a bar already showing is moved by a stylesheet it never asked for.
+    //
+    // Guarded per editor: the load is asynchronous, and any of them can have
+    // been torn down or rebuilt while it was in flight.
+    // EVERY editor on the document, not just this one. `loadContentCss` adopts
+    // the sheet on the shared `Document`, and `scopeContentCss` rewrites its
+    // selectors to `.ol-editor .ol-content .ProseMirror ...` -- which matches
+    // every editor on the page, not the one that named the file. A sibling with
+    // a bar already showing is moved by a stylesheet it never asked for, and sat
+    // 215px adrift of its own caret until its next transaction.
+    //
+    // Guarded per editor: the load is asynchronous, and any of them can have
+    // been torn down or rebuilt while it was in flight.
+    for (const element of this.ownerDocument.querySelectorAll('openleaf-editor')) {
+      if (!(element instanceof OpenLeafEditor)) continue
+      const view = element.#view
+      if (!view || view.isDestroyed) continue
+      element.#floating?.update(view.state)
+    }
   }
 
   #applyFullscreen(active: boolean): void {

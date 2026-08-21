@@ -144,6 +144,45 @@ test.describe('the demo page', () => {
     await page.evaluate(() => document.getElementById('shift-wrap')?.remove())
   })
 
+  /*
+   * And every OTHER editor on the page. `loadContentCss` adopts the sheet on the
+   * shared Document and `scopeContentCss` rewrites its selectors to match every
+   * `.ol-editor`, so a sibling that never named a stylesheet is moved by one --
+   * measured at 215px adrift when only the loading editor was repositioned.
+   */
+  test('realigns a sibling editor the adopted stylesheet also moved', async ({ page }) => {
+    await page.route('**/probe-sibling.css', (route) =>
+      route.fulfill({
+        contentType: 'text/css',
+        body: '.ol-content .ProseMirror p { margin-top: 260px; font-size: 34px; }',
+      }),
+    )
+    await page.goto(DEMO)
+    await expect(page.locator('openleaf-editor[for="body"] .ProseMirror')).toBeVisible({ timeout: 15000 })
+    await page.evaluate(() => {
+      const wrap = document.createElement('div')
+      wrap.id = 'sib-wrap'
+      document.body.appendChild(wrap)
+      // The sibling carries no `content-css` of its own.
+      wrap.innerHTML =
+        '<openleaf-editor id="sib" insert-toolbar="image"></openleaf-editor>' +
+        '<openleaf-editor id="sib-loader" insert-toolbar="image" content-css="/probe-sibling.css"></openleaf-editor>'
+    })
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const bar = document.querySelector('#sib .ol-toolbar.ol-floating') as HTMLElement | null
+            const para = document.querySelector('#sib .ProseMirror p') as HTMLElement | null
+            if (!bar || !para) return Number.POSITIVE_INFINITY
+            return Math.round(Math.abs(bar.getBoundingClientRect().top - para.getBoundingClientRect().top))
+          }),
+        { timeout: 10000 },
+      )
+      .toBeLessThan(120)
+    await page.evaluate(() => document.getElementById('sib-wrap')?.remove())
+  })
+
   test('shows the menubar the chrome section documents', async ({ page }) => {
     await page.goto(DEMO)
     const bar = host(page, 'chrome-body').getByRole('menubar')
