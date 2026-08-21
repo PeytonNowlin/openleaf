@@ -182,21 +182,39 @@ test.describe('the menubar and its menus', () => {
 
 test.describe('the link context menu', () => {
   /**
-   * Put a COLLAPSED caret inside the link, by keyboard.
+   * Put a COLLAPSED caret inside the link.
    *
-   * Clicking the link is not a way to do it: Chromium does not move the caret
-   * for a click on an `<a>` inside contenteditable. Ten presses of ArrowRight
-   * from the start of the line lands between the "i" and the "n" of "linked",
-   * which is the exact state -- caret in a link, nothing selected -- that the
-   * context menu exists for and that the Link item used to refuse.
+   * Placed with a DOM Range rather than walked in with arrow keys. Clicking the
+   * link cannot do it -- Chromium does not move the caret for a click on an
+   * `<a>` inside contenteditable -- and the key walk that replaced it was not
+   * portable: `Home` moves the caret to the start of the line in Chromium and
+   * scrolls without moving it in Firefox and WebKit on macOS, so the same ten
+   * presses of ArrowRight landed in the link in one engine and at the end of the
+   * document in the other two.
+   *
+   * This is the PRECONDITION, not the thing under test. What is under test is
+   * the Shift+F10 that follows, and that is still a real key event at a real
+   * browser -- so making the setup deterministic costs the test nothing and
+   * makes it mean the same thing in all three engines.
    */
   async function caretInLink(page: Page): Promise<void> {
     // The assignment above is asynchronous as far as this page is concerned: the
-    // link has to exist before the caret can be walked into it.
+    // link has to exist before the caret can be put inside it.
     await expect(page.getByRole('link', { name: 'linked' })).toBeVisible()
     await page.getByRole('textbox', { name: 'Post body' }).click()
-    await page.keyboard.press('Home')
-    for (let i = 0; i < 10; i += 1) await page.keyboard.press('ArrowRight')
+    await page.evaluate(() => {
+      const link = document.querySelector('.ol-content a')
+      const text = link?.firstChild
+      if (!text) throw new Error('no link text to put the caret in')
+      const range = document.createRange()
+      // Between the "i" and the "n" of "linked": inside the link, and far
+      // enough from either edge that no engine rounds out of it.
+      range.setStart(text, 3)
+      range.collapse(true)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    })
     // The precondition, asserted rather than assumed: the toolbar's Link button
     // reads pressed exactly when the caret is inside a link.
     await expect(page.locator('.ol-toolbar [data-ol-id="link"]')).toHaveAttribute(
@@ -244,7 +262,9 @@ test.describe('the link context menu', () => {
     await expect(page.getByRole('menu', { name: 'Editor menu' })).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(page.getByRole('menu', { name: 'Editor menu' })).toBeHidden()
-    expect(await focusedName(page)).toBe('Post body')
+    // Polled, not read once. Focus returns from the menu's `onClose`, a tick
+    // after the menu hides, and a single read raced it under parallel load.
+    await expect.poll(() => focusedName(page)).toBe('Post body')
   })
 
   /*
