@@ -174,6 +174,34 @@ function resolveDocument(explicit?: Document): Document {
 }
 
 /**
+ * Parse into an inert fragment, and serialize back out of one.
+ *
+ * `tpl.content` belongs to the template contents owner document: a document
+ * with no browsing context, where images do not load and `on*` content
+ * attributes are never compiled into event handlers. Moving those nodes into a
+ * `<div>` -- which belongs to the live, scripting-enabled document -- adopts
+ * them across that boundary, and the browser starts the fetches and compiles
+ * the handlers at that instant, before a single line of the policy below has
+ * run. A sanitizer that executes the payload it was called to remove is worse
+ * than no sanitizer, so the nodes stay in the fragment from parse to serialize.
+ *
+ * Serializing uses a second `<template>` for the same reason: it shares the one
+ * inert owner document, so moving the fragment into it starts nothing, and a
+ * template's `innerHTML` getter serializes its content.
+ */
+function parseInert(html: string, doc: Document): DocumentFragment {
+  const template = doc.createElement('template')
+  template.innerHTML = html
+  return template.content
+}
+
+function serializeInert(fragment: DocumentFragment, doc: Document): string {
+  const template = doc.createElement('template')
+  template.content.appendChild(fragment)
+  return template.innerHTML
+}
+
+/**
  * Apply a policy to an HTML string.
  *
  * Elements not in the policy are **unwrapped**, keeping their text, rather than
@@ -186,14 +214,17 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
   const doc = resolveDocument(options.document)
 
   const maxDepth = options.maxDepth ?? MAX_SANITIZE_DEPTH
-  const template = doc.createElement('template')
   // The parser is itself recursive and gives out at around 20,000 levels on
   // jsdom, which is *before* the depth check below could ever run. Converting
   // its `RangeError` here rather than letting it escape is the difference
   // between a caller seeing a refusal it can act on and seeing an engine-level
   // crash it is likely to treat as a transient failure and retry or swallow.
+  //
+  // Parsed inert and kept that way -- see parseInert. The depth guard does not
+  // get to reintroduce the adoption bug by parsing somewhere more convenient.
+  let root: DocumentFragment
   try {
-    template.innerHTML = html
+    root = parseInert(html, doc)
   } catch (error) {
     throw new SanitizeDepthError(maxDepth, { cause: error })
   }
@@ -202,15 +233,18 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
   // and before the first operation that recurses inside the DOM implementation.
   // Every line below this one would throw an unattributed `RangeError` on input
   // this deep.
-  if (exceedsDepth(template.content, maxDepth)) throw new SanitizeDepthError(maxDepth)
-
-  const root = doc.createElement('div')
-  root.appendChild(template.content)
+  if (exceedsDepth(root, maxDepth)) throw new SanitizeDepthError(maxDepth)
 
   // Remove the always-dangerous elements first, contents included, so nothing
   // below can unwrap them into visible text.
+  //
+  // `querySelectorAll` rather than `getElementsByTagName`, which a
+  // DocumentFragment does not have. It matches the same elements for these
+  // names -- including the foreign-namespace `svg` and `math`, whose local
+  // names a type selector matches -- and returns a static list, which is what
+  // the surrounding `Array.from` was already asking for.
   for (const tag of policy.dropWithContent) {
-    for (const el of Array.from(root.getElementsByTagName(tag))) {
+    for (const el of Array.from(root.querySelectorAll(tag))) {
       el.remove()
     }
   }
@@ -315,5 +349,5 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}): strin
   }
   for (let i = order.length - 1; i >= 0; i -= 1) visit(order[i] as Element)
 
-  return root.innerHTML
+  return serializeInert(root, doc)
 }

@@ -14,15 +14,15 @@
  */
 
 import { redo, undo } from 'prosemirror-history'
-import { setBlockType, toggleMark, wrapIn } from 'prosemirror-commands'
-import { type Attrs, type Node as PMNode } from 'prosemirror-model'
+import { toggleMark, wrapIn } from 'prosemirror-commands'
+import { type Attrs, type MarkType, type Node as PMNode, type NodeType } from 'prosemirror-model'
 import {
   liftListItem,
   sinkListItem,
   splitListItem,
   wrapInList,
 } from 'prosemirror-schema-list'
-import type { Command, EditorState } from 'prosemirror-state'
+import type { Command, EditorState, SelectionRange, Transaction } from 'prosemirror-state'
 import {
   MAX_INDENT,
   safeColor,
@@ -37,6 +37,7 @@ import {
   type ListStyle,
 } from './css.js'
 import { canInsertNode, markCommand, markIn, nodeCommand, nodeIn } from './command-helpers.js'
+import { CARRIED_ATTR } from './extensions.js'
 
 /**
  * Types are resolved from the state's schema, never from a captured singleton.
@@ -54,6 +55,166 @@ import { canInsertNode, markCommand, markIn, nodeCommand, nodeIn } from './comma
  * because a plugin trimmed the schema.
  */
 /* ------------------------------------------------------------------ *
+ * Two things every command in this file has to get right
+ * ------------------------------------------------------------------ */
+
+/**
+ * The selected ranges. For an ordinary selection there is exactly one; for a
+ * table selection there is one per cell.
+ *
+ * `selection.from` and `selection.to` are the bounds of a SINGLE range, not the
+ * union of all of them. That is fine for a text selection and silently wrong for
+ * a `CellSelection` from prosemirror-tables: selecting a column of a 3x2 table
+ * gives `ranges.length === 2` while `from`/`to` describe the interior of one
+ * cell. Every command that read those two numbers therefore coloured, sized or
+ * cleared one cell of a selected column and left the others untouched.
+ *
+ * What made it a bug rather than an unimplemented feature is that `toggleBold`
+ * was never affected: it goes through prosemirror-commands' `toggleMark`, which
+ * iterates ranges. So on one identical selection, Bold worked and colour did
+ * not, which an author reads as the editor failing at random rather than as a
+ * limitation they could work around.
+ *
+ * A named accessor rather than inlining `state.selection.ranges` everywhere,
+ * because the point that needs to survive future edits is "never destructure
+ * from/to for an operation over a selection", and a function is where that
+ * reasoning can live.
+ */
+function selectedRanges(state: EditorState): readonly SelectionRange[] {
+  return state.selection.ranges
+}
+
+/** True when any selected range carries this mark. */
+function anyRangeHasMark(state: EditorState, type: MarkType): boolean {
+  return selectedRanges(state).some((range) =>
+    state.doc.rangeHasMark(range.$from.pos, range.$to.pos, type),
+  )
+}
+
+/** Remove a mark from every selected range, optionally re-adding it. */
+function replaceMarkInRanges(
+  state: EditorState,
+  tr: Transaction,
+  type: MarkType,
+  attrs: Attrs | null,
+): void {
+  for (const range of selectedRanges(state)) {
+    const { pos: from } = range.$from
+    const { pos: to } = range.$to
+    tr.removeMark(from, to, type)
+    if (attrs !== null) tr.addMark(from, to, type.create(attrs))
+  }
+}
+
+/**
+ * The attributes to give a node being retyped, so that changing a block's TYPE
+ * does not also change everything else about it.
+ *
+ * Every attribute the destination type also declares comes across unchanged;
+ * anything it does not declare is dropped, because there is nowhere to put it.
+ * The one that matters most is `__openleafCarried`, the residue holding `class`,
+ * every `data-*` and all unmodelled CSS -- and `dir`, which schema.ts makes a
+ * first-class attribute precisely because dropping it silently breaks Arabic,
+ * Hebrew and Persian content.
+ *
+ * Three separate mechanisms used to lose all of it, which is why the fix is a
+ * shared helper rather than four local patches. `setHeading` hand-built its
+ * attribute object and listed four names, so anything added to the schema
+ * afterwards fell back to a default. `setParagraph` and `toggleCodeBlock` passed
+ * no attributes at all. `toggleList` called `setNodeMarkup(pos, type)` and
+ * prosemirror-transform does `type.create(undefined, ...)` there -- it does NOT
+ * fall back to the old node's attributes, which is the part that reads as though
+ * it should be safe and is not.
+ *
+ * It also silently broke `formats.ts`: `setBlockClass` writes the chosen format
+ * class into the carried residue, so applying a format and then changing the
+ * heading level removed the format.
+ */
+function carryOver(from: PMNode, to: NodeType, overrides: Attrs = {}): Attrs {
+  const out: Record<string, unknown> = {}
+  const declared = new Set(Object.keys(to.spec.attrs ?? {}))
+  for (const name of declared) {
+    if (name in from.attrs) out[name] = from.attrs[name]
+  }
+
+  /*
+   * An `id` outlives the block type it was written on.
+   *
+   * `heading` declares `id` and `paragraph` does not, so demoting a heading to
+   * a paragraph dropped it -- and an id on a heading is not decoration, it is
+   * the target of every in-page link and every table-of-contents entry pointing
+   * at that section. Changing a block's type is not a request to break the
+   * links to it.
+   *
+   * It moves into the carried residue rather than into an attribute, because
+   * the destination type has no such attribute to move it into. That is exactly
+   * what residue is for, and it is already where a `<p id="x">` parsed from
+   * stored content keeps its id, so both routes arrive at one representation.
+   */
+  if (!declared.has('id') && declared.has(CARRIED_ATTR)) {
+    const id = from.attrs['id']
+    if (typeof id === 'string' && id !== '') {
+      const carried = { ...((out[CARRIED_ATTR] as Record<string, string> | null) ?? {}) }
+      if (carried['id'] === undefined) carried['id'] = id
+      out[CARRIED_ATTR] = carried
+    }
+  }
+
+  return { ...out, ...overrides }
+}
+
+/**
+ * `setBlockType`, with per-node attributes and every selected range.
+ *
+ * prosemirror-commands' own `setBlockType` takes ONE attribute object and
+ * applies it to every block in the selection, which cannot express "keep each
+ * block's own residue". prosemirror-transform's `Transform.setBlockType` does
+ * accept a function, so the applicability check and the loop are reproduced here
+ * against that. The shape is deliberately the same as upstream's so the two stay
+ * comparable.
+ */
+function setBlockTypeCarrying(
+  name: string,
+  overrides: (node: PMNode) => Attrs = () => ({}),
+): Command {
+  return (state, dispatch) => {
+    const type = nodeIn(state, name)
+    if (!type) return false
+    const attrsFor = (node: PMNode): Attrs => carryOver(node, type, overrides(node))
+
+    let applicable = false
+    for (const range of selectedRanges(state)) {
+      if (applicable) break
+      state.doc.nodesBetween(range.$from.pos, range.$to.pos, (node, pos) => {
+        if (applicable) return false
+        // `hasMarkup` is what makes "set paragraph on a plain paragraph" report
+        // false, and it has to be asked with the attributes this call would
+        // actually write -- otherwise a no-op conversion looks like a change.
+        if (!node.isTextblock || node.hasMarkup(type, attrsFor(node))) return
+        if (node.type === type) {
+          applicable = true
+          return
+        }
+        const $pos = state.doc.resolve(pos)
+        const index = $pos.index()
+        applicable = $pos.parent.canReplaceWith(index, index + 1, type)
+        return
+      })
+    }
+    if (!applicable) return false
+
+    if (dispatch) {
+      const tr = state.tr
+      for (const range of selectedRanges(state)) {
+        tr.setBlockType(range.$from.pos, range.$to.pos, type, attrsFor)
+      }
+      dispatch(tr.scrollIntoView())
+    }
+    return true
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Selection predicates
  * ------------------------------------------------------------------ */
 
@@ -68,11 +229,11 @@ import { canInsertNode, markCommand, markIn, nodeCommand, nodeIn } from './comma
 export function isMarkActive(state: EditorState, markName: string): boolean {
   const type = markIn(state, markName)
   if (!type) return false
-  const { from, $from, to, empty } = state.selection
+  const { $from, empty } = state.selection
   if (empty) {
     return !!type.isInSet(state.storedMarks ?? $from.marks())
   }
-  return state.doc.rangeHasMark(from, to, type)
+  return anyRangeHasMark(state, type)
 }
 
 /** Is the selection inside a node of this type (with these attributes)? */
@@ -116,19 +277,21 @@ export function activeHeadingLevel(state: EditorState): number | null {
 export function activeLink(state: EditorState): Attrs | null {
   const type = markIn(state, 'link')
   if (!type) return null
-  const { $from, empty, from, to } = state.selection
+  const { $from, empty } = state.selection
 
   if (empty) {
     const found = type.isInSet($from.marks())
     return found ? found.attrs : null
   }
   let attrs: Attrs | null = null
-  state.doc.nodesBetween(from, to, (child) => {
-    if (attrs) return false
-    const found = type.isInSet(child.marks)
-    if (found) attrs = found.attrs
-    return true
-  })
+  for (const range of selectedRanges(state)) {
+    state.doc.nodesBetween(range.$from.pos, range.$to.pos, (child) => {
+      if (attrs) return false
+      const found = type.isInSet(child.marks)
+      if (found) attrs = found.attrs
+      return true
+    })
+  }
   return attrs
 }
 
@@ -148,21 +311,20 @@ export const toggleSuperscript: Command = markCommand('superscript', toggleMark)
  * Block commands
  * ------------------------------------------------------------------ */
 
-export const setParagraph: Command = nodeCommand('paragraph', (type) => setBlockType(type))
+export const setParagraph: Command = setBlockTypeCarrying('paragraph')
 
+/**
+ * `level` is the only attribute this command decides; everything else about the
+ * block is the author's and travels with it.
+ *
+ * `id` needs no special case any more, and that is a property of the schema
+ * rather than a shortcut: `paragraph` does not declare an `id`, so `carryOver`
+ * cannot promote one from a paragraph, while a heading's own `id` is declared
+ * and does come across. A paragraph stored as `<p id="x">` keeps its id anyway,
+ * through the carried residue, which is where an unmodelled attribute belongs.
+ */
 export function setHeading(level: number): Command {
-  return (state, dispatch, view) => {
-    const type = nodeIn(state, 'heading')
-    if (!type) return false
-    const parent = state.selection.$from.parent
-    const attrs = {
-      level,
-      dir: (parent.attrs['dir'] as string | null) ?? null,
-      align: (parent.attrs['align'] as Align | null) ?? null,
-      id: parent.type === type ? ((parent.attrs['id'] as string | null) ?? null) : null,
-    }
-    return setBlockType(type, attrs)(state, dispatch, view)
-  }
+  return setBlockTypeCarrying('heading', () => ({ level }))
 }
 
 /**
@@ -179,7 +341,7 @@ export function toggleHeading(level: number): Command {
 
 export const toggleCodeBlock: Command = (state, dispatch, view) => {
   if (isNodeActive(state, 'code_block')) return setParagraph(state, dispatch, view)
-  return nodeCommand('code_block', (type) => setBlockType(type))(state, dispatch, view)
+  return setBlockTypeCarrying('code_block')(state, dispatch, view)
 }
 
 export const wrapInBlockquote: Command = nodeCommand('blockquote', (type) => wrapIn(type))
@@ -263,7 +425,17 @@ function toggleList(target: 'bullet_list' | 'ordered_list'): Command {
     if (enclosing) {
       const type = nodeIn(state, target)
       if (!type) return false
-      if (dispatch) dispatch(state.tr.setNodeMarkup(enclosing.pos, type).scrollIntoView())
+      const node = state.doc.nodeAt(enclosing.pos)
+      if (!node) return false
+      // Attributes must be passed explicitly. `setNodeMarkup(pos, type)` reads
+      // as "change the type and leave the rest alone" and does not do that:
+      // prosemirror-transform calls `type.create(undefined, ...)`, so every
+      // attribute silently reverts to its default. `start` is genuinely dropped
+      // here because a `<ul>` has no such concept; `listStyle` and the residue
+      // holding `class` and every `data-*` are not.
+      if (dispatch) {
+        dispatch(state.tr.setNodeMarkup(enclosing.pos, type, carryOver(node, type)).scrollIntoView())
+      }
       return true
     }
     return nodeCommand(target, (type) => wrapInList(type))(state, dispatch, view)
@@ -348,12 +520,20 @@ export function activeListStyle(state: EditorState): ListStyle | null {
  */
 function blocksWithAttr(state: EditorState, attr: string): Array<{ pos: number; node: PMNode }> {
   const found: Array<{ pos: number; node: PMNode }> = []
-  const { from, to } = state.selection
-  state.doc.nodesBetween(from, to, (node, pos) => {
-    if (!node.isTextblock) return true
-    if (Object.hasOwn(node.attrs, attr)) found.push({ pos, node })
-    return false
-  })
+  // Deduplicated by position: callers write one `setNodeMarkup` per entry, and
+  // two writes to the same position in one transaction would have the second
+  // one built from a node the first already replaced.
+  const seen = new Set<number>()
+  for (const range of selectedRanges(state)) {
+    state.doc.nodesBetween(range.$from.pos, range.$to.pos, (node, pos) => {
+      if (!node.isTextblock) return true
+      if (Object.hasOwn(node.attrs, attr) && !seen.has(pos)) {
+        seen.add(pos)
+        found.push({ pos, node })
+      }
+      return false
+    })
+  }
   return found
 }
 
@@ -519,7 +699,7 @@ function colorCommand(name: string, color: string | null): Command {
     const value = color === null ? null : safeColor(color)
     if (color !== null && value === null) return false
 
-    const { empty, from, to } = state.selection
+    const { empty } = state.selection
 
     if (empty) {
       const current = state.storedMarks ?? state.selection.$from.marks()
@@ -535,10 +715,10 @@ function colorCommand(name: string, color: string | null): Command {
       return true
     }
 
-    if (value === null && !state.doc.rangeHasMark(from, to, type)) return false
+    if (value === null && !anyRangeHasMark(state, type)) return false
     if (dispatch) {
-      const tr = state.tr.removeMark(from, to, type)
-      if (value !== null) tr.addMark(from, to, type.create({ color: value }))
+      const tr = state.tr
+      replaceMarkInRanges(state, tr, type, value === null ? null : { color: value })
       dispatch(tr.scrollIntoView())
     }
     return true
@@ -549,7 +729,7 @@ function colorCommand(name: string, color: string | null): Command {
 function activeColor(state: EditorState, name: string): string | null {
   const type = markIn(state, name)
   if (!type) return null
-  const { empty, $from, from, to } = state.selection
+  const { empty, $from } = state.selection
 
   if (empty) {
     const found = type.isInSet(state.storedMarks ?? $from.marks())
@@ -562,18 +742,24 @@ function activeColor(state: EditorState, name: string): string | null {
   let seen = false
   let value: string | null = null
   let uniform = true
-  state.doc.nodesBetween(from, to, (child) => {
-    if (!child.isText) return true
-    const found = type.isInSet(child.marks)
-    const colour = found ? (found.attrs['color'] as string) : null
-    if (!seen) {
-      value = colour
-      seen = true
-    } else if (colour !== value) {
-      uniform = false
-    }
-    return true
-  })
+  // Over every range, for the same reason the command below writes over every
+  // range: reading one cell of a selected column and reporting it as the state
+  // of all of them puts a colour in the swatch that most of the selection does
+  // not have.
+  for (const range of selectedRanges(state)) {
+    state.doc.nodesBetween(range.$from.pos, range.$to.pos, (child) => {
+      if (!child.isText) return true
+      const found = type.isInSet(child.marks)
+      const colour = found ? (found.attrs['color'] as string) : null
+      if (!seen) {
+        value = colour
+        seen = true
+      } else if (colour !== value) {
+        uniform = false
+      }
+      return true
+    })
+  }
   // Mixed colours report null for the same reason mixed alignment does: a
   // swatch showing one of them invites the author to act on all of them.
   return uniform ? value : null
@@ -610,7 +796,7 @@ function attrMarkCommand(
     const next = value === null ? null : validate(value)
     if (value !== null && next === null) return false
 
-    const { empty, from, to } = state.selection
+    const { empty } = state.selection
     if (empty) {
       const current = state.storedMarks ?? state.selection.$from.marks()
       const stripped = current.filter((mark) => mark.type !== type)
@@ -623,10 +809,10 @@ function attrMarkCommand(
       return true
     }
 
-    if (next === null && !state.doc.rangeHasMark(from, to, type)) return false
+    if (next === null && !anyRangeHasMark(state, type)) return false
     if (dispatch) {
-      const tr = state.tr.removeMark(from, to, type)
-      if (next !== null) tr.addMark(from, to, type.create({ [attr]: next }))
+      const tr = state.tr
+      replaceMarkInRanges(state, tr, type, next === null ? null : { [attr]: next })
       dispatch(tr.scrollIntoView())
     }
     return true
@@ -636,7 +822,7 @@ function attrMarkCommand(
 function activeMarkAttr(state: EditorState, name: string, attr: string): string | null {
   const type = markIn(state, name)
   if (!type) return null
-  const { empty, $from, from, to } = state.selection
+  const { empty, $from } = state.selection
 
   if (empty) {
     const found = type.isInSet(state.storedMarks ?? $from.marks())
@@ -649,18 +835,20 @@ function activeMarkAttr(state: EditorState, name: string, attr: string): string 
   let seen = false
   let value: string | null = null
   let uniform = true
-  state.doc.nodesBetween(from, to, (child) => {
-    if (!child.isText) return true
-    const found = type.isInSet(child.marks)
-    const current = found ? (found.attrs[attr] as string) : null
-    if (!seen) {
-      value = current
-      seen = true
-    } else if (current !== value) {
-      uniform = false
-    }
-    return true
-  })
+  for (const range of selectedRanges(state)) {
+    state.doc.nodesBetween(range.$from.pos, range.$to.pos, (child) => {
+      if (!child.isText) return true
+      const found = type.isInSet(child.marks)
+      const current = found ? (found.attrs[attr] as string) : null
+      if (!seen) {
+        value = current
+        seen = true
+      } else if (current !== value) {
+        uniform = false
+      }
+      return true
+    })
+  }
   return uniform ? value : null
 }
 
@@ -697,7 +885,7 @@ export function activeLanguage(state: EditorState): string | null {
  */
 export const clearFormatting: Command = (state, dispatch) => {
   const keep = new Set(['link'])
-  const { empty, from, to, $from } = state.selection
+  const { empty, $from } = state.selection
   const marks = Object.values(state.schema.marks).filter((type) => !keep.has(type.name))
 
   if (empty) {
@@ -728,7 +916,7 @@ export const clearFormatting: Command = (state, dispatch) => {
 
   let hasMarks = false
   for (const type of marks) {
-    if (state.doc.rangeHasMark(from, to, type)) hasMarks = true
+    if (anyRangeHasMark(state, type)) hasMarks = true
   }
   const blocks = blocksWithAttr(state, 'align')
   const canClearBlocks = blocks.some(
@@ -740,7 +928,11 @@ export const clearFormatting: Command = (state, dispatch) => {
   if (!hasMarks && !canClearBlocks) return false
   if (dispatch) {
     let tr = state.tr
-    for (const type of marks) tr = tr.removeMark(from, to, type)
+    for (const type of marks) {
+      for (const range of selectedRanges(state)) {
+        tr = tr.removeMark(range.$from.pos, range.$to.pos, type)
+      }
+    }
     for (const { pos, node } of blocks) {
       tr = tr.setNodeMarkup(pos, undefined, {
         ...node.attrs,

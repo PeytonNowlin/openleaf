@@ -19,7 +19,7 @@ import {
 } from '@openleaf-editor/core'
 import { EditorState, TextSelection, type Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PALETTE, PALETTE_COLUMNS, nameFor } from '../src/palette.js'
 import { buildColorPicker } from '../src/picker.js'
 
@@ -144,13 +144,66 @@ describe('the control', () => {
     expect(serialize()).toBe('<p>hello</p>')
   })
 
-  it('marks the colour in force as the pressed swatch', () => {
+  it('marks the colour in force as the selected cell', () => {
+    // `aria-selected`, not `aria-pressed`: these are gridcells now, and a
+    // gridcell has no pressed state to report.
     const { host, refresh } = picker('<p><span style="color:#dc2626">hello</span></p>')
     trigger(host).click()
     refresh()
-    const pressed = popover(host)?.querySelectorAll('[aria-pressed="true"]')
-    expect(pressed).toHaveLength(1)
-    expect(pressed?.[0]?.getAttribute('data-ol-colour')).toBe('#dc2626')
+    const selected = popover(host)?.querySelectorAll('[aria-selected="true"]')
+    expect(selected).toHaveLength(1)
+    expect(selected?.[0]?.getAttribute('data-ol-colour')).toBe('#dc2626')
+  })
+
+  it('is a grid, so a reader can say which row and column a swatch is in', () => {
+    // A flat pile of 32 buttons gives a screen reader no way to say where in
+    // the palette the author is. plugins-table/src/grid.ts is the in-repo
+    // reference this follows.
+    const { host } = picker()
+    trigger(host).click()
+    const grid = popover(host)?.querySelector('[role="grid"]')
+    expect(grid).not.toBeNull()
+    const rows = grid?.querySelectorAll('[role="row"]') ?? []
+    expect(rows).toHaveLength(DEFAULT_PALETTE.length / PALETTE_COLUMNS)
+    for (const row of rows) {
+      expect(row.querySelectorAll('[role="gridcell"]')).toHaveLength(PALETTE_COLUMNS)
+    }
+  })
+
+  it('reads out the colour in force when it opens', () => {
+    // `nameFor` shipped documented as "the name of a colour in a palette, for an
+    // announcement" and was called from no source file at all.
+    const { host, refresh } = picker('<p><span style="color:#dc2626">hello</span></p>')
+    trigger(host).click()
+    refresh()
+    const status = popover(host)?.querySelector('[role="status"]')
+    expect(status?.textContent).toBe('Red')
+  })
+
+  it('says the colour is inherited when none is in force', () => {
+    const { host } = picker()
+    trigger(host).click()
+    expect(popover(host)?.querySelector('[role="status"]')?.textContent).toBe('No colour')
+  })
+
+  it('announces the colour it applied, which is otherwise a silent change', () => {
+    vi.useFakeTimers()
+    const { host } = picker()
+    trigger(host).click()
+    popover(host)?.querySelector<HTMLButtonElement>('[data-ol-colour="#dc2626"]')?.click()
+    vi.advanceTimersByTime(100)
+    expect(host.querySelector('.ol-live-region')?.textContent).toBe('Red applied')
+    vi.useRealTimers()
+  })
+
+  it('announces removing a colour too', () => {
+    vi.useFakeTimers()
+    const { host } = picker('<p><span style="color:#dc2626">hello</span></p>')
+    trigger(host).click()
+    popover(host)?.querySelector<HTMLButtonElement>('.ol-color-clear')?.click()
+    vi.advanceTimersByTime(100)
+    expect(host.querySelector('.ol-live-region')?.textContent).toBe('Colour removed')
+    vi.useRealTimers()
   })
 
   it('refuses to open on a readonly editor', () => {

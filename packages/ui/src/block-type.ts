@@ -70,7 +70,13 @@ export function blockTypeControl(
     el: select,
     focusable: select,
     update(state: EditorState) {
-      select.setAttribute('aria-disabled', host.hasAttribute('readonly') ? 'true' : 'false')
+      // Both, and the real `disabled` is the load-bearing half: with only
+      // `aria-disabled` the control still opened and still changed its own
+      // displayed value, so a readonly editor showed "Heading 2" over a document
+      // that was still a paragraph.
+      const readonly = host.hasAttribute('readonly')
+      select.setAttribute('aria-disabled', readonly ? 'true' : 'false')
+      select.disabled = readonly
       const formatClass = activeBlockClass(state)
       const level = activeHeadingLevel(state)
       const activeElement = level === null ? 'p' : `h${level}`

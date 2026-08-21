@@ -20,7 +20,7 @@ export function buildGlyphPicker(
   const trigger = doc.createElement('button')
   trigger.type = 'button'
   trigger.className = 'ol-btn'
-  trigger.dataset['olId'] = options.label
+  trigger.dataset['olId'] = ctx.id ?? options.label
   trigger.setAttribute('aria-label', options.label)
   trigger.setAttribute('aria-haspopup', 'true')
   trigger.setAttribute('aria-expanded', 'false')
@@ -106,23 +106,55 @@ export function buildGlyphPicker(
   // that `[hidden]` still keeps at display:none.
   if (!SUPPORTS_POPOVER) grid.hidden = true
 
+  // Custom controls bypass the toolbar's own `#invoke` guard entirely, so the
+  // `aria-disabled` it writes onto the trigger is decoration unless the control
+  // reads it back. The colour picker does; this one did not.
+  trigger.addEventListener('mousedown', (event) => event.preventDefault())
   trigger.addEventListener('click', () => {
     if (isOpen()) close()
-    else open()
+    else if (!host.hasAttribute('readonly') && trigger.getAttribute('aria-disabled') !== 'true') {
+      open()
+    }
   })
   grid.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' || event.key === 'Tab') {
       event.preventDefault()
       close()
       trigger.focus()
     }
   })
 
+  /*
+   * Three behaviours the colour picker records as necessary and this grid did
+   * without: keeping the selection through a mousedown -- whose absence WebKit
+   * turns into a control that closes as though it had worked -- dismissal by a
+   * click elsewhere, and closing when the page moves under a panel positioned
+   * against the viewport.
+   */
+  for (const button of grid.querySelectorAll('button')) {
+    button.addEventListener('mousedown', (event) => event.preventDefault())
+  }
+
+  const onPointerDown = (event: Event): void => {
+    const target = event.target
+    if (!(target instanceof Node) || grid.contains(target) || trigger.contains(target)) return
+    close()
+  }
+  const onViewportChange = (): void => {
+    if (isOpen()) close()
+  }
+  doc.addEventListener('pointerdown', onPointerDown, true)
+  doc.defaultView?.addEventListener('scroll', onViewportChange, true)
+  doc.defaultView?.addEventListener('resize', onViewportChange)
+
   return {
     el: wrap,
     update: (_state: EditorState) => undefined,
     destroy: () => {
       close()
+      doc.removeEventListener('pointerdown', onPointerDown, true)
+      doc.defaultView?.removeEventListener('scroll', onViewportChange, true)
+      doc.defaultView?.removeEventListener('resize', onViewportChange)
       if (SUPPORTS_POPOVER) grid.remove()
     },
   }

@@ -41,6 +41,7 @@
 
 import OrderedMap from 'orderedmap'
 import {
+  DOMSerializer,
   Schema,
   type DOMOutputSpec,
   type MarkSpec,
@@ -56,8 +57,16 @@ import {
   serializeDeclarations,
 } from './css.js'
 import { OpenLeafError } from './errors.js'
-import { coreMarks, coreNodes } from './schema.js'
-import { URL_ATTRIBUTES, isEventHandlerAttribute, isSafeUrl } from './url.js'
+import { serializationTarget } from './preserve.js'
+import { coreMarks, coreNodes, listStart } from './schema.js'
+import { CARRIED_STYLE_SCRUBS } from './tables.js'
+import { safeId } from './tokens.js'
+import {
+  URL_ATTRIBUTES,
+  isEventHandlerAttribute,
+  isNeverCarriedAttribute,
+  isSafeUrl,
+} from './url.js'
 
 export interface SchemaExtension {
   /** Stable and unique. Namespace it: `openleaf/footnote`. */
@@ -169,7 +178,43 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * other class the author put there is kept. Keyed by node name because the
  * overlap is a property of the spec, not of the attribute.
  */
-const CARRY_SCRUB: Record<string, (carried: Record<string, string>) => void> = {
+/**
+ * Per-node reconciliation between what a spec read and what is left over.
+ *
+ * Takes the element as well as the residue, because the two directions this has
+ * to go are opposite. Usually a spec CONSUMED something and the residue must
+ * lose its copy, so the fact is written once. But a spec can also REFUSE a
+ * value -- `safeId` rejects `<h2 id="Bad Id">` because an id may not contain a
+ * space -- and the modelled attribute is then null while the carry loop has
+ * already skipped the name as "modelled". The attribute vanished from both
+ * places at once, which is how validating a value turned into deleting it. Given
+ * the element, a hook can put the original back into the residue, where an
+ * unrepresentable value has always belonged.
+ */
+type CarryScrub = (carried: Record<string, string>, dom: HTMLElement) => void
+
+/**
+ * Put an attribute back into the residue when the spec's validator refused it.
+ *
+ * `accepted` is asked rather than assumed, because the two outcomes need
+ * opposite treatment and only the validator can tell them apart. A value the
+ * spec took is re-emitted from the modelled attribute and must NOT also sit in
+ * the residue, or it goes out twice. A value the spec refused is not re-emitted
+ * at all, and carrying it is the difference between "we would not store that as
+ * an id" -- which is our business -- and "so we deleted it", which is not.
+ */
+function carryRejected(
+  carried: Record<string, string>,
+  dom: HTMLElement,
+  name: string,
+  accepted: (value: string) => boolean,
+): void {
+  const value = dom.getAttribute(name)
+  if (value === null || accepted(value)) return
+  carried[name] = value
+}
+
+const CARRY_SCRUB: Record<string, CarryScrub> = {
   code_block(carried) {
     const cls = carried['class']
     if (cls === undefined) return
@@ -178,9 +223,20 @@ const CARRY_SCRUB: Record<string, (carried: Record<string, string>) => void> = {
     else delete carried['class']
   },
   paragraph: scrubModelledStyle,
-  heading: scrubModelledStyle,
+  heading(carried, dom) {
+    scrubModelledStyle(carried)
+    carryRejected(carried, dom, 'id', (value) => safeId(value) !== null)
+  },
   bullet_list: scrubModelledStyle,
-  ordered_list: scrubModelledStyle,
+  ordered_list(carried, dom) {
+    scrubModelledStyle(carried)
+    carryRejected(carried, dom, 'start', (value) => listStart(value) !== null)
+  },
+  // Tables model a handful of declarations out of a `style` attribute they also
+  // declare as an attribute of their own. The scrubs are defined next to the
+  // validator that decides what "modelled" means for them, so the two cannot
+  // drift into either dropping a declaration twice or keeping it twice.
+  ...CARRIED_STYLE_SCRUBS,
 }
 
 /**
@@ -200,6 +256,7 @@ function scrubModelledStyle(carried: Record<string, string>): void {
   const style = carried['style']
   if (style === undefined) return
   const declarations = parseDeclarations(style)
+  const before = declarations.size
   for (const name of MODELLED_PROPERTIES) declarations.delete(name)
   // Indent aliases consumed into the `indent` attribute. Only dropped when they
   // actually parsed as an indent; `padding-left:3px` is not one and must stay.
@@ -207,9 +264,45 @@ function scrubModelledStyle(carried: Record<string, string>): void {
     const value = declarations.get(name)
     if (value !== undefined && indentLevels(value) !== null) declarations.delete(name)
   }
+  // Nothing was consumed, so there is nothing to rewrite. Re-serializing anyway
+  // would re-spell a declaration the schema does not model, which is the thing
+  // this whole mechanism exists to avoid: `letter-spacing: 0.08em;` is the
+  // author's, and `letter-spacing:0.08em` is ours.
+  if (declarations.size === before) return
   const rest = serializeDeclarations(declarations)
   if (rest !== null) carried['style'] = rest
   else delete carried['style']
+}
+
+/**
+ * Word's `mso-*` properties, removed from residue on the way in.
+ *
+ * These are the one exception to "carry every declaration the schema does not
+ * model", and it needs arguing because the default is so strongly the other way.
+ * `mso-list:l0 level1 lfo1` is not CSS: it is Microsoft Office document-format
+ * metadata that happens to travel in a `style` attribute, and no engine renders
+ * it. Carrying it would mean the editor re-emitting Word debris it used to
+ * clean, on every save, forever -- "pasting a wall of vendor styling into the
+ * document" is the failure the paste pipeline exists to prevent, and the schema
+ * should not reintroduce it from behind.
+ *
+ * It used to be removed by accident: a spec array's `style` went out through
+ * `dom.style.cssText`, and the CSSOM silently discards any property it cannot
+ * parse. That filter was never intentional and was never safe -- it also
+ * discarded valid CSS that a given engine did not happen to know -- so it is
+ * gone (see the array branch of `withCarriedAttributes`), and what was worth
+ * keeping about it is stated here instead, narrowly and on purpose.
+ *
+ * Returns the string unchanged when there is nothing to remove, so a residue
+ * with no Office metadata in it keeps the author's exact spelling.
+ */
+function withoutOfficeMetadata(style: string): string | null {
+  if (!/(?:^|[;\s])mso-/i.test(style)) return style
+  const declarations = parseDeclarations(style)
+  for (const name of [...declarations.keys()]) {
+    if (name.startsWith('mso-')) declarations.delete(name)
+  }
+  return serializeDeclarations(declarations)
 }
 
 /**
@@ -236,12 +329,20 @@ function scrubModelledStyle(carried: Record<string, string>): void {
 function applyCarriedToElement(el: Element, carried: Record<string, string>): void {
   for (const [name, value] of Object.entries(carried)) {
     if (name === 'style') {
+      const own = parseDeclarations(el.getAttribute('style'))
+      // Nothing of the spec's own to merge with, so the residue goes out exactly
+      // as it was stored. Round-tripping it through the declaration parser would
+      // re-spell CSS the schema does not model, for no gain -- and the whole
+      // reason this branch exists rather than letting the serializer do it is to
+      // stop the author's spelling being rewritten.
+      if (own.size === 0) {
+        applyStyleAttribute(el, value)
+        continue
+      }
       const declarations = parseDeclarations(value)
       // Residue first, then what the spec wrote, so a modelled declaration wins
       // over a stale copy of itself while everything else survives.
-      for (const [property, css] of parseDeclarations(el.getAttribute('style'))) {
-        declarations.set(property, css)
-      }
+      for (const [property, css] of own) declarations.set(property, css)
       const style = serializeDeclarations(declarations)
       if (style !== null) applyStyleAttribute(el, style)
       continue
@@ -287,20 +388,54 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
       ...rule,
       getAttrs(dom: HTMLElement) {
         const base = original ? original.call(rule, dom) : ((rule.attrs ?? {}) as Record<string, unknown>)
-        if (base === false || base === null || base === undefined) return base as false | null
+        /*
+         * Only `false` is a decline.
+         *
+         * `null` and `undefined` are ProseMirror's "this rule matches, with the
+         * type's default attributes" -- a very different statement, and treating
+         * them as a decline meant the wrapper handed the element straight back
+         * with no residue at all. `<hr class="page-rule" id="sep">` came back as
+         * a bare `<hr>`, because `horizontal_rule`'s rule returns `null` for
+         * every rule that is not a page break. Every attribute on the element,
+         * gone, from a branch that reads like a guard.
+         */
+        if (base === false) return false
         const carried: Record<string, string> = {}
         for (const attr of Array.from(dom.attributes ?? [])) {
-          if (modelled.has(attr.name)) continue
+          // `style` is never treated as modelled, even by a spec that declares
+          // an attribute of that name. It is the one COMPOSITE attribute in
+          // HTML: a node models individual declarations, not the whole string,
+          // so "the spec claimed it" is not the same statement it is for `class`
+          // or `colspan`. Table cells declare `style` and keep two properties
+          // out of it, and the skip below therefore threw away everything else
+          // with no residue at all -- `<td style="border:1px solid red">` came
+          // back as `<td>`, and `border` and `border-collapse` are how fifteen
+          // years of CMS tables are styled. The declarations a spec really did
+          // consume are removed by that node's CARRY_SCRUB instead, which is
+          // already how `<p style="text-align:center">` avoids being emitted
+          // twice.
+          if (attr.name !== 'style' && modelled.has(attr.name)) continue
           // Same scrub as the preservation layer: carrying `onclick` or a
           // `javascript:` URL would reintroduce exactly the executable content
           // core promises to drop.
           if (isEventHandlerAttribute(attr.name)) continue
+          // Markup-bearing attributes are refused outright rather than
+          // scheme-checked. This path never reaches scrub(): the iframe node
+          // claims an allowlisted player, and `srcdoc` -- which the HTML spec
+          // gives precedence over `src` -- rode in here as residue, so the
+          // frame rendered the attacker's document and never fetched YouTube.
+          if (isNeverCarriedAttribute(attr.name)) continue
           if (URL_ATTRIBUTES.has(attr.name.toLowerCase()) && !isSafeUrl(attr.value)) continue
+          if (attr.name === 'style') {
+            const css = withoutOfficeMetadata(attr.value)
+            if (css !== null) carried['style'] = css
+            continue
+          }
           carried[attr.name] = attr.value
         }
-        CARRY_SCRUB[name]?.(carried)
+        CARRY_SCRUB[name]?.(carried, dom)
         return {
-          ...(base as Record<string, unknown>),
+          ...((base ?? {}) as Record<string, unknown>),
           [CARRIED_ATTR]: Object.keys(carried).length > 0 ? carried : null,
         }
       },
@@ -319,6 +454,29 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
           const dom = isPlainObject(out) ? (out as { dom?: unknown }).dom : out
           if (dom instanceof Element) applyCarriedToElement(dom, carried)
           return out
+        }
+        /*
+         * Residue holding CSS cannot go out on a spec array.
+         *
+         * prosemirror-model writes a spec array's `style` with
+         * `dom.style.cssText = value`, which is a CSSOM parse and therefore a
+         * rewrite: `margin-bottom:0` comes back `margin-bottom: 0px`. `0` to
+         * `0px` is a change to the VALUE, not just the spelling, and it happens
+         * to every paragraph carrying an unmodelled declaration on its first
+         * save. css.ts argues at length that silently rewriting an archive's CSS
+         * is not a diff this project gets to put in a revision history;
+         * `applyStyleAttribute` exists to prevent exactly this and was reachable
+         * only from the element path.
+         *
+         * So when -- and only when -- there is CSS to carry, the array is
+         * rendered here and the residue applied to the real element, which is
+         * the same route `elementWithStyle` in schema.ts already takes. Specs
+         * with no CSS residue keep the cheaper array path.
+         */
+        if (typeof carried['style'] === 'string') {
+          const rendered = DOMSerializer.renderSpec(serializationTarget(), out)
+          applyCarriedToElement(rendered.dom, carried)
+          return (rendered.contentDOM ? rendered : rendered.dom) as unknown as DOMOutputSpec
         }
         const result = [...out] as unknown[]
         if (isPlainObject(result[1])) {
@@ -434,6 +592,7 @@ export function createSchema(list: readonly SchemaExtension[] = []): Schema {
 }
 
 let cached: Schema | null = null
+let subscribed = false
 
 /**
  * The schema for the currently registered extensions.
@@ -442,12 +601,42 @@ let cached: Schema | null = null
  * "bind to this" and would be captured at import by every consumer, which is
  * exactly what made the schema impossible to extend. Memoized, and invalidated
  * whenever the registry changes.
+ *
+ * ## Why the subscription is in here and not at module scope
+ *
+ * This package declares `"sideEffects": false`, which is a literal promise that
+ * evaluating a module for its own sake changes nothing observable. The bare
+ * top-level `onSchemaExtensionsChange(() => { cached = null })` that used to sit
+ * below this function broke that promise: it mutates the listener set in the
+ * registry above, which is observable by anything that calls `notify()`.
+ *
+ * What it did *not* do, measured rather than assumed, is actually get dropped.
+ * Both rollup 4 (`treeshake.moduleSideEffects: false`) and webpack 5
+ * (`optimization.sideEffects`) keep the statement, because the arrow function
+ * writes `cached` and `cached` is read by this function -- so the tree-shaker
+ * can see the statement contributes to a live export and retains it. A probe
+ * that warms the memo, registers an extension and re-reads the schema returns
+ * the plugin's node type under both bundlers, before and after this change.
+ *
+ * It is moved anyway, because the retention depended entirely on that linkage
+ * being visible. It is not a property of the invalidator; it is a property of
+ * this particular pair of statements, and it would quietly stop holding the
+ * moment the memo is refactored -- at which point the failure is silent and
+ * total, since `coreSchema()` would keep handing back a schema built before the
+ * first `registerSchemaExtension` call. Registering on the first call costs a
+ * boolean and makes the flag true instead of true-by-luck.
+ *
+ * There is no window in which the invalidator is missing: the subscription is
+ * installed before the value it guards ever exists, and nothing can reach the
+ * memo except through here.
  */
 export function coreSchema(): Schema {
+  if (!subscribed) {
+    subscribed = true
+    onSchemaExtensionsChange(() => {
+      cached = null
+    })
+  }
   if (!cached) cached = createSchema(registeredSchemaExtensions())
   return cached
 }
-
-onSchemaExtensionsChange(() => {
-  cached = null
-})

@@ -34,6 +34,7 @@ export {
   // naming a type that was not exported.
   type MenuItemRef,
 } from './menu.js'
+export { announce, disposeLiveRegion, liveRegion } from './live.js'
 export { promptHelp } from './help.js'
 export {
   FloatingToolbars,
@@ -41,7 +42,8 @@ export {
   DEFAULT_INSERT_LAYOUT,
 } from './floating.js'
 export { loadContentCss, contentCssUrls, scopeContentCss } from './content-css.js'
-export { CSS, ensureStyles, markStylesExternal, registerStyles } from './styles.js'
+export { CSS } from './css.js'
+export { ensureStyles, markStylesExternal, registerStyles } from './styles.js'
 export {
   DIRECTIONAL,
   ensureSprite,
@@ -81,6 +83,7 @@ export {
   imageFilesFrom,
   imageUploaderFor,
   isUploadableImage,
+  isUploadableImageType,
   registerImageUploader,
   runUploader,
   type ImageUploadResult,

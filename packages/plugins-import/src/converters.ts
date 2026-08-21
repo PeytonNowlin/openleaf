@@ -38,6 +38,7 @@
  */
 
 import { normalizePastedHtml } from '@openleaf-editor/paste'
+import { describeBytes, importLimits } from './limits.js'
 
 export interface ConversionResult {
   /** HTML to insert. Runs through the paste normalizer before parsing. */
@@ -140,6 +141,21 @@ export function textToHtml(text: string): string {
  * accept rather than failing silently.
  */
 export async function convertFile(file: File, doc: Document): Promise<ConversionResult | null> {
+  /*
+   * Checked before any converter runs, including registered ones.
+   *
+   * A converter's first act is `file.arrayBuffer()`, so the size check has to
+   * happen on this side of the seam or every converter has to remember to do it
+   * -- and the one that forgets is the one that reads a gigabyte.
+   */
+  const { maxFileBytes } = importLimits()
+  if (file.size > maxFileBytes) {
+    throw new Error(
+      `the file is ${describeBytes(file.size)}, over this editor's ` +
+        `${describeBytes(maxFileBytes)} import limit.`,
+    )
+  }
+
   for (const converter of converters) {
     const result = await converter(file)
     if (result) {

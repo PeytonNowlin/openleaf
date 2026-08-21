@@ -13,13 +13,16 @@
  *
  * Two details that are easy to get wrong and both matter:
  *
- * 1. **Arrow-key roving is applied only to `<button>` elements.** The block-type
- *    control is a native `<select>`, and when focus is on it, Left/Right have two
- *    competing owners -- the roving handler wants to move to the next item, the
- *    select natively wants to change its value. Intercepting those keys breaks
- *    the select; not intercepting them breaks the toolbar contract. The
- *    resolution is that the select owns all of its own key events and is a
- *    genuine second tab stop rather than part of the roving scheme.
+ * 1. **Arrow-key roving covers the `<select>` controls too.** The default bar has
+ *    four of them -- paragraph style, font family, font size, line height -- and
+ *    when focus is on one, Left/Right have two competing owners: the roving
+ *    handler wants to move to the next item, the select natively wants to change
+ *    its value. Leaving them out was the earlier resolution, and it cost more
+ *    than it saved: ArrowRight from Redo jumped past four controls to Bold, and
+ *    each select became its own tab stop, making the default bar five tab stops
+ *    instead of one. The APG resolution is the one used here -- the toolbar takes
+ *    Left/Right, and Up/Down, Home/End and typeahead are left to the select, so
+ *    it is still fully operable and Alt+Down still opens its list.
  *
  * 2. **Escape returns focus and the selection to the content.** Preventing mouse
  *    clicks from stealing focus solves the mouse case and leaves the keyboard
@@ -29,11 +32,12 @@
  *    Escape leaves, matching TinyMCE and CKEditor 5 so muscle memory transfers.
  */
 
-import { shortcutFor, type FormatSpec } from '@openleaf-editor/core'
+import { shortcuts, type FormatSpec } from '@openleaf-editor/core'
 import type { EditorState, Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { ensureSprite, iconElement } from './icons.js'
 import { t, onLocaleChange, withLocale } from './i18n.js'
+import { announce, liveRegion } from './live.js'
 import { ToolbarOverflow } from './overflow.js'
 import {
   DEFAULT_LAYOUT,
@@ -100,6 +104,16 @@ interface MountedControl {
 const reported = new Set<string>()
 
 /**
+ * What the roving tabindex walks.
+ *
+ * Buttons and native selects alike: every control the bar renders is one of the
+ * two, and leaving the selects out is what made the default bar five tab stops.
+ * `ol-btn`/`ol-select` rather than the bare tags, so a custom control's own
+ * popover -- which lives on the host, not in here -- cannot be walked into.
+ */
+const FOCUSABLE = 'button.ol-btn, select.ol-select'
+
+/**
  * Call a third-party predicate, falling back rather than propagating.
  *
  * The fallback for BOTH `isActive` and `isEnabled` is `false`. Defaulting
@@ -130,6 +144,27 @@ function guarded(itemId: string, kind: string, run: () => boolean): boolean {
   }
 }
 
+/**
+ * The `aria-keyshortcuts` spelling of an item's shortcut.
+ *
+ * Not the same string as the tooltip, and deliberately so: the tooltip is for
+ * reading ("Ctrl+B", "⌘B") while this attribute has a defined grammar that
+ * assistive technology parses -- named modifiers joined by `+`, with the
+ * platform's real modifier rather than a symbol.
+ */
+function keyShortcutFor(label: string): string | null {
+  const found = shortcuts.find((entry) => entry.label === label)
+  if (!found) return null
+  const mod =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+      ? 'Meta'
+      : 'Control'
+  return found.keys
+    .split('-')
+    .map((part) => (part === 'Mod' ? mod : part.length === 1 ? part.toUpperCase() : part))
+    .join('+')
+}
+
 export class Toolbar {
   readonly el: HTMLDivElement
 
@@ -140,18 +175,24 @@ export class Toolbar {
   #customs: MountedControl[] = []
   /** Native selects keyed by item id (block type plus any `type: 'select'`). */
   #selects = new Map<string, HTMLSelectElement>()
-  #live: HTMLDivElement
-  #liveTimer: ReturnType<typeof setTimeout> | undefined
   #layout: string
   #label: string
   #formats: readonly FormatSpec[]
   #locale: string | null
   #wantsOverflow: boolean
+  /**
+   * True while the host is showing raw HTML instead of the document.
+   *
+   * Not `setItemState`, which is what the host reaches for elsewhere: that
+   * pushes a value per item and has no way to say "and put every other item
+   * back afterwards". A mode is one flag, and clearing it is one assignment.
+   */
+  #sourceMode = false
   #overflow: ToolbarOverflow | null = null
   #unsubscribe: (() => void) | undefined
   #unlocale: (() => void) | undefined
-  /** Focusable buttons in DOM order; the roving tabindex walks this. */
-  #focusables: HTMLButtonElement[] = []
+  /** Focusable controls in DOM order; the roving tabindex walks this. */
+  #focusables: HTMLElement[] = []
   #rovingIndex = 0
 
   constructor(host: HTMLElement, doc: Document, options: ToolbarOptions = {}) {
@@ -171,13 +212,12 @@ export class Toolbar {
     this.el.setAttribute('role', 'toolbar')
     this.el.setAttribute('aria-label', t(this.#label))
 
-    this.#live = doc.createElement('div')
-    this.#live.className = 'ol-live'
-    // Polite and atomic: an assertive region would interrupt the author
-    // mid-word, and a non-atomic one can read partial updates.
-    this.#live.setAttribute('role', 'status')
-    this.#live.setAttribute('aria-live', 'polite')
-    this.#live.setAttribute('aria-atomic', 'true')
+    // Mounted on the HOST, and mounted now rather than on the first
+    // announcement: a region a screen reader has never seen may not be observed
+    // in time to read the text that appears in it. Shared with every other bar
+    // on this editor, so a secondary or floating toolbar is never the one that
+    // speaks into a detached node.
+    liveRegion(host)
 
     this.el.addEventListener('keydown', this.#onKeydown)
     // Re-render when a plugin registers late. Import-time registration races
@@ -204,25 +244,56 @@ export class Toolbar {
     if (this.#view) this.#rerenderPreservingState()
   }
 
+  /**
+   * Enter or leave source view.
+   *
+   * Every control except the one that leaves again goes unavailable. In source
+   * mode a formatting command ran against the hidden document and the textarea
+   * was then reparsed over the top of it, so pressing Bold silently discarded
+   * the edit -- a button that does nothing is better than a button that
+   * destroys work, and a button that says it is unavailable is better still.
+   */
+  setSourceMode(active: boolean): void {
+    if (active === this.#sourceMode) return
+    this.#sourceMode = active
+    if (this.#view) this.update(this.#view.state)
+  }
+
   /** Attach to a view and build the controls. */
   mount(view: EditorView): void {
     this.#view = view
     this.#render()
     if (this.#wantsOverflow && !this.#overflow) {
-      this.#overflow = new ToolbarOverflow(this.el, this.#host, this.#doc)
+      // Relayout moves whole groups out of the bar and back, so the roving list
+      // is rebuilt after it: a control in the More panel is not a stop in the
+      // bar, and the More trigger itself is.
+      this.#overflow = new ToolbarOverflow(this.el, this.#host, this.#doc, () =>
+        this.#refreshFocusables(),
+      )
     }
     this.update(view.state)
   }
 
+  /**
+   * Detach the toolbar AND take its DOM with it.
+   *
+   * Removing the nodes is part of the contract, not tidiness. The host appends
+   * `el` into the editor element and reads that element's
+   * `innerHTML` back as document content when it rebuilds -- so a toolbar left
+   * behind by `destroy()` becomes the author's document on the next build, and
+   * then gets posted to the server.
+   *
+   * Idempotent: `.remove()` on a detached node is a no-op.
+   */
   destroy(): void {
     this.#unsubscribe?.()
     this.#unlocale?.()
     this.#overflow?.destroy()
-    clearTimeout(this.#liveTimer)
     this.el.removeEventListener('keydown', this.#onKeydown)
     this.#destroyCustoms()
     this.#controls.clear()
     this.#view = null
+    this.el.remove()
   }
 
   /**
@@ -245,9 +316,15 @@ export class Toolbar {
     this.#customs = []
   }
 
-  /** The live region element, which the host mounts once. */
+  /**
+   * The editor's live region.
+   *
+   * One per host, shared by every bar on it, and already mounted -- so a host
+   * that appends this is moving a node it already owns rather than adopting a
+   * detached one. Kept on the class because integrations reach for it.
+   */
   get liveRegion(): HTMLDivElement {
-    return this.#live
+    return liveRegion(this.#host)
   }
 
   /* -------------------------------------------------------------- *
@@ -338,19 +415,15 @@ export class Toolbar {
     if (this.#view) this.update(this.#view.state)
 
     if (!focusedId) return
-    const select = this.#selects.get(focusedId)
-    if (select) {
-      select.focus()
-      return
-    }
-    const control = this.#controls.get(focusedId)
-    if (control) {
-      const index = this.#focusables.indexOf(control.el)
-      if (index >= 0) {
-        this.#rovingIndex = index
-        this.#applyRoving()
-      }
-      control.el.focus()
+    // One lookup for buttons, selects and custom triggers alike: they are all in
+    // the roving list, and they are all found by the id the item was registered
+    // under -- which is why a control that writes its LABEL into `data-ol-id`
+    // silently loses focus here.
+    const index = this.#focusables.findIndex((el) => el.dataset['olId'] === focusedId)
+    if (index >= 0) {
+      this.#rovingIndex = index
+      this.#applyRoving()
+      this.#focusables[index]?.focus()
       return
     }
     this.#customs.find(({ id }) => id === focusedId)?.control.focusable?.focus()
@@ -380,9 +453,17 @@ export class Toolbar {
     // it would double up with what the platform already announces.
     button.setAttribute('aria-label', t(spec.label))
 
-    const shortcut = spec.shortcut ? shortcutFor(spec.shortcut) : null
+    // The title is the label and nothing more. Per accname `title` becomes the
+    // DESCRIPTION of an element that already has a name, so "Bold (Ctrl+B)"
+    // beside aria-label="Bold" had NVDA say "Bold, button, Bold Ctrl+B". Equal
+    // to the name, it is dropped rather than read twice; the shortcut moves to
+    // the attribute that exists to carry it.
     const label = t(spec.label)
-    button.title = shortcut ? `${label} (${shortcut})` : label
+    button.title = label
+    if (spec.shortcut) {
+      const keys = keyShortcutFor(spec.shortcut)
+      if (keys) button.setAttribute('aria-keyshortcuts', keys)
+    }
 
     if ((spec.kind ?? 'action') === 'toggle') {
       button.setAttribute('aria-pressed', 'false')
@@ -423,7 +504,7 @@ export class Toolbar {
     if (!view) return null
 
     try {
-      const control = spec.render({ view, host: this.#host, formats: this.#formats })
+      const control = spec.render({ view, id: spec.id, host: this.#host, formats: this.#formats })
       this.#customs.push({ id: spec.id, control })
       return control.el
     } catch (error) {
@@ -584,8 +665,11 @@ export class Toolbar {
       const { spec } = control
 
       const readonly = this.#host.hasAttribute('readonly')
+      // `source` itself stays live in source mode: it is the way back out, and
+      // disabling it would strand the author in a textarea.
+      const suspended = this.#sourceMode && spec.id !== 'source'
       const enabled =
-        readonly
+        readonly || suspended
           ? false
           : control.forcedEnabled ??
             guarded(spec.id, 'isEnabled', () =>
@@ -609,7 +693,14 @@ export class Toolbar {
           control.active = active
           control.el.setAttribute('aria-pressed', active ? 'true' : 'false')
           if (isFormattingChange && previous !== null) {
-            transitions.push(`${spec.label} ${active ? 'on' : 'off'}`)
+            // One template key per state rather than a label glued to a bare
+            // "on"/"off". The old form pushed the RAW LOOKUP KEY, so a French
+            // editor showed "Gras" and announced "Bold on" -- and the two state
+            // words had no translation path at all. A template also keeps word
+            // order translatable, which a concatenation never can.
+            transitions.push(
+              t(active ? '{label} on' : '{label} off').replace('{label}', t(spec.label)),
+            )
           }
         }
       }
@@ -620,7 +711,8 @@ export class Toolbar {
       // here means a custom control gets the same disabled treatment as a button
       // without every plugin author having to remember the attribute exists.
       const trigger = control.el.querySelector<HTMLButtonElement>('button.ol-btn')
-      trigger?.setAttribute('aria-disabled', this.#host.hasAttribute('readonly') ? 'true' : 'false')
+      const unavailable = this.#host.hasAttribute('readonly') || this.#sourceMode
+      trigger?.setAttribute('aria-disabled', unavailable ? 'true' : 'false')
       if (!control.update) continue
       guarded(id, 'update', () => {
         control.update?.(state)
@@ -629,7 +721,7 @@ export class Toolbar {
     }
 
     if (this.#selects.size > 0) {
-      const readonly = this.#host.hasAttribute('readonly')
+      const readonly = this.#host.hasAttribute('readonly') || this.#sourceMode
       // Only declared `type: 'select'` items live here. Block type is a rendered
       // control and keeps its own state in sync through its ToolbarControl.
       for (const [id, select] of this.#selects) {
@@ -709,13 +801,7 @@ export class Toolbar {
   }
 
   #announce(message: string): void {
-    // Clear then set on a timer: replacing identical text does not re-announce,
-    // and the delay coalesces a held shortcut into one utterance.
-    this.#live.textContent = ''
-    clearTimeout(this.#liveTimer)
-    this.#liveTimer = setTimeout(() => {
-      this.#live.textContent = message
-    }, 60)
+    announce(this.#host, message)
   }
 
   /* -------------------------------------------------------------- *
@@ -723,21 +809,35 @@ export class Toolbar {
    * -------------------------------------------------------------- */
 
   #refreshFocusables(): void {
-    this.#focusables = [...this.el.querySelectorAll<HTMLButtonElement>('button.ol-btn')]
+    this.#focusables = [...this.el.querySelectorAll<HTMLElement>(FOCUSABLE)]
     this.#rovingIndex = 0
     this.#applyRoving()
   }
 
   #applyRoving(): void {
-    this.#focusables.forEach((button, index) => {
-      button.tabIndex = index === this.#rovingIndex ? 0 : -1
+    this.#focusables.forEach((el, index) => {
+      el.tabIndex = index === this.#rovingIndex ? 0 : -1
     })
   }
 
+  /**
+   * Step to the next control, skipping any that cannot take focus.
+   *
+   * Buttons carry `aria-disabled` and stay reachable on purpose. A `<select>`
+   * has no such option -- a readonly editor really does disable it, and a
+   * disabled element silently refuses `focus()`, which would leave the arrow
+   * keys dead at that position.
+   */
   #moveRoving(delta: number): void {
-    if (this.#focusables.length === 0) return
     const count = this.#focusables.length
-    this.#rovingIndex = (this.#rovingIndex + delta + count) % count
+    if (count === 0) return
+    let index = this.#rovingIndex
+    for (let step = 0; step < count; step += 1) {
+      index = (index + delta + count) % count
+      const el = this.#focusables[index]
+      if (el && !(el as HTMLElement & { disabled?: boolean }).disabled) break
+    }
+    this.#rovingIndex = index
     this.#applyRoving()
     this.#focusables[this.#rovingIndex]?.focus()
   }
@@ -758,13 +858,15 @@ export class Toolbar {
     }
 
     const target = event.target as HTMLElement | null
+    if (!target) return
+    const index = this.#focusables.indexOf(target)
+    if (index < 0) return
+    this.#rovingIndex = index
 
-    // Arrow roving applies ONLY to buttons. The native <select> owns its own
-    // key handling; hijacking Left/Right there would break value changing.
-    if (!target || target.tagName !== 'BUTTON') return
-
-    const index = this.#focusables.indexOf(target as HTMLButtonElement)
-    if (index >= 0) this.#rovingIndex = index
+    // Left/Right belong to the toolbar on every control, including a select.
+    // Everything else a select uses -- Up/Down, Home/End, typeahead, Alt+Down to
+    // open the list -- is left alone, which is what keeps it operable.
+    const isSelect = target.tagName === 'SELECT'
 
     switch (event.key) {
       case 'ArrowRight':
@@ -776,10 +878,12 @@ export class Toolbar {
         this.#moveRoving(-1)
         break
       case 'Home':
+        if (isSelect) break
         event.preventDefault()
         this.#setRoving(0)
         break
       case 'End':
+        if (isSelect) break
         event.preventDefault()
         this.#setRoving(this.#focusables.length - 1)
         break
@@ -795,14 +899,9 @@ export class Toolbar {
       this.#focusables[this.#rovingIndex]?.focus()
       return
     }
-    // A toolbar of only selects or custom controls has no roving buttons. The
+    // A bar of nothing but custom controls has no roving stop of its own. The
     // shortcut is still documented; swallowing it with nowhere to go would make
     // a valid `toolbar` attribute a silent no-op.
-    const declared = this.#selects.values().next().value
-    if (declared) {
-      declared.focus()
-      return
-    }
     this.#customs.find(({ control }) => control.focusable)?.control.focusable?.focus()
   }
 

@@ -10,6 +10,7 @@ export {
   allowedAttributes,
   allowedStyleProperties,
   isAllowedElement,
+  policyForCarriedAttributes,
   policyForPreserved,
   type ElementPolicy,
   type Policy,

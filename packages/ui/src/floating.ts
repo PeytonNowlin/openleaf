@@ -26,15 +26,25 @@ export class FloatingToolbars {
   constructor(
     host: HTMLElement,
     doc: Document,
-    options: { selectionLayout?: string | null; insertLayout?: string | null },
+    options: {
+      selectionLayout?: string | null
+      insertLayout?: string | null
+      /** This editor's `lang`. Omitted, both bars silently fell back to English. */
+      locale?: string | null
+    },
   ) {
     this.#host = host
     this.#doc = doc
+    const locale = options.locale ?? null
     this.#selection = options.selectionLayout
-      ? new Toolbar(host, doc, { layout: options.selectionLayout, label: 'Selection formatting' })
+      ? new Toolbar(host, doc, {
+          layout: options.selectionLayout,
+          label: 'Selection formatting',
+          locale,
+        })
       : null
     this.#insert = options.insertLayout
-      ? new Toolbar(host, doc, { layout: options.insertLayout, label: 'Insert' })
+      ? new Toolbar(host, doc, { layout: options.insertLayout, label: 'Insert', locale })
       : null
     if (this.#selection) {
       this.#selection.el.classList.add('ol-floating')
@@ -52,6 +62,12 @@ export class FloatingToolbars {
     this.#view = view
     this.#selection?.mount(view)
     this.#insert?.mount(view)
+  }
+
+  /** Follow the host's `lang` when it changes, as the main bar already does. */
+  setLocale(next: string | null): void {
+    this.#selection?.setLocale(next)
+    this.#insert?.setLocale(next)
   }
 
   update(state: EditorState): void {

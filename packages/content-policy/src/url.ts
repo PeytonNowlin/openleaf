@@ -72,10 +72,43 @@ export const URL_ATTRIBUTES: ReadonlySet<string> = new Set([
   'background',
   'cite',
   'longdesc',
-  'srcdoc',
   'xlink:href',
   'ping',
 ])
+
+/**
+ * Attributes that are never copied onto anything, whatever their value.
+ *
+ * Attribute safety used to be a two-state question -- URL or not-URL -- and
+ * `srcdoc` was answered with the wrong one of the two. It holds a complete HTML
+ * document, not a URL, so `isSafeUrl('<script>alert(1)</script>')` found no
+ * scheme, concluded "relative, therefore safe", and waved it through. A
+ * `srcdoc` frame is same-origin with the page embedding it, so what came
+ * through was script execution in the author's own session -- and because
+ * `srcdoc` takes precedence over `src` per the HTML spec, an allowlisted embed
+ * host was no defence either.
+ *
+ * There is no value of these attributes worth carrying, so they get the third
+ * state: rejected before the URL question is even asked.
+ *
+ *   srcdoc                    a whole HTML document, same-origin with its host
+ *   srcset, imagesrcset       comma-separated URL lists no single-URL check reads
+ *   formaction                retargets a submission, past the form's own action
+ *   xlink:href               the SVG spelling of href, and the namespace where
+ *                             SMIL can rewrite it after the check has run
+ */
+export const NEVER_CARRY_ATTRIBUTES: ReadonlySet<string> = new Set([
+  'srcdoc',
+  'srcset',
+  'imagesrcset',
+  'formaction',
+  'xlink:href',
+])
+
+/** True for an attribute that must be dropped rather than checked. */
+export function isNeverCarriedAttribute(name: string): boolean {
+  return NEVER_CARRY_ATTRIBUTES.has(name.toLowerCase())
+}
 
 /** True for `onclick`, `onmouseover` and every other inline event handler. */
 export function isEventHandlerAttribute(name: string): boolean {
