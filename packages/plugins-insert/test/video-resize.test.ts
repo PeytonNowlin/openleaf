@@ -105,12 +105,19 @@ describe('video resize node view', () => {
     expect(el.getAttribute('poster')).toBe('/p.jpg')
   })
 
-  it('gives the author controls even when the document does not ask for them', () => {
-    // Stored HTML is serialized from the node, so forcing them on in the editor
-    // does not change what is saved -- and without them the author has an opaque
-    // rectangle they cannot scrub.
+  it('renders a preview rather than a working player, so the node can be selected', () => {
+    // A `<video controls>` handles pointer events in its native chrome, and
+    // Firefox handles them for the whole element -- no listener in the editor
+    // ever fires, so ProseMirror never makes a NodeSelection and the player
+    // could be inserted and then never edited again.
     const el = renderedVideo('<video controls><source src="/a.mp4"></video>')
-    expect(el.controls).toBe(true)
+    expect(el.controls).toBe(false)
+  })
+
+  it('leaves what the document says about controls alone', () => {
+    // Stored HTML is serialized from the node, not from this DOM.
+    renderedVideo('<video controls><source src="/a.mp4"></video>')
+    expect(view!.state.doc.firstChild?.attrs['controls']).toBe(true)
   })
 
   it('resizes the document on an arrow press', () => {

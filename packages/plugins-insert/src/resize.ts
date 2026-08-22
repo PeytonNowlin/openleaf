@@ -81,10 +81,22 @@ function applyImageAttrs(img: HTMLImageElement, node: PMNode): void {
  * dialog that removes a source has to remove it from the live DOM too, and
  * there is no diffing worth doing on two or three elements.
  *
- * `controls` is forced on regardless of what the node says. A video with no
- * controls in a read-only page is a design choice; in an editor it is an opaque
- * rectangle the author cannot scrub, and the attribute the document stores is
- * unaffected either way because stored HTML is serialized from the node.
+ * The player is rendered *without* controls, and made inert by CSS, so that in
+ * the editor it is a preview rather than a working player. That is not a
+ * limitation being accepted quietly -- it is the only arrangement in which the
+ * author can select the thing at all.
+ *
+ * A `<video controls>` handles pointer events in its native control chrome, and
+ * Firefox handles them for the whole element: no `pointerdown`, `mousedown` or
+ * `click` listener anywhere in the editor's DOM ever fires, so ProseMirror never
+ * sees the gesture and never makes a `NodeSelection`. Since selecting the player
+ * is how the toolbar knows to edit rather than insert, a video in Firefox could
+ * be inserted and then never edited again. Chromium and WebKit let a click on
+ * the picture area through, which is exactly the sort of difference that ships.
+ *
+ * Neither `controls` nor the stored markup is affected: stored HTML is
+ * serialized from the node, not from this DOM, so what the document says about
+ * controls is untouched and the player is fully interactive on the page.
  */
 function applyVideoAttrs(el: HTMLVideoElement, node: PMNode): void {
   const src = node.attrs['src'] as string | null
@@ -93,7 +105,12 @@ function applyVideoAttrs(el: HTMLVideoElement, node: PMNode): void {
   const poster = node.attrs['poster'] as string | null
   if (poster !== null) el.setAttribute('poster', poster)
   else el.removeAttribute('poster')
-  el.controls = true
+  // Not `controls = true`: see the note above. The element also must not
+  // advertise a control bar it will not honour.
+  el.controls = false
+  // Enough to paint a first frame for a player with no poster, without
+  // fetching the whole file into an editor nobody is watching it in.
+  el.preload = 'metadata'
   for (const child of Array.from(el.children)) child.remove()
   const furniture = node.attrs['furniture'] as string | null
   if (furniture) {

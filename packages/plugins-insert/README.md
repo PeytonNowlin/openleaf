@@ -1,6 +1,6 @@
 # `@openleaf-editor/plugins-insert`
 
-Insert and structure tools for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): media embeds, collapsible sections, named anchors, a character map, emoji, date and time, page breaks, snippets, and image resize handles.
+Insert and structure tools for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): media embeds, collapsible sections, named anchors, a character map, emoji, date and time, page breaks, snippets, and drag-resize handles for images and video.
 
 The matching **schema nodes live in `@openleaf-editor/core`**, so stored `<video>`, `<iframe>`, `<details>` and `<figure>` round-trip whether or not this package is loaded. This bundle is the editing chrome.
 
@@ -68,7 +68,7 @@ registerImageClasses(['align-left', 'full-width'])
 
 | Id | Control |
 | --- | --- |
-| `media` | Insert media (image, video, audio, allowlisted embed) |
+| `media` | Insert media (video, audio, allowlisted embed) — or edit the selected player |
 | `details` | Collapsible section |
 | `anchor` | Named anchor |
 | `charmap` | Character map |
