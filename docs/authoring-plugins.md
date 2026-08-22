@@ -33,7 +33,7 @@ is the better illustration, it says so.
 | Add a toolbar button with active/enabled state | `registerToolbarItem(spec)` | Works |
 | Add icons | `registerIcons(paths)` | Works |
 | Push state a predicate cannot derive | `element.toolbarInstance?.setItemState(id, …)` | Works, per editor |
-| Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins |
+| Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins. A replacement for `link` must round-trip `rel` and `id` the same way `promptForLink` does — merge `noopener noreferrer` for `_blank`, do not wipe author tokens. |
 | Reach the live view | `element.view` | Works |
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
 | **Add a node or mark type** | `registerSchemaExtension({ id, nodes, marks })` | Works — see [1.1](#11-schema-extensions), and note the timing rule: register **before** the editor is built |

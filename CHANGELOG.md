@@ -48,6 +48,15 @@ entries below say so explicitly when they do.
   public API.
 - The core bundle's gzip budget rises to 110 KB, measured at 108.0.
 
+### Fixed
+
+- **Editing a link through the dialog no longer deletes `rel` or `id`.** Issue
+  #14 restored `target`; Save still synthesized `rel` from the new-window
+  checkbox and wrote `id: null`. Author tokens (`nofollow`, `sponsored`, `me`,
+  …) are kept, `noopener noreferrer` is merged in for `_blank` rather than
+  replacing the attribute, and `id` round-trips. The same `run` handler backs
+  the toolbar, context menu, and selection toolbar.
+
 ## 0.1.0-beta.2 - 2026-08-19
 
 The formatting and structure release. Five new packages, so read the install

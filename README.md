@@ -323,7 +323,10 @@ OpenLeaf applies different rules to different sources:
 
 Round-trip fixtures cover legacy CMS markup, bidirectional text, nested lists,
 tables, Word, and Google Docs. A change that reduces stored-content fidelity is
-treated as a regression even when the resulting HTML appears cleaner.
+treated as a regression even when the resulting HTML appears cleaner. The link
+dialog is part of that contract: Save merges `noopener noreferrer` onto an
+existing `rel` when the link opens in a new window, and it round-trips `id`.
+It does not replace author tokens such as `nofollow` or `sponsored`.
 
 If OpenLeaf changes or drops real-world markup from your CMS, a redacted fixture
 is one of the most useful contributions you can make. See
