@@ -178,6 +178,51 @@ describe('promptForImage with an image list', () => {
   })
 })
 
+describe('promptForImage when editing', () => {
+  it('prefills the fields and keeps dimensions the dialog does not expose', async () => {
+    const pending = promptForImage(document, {
+      existing: {
+        src: '/a.png',
+        alt: 'A goat on a roof',
+        title: 'Goat',
+        className: 'rounded',
+        align: 'left',
+        caption: 'Fig 1',
+        width: '640',
+        height: '480',
+      },
+    })
+    const form = openForm()
+    expect(form.querySelector('h2')?.textContent).toBe('Edit image')
+    expect(control<HTMLInputElement>(form, 'src').value).toBe('/a.png')
+    expect(control<HTMLInputElement>(form, 'alt').value).toBe('A goat on a roof')
+    expect(control<HTMLInputElement>(form, 'title').value).toBe('Goat')
+    expect(control<HTMLInputElement>(form, 'className').value).toBe('rounded')
+    expect(control<HTMLSelectElement>(form, 'align').value).toBe('left')
+    expect(control<HTMLInputElement>(form, 'caption').value).toBe('Fig 1')
+    submit(form)
+    expect(await pending).toMatchObject({
+      src: '/a.png',
+      alt: 'A goat on a roof',
+      title: 'Goat',
+      className: 'rounded',
+      align: 'left',
+      caption: 'Fig 1',
+      width: '640',
+      height: '480',
+    })
+  })
+
+  it('ticks decorative when the stored alt is empty', async () => {
+    const pending = promptForImage(document, { existing: { src: '/a.png', alt: '' } })
+    const form = openForm()
+    const decorative = control<HTMLInputElement>(form, 'decorative')
+    expect(decorative.checked).toBe(true)
+    submit(form)
+    expect((await pending)?.alt).toBe('')
+  })
+})
+
 /**
  * Addresses the editor will not store.
  *

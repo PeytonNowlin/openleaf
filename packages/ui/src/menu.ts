@@ -291,7 +291,7 @@ export class PopupMenu {
       button.className = 'ol-menu-item'
       button.setAttribute('role', 'menuitem')
       button.dataset['olId'] = spec.id
-      button.textContent = t(entry.label ?? spec.label)
+      button.textContent = t(entry.label ?? spec.labelFor?.(view.state) ?? spec.label)
       const isEnabled = enabled(spec, view.state, this.#host)
       button.setAttribute('aria-disabled', isEnabled ? 'false' : 'true')
       button.tabIndex = -1

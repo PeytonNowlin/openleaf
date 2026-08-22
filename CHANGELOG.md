@@ -24,6 +24,11 @@ entries below say so explicitly when they do.
   central directory are refused so a partial inflate walk cannot undercount.
 ### Fixed
 
+- **Selecting an image and opening the Image dialog no longer wipes alt text,
+  caption, size, alignment, or class.** The same toolbar and context-menu item
+  now prefills from the selected image (including a figure's caption) and
+  updates that node in place, so alt text is editable after insert. The control
+  reads "Edit image" while an image is selected.
 - **Preserved block elements inside a blockquote or list item no longer grow
   two empty paragraphs on every save.** `unknownInline` declined only
   lossless wrappers, so a `<div class="callout">` (or any other tag the HTML

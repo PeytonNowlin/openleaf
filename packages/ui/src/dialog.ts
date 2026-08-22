@@ -776,6 +776,8 @@ export interface ImagePromptOptions {
     className?: string | null
     align?: 'left' | 'right' | 'center' | null
     caption?: string | null
+    width?: string | null
+    height?: string | null
   }
 }
 
@@ -899,7 +901,7 @@ export async function promptForImage(
 
   return showForm<ImageResult>(
     doc,
-    file ? 'Describe this image' : 'Insert image',
+    file ? 'Describe this image' : existing ? 'Edit image' : 'Insert image',
     fields,
     {
       locale,
@@ -907,6 +909,7 @@ export async function promptForImage(
       extraCheckbox: {
         name: 'decorative',
         label: 'This image is decorative and needs no description',
+        checked: existing?.alt === '',
       },
       ...(file ? { note: inLocale('Ready to upload: {file}', { file: file.name }) } : {}),
       busyLabel: 'Uploading…',
@@ -948,7 +951,12 @@ export async function promptForImage(
       const alt = values['decorative'] === 'on' ? '' : (values['alt'] ?? '')
 
       if (!chosen || !upload) {
-        return { value: finish(src, alt, null, null, values) }
+        // Keep dimensions the dialog does not expose. Uploading a new file
+        // replaces them with what the uploader measured; a typed-address save
+        // must not zero them out or a prefilled edit drops width and height.
+        return {
+          value: finish(src, alt, existing?.width ?? null, existing?.height ?? null, values),
+        }
       }
 
       return upload(chosen).then((result) => ({
