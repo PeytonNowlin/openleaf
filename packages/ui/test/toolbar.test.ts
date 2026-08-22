@@ -470,6 +470,192 @@ describe('the overflow menu', () => {
   })
 })
 
+describe('source mode', () => {
+  /*
+   * `setSourceMode(true)` promises that every control except `source` goes
+   * unavailable, because in source view a formatting command runs against the
+   * hidden document and leaving source view reparses the textarea over the
+   * result -- so the edit is silently destroyed. Buttons and registered
+   * `type: 'select'` items were covered; the block-type select was not, and it
+   * is the one control that can restructure a whole block.
+   */
+  it('disables the block-type select, and lets it back out again', () => {
+    const { toolbar } = mount('blockType source')
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="blockType"]')!
+
+    expect(select.disabled).toBe(false)
+
+    toolbar.setSourceMode(true)
+    expect(select.disabled).toBe(true)
+    expect(select.getAttribute('aria-disabled')).toBe('true')
+
+    toolbar.setSourceMode(false)
+    expect(select.disabled).toBe(false)
+    expect(select.getAttribute('aria-disabled')).toBe('false')
+  })
+
+  it('leaves the way out of source view operable', () => {
+    const { toolbar } = mount('blockType source')
+    toolbar.setSourceMode(true)
+    const source = toolbar.el.querySelector<HTMLButtonElement>('[data-ol-id="source"]')!
+    expect(source.getAttribute('aria-disabled')).toBe('false')
+  })
+
+  it('does not format the hidden document when the select is driven anyway', () => {
+    const { toolbar, view } = mount('blockType source')
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="blockType"]')!
+    toolbar.setSourceMode(true)
+
+    const before = serializeHtml(view.state.doc)
+    // A real disabled select cannot fire `change`; this is the synthetic event
+    // an enhancer or a test could still deliver.
+    select.value = '3'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+
+    expect(serializeHtml(view.state.doc)).toBe(before)
+  })
+
+  it('reaches a native select any custom control rendered, not just block type', () => {
+    registerToolbarItem({
+      id: 'nativeSelect',
+      type: 'custom',
+      label: 'Native select',
+      render: () => {
+        const el = document.createElement('select')
+        el.className = 'ol-select'
+        el.dataset['olId'] = 'nativeSelect'
+        // The control tracks readonly on its own and knows nothing about source
+        // mode -- which is every third-party control. It also runs AFTER the
+        // toolbar used to write availability, so this is the clobber that made
+        // fixing only the customs loop insufficient.
+        return { el, update: () => { el.disabled = false } }
+      },
+    })
+    const { toolbar } = mount('nativeSelect')
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="nativeSelect"]')!
+
+    toolbar.setSourceMode(true)
+    expect(select.disabled).toBe(true)
+
+    // And on every later transaction, not just the one that entered source mode.
+    toolbar.update(fakeView().state)
+    expect(select.disabled).toBe(true)
+  })
+
+  /*
+   * Suspension can only take a control AWAY. A control's own `update` is the
+   * authority on whether its command applies to this selection -- the table
+   * grid disables its trigger when `canInsert` is false -- so a toolbar that
+   * wrote "available" over that would show an enabled trigger for a command
+   * that does nothing. Reported by Codex on #92; the first version of this fix
+   * had exactly that regression.
+   */
+  it('does not re-enable a trigger the control itself disabled', () => {
+    let enabled = false
+    registerToolbarItem({
+      id: 'stateful',
+      type: 'custom',
+      label: 'Stateful',
+      render: () => {
+        const el = document.createElement('div')
+        const trigger = document.createElement('button')
+        trigger.className = 'ol-btn'
+        trigger.dataset['olId'] = 'stateful'
+        el.appendChild(trigger)
+        return {
+          el,
+          update: () => trigger.setAttribute('aria-disabled', enabled ? 'false' : 'true'),
+        }
+      },
+    })
+    const { toolbar } = mount('stateful')
+    const trigger = toolbar.el.querySelector<HTMLElement>('[data-ol-id="stateful"]')!
+
+    toolbar.update(fakeView().state)
+    expect(trigger.getAttribute('aria-disabled')).toBe('true')
+
+    // Source mode and back: the control still says unavailable, so it must
+    // still read unavailable.
+    toolbar.setSourceMode(true)
+    expect(trigger.getAttribute('aria-disabled')).toBe('true')
+    toolbar.setSourceMode(false)
+    expect(trigger.getAttribute('aria-disabled')).toBe('true')
+
+    // And when the control changes its mind, the toolbar is not in the way.
+    enabled = true
+    toolbar.update(fakeView().state)
+    expect(trigger.getAttribute('aria-disabled')).toBe('false')
+  })
+
+  it('does not re-enable a select the control itself disabled', () => {
+    let usable = false
+    registerToolbarItem({
+      id: 'statefulSelect',
+      type: 'custom',
+      label: 'Stateful select',
+      render: () => {
+        const el = document.createElement('select')
+        el.dataset['olId'] = 'statefulSelect'
+        return { el, update: () => { el.disabled = !usable } }
+      },
+    })
+    const { toolbar } = mount('statefulSelect')
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="statefulSelect"]')!
+
+    toolbar.setSourceMode(true)
+    expect(select.disabled).toBe(true)
+    toolbar.setSourceMode(false)
+    // The control's own answer, not the toolbar's release.
+    expect(select.disabled).toBe(true)
+
+    usable = true
+    toolbar.update(fakeView().state)
+    expect(select.disabled).toBe(false)
+  })
+
+  it('restores a control that has no update of its own', () => {
+    registerToolbarItem({
+      id: 'staticSelect',
+      type: 'custom',
+      label: 'Static select',
+      render: () => {
+        const el = document.createElement('select')
+        el.dataset['olId'] = 'staticSelect'
+        // No `update`: nothing will put `disabled` back but the toolbar itself.
+        return { el }
+      },
+    })
+    const { toolbar } = mount('staticSelect')
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="staticSelect"]')!
+
+    toolbar.setSourceMode(true)
+    expect(select.disabled).toBe(true)
+    toolbar.setSourceMode(false)
+    expect(select.disabled).toBe(false)
+    expect(select.getAttribute('aria-disabled')).toBe('false')
+  })
+
+  it('disables a native custom select under readonly too', () => {
+    const host = document.createElement('div')
+    host.setAttribute('readonly', '')
+    registerToolbarItem({
+      id: 'nativeSelect',
+      type: 'custom',
+      label: 'Native select',
+      render: () => {
+        const el = document.createElement('select')
+        el.dataset['olId'] = 'nativeSelect'
+        return { el }
+      },
+    })
+    const { toolbar } = mount('nativeSelect', { host })
+    toolbar.update(fakeView().state)
+    expect(
+      toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="nativeSelect"]')!.disabled,
+    ).toBe(true)
+  })
+})
+
 describe('registry reset', () => {
   it('can repopulate defaults after tests clear the registry', () => {
     for (const toolbar of mounted.splice(0)) toolbar.destroy()
