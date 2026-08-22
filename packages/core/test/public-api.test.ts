@@ -74,7 +74,7 @@ const EXPECTED_EXPORTS = [
   'setLink', 'unsetLink', 'insertImage',
   'insertAudio', 'insertDetails', 'insertHtml', 'insertIframe', 'insertNamedAnchor',
   'insertNonBreakingSpace', 'insertPageBreak', 'insertText', 'insertVideo', 'setHeadingId',
-  'selectedMedia', 'updateMedia',
+  'selectedImage', 'selectedMedia', 'updateImage', 'updateMedia',
   // history
   'undo', 'redo',
   // keymap

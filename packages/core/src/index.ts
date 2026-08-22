@@ -147,14 +147,17 @@ export {
   toggleOrderedList,
   // links and images
   insertImage,
+  selectedImage,
   selectedMedia,
   setLink,
   unsetLink,
+  updateImage,
   updateMedia,
   type ImageAttrs,
   type LinkAttrs,
   type MediaAttrs,
   type MediaSource,
+  type SelectedImage,
   type SelectedMedia,
   // history
   redo,

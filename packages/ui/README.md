@@ -50,6 +50,10 @@ toolbar knowing their ids.
 Registering an item declares capability; it does not rearrange anyone's toolbar.
 Layout is the integrator's `toolbar` attribute.
 
+The built-in `image` item inserts, or edits the selected image -- the same
+pattern as the insert-media control. `labelFor` is how its accessible name
+becomes "Edit image" while a picture is selected.
+
 ## The toolbar is one tab stop
 
 It is a `role="toolbar"` with a roving tabindex, which is the whole reason the

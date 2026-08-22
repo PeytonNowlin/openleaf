@@ -23,6 +23,7 @@ import {
   outdent,
   redo,
   safeFontFamily,
+  selectedImage,
   setFontFamily,
   setFontSize,
   setLineHeight,
@@ -39,6 +40,7 @@ import {
   toggleUnderline,
   undo,
   unsetLink,
+  updateImage,
   type Align,
 } from '@openleaf-editor/core'
 import type { Command, EditorState } from 'prosemirror-state'
@@ -418,21 +420,41 @@ export function registerDefaultItems(): void {
     kind: 'action',
     label: 'Insert image',
     icon: 'image',
+    // Insert and edit are the same control, as they are for media: a separate
+    // "image properties" item is one the author has to discover, and without
+    // it there is no way to revise alt text after insert.
+    labelFor: (state) => (selectedImage(state) ? 'Edit image' : 'Insert image'),
     run: ({ view, host }) => {
       // One item, two dialogs, decided by whether this page can upload. A file
       // picker that appears and then fails because no uploader was registered is
       // worse than no picker: the author has already chosen the file.
       const uploader = imageUploaderFor(host)
-      const options = uploader
-        ? { upload: (file: File) => runUploader(uploader, file, host), host }
-        : { host }
+      const current = selectedImage(view.state)
+      const options = {
+        host,
+        ...(uploader ? { upload: (file: File) => runUploader(uploader, file, host) } : {}),
+        ...(current
+          ? {
+              existing: {
+                src: current.src,
+                alt: current.alt,
+                title: current.title,
+                className: current.className,
+                align: current.align,
+                caption: current.caption,
+                width: current.width,
+                height: current.height,
+              },
+            }
+          : {}),
+      }
 
       void promptForImage(host.ownerDocument, options).then((result) => {
         if (!result) {
           view.focus()
           return
         }
-        insertImage({
+        const attrs = {
           src: result.src,
           alt: result.alt,
           title: result.title,
@@ -440,8 +462,22 @@ export function registerDefaultItems(): void {
           height: result.height,
           align: result.align,
           className: result.className,
-          ...(result.caption ? { caption: result.caption } : {}),
-        })(view.state, view.dispatch, view)
+          caption: result.caption,
+        }
+        if (current) {
+          updateImage(attrs)(view.state, view.dispatch, view)
+        } else {
+          insertImage({
+            src: result.src,
+            alt: result.alt,
+            title: result.title,
+            width: result.width,
+            height: result.height,
+            align: result.align,
+            className: result.className,
+            ...(result.caption ? { caption: result.caption } : {}),
+          })(view.state, view.dispatch, view)
+        }
         view.focus()
       })
     },

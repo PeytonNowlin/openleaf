@@ -188,7 +188,7 @@ with no build step and no second install.
 | `registerImageUploader(fn)` | Handle image uploads. `element.imageUploader` overrides it for one editor. |
 | `registerFilePicker(fn)` | Supply a file browser for link and image dialogs. |
 | `registerLinkList(items)` / `registerImageList(items)` | Preset lists for those dialogs. |
-| `registerImageClasses(items)` | Preset classes offered in the image dialog. |
+| `registerImageClasses(items)` | Preset classes offered in the image dialog. The dialog prefills from a selected image (`promptForImage({ existing })`) and the `image` item updates in place via `updateImage`. |
 | `normalizePastedHtml(html)` | Word/Google Docs paste cleanup, usable outside the editor. |
 
 ---

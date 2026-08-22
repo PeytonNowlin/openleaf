@@ -12,6 +12,14 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Selecting an image and opening the Image dialog no longer wipes alt text,
+  caption, size, alignment, or class.** The same toolbar and context-menu item
+  now prefills from the selected image (including a figure's caption) and
+  updates that node in place, so alt text is editable after insert. The control
+  reads "Edit image" while an image is selected.
+
 ### Added
 
 - **Typography toolbar controls in `@openleaf-editor/ui`** — font family, font

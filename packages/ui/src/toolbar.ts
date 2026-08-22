@@ -89,6 +89,7 @@ interface Control {
   /** Last rendered state, so the DOM is touched only on a real change. */
   active: boolean | null
   enabled: boolean | null
+  label: string | null
   /** Set by setItemState; overrides the predicate result when present. */
   forcedActive?: boolean
   forcedEnabled?: boolean
@@ -481,8 +482,10 @@ export class Toolbar {
     button.className = 'ol-btn'
     button.dataset['olId'] = spec.id
 
-    // The accessible name stays constant across states. Baking "pressed" into
-    // it would double up with what the platform already announces.
+    // The accessible name stays constant across pressed/unpressed. Baking
+    // "pressed" into it would double up with what the platform already
+    // announces. A control that does two different things (insert versus
+    // edit) may still change its name via `labelFor`.
     button.setAttribute('aria-label', t(spec.label))
 
     // The title is the label and nothing more. Per accname `title` becomes the
@@ -509,7 +512,7 @@ export class Toolbar {
     button.addEventListener('mousedown', (event) => event.preventDefault())
     button.addEventListener('click', () => this.#invoke(spec))
 
-    this.#controls.set(spec.id, { spec, el: button, active: null, enabled: null })
+    this.#controls.set(spec.id, { spec, el: button, active: null, enabled: null, label: null })
     return button
   }
 
@@ -738,6 +741,15 @@ export class Toolbar {
         // removed from the roving tabindex and cannot be reached or announced,
         // so an author using a screen reader cannot discover it exists.
         control.el.setAttribute('aria-disabled', enabled ? 'false' : 'true')
+      }
+
+      if (spec.labelFor) {
+        const label = t(spec.labelFor(state))
+        if (label !== control.label) {
+          control.label = label
+          control.el.setAttribute('aria-label', label)
+          control.el.title = label
+        }
       }
 
       if ((spec.kind ?? 'action') === 'toggle') {

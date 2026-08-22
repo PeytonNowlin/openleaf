@@ -202,7 +202,9 @@ and attribute-driven:
 ```
 
 - **Menubar** — `menubar` enables Edit, Insert, Format, View, and Help.
-- **Context menus** — right-click a link, image, or table. Set `contextmenu="none"` to disable.
+- **Context menus** — right-click a link, image, or table. An image offers
+  **Edit image** and prefills the dialog from the selected picture. Set
+  `contextmenu="none"` to disable.
 - **Floating toolbars** — `selection-toolbar` and `insert-toolbar`.
 - **Fullscreen, help, visual aids** — toolbar ids `fullscreen`, `help`, `visualAids`. F1 opens help.
 - **Autoresize / inline** — grow with content, or hide chrome until focus.

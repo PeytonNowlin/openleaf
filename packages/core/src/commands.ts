@@ -957,15 +957,18 @@ export {
   insertPageBreak,
   insertText,
   insertVideo,
+  selectedImage,
   selectedMedia,
   setHeadingId,
   setLink,
   unsetLink,
+  updateImage,
   updateMedia,
   type ImageAttrs,
   type LinkAttrs,
   type MediaAttrs,
   type MediaSource,
+  type SelectedImage,
   type SelectedMedia,
 } from './insert-commands.js'
 

@@ -66,6 +66,11 @@ activeFontFamily(view.state)                          // 'Georgia' | null
 setFontFamily('Georgia')(view.state, view.dispatch)   // boolean
 ```
 
+`selectedImage` / `updateImage` (and the matching media pair) are how the
+insert-image control also edits: a `NodeSelection` on the picture or its
+`<figure>` prefills the dialog, and Save uses `setNodeMarkup` so caption,
+class and dimensions survive.
+
 A predicate returns `null` for a mixed selection rather than the first value it
 finds -- a dropdown showing "Georgia" for a range that is half Georgia would be
 worse than showing nothing.
