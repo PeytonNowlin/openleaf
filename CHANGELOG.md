@@ -47,6 +47,19 @@ entries below say so explicitly when they do.
   `reader.read()` waits forever. `assertImportableDocx` runs on every imported
   `.docx`, so an import hung with nothing to report rather than succeeding or
   failing. Ten tests timed out on every push because of it.
+- **A documented bundle-size claim is checked against a tolerance that survives
+  a different zlib.** `gzipSync` output length is not reproducible across zlib
+  builds -- CI's Node 22 weighs the docx bundle at 125.4 KB where a Node 26
+  workstation weighs the same bytes at 124.5 KB -- so the ~100-byte tolerance
+  meant the claim written on one machine could not pass on the other, and the
+  documentation step failed on a mismatch no edit could fix. Now a percent of
+  the measurement. The exact ceilings in `BUDGETS_KB` are still what stop a real
+  size regression.
+- **The glyph-picker Tab test no longer races the close it provokes.** Tab
+  moves focus out of the grid and `focusout` then closes the panel by design, so
+  the cell leaves the accessibility tree; the assertion was a role query and
+  reported "element(s) not found" whenever the close landed first. It locates
+  the cell by attribute now, the way the grid locators in that file already do.
 
 ### Security
 

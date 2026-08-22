@@ -90,7 +90,13 @@ test.describe('the glyph pickers', () => {
     await button.click()
     await expect(charmapGrid(page).getByRole('gridcell', { name: 'Copyright' })).toBeFocused()
     await page.keyboard.press('Tab')
-    await expect(charmapGrid(page).getByRole('gridcell', { name: 'Copyright' })).not.toBeFocused()
+    // By attribute, not by role -- the same reason the grid locators above are
+    // by class. Tab moves focus out, and `focusout` then closes the panel on
+    // purpose ("leaving by any route closes"), which takes the cell out of the
+    // accessibility tree. A role query raced that close and reported
+    // "element(s) not found" on the runs where the close landed first, which is
+    // what made this test flake rather than anything about Tab.
+    await expect(charmapGrid(page).locator('[aria-label="Copyright"]')).not.toBeFocused()
   })
 
   test('close on Escape and return focus to the trigger', async ({ page }) => {

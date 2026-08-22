@@ -19,8 +19,22 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gzipSync } from 'node:zlib'
 
-/** ~100 bytes. A one-decimal claim stays green across a rounding wobble. */
-export const SIZE_CLAIM_TOLERANCE_KB = 0.1
+/**
+ * How far a documented size claim may sit from today's measurement.
+ *
+ * This was ~100 bytes, which assumed the measurement is reproducible. It is
+ * not. `gzipSync` is zlib's deflate, and different zlib builds emit different
+ * output lengths for identical input: CI's Node 22 weighs the docx bundle at
+ * 125.4 KB where a Node 26 workstation weighs the same bytes at 124.5 KB. So a
+ * claim written on either machine failed on the other, and the gate stayed red
+ * on a mismatch no edit to the docs could resolve -- correcting the number for
+ * CI just broke it for everyone running `pnpm verify` locally.
+ *
+ * Proportional, floored at the old rounding wobble. The exact ceilings in
+ * BUDGETS_KB are what stop a real size regression; this check exists to keep
+ * prose honest, and a percent is well inside what a reader would call accurate.
+ */
+export const sizeClaimToleranceKb = (measuredKb) => Math.max(0.1, measuredKb * 0.01)
 
 /**
  * The plugin bundles were previously ungated, so they could grow without limit
