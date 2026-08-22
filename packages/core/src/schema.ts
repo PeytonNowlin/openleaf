@@ -10,7 +10,7 @@
 
 import { Schema, type Attrs, type DOMOutputSpec, type MarkSpec, type NodeSpec } from 'prosemirror-model'
 import { INLINE_STYLE_PROPERTIES, applyStyleAttribute, indentCss, indentLevels, isFullyModelledStyle, modelledValue, parseDeclarations, safeAlign, safeColor, safeDir, safeFontFamily, safeFontSize, safeLang, safeLineHeight, safeListStyle, serializeDeclarations, type Align, type Dir, type ListStyle } from './css.js'
-import { serializationTarget, unknownBlock, unknownInline } from './preserve.js'
+import { isLosslesslyUnwrappable, serializationTarget, unknownBlock, unknownInline } from './preserve.js'
 import {
   audio,
   details,
@@ -390,6 +390,25 @@ function isSpanOnlyStyling(el: Element): boolean {
   return true
 }
 
+/**
+ * True when a colour/font mark must not fire on this element.
+ *
+ * Those marks used to be `style:` rules. A style rule does not consume the
+ * element, which is why `<p style="color:red">` and a `<div>` wrapper still
+ * yield a mark -- and why a `<span style="color:red" class="hl">` yielded
+ * BOTH the mark and a preserved atom, nested. The preservation catch-all
+ * keeps any span `isLosslesslyUnwrappable` refuses, so the mark has to
+ * refuse the same elements.
+ *
+ * The replacement is a `tag: '*'` rule with `consuming: false`: same
+ * "applies to whoever carries the declaration" behaviour, but `getAttrs`
+ * receives the element and can decline. Hosts the schema models are not
+ * spans the catch-all would keep, so they still produce the mark.
+ */
+function declineStyleMarkOnPreservedAtom(el: Element): boolean {
+  return el.nodeName.toLowerCase() === 'span' && !isLosslesslyUnwrappable(el)
+}
+
 /** The base mark specs. */
 export const coreMarks: Record<string, MarkSpec> = {
   strong: {
@@ -430,26 +449,34 @@ export const coreMarks: Record<string, MarkSpec> = {
    * would have the second command overwrite the first's value with a default.
    * Two marks compose the way the toolbar's two controls do.
    *
-   * Both are parsed through a `style` rule, not a tag rule, and that choice is
-   * load-bearing. ProseMirror applies style rules to whatever element carries
-   * the declaration, so `<span style="color:red">`, `<p style="color:red">` and
-   * a `<div>` wrapper all yield the same mark -- whereas a `span[style]` tag rule
-   * would claim the span, drop it, and quietly lose any other declaration on it.
+   * Parsed through a `tag: '*'` rule that does not consume the element, not a
+   * `span[style]` tag rule. The un-consuming match is load-bearing: it is how
+   * `<span style="color:red">`, `<p style="color:red">` and a `<div>` wrapper
+   * all yield the same mark -- whereas a `span[style]` rule would claim the
+   * span, drop it, and quietly lose any other declaration on it.
+   *
+   * It is not a `style:` rule either. Those also do not consume, but they
+   * never see the element, so they cannot decline when preservation is going
+   * to keep it. `declineStyleMarkOnPreservedAtom` is that decline.
    *
    * The value is normalized by `safeColor`, which folds `rgb(255, 0, 0)` back to
-   * `#ff0000`. That is not cosmetic: ProseMirror reads style rules through the
-   * CSSOM, which returns the functional form for an authored hex colour, so
-   * without the fold every hex colour in an archive would be rewritten longer on
-   * the first save.
+   * `#ff0000`. That is not cosmetic: the rule still reads through the CSSOM
+   * (`el.style.color`), which returns the functional form for an authored hex
+   * colour, so without the fold every hex colour in an archive would be
+   * rewritten longer on the first save.
    */
   text_color: {
     attrs: { color: {} },
     parseDOM: [
       {
-        style: 'color',
-        getAttrs(value) {
-          const color = safeColor(value)
-          return color ? { color } : false
+        tag: '*',
+        consuming: false,
+        getAttrs(dom) {
+          const el = dom as HTMLElement
+          const color = safeColor(el.style.color)
+          if (!color) return false
+          if (declineStyleMarkOnPreservedAtom(el)) return false
+          return { color }
         },
       },
       {
@@ -506,10 +533,14 @@ export const coreMarks: Record<string, MarkSpec> = {
     attrs: { family: {} },
     parseDOM: [
       {
-        style: 'font-family',
-        getAttrs(value) {
-          const family = safeFontFamily(value)
-          return family ? { family } : false
+        tag: '*',
+        consuming: false,
+        getAttrs(dom) {
+          const el = dom as HTMLElement
+          const family = safeFontFamily(el.style.fontFamily)
+          if (!family) return false
+          if (declineStyleMarkOnPreservedAtom(el)) return false
+          return { family }
         },
       },
       {
@@ -532,10 +563,14 @@ export const coreMarks: Record<string, MarkSpec> = {
     attrs: { size: {} },
     parseDOM: [
       {
-        style: 'font-size',
-        getAttrs(value) {
-          const size = safeFontSize(value)
-          return size ? { size } : false
+        tag: '*',
+        consuming: false,
+        getAttrs(dom) {
+          const el = dom as HTMLElement
+          const size = safeFontSize(el.style.fontSize)
+          if (!size) return false
+          if (declineStyleMarkOnPreservedAtom(el)) return false
+          return { size }
         },
       },
     ],
