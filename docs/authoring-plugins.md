@@ -33,7 +33,7 @@ is the better illustration, it says so.
 | Add a toolbar button with active/enabled state | `registerToolbarItem(spec)` | Works |
 | Add icons | `registerIcons(paths)` | Works |
 | Push state a predicate cannot derive | `element.toolbarInstance?.setItemState(id, …)` | Works, per editor |
-| Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins |
+| Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins. A replacement for `link` must round-trip `rel` and `id` the same way `promptForLink` does — merge `noopener noreferrer` for `_blank`, do not wipe author tokens. |
 | Reach the live view | `element.view` | Works |
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
 | **Add a node or mark type** | `registerSchemaExtension({ id, nodes, marks })` | Works — see [1.1](#11-schema-extensions), and note the timing rule: register **before** the editor is built |
@@ -437,6 +437,10 @@ registerToolbarItem({
 })
 ```
 
+`label` is the default accessible name. `labelFor(state)` is for a control that
+does two different things, the way the built-in `image` item inserts or edits.
+Do not use it to bake "pressed" into a toggle; `aria-pressed` already does that.
+
 For a preset dropdown, use `type: 'select'`. Option values should be the spelling
 the schema stores so `getValue` can match them after a round-trip:
 
@@ -567,7 +571,7 @@ your node is in a race it can lose. The ladder:
 |---|---|---|
 | 100 | `NEVER_PRESERVE` drop rules — `script`, `iframe`, `form`, `input`, `button`, `select`, `textarea`, `link`, `meta`, `template`, and more | Element **and its contents** are discarded |
 | 50 | The default for a rule with no `priority` — every real node in the schema | Your node parses |
-| 1 | `unknown_inline` catch-all, `context: 'paragraph/\|heading/'` | Inline debris becomes an inline atom |
+| 1 | `unknown_inline` catch-all, restricted to paragraph-holding containers | Inline debris becomes an inline atom. Tags the HTML parser will not keep inside a `<p>` (`div`, `section`, `figure`, … — `CLOSES_OPEN_P` in `preserve.ts`) are declined so they do not serialize inside a paragraph and grow two empty paragraphs on every save. |
 | 0 | `unknown_block` catch-all | Anything else becomes a block atom |
 
 **The practical rule: do not set `priority` at all.** The default 50 already
@@ -634,10 +638,11 @@ element will never see its content as a wrapper at all.
 
 #### If you add a normalization pass, guard it with `isInsidePreserved`
 
-`serializeHtml` runs `unwrapSoleCellParagraph` over the whole output to collapse
-`<td><p>x</p></td>` back to `<td>x</td>`, so that adopting OpenLeaf does not
-rewrite every cell of every table in an archive on first save. That pass used a
-plain `querySelectorAll('td, th')` and therefore reached *inside* preserved
+`serializeHtml` runs `unwrapSoleParagraph` over the whole output to collapse a
+sole attribute-free `<p>` inside `td`/`th`, `li`, `blockquote`, and a `<details>`
+body back to direct text, so that adopting OpenLeaf does not rewrite every list,
+quote, disclosure and table in an archive on first save. That pass used a
+plain `querySelectorAll` and therefore reached *inside* preserved
 markup — rewriting a table nested in an unrecognised wrapper that the editor had
 undertaken to return byte-identical.
 
@@ -647,7 +652,7 @@ guard:
 ```ts
 import { isInsidePreserved } from '@openleaf-editor/core'
 
-for (const el of host.querySelectorAll('td, th')) {
+for (const el of host.querySelectorAll('td, th, li, blockquote, details')) {
   if (isInsidePreserved(el)) continue
   // …your normalization…
 }
@@ -1147,8 +1152,36 @@ built — the ordinary case for a script tag — still reaches them.
 
 **What not to do.** Do not concatenate. `t('Deleted ') + n + t(' rows')` is
 untranslatable into any language whose word order differs from English, which is
-most of them. Build the whole sentence as one key and interpolate into the
-result.
+most of them. Build the whole sentence as one key and interpolate with `fill`:
+
+```ts
+import { fill, t } from '@openleaf-editor/ui'
+
+fill(t('{count} rows deleted'), { count: String(n) })
+```
+
+`fill` only reads own properties of the values object, so a `{constructor}`
+placeholder in a catalog is left alone rather than stringifying the Object
+constructor.
+
+### 4.11 Isolating nodes clamp the selection at their boundary
+
+`isolating: true` on a node spec is a join/lift contract. It is not, by itself,
+a selection contract. `TextSelection.between` will still build a range whose
+endpoints sit on opposite sides of that node, and Firefox and WebKit will
+report one from Shift+Arrow. Core installs `isolatingSelectionPlugin` in the
+element so that range is narrowed to the anchor's side before the next replace
+— the same clamp Chromium already does natively.
+
+If you add an isolating node, you do **not** need to reimplement that clamp.
+You do need the plugin if you embed ProseMirror yourself rather than using
+`<openleaf-editor>`: without it, a selection that starts in a `blockquote`
+(which can contain `group: 'block'`) and ends inside your node will throw
+`TransformError` on the next keystroke, and the recovery is a DOM-derived
+document with no undo entry. See GitHub issue #130.
+
+Mark a node isolating when joining across it is illegal (`details`, `figure`,
+table cells). Do not use it as a substitute for `group` restrictions.
 
 ---
 

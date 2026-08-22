@@ -16,10 +16,11 @@ import { coreSchema, disclosurePlugin, parseHtml, serializeHtml } from '../src/i
 
 let view: EditorView | undefined
 
-function mount(html: string, extra: Plugin[] = []): EditorView {
+function mount(html: string, extra: Plugin[] = [], editable = true): EditorView {
   const place = document.createElement('div')
   document.body.append(place)
   view = new EditorView(place, {
+    editable: () => editable,
     state: EditorState.create({
       doc: parseHtml(html, { schema: coreSchema() }),
       plugins: [disclosurePlugin(), ...extra],
@@ -118,6 +119,21 @@ describe('clicking a summary', () => {
     expect(undone.doc.firstChild?.attrs['open']).toBe(true)
     expect(serializeHtml(undone.doc)).not.toContain('outside!')
     expect(serializeHtml(undone.doc)).toContain('outside')
+  })
+
+  // `handleDOMEvents` is not behind ProseMirror's editable gate. Flipping
+  // `open` is a document change, so a read-only click used to mutate the node
+  // and fire `openleaf:change`. Leave the click alone: the browser can still
+  // expand a collapsed section in a non-contenteditable surface.
+  it('does not write the node when the view is not editable', () => {
+    const html = '<details><summary>More</summary><p>body</p></details>'
+    const v = mount(html, [], false)
+    const before = serializeHtml(v.state.doc)
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    v.dom.querySelector('summary')?.dispatchEvent(event)
+    expect(v.state.doc.firstChild?.attrs['open']).toBe(false)
+    expect(serializeHtml(v.state.doc)).toBe(before)
+    expect(event.defaultPrevented).toBe(false)
   })
 
   it('toggles the nearest details when they are nested', () => {

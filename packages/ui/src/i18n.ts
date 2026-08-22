@@ -8,7 +8,14 @@
  * without forking the catalog.
  */
 
-const catalogs = new Map<string, Record<string, string>>()
+// A Map, not a Record, because the lookup key is author-controlled (`formats=`
+// labels, listed-image titles, menu labels). A Record inherits
+// Object.prototype, so `catalog['constructor']` answered with the Object
+// constructor and `t()` returned a function -- which then rendered as
+// `function Object() { [native code] }` in the formats dropdown, and threw
+// `TypeError: t(...).replace is not a function` at the interpolating call
+// sites. Same class as LIST_STYLE_ALIASES in content-policy.
+const catalogs = new Map<string, Map<string, string>>()
 const listeners = new Set<() => void>()
 let locale = 'en'
 let scoped: string | null = null
@@ -67,8 +74,12 @@ export function setUiLocale(next: string): void {
 }
 
 export function registerTranslations(forLocale: string, messages: Record<string, string>): void {
-  const existing = catalogs.get(forLocale) ?? {}
-  catalogs.set(forLocale, { ...existing, ...messages })
+  let catalog = catalogs.get(forLocale)
+  if (!catalog) {
+    catalog = new Map()
+    catalogs.set(forLocale, catalog)
+  }
+  for (const [key, value] of Object.entries(messages)) catalog.set(key, value)
   // Notified whatever locale this is for. Each editor now carries its own, so
   // "does this match the document locale" no longer answers "does anybody care":
   // a catalog registered after the editors were built -- the ordinary case for a
@@ -76,15 +87,32 @@ export function registerTranslations(forLocale: string, messages: Record<string,
   notify()
 }
 
+function lookup(forLocale: string, source: string): string | undefined {
+  return catalogs.get(forLocale)?.get(source)
+}
+
 /** Translate a source string. Falls back to the string itself. */
 export function t(source: string): string {
   const current = scoped ?? locale
-  const exact = catalogs.get(current)?.[source]
-  if (exact) return exact
+  const exact = lookup(current, source)
+  if (exact !== undefined) return exact
   const language = current.split('-')[0]
   if (language && language !== current) {
-    const regional = catalogs.get(language)?.[source]
-    if (regional) return regional
+    const regional = lookup(language, source)
+    if (regional !== undefined) return regional
   }
-  return catalogs.get('en')?.[source] ?? source
+  return lookup('en', source) ?? source
+}
+
+/**
+ * Fill `{name}` placeholders from own properties of `values`.
+ *
+ * `values[name]` inherits Object.prototype the same way the catalog used to, so
+ * `{constructor}` in a translated template would stringify the Object
+ * constructor. `Object.hasOwn` keeps inherited members out of the substitution.
+ */
+export function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    Object.hasOwn(values, name) ? values[name]! : whole,
+  )
 }

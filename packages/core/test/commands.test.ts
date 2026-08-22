@@ -1,3 +1,4 @@
+import { history, undo } from 'prosemirror-history'
 import { TextSelection, type Command, EditorState } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import {
@@ -9,6 +10,7 @@ import {
   indent,
   insertHorizontalRule,
   insertImage,
+  isolatingSelectionPlugin,
   isMarkActive,
   isNodeActive,
   parseHtml,
@@ -142,7 +144,7 @@ describe('heading commands', () => {
 describe('list commands', () => {
   it('wraps a paragraph in a bullet list', () => {
     const state = cursorAt(stateFrom('<p>item</p>'), 3)
-    expect(html(run(state, toggleBulletList))).toBe('<ul><li><p>item</p></li></ul>')
+    expect(html(run(state, toggleBulletList))).toBe('<ul><li>item</li></ul>')
   })
 
   it('unwraps an existing bullet list', () => {
@@ -152,17 +154,17 @@ describe('list commands', () => {
 
   it('wraps in an ordered list', () => {
     const state = cursorAt(stateFrom('<p>item</p>'), 3)
-    expect(html(run(state, toggleOrderedList))).toBe('<ol><li><p>item</p></li></ol>')
+    expect(html(run(state, toggleOrderedList))).toBe('<ol><li>item</li></ol>')
   })
 
   it('converts a bullet list to an ordered list', () => {
     const state = cursorAt(stateFrom('<ul><li><p>item</p></li></ul>'), 4)
-    expect(html(run(state, toggleOrderedList))).toBe('<ol><li><p>item</p></li></ol>')
+    expect(html(run(state, toggleOrderedList))).toBe('<ol><li>item</li></ol>')
   })
 
   it('converts an ordered list to a bullet list', () => {
     const state = cursorAt(stateFrom('<ol><li><p>item</p></li></ol>'), 4)
-    expect(html(run(state, toggleBulletList))).toBe('<ul><li><p>item</p></li></ul>')
+    expect(html(run(state, toggleBulletList))).toBe('<ul><li>item</li></ul>')
   })
 
   it('reports list membership', () => {
@@ -175,7 +177,7 @@ describe('list commands', () => {
 describe('block commands', () => {
   it('wraps in a blockquote and lifts back out', () => {
     const quoted = run(cursorAt(stateFrom('<p>quote me</p>'), 3), toggleBlockquote)
-    expect(html(quoted)).toBe('<blockquote><p>quote me</p></blockquote>')
+    expect(html(quoted)).toBe('<blockquote>quote me</blockquote>')
 
     const unquoted = run(cursorAt(quoted!, 4), toggleBlockquote)
     expect(html(unquoted)).toBe('<p>quote me</p>')
@@ -189,7 +191,32 @@ describe('block commands', () => {
       stateFrom('<blockquote><ul><li><p>item</p></li></ul></blockquote>'),
       5,
     )
-    expect(html(run(state, toggleBlockquote))).toBe('<ul><li><p>item</p></li></ul>')
+    expect(html(run(state, toggleBlockquote))).toBe('<ul><li>item</li></ul>')
+  })
+
+  it('does not throw when a selection spans a quote into details (#130)', () => {
+    let state = EditorState.create({
+      doc: parseHtml(
+        '<blockquote><p>quote</p></blockquote><details open><summary>s</summary><p>body</p></details>',
+      ),
+      plugins: [history(), isolatingSelectionPlugin()],
+    })
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3, 12)))
+    expect(() => {
+      state = state.apply(state.tr.insertText('X'))
+    }).not.toThrow()
+    expect(html(state)).toContain('<p>body</p></details>')
+    let undone: EditorState | null = null
+    undo(state, (tr) => {
+      undone = state.apply(tr)
+    })
+    expect(html(undone)).toBe(
+      serializeHtml(
+        parseHtml(
+          '<blockquote><p>quote</p></blockquote><details open><summary>s</summary><p>body</p></details>',
+        ),
+      ),
+    )
   })
 
   it('toggles a code block on and off', () => {
@@ -256,6 +283,48 @@ describe('images', () => {
     // An absent alt and alt="" are different statements to a screen reader.
     const state = cursorAt(stateFrom('<p>x</p>'), 2)
     expect(html(run(state, insertImage({ src: '/a.png' })))).not.toContain('alt=')
+  })
+})
+
+describe('clearFormatting', () => {
+  it('declines when the selection is only a language run', () => {
+    const state = selectAll(
+      stateFrom('<p>The French say <span lang="fr">bonjour</span> often</p>'),
+    )
+    expect(run(state, clearFormatting)).toBeNull()
+    expect(serializeHtml(state.doc)).toBe(
+      '<p>The French say <span lang="fr">bonjour</span> often</p>',
+    )
+  })
+
+  it('strips strong around a language run and leaves the language', () => {
+    const state = selectAll(
+      stateFrom('<p>The French say <strong><span lang="fr">bonjour</span></strong> often</p>'),
+    )
+    expect(html(run(state, clearFormatting))).toBe(
+      '<p>The French say <span lang="fr">bonjour</span> often</p>',
+    )
+  })
+
+  it('declines when the selection is only a link', () => {
+    const state = selectAll(stateFrom('<p>see <a href="/x">here</a> now</p>'))
+    expect(run(state, clearFormatting)).toBeNull()
+    expect(serializeHtml(state.doc)).toBe('<p>see <a href="/x">here</a> now</p>')
+  })
+
+  it('keeps direction, which is content', () => {
+    const state = selectAll(stateFrom('<p dir="rtl" style="text-align:center">שלום</p>'))
+    const out = html(run(state, clearFormatting))
+    expect(out).toContain('dir="rtl"')
+    expect(out).not.toContain('text-align')
+    expect(out).toContain('שלום')
+  })
+
+  it('declines when the selection is only language and structure', () => {
+    const state = selectAll(
+      stateFrom('<p dir="rtl">The French say <span lang="fr">bonjour</span></p>'),
+    )
+    expect(run(state, clearFormatting)).toBeNull()
   })
 })
 

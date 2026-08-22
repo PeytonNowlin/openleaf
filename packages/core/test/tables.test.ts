@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { DOMSerializer, type Node as PMNode } from 'prosemirror-model'
 import { coreSchema, parseHtml, serializeHtml } from '../src/index.js'
+import { tableCaptionNodeView } from '../src/tables.js'
 
 const roundTrip = (html: string): string => serializeHtml(parseHtml(html))
 
@@ -166,18 +168,78 @@ describe('caption and colgroup survive the round trip', () => {
     expect(roundTrip('<table><tr><td>A</td></tr></table>')).not.toContain('caption')
   })
 
+  /*
+   * The ignore rules above are table-scoped. Without `context: 'table/'` they
+   * also fire for an orphaned `<caption>` or `<col>`, and `ignore` deletes the
+   * text. Whether that happens used to depend on where the element sat in the
+   * document -- destroyed at the start, kept after a paragraph -- which is how
+   * the hole stayed invisible. The six strings pin both directions.
+   */
+  it('keeps the text of an orphaned caption at the start of the document', () => {
+    expect(roundTrip('<caption>Table 1: Revenue</caption>')).toBe(
+      '<caption>Table 1: Revenue</caption>',
+    )
+  })
+
+  it('keeps the text of an orphaned caption before a paragraph', () => {
+    expect(roundTrip('<caption>a</caption><p>b</p>')).toBe('<caption>a</caption><p>b</p>')
+  })
+
+  it('does not ignore an orphaned col', () => {
+    // `<col>` is void in HTML, so the `x` never reaches the parser; the defect
+    // was deleting the element itself (`<p></p>`). Preservation keeps the tag.
+    expect(roundTrip('<col>x</col>')).toBe('<col>')
+  })
+
+  it('keeps an orphaned caption after a paragraph', () => {
+    expect(roundTrip('<p>b</p><caption>a</caption>')).toBe('<p>b</p><p>a</p>')
+  })
+
+  it('keeps an orphaned caption inside a wrapper', () => {
+    expect(roundTrip('<div><caption>orphan</caption></div>')).toBe('<p>orphan</p>')
+  })
+
+  it('still captures a caption that belongs to a table', () => {
+    expect(roundTrip('<table><caption>kept</caption><tr><td>c</td></tr></table>')).toBe(
+      '<table><caption>kept</caption><tbody><tr><td>c</td></tr></tbody></table>',
+    )
+  })
+
   it('never writes contenteditable into saved HTML', () => {
-    // toDOM marks a caption inert for the EDITOR, because it renders inside the
-    // editable area but outside the node's contentDOM. That attribute is ours,
-    // not the author's, and must not end up in what the server stores.
+    // toDOM used to mark a caption inert for the EDITOR. Clipboard serialization
+    // shares toDOM and is not serializeHtml, so that marker leaked. It is not
+    // the author's, and must not end up in what the server stores.
     const out = roundTrip('<table><caption>Q1</caption><tr><td>A</td></tr></table>')
     expect(out).not.toContain('contenteditable')
   })
 
-  it('marks the caption inert when the EDITOR renders it', () => {
-    // The other half of the pair above. Serialization must not emit
-    // contenteditable; the editor must, or a caret gets into a region
-    // ProseMirror does not manage and the typing is reverted on redraw.
+  it('does not emit contenteditable from toDOM, including clipboard serialization', () => {
+    // Issue #105: DOMSerializer.serializeFragment is what clipboardSerializer
+    // uses, and it does not wrap withSerializationDocument.
+    const doc = parseHtml('<table><caption>Cap</caption><tr><td>a</td></tr></table>')
+    const frag = DOMSerializer.fromSchema(coreSchema()).serializeFragment(doc.content, { document })
+    const host = document.createElement('div')
+    host.appendChild(frag)
+    expect(host.innerHTML).not.toContain('contenteditable')
+    expect(roundTrip(host.innerHTML)).not.toContain('contenteditable')
+  })
+
+  it('drops a leaked contenteditable marker when parsing furniture', () => {
+    const out = roundTrip(
+      '<table><caption contenteditable="false">Q1</caption><tr><td>A</td></tr></table>',
+    )
+    expect(out).toContain('<caption>Q1</caption>')
+    expect(out).not.toContain('contenteditable')
+  })
+
+  it('keeps author contenteditable on a caption descendant', () => {
+    const html =
+      '<table><caption><span contenteditable="false">locked</span></caption><tr><td>A</td></tr></table>'
+    expect(roundTrip(html)).toContain('contenteditable="false"')
+    expect(roundTrip(html)).toContain('locked')
+  })
+
+  it('does not stamp the caption inert from toDOM', () => {
     const doc = parseHtml('<table><caption>Q1</caption><tr><td>A</td></tr></table>')
     let table: unknown = null
     doc.descendants((node) => {
@@ -187,10 +249,24 @@ describe('caption and colgroup survive the round trip', () => {
     const toDOM = coreSchema().nodes['table']?.spec.toDOM
     expect(toDOM).toBeDefined()
     const rendered = toDOM?.(table as never) as { dom: Element; contentDOM?: Element }
-    // A content hole inside a later child is why this returns an element rather
-    // than an output-spec array at all.
     expect(rendered.contentDOM?.nodeName).toBe('TBODY')
     const caption = rendered.dom.querySelector('caption')
+    expect(caption?.hasAttribute('contenteditable')).toBe(false)
+    expect(caption?.textContent).toBe('Q1')
+  })
+
+  it('marks the caption inert when the EDITOR node view renders it', () => {
+    // Serialization must not emit contenteditable; the editor must, or a caret
+    // gets into a region ProseMirror does not manage and the typing is reverted.
+    const doc = parseHtml('<table><caption>Q1</caption><tr><td>A</td></tr></table>')
+    let table: PMNode | undefined
+    doc.descendants((node) => {
+      if (node.type.name === 'table') table = node
+      return true
+    })
+    expect(table).toBeDefined()
+    const rendered = tableCaptionNodeView(table!)
+    const caption = (rendered.dom as Element).querySelector('caption')
     expect(caption?.getAttribute('contenteditable')).toBe('false')
     expect(caption?.textContent).toBe('Q1')
   })

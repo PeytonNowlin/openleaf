@@ -27,6 +27,16 @@ test.describe('loading stored content', () => {
     await expect(editor(page).getByText('Load-bearing wrapper.')).toBeVisible()
   })
 
+  test('keeps heading text when stored HTML wraps it in <a id>', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value =
+        '<h2><a id="revenue">Revenue by region</a></h2><p>Body text.</p><p>See <a href="#revenue">the section</a>.</p>'
+    })
+    await expect(editor(page).getByRole('heading', { name: 'Revenue by region' })).toBeVisible()
+    await expect.poll(() => submittedValue(page)).toContain('Revenue by region')
+  })
+
   test('exposes the editable region to assistive technology', async ({ page }) => {
     // Without a role and an accessible name, a screen reader announces an
     // unlabelled text box, which makes the editor unusable rather than merely
@@ -390,6 +400,32 @@ test.describe('readonly and for attributes', () => {
     expect(await submittedValue(page)).not.toContain('<strong>')
   })
 
+  test('clicking a summary does not change value or fire openleaf:change', async ({ page }) => {
+    const assigned = await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<details><summary>Label</summary><p>body</p></details>'
+      el.setAttribute('readonly', '')
+      ;(globalThis as unknown as { __olDisclosureChanges: string[] }).__olDisclosureChanges = []
+      el.addEventListener('openleaf:change', (event) => {
+        ;(globalThis as unknown as { __olDisclosureChanges: string[] }).__olDisclosureChanges.push(
+          (event as CustomEvent<{ value: string }>).detail.value,
+        )
+      })
+      return el.value
+    })
+    await editor(page).locator('summary').click()
+    await editor(page).locator('summary').click()
+    const result = await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      return {
+        value: el.value,
+        changes: (globalThis as unknown as { __olDisclosureChanges: string[] }).__olDisclosureChanges,
+      }
+    })
+    expect(result.value).toBe(assigned)
+    expect(result.changes).toEqual([])
+  })
+
   test('changing for rebinds the textarea', async ({ page }) => {
     await page.evaluate(() => {
       const other = document.createElement('textarea')
@@ -499,5 +535,78 @@ test.describe('a stray = in the source box', () => {
     expect(outcome.set).toBeNull()
     expect(outcome.read).toContain('Quarterly report')
     await expect(editor(page)).toContainText('Quarterly report')
+  })
+})
+
+test.describe('isolating selections (#130)', () => {
+  const quoteThenDetails =
+    '<blockquote><p>quote</p></blockquote><details open><summary>s</summary><p>body</p></details>'
+
+  test('typing across a blockquote into details does not throw, corrupt, or lose undo', async ({
+    page,
+  }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => {
+      errors.push(error.message)
+    })
+
+    await page.evaluate((html) => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & {
+        value: string
+        view: {
+          state: { doc: { content: { size: number } }; tr: { setSelection: (sel: unknown) => unknown } }
+          dispatch(tr: unknown): void
+          focus(): void
+        } | null
+      }
+      el.value = html
+      const view = el.view
+      if (!view) throw new Error('no view')
+      const TextSelection = (
+        view as unknown as { state: { selection: { constructor: { create(doc: unknown, a: number, b: number): unknown } } } }
+      ).state.selection.constructor
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 12)))
+      view.focus()
+    }, quoteThenDetails)
+
+    // History coalesces nearby transactions. The `value` assignment is a
+    // document replace; without a gap, Ctrl+Z would take that back too.
+    await page.waitForTimeout(600)
+
+    await page.keyboard.type('X')
+    expect(errors.filter((message) => /TransformError|Cannot join/.test(message))).toEqual([])
+
+    const after = await submittedValue(page)
+    expect(after).toContain('X')
+    expect(after).toContain('<summary>s</summary>')
+    expect(after).toMatch(/<details[^>]*>[\s\S]*<p>body<\/p><\/details>/)
+    expect(after).not.toMatch(/<\/details><p>body<\/p>/)
+
+    await page.keyboard.press('ControlOrMeta+z')
+    const undone = await submittedValue(page)
+    expect(undone).not.toContain('>X<')
+    expect(undone).toContain('<p>quote</p>')
+    expect(undone).toContain('<p>body</p>')
+  })
+
+  test('Shift+ArrowDown from a quoted paragraph into details stays editable', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => {
+      errors.push(error.message)
+    })
+
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value =
+        '<blockquote><p>one<br>two<br>three<br>four</p></blockquote><details open><summary>s</summary><p>body</p></details>'
+    })
+    await editor(page).getByText('one').click()
+    for (let i = 0; i < 5; i += 1) await page.keyboard.press('Shift+ArrowDown')
+    await page.keyboard.type('X')
+
+    expect(errors.filter((message) => /TransformError|Cannot join/.test(message))).toEqual([])
+    const after = await submittedValue(page)
+    expect(after).toContain('X')
+    expect(after).toMatch(/<details[^>]*>[\s\S]*<p>body<\/p><\/details>/)
   })
 })

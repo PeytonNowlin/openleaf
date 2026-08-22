@@ -293,11 +293,24 @@ export const figure: NodeSpec = {
   toDOM: () => ['figure', 0],
 }
 
+/**
+ * Caption for a modelled figure, and only for a modelled figure.
+ *
+ * The node is inline because `figure` is `inline+` (an image plus this). The
+ * HTML parser does not agree: `figcaption` is in the "in body" start-tag list
+ * that closes an open `<p>`, so a caption parsed as ordinary inline content
+ * is wrapped in a paragraph on the way out, then split on the way back in,
+ * and each save adds an empty paragraph before the caption and one after.
+ * Restricting the parse rule to `figure/` is what stops that: an orphaned
+ * caption is declined here and claimed by the preservation layer as a block
+ * atom, which is markup the next parse can consume without wrapping it in a
+ * `<p>`. A nested figure stays editable.
+ */
 export const figcaption: NodeSpec = {
   inline: true,
   group: 'inline',
   content: 'inline*',
-  parseDOM: [{ tag: 'figcaption' }],
+  parseDOM: [{ tag: 'figcaption', context: 'figure/' }],
   toDOM: () => ['figcaption', 0],
 }
 
@@ -314,11 +327,25 @@ export const page_break: NodeSpec = {
 }
 
 /**
+ * Whitespace-only interiors count as empty: pretty-printed `<a id="jump">\n</a>`
+ * has no modelled text (`parseHtml` does not preserve whitespace), and treating
+ * it as a link mark would drop the destination entirely.
+ */
+export function isEmptyNamedAnchorElement(el: Element): boolean {
+  return (el.textContent ?? '').trim() === '' && !el.firstElementChild
+}
+
+/**
  * An empty named destination: `<a id="section"></a>`.
  *
  * A link with both `href` and `id` is a mark, not this node. This exists for
  * the jump target that has no text of its own, which is what TinyMCE's
  * anchor plugin inserts and what a decade of CMS content already contains.
+ *
+ * An atom cannot hold content. `<a id="sec">Section</a>` wrapping visible text
+ * is the pre-HTML5 in-page-anchor idiom; claiming it here discarded the text
+ * on parse. Those elements decline so the `link` mark (which already carries
+ * `id`, and `href` only when present) can keep the text editable.
  */
 export const named_anchor: NodeSpec = {
   inline: true,
@@ -332,6 +359,10 @@ export const named_anchor: NodeSpec = {
       getAttrs(dom) {
         const el = dom as Element
         if (el.hasAttribute('href')) return false
+        // An atom cannot hold content. An <a id> WITH text is a jump target
+        // wrapped around a heading -- the commonest legacy spelling -- and
+        // claiming it here deletes the text.
+        if (!isEmptyNamedAnchorElement(el)) return false
         const id = safeId(el.getAttribute('id'))
         if (!id) return false
         return { id }

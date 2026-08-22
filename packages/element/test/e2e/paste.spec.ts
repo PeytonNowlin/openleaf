@@ -88,7 +88,7 @@ test.describe('pasting from Microsoft Word', () => {
     expect(value).toContain('North region')
     expect(value).toContain('Churn down to 3.1%')
     // The nested level must be inside the preceding item.
-    expect(value).toMatch(/<li><p>Revenue up 12%<\/p><ul><li><p>North region<\/p><\/li><\/ul><\/li>/)
+    expect(value).toMatch(/<li><p>Revenue up 12%<\/p><ul><li>North region<\/li><\/ul><\/li>/)
   })
 
   test('strips the bullet glyphs and the vendor styling', async ({ page }) => {

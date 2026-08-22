@@ -35,6 +35,7 @@ registerTranslations('fr', {
   'Enter an address for the link.': 'Saisissez une adresse pour le lien.',
   'Open in a new window': 'Ouvrir dans une nouvelle fenêtre',
   'Insert image': 'Insérer une image',
+  'Edit image': 'Modifier l’image',
   'Alternative text': 'Texte alternatif',
   'Keyboard shortcuts': 'Raccourcis clavier',
   Close: 'Fermer',

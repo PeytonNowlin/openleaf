@@ -263,7 +263,7 @@ describe('tokenizeHtml raw-text scanning', () => {
 
   /** Case-insensitivity is the reason the lowercase copy existed. Keep it. */
   it('still finds an upper-case closing tag', () => {
-    const tokens = tokenize.tokenize('<script>var a = 1;</SCRIPT><p>after</p>', 'html')
+    const tokens = tokenize.tokenize('<script>var a = 1;</SCRIPT><p>after</p>', 'html')!
     const text = tokens.map((t) => t.value).join('')
     expect(text).toBe('<script>var a = 1;</SCRIPT><p>after</p>')
     // The prose after the block is markup again, not script.

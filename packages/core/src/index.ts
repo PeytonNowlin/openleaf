@@ -147,14 +147,17 @@ export {
   toggleOrderedList,
   // links and images
   insertImage,
+  selectedImage,
   selectedMedia,
   setLink,
   unsetLink,
+  updateImage,
   updateMedia,
   type ImageAttrs,
   type LinkAttrs,
   type MediaAttrs,
   type MediaSource,
+  type SelectedImage,
   type SelectedMedia,
   // history
   redo,
@@ -169,6 +172,12 @@ export {
 export { autolinkPlugin, hrefFromTypedUrl } from './autolink.js'
 export { visualAidsPlugin } from './visual-aids.js'
 export { disclosurePlugin } from './disclosure.js'
+export {
+  clampIsolatingTextSelection,
+  innermostIsolatingDepth,
+  isolatingSelectionPlugin,
+  textSelectionCrossesIsolating,
+} from './isolating-selection.js'
 export { isNonEditableNode, nonEditablePlugin } from './noneditable.js'
 export {
   activeBlockClass,

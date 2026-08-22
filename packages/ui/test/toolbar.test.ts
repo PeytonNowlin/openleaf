@@ -9,7 +9,7 @@
  */
 
 import { coreSchema, parseHtml, serializeHtml } from '@openleaf-editor/core'
-import { EditorState, TextSelection, type Transaction } from 'prosemirror-state'
+import { EditorState, NodeSelection, TextSelection, type Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerDefaultItems } from '../src/items.js'
@@ -234,6 +234,23 @@ describe('select controls', () => {
     const { toolbar, view } = mount('indent')
     toolbar.el.querySelector<HTMLButtonElement>('[data-ol-id="indent"]')?.click()
     expect(serializeHtml(view.state.doc)).toContain('padding-inline-start')
+  })
+
+  it('relabels Insert image to Edit image when an image is selected', () => {
+    const { toolbar, view } = mount('image', {
+      html: '<p><img src="/a.png" alt="A goat"></p>',
+    })
+    const button = toolbar.el.querySelector<HTMLButtonElement>('[data-ol-id="image"]')
+    expect(button?.getAttribute('aria-label')).toBe('Insert image')
+    let pos: number | null = null
+    view.state.doc.descendants((node, at) => {
+      if (pos === null && node.type.name === 'image') pos = at
+      return pos === null
+    })
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos!)))
+    toolbar.update(view.state)
+    expect(button?.getAttribute('aria-label')).toBe('Edit image')
+    expect(button?.title).toBe('Edit image')
   })
 })
 

@@ -1,4 +1,4 @@
-import { Slice } from 'prosemirror-model'
+import { Slice, type Node } from 'prosemirror-model'
 import type { Command, EditorState } from 'prosemirror-state'
 import { NodeSelection } from 'prosemirror-state'
 import { canInsertNode, markIn, nodeIn } from './command-helpers.js'
@@ -132,6 +132,123 @@ export function insertImage(attrs: ImageAttrs): Command {
 
     if (!canInsert(state, 'image')) return false
     if (dispatch) dispatch(state.tr.replaceSelectionWith(image).scrollIntoView())
+    return true
+  }
+}
+
+export interface SelectedImage {
+  /** Document position of the `image` node, for `setNodeMarkup`. */
+  pos: number
+  src: string
+  alt: string | null
+  title: string | null
+  width: string | null
+  height: string | null
+  align: ImageAlign | null
+  className: string | null
+  /**
+   * Caption text when the image lives in a `<figure>`, including `''` for a
+   * figure whose figcaption is still empty. `null` means there is no figure.
+   */
+  caption: string | null
+}
+
+/**
+ * The image the selection is on, or null.
+ *
+ * A `NodeSelection` on `image` counts, and so does one on a `figure` that
+ * contains an image -- clicking the picture and clicking the figure around it
+ * are the same author intent. A caret beside an image is not: treating that as
+ * a selection would let the dialog retarget a neighbour when the author meant
+ * to insert, the same trap `selectedMedia` refuses.
+ */
+export function selectedImage(state: EditorState): SelectedImage | null {
+  const selection = state.selection
+  if (!(selection instanceof NodeSelection)) return null
+  const node = selection.node
+  if (node.type.name === 'image') return describeImage(node, selection.from, state)
+  if (node.type.name !== 'figure') return null
+  let found: SelectedImage | null = null
+  node.forEach((child, offset) => {
+    if (found || child.type.name !== 'image') return
+    found = describeImage(child, selection.from + 1 + offset, state)
+  })
+  return found
+}
+
+function describeImage(node: Node, pos: number, state: EditorState): SelectedImage {
+  const attrs = node.attrs
+  const $pos = state.doc.resolve(pos)
+  let caption: string | null = null
+  if ($pos.parent.type.name === 'figure') {
+    $pos.parent.forEach((child) => {
+      if (child.type.name === 'figcaption') caption = child.textContent
+    })
+  }
+  return {
+    pos,
+    src: attrs['src'] as string,
+    alt: (attrs['alt'] as string | null) ?? null,
+    title: (attrs['title'] as string | null) ?? null,
+    width: (attrs['width'] as string | null) ?? null,
+    height: (attrs['height'] as string | null) ?? null,
+    align: (attrs['align'] as ImageAlign | null) ?? null,
+    className: (attrs['className'] as string | null) ?? null,
+    caption,
+  }
+}
+
+/**
+ * Update the selected image in place.
+ *
+ * `setNodeMarkup` rather than replace-with-a-new-node: the surrounding
+ * `<figure>`, the author's `class`, and dimensions the dialog does not edit
+ * all survive a save that only changed the address or the alt text. Replacing
+ * the `NodeSelection` dropped every one of those, including the figcaption.
+ *
+ * Attributes omitted from `attrs` (`undefined`) stay as they were. `null` is
+ * an explicit clear -- except `src`, which must be a storeable address.
+ */
+export function updateImage(attrs: ImageAttrs): Command {
+  return (state, dispatch) => {
+    if (!isSafeUrl(attrs.src)) return false
+    const current = selectedImage(state)
+    if (!current) return false
+    const node = state.doc.nodeAt(current.pos)
+    if (!node || node.type.name !== 'image') return false
+    const next = {
+      ...node.attrs,
+      src: attrs.src,
+      alt: attrs.alt !== undefined ? attrs.alt ?? null : node.attrs['alt'],
+      title: attrs.title !== undefined ? attrs.title ?? null : node.attrs['title'],
+      width: attrs.width !== undefined ? attrs.width ?? null : node.attrs['width'],
+      height: attrs.height !== undefined ? attrs.height ?? null : node.attrs['height'],
+      align: attrs.align !== undefined ? attrs.align ?? null : node.attrs['align'],
+      className:
+        attrs.className !== undefined
+          ? safeClassList(attrs.className ?? null, IMAGE_ALIGN_CLASSES)
+          : node.attrs['className'],
+    }
+    if (dispatch) {
+      const tr = state.tr.setNodeMarkup(current.pos, undefined, next)
+      if (attrs.caption !== undefined) {
+        const $pos = tr.doc.resolve(tr.mapping.map(current.pos))
+        if ($pos.parent.type.name === 'figure') {
+          const captionType = nodeIn(state, 'figcaption')
+          const wanted = attrs.caption ?? ''
+          $pos.parent.forEach((child, offset) => {
+            if (child.type.name !== 'figcaption' || child.textContent === wanted) return
+            if (!captionType) return
+            const from = $pos.before($pos.depth) + 1 + offset
+            const content = wanted === '' ? undefined : state.schema.text(wanted)
+            tr.replaceWith(from, from + child.nodeSize, captionType.create(null, content))
+          })
+        }
+      }
+      const imagePos = tr.mapping.map(current.pos)
+      tr.setSelection(NodeSelection.create(tr.doc, imagePos)).scrollIntoView()
+      dispatch(tr)
+    }
     return true
   }
 }
