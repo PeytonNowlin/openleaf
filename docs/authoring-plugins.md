@@ -1147,8 +1147,17 @@ built — the ordinary case for a script tag — still reaches them.
 
 **What not to do.** Do not concatenate. `t('Deleted ') + n + t(' rows')` is
 untranslatable into any language whose word order differs from English, which is
-most of them. Build the whole sentence as one key and interpolate into the
-result.
+most of them. Build the whole sentence as one key and interpolate with `fill`:
+
+```ts
+import { fill, t } from '@openleaf-editor/ui'
+
+fill(t('{count} rows deleted'), { count: String(n) })
+```
+
+`fill` only reads own properties of the values object, so a `{constructor}`
+placeholder in a catalog is left alone rather than stringifying the Object
+constructor.
 
 ---
 

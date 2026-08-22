@@ -48,6 +48,15 @@ entries below say so explicitly when they do.
   public API.
 - The core bundle's gzip budget rises to 110 KB, measured at 108.0.
 
+### Fixed
+
+- **`t()` no longer returns `Object.prototype` members as translations.** Catalog
+  lookup is a Map, so a `formats="p.lead=constructor"` label (or `toString`,
+  `__proto__`, …) stays the source string instead of rendering
+  `function Object() { [native code] }` in the dropdown the moment a locale
+  catalog is registered. `{placeholder}` substitution uses `Object.hasOwn`, so
+  `{constructor}` in a template is the same class of miss.
+
 ## 0.1.0-beta.2 - 2026-08-19
 
 The formatting and structure release. Five new packages, so read the install

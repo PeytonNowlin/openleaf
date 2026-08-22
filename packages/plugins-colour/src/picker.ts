@@ -43,6 +43,7 @@
 
 import {
   announce,
+  fill,
   iconElement,
   t,
   withLocale,
@@ -77,7 +78,7 @@ export function buildColorPicker(ctx: ToolbarContext, options: PickerOptions): T
   /** A UI string in this editor's own language, with `{name}` placeholders filled. */
   const say = (source: string, values: Record<string, string> = {}): string =>
     withLocale(host.getAttribute('lang'), () =>
-      t(source).replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole),
+      fill(t(source), values),
     )
 
   const wrap = doc.createElement('div')

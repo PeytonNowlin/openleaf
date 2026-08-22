@@ -7,7 +7,7 @@
  */
 
 import { serializeHtml } from '@openleaf-editor/core'
-import { announce, liveRegion, t, withLocale } from '@openleaf-editor/ui'
+import { announce, fill, liveRegion, t, withLocale } from '@openleaf-editor/ui'
 import type { Node as PMNode } from 'prosemirror-model'
 import { Plugin, type EditorState } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
@@ -167,7 +167,7 @@ function button(doc: Document, label: string): HTMLButtonElement {
  */
 function say(host: HTMLElement, source: string, values: Record<string, string> = {}): string {
   return withLocale(host.getAttribute('lang'), () =>
-    t(source).replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole),
+    fill(t(source), values),
   )
 }
 
