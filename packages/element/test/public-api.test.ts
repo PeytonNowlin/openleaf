@@ -94,6 +94,27 @@ describe('openleaf:change', () => {
     }
   })
 
+  it('does not fire when a summary is clicked on a readonly editor', () => {
+    const el = mount({ readonly: '' })
+    try {
+      const html = '<details><summary>Label</summary><p>body</p></details>'
+      el.value = html
+      const assigned = el.value
+      const changes: string[] = []
+      el.addEventListener('openleaf:change', (event) => {
+        changes.push(event.detail.value)
+      })
+      const summary = el.querySelector('summary')
+      expect(summary).not.toBeNull()
+      summary!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+      summary!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+      expect(el.value).toBe(assigned)
+      expect(changes).toEqual([])
+    } finally {
+      el.remove()
+    }
+  })
+
   it('does not fire when the value is set to what it already holds', () => {
     const el = mount()
     try {

@@ -390,6 +390,32 @@ test.describe('readonly and for attributes', () => {
     expect(await submittedValue(page)).not.toContain('<strong>')
   })
 
+  test('clicking a summary does not change value or fire openleaf:change', async ({ page }) => {
+    const assigned = await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<details><summary>Label</summary><p>body</p></details>'
+      el.setAttribute('readonly', '')
+      ;(globalThis as unknown as { __olDisclosureChanges: string[] }).__olDisclosureChanges = []
+      el.addEventListener('openleaf:change', (event) => {
+        ;(globalThis as unknown as { __olDisclosureChanges: string[] }).__olDisclosureChanges.push(
+          (event as CustomEvent<{ value: string }>).detail.value,
+        )
+      })
+      return el.value
+    })
+    await editor(page).locator('summary').click()
+    await editor(page).locator('summary').click()
+    const result = await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      return {
+        value: el.value,
+        changes: (globalThis as unknown as { __olDisclosureChanges: string[] }).__olDisclosureChanges,
+      }
+    })
+    expect(result.value).toBe(assigned)
+    expect(result.changes).toEqual([])
+  })
+
   test('changing for rebinds the textarea', async ({ page }) => {
     await page.evaluate(() => {
       const other = document.createElement('textarea')
