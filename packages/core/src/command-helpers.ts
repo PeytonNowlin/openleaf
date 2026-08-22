@@ -30,6 +30,10 @@ export function canInsertNode(state: EditorState, nodeName: string): boolean {
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
     const index = $from.index(depth)
     if ($from.node(depth).canReplaceWith(index, index, type)) return true
+    // Isolating nodes (figure, table cells, details, preserved atoms) must not
+    // be split to make room for a sibling. Walking past them is how
+    // insertHorizontalRule used to bisect a captioned image.
+    if ($from.node(depth).type.spec.isolating) return false
   }
   return false
 }

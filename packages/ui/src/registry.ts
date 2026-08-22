@@ -95,7 +95,7 @@ export interface ToolbarItemSpec {
    * preset list (font family, size, line height) uses this type.
    */
   type?: 'button' | 'select' | 'custom'
-  /** Accessible name. Kept constant across states -- the platform announces pressed. */
+  /** Accessible name. Use `labelFor` when the same control does insert versus edit. */
   label: string
   icon?: IconName
   /**
@@ -131,6 +131,15 @@ export interface ToolbarItemSpec {
    * Becomes `ol-select--{mod}` on the element.
    */
   selectMod?: string
+  /**
+   * Accessible name that depends on the selection.
+   *
+   * `label` stays the default. Use this when the same control does two
+   * different things -- insert versus edit -- so the name can say which.
+   * Do not use it to bake "pressed" into a toggle; the platform already
+   * announces that.
+   */
+  labelFor?: (state: EditorState) => string
   isActive?: (state: EditorState) => boolean
   /** Defaults to asking `command` whether it would apply. */
   isEnabled?: (state: EditorState) => boolean

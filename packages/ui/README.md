@@ -29,6 +29,11 @@ registry -- and a node built by one is not a node type the other accepts.
 [`@openleaf-editor/element`](../element) already uses this. Import it directly to
 register your own toolbar control, or to reuse the dialogs and icons.
 
+`promptForLink` is the one path behind the Link toolbar button, the link
+context menu, and the selection toolbar. On Save it keeps the mark's `id` and
+merges window-safety tokens (`noopener noreferrer`) into `rel` instead of
+replacing author tokens.
+
 ## Registering a control
 
 ```ts
@@ -45,10 +50,16 @@ Three item types. `button` is the common case. `select` builds a native
 `<select>` from `options`, `getValue` and `applyValue` -- use it for a fixed
 preset list. `custom` hands you `render` and expects a `ToolbarControl` back,
 which is how the colour swatch grid and the block-type control exist without the
-toolbar knowing their ids.
+toolbar knowing their ids. The block-type dropdown disables Heading and Paragraph
+when those commands would not apply -- a captioned figure is a textblock, but
+retyping it is how those entries used to destroy the `<figure>`.
 
 Registering an item declares capability; it does not rearrange anyone's toolbar.
 Layout is the integrator's `toolbar` attribute.
+
+The built-in `image` item inserts, or edits the selected image -- the same
+pattern as the insert-media control. `labelFor` is how its accessible name
+becomes "Edit image" while a picture is selected.
 
 ## The toolbar is one tab stop
 

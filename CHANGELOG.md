@@ -19,6 +19,57 @@ entries below say so explicitly when they do.
   save.** `text_color`, `font_family` and `font_size` now decline when
   preservation is going to keep the element, the same bargain `background_color`
   already struck. `#127`
+<<<<<<< HEAD
+=======
+### Security
+
+- **`.docx` zip-bomb guard fails closed on forged ZIP64 sentinels.** Writing
+  `0xffff` into the EOCD entry count, or `0xffffffff` into the directory offset,
+  used to make `declaredUncompressedBytes` return `null`, which
+  `assertImportableDocx` treated as allowed. Those sentinels are now honoured
+  only when a ZIP64 EOCD locator sits immediately before the EOCD, an unreadable
+  directory is refused, inflated bytes are bounded independently of what the
+  archive declares, and local records that are not packed immediately before the
+  central directory are refused so a partial inflate walk cannot undercount.
+### Fixed
+
+- **Selecting an image and opening the Image dialog no longer wipes alt text,
+  caption, size, alignment, or class.** The same toolbar and context-menu item
+  now prefills from the selected image (including a figure's caption) and
+  updates that node in place, so alt text is editable after insert. The control
+  reads "Edit image" while an image is selected.
+- **Preserved block elements inside a blockquote or list item no longer grow
+  two empty paragraphs on every save.** `unknownInline` declined only
+  lossless wrappers, so a `<div class="callout">` (or any other tag the HTML
+  parser closes a `<p>` for) became an inline atom, serialized inside a
+  paragraph, and split on the next parse. The catch-all now consults a shared
+  `CLOSES_OPEN_P` list and leaves those tags to `unknownBlock`. Custom
+  elements and genuine inline debris (`<ins>`, `<o:p>`) are unchanged. A
+  second serialize is a fixed point.
+- **A `<figcaption>` outside a `<figure>` no longer grows the document by two
+  empty paragraphs on every save.** The caption node is inline (because a
+  modelled figure holds inline content), and the HTML parser closes an open
+  `<p>` at `figcaption`, so wrapping an orphan in a paragraph made the next
+  parse insert empty paragraphs with no fixed point. The parse rule now only
+  matches inside a figure; an orphan in a paragraph is preserved as a block
+  atom and round-trips without wrapping. A caption already inside an
+  inline-only container such as `summary` stays inline so the details block
+  is not escaped. Nested figures are unchanged.
+- **A selection spanning a `<blockquote>` into a following `<details>` no longer
+  throws on the next keystroke, corrupts the document, or loses undo.** Firefox
+  and WebKit report a `TextSelection` whose endpoints sit on opposite sides of
+  an isolating boundary; `replaceSelection` then tries to join `details` onto
+  `blockquote` and throws. Core now clamps that selection to the anchor's side
+  (the same thing Chromium already does natively) for every isolating node, and
+  refuses to run a replace that would throw, so a failure cannot rewrite the
+  document outside history.
+- **`<a id>` wrapping visible text no longer deletes that text.** `named_anchor`
+  is an empty atom (TinyMCE-style jump targets). Its parse rule claimed any
+  `<a>` with `id` and no `href`, so `<h2><a id="sec">Title</a></h2>` serialized
+  as an empty heading. Contentful `<a id>` is now a `link` mark carrying only
+  `id`; empty and whitespace-only `<a id="jump"></a>` is still the atom;
+  `<a id href>` is still a link;   `<a name>` is still unmatched.
+>>>>>>> origin/main
 
 ### Added
 
@@ -40,6 +91,13 @@ entries below say so explicitly when they do.
 
 ### Changed
 
+- **`serializeHtml` unwraps a sole attribute-free paragraph in list items,
+  blockquotes and `<details>` bodies**, the same pass table cells already had.
+  Opening and saving `<ul><li>a</li></ul>` no longer rewrites it as
+  `<li><p>a</p></li>`, which changed list height and which CSS rules matched.
+  Mixed content (a list item that is a paragraph plus a nested list) still keeps
+  the outer wrapper; only a container whose entire modelled content is that one
+  paragraph unwraps. A list inside preserved markup is still left byte-identical.
 - **`toDOMPurifyConfig` now withholds `style` as well as `iframe` by default**,
   and `configureDOMPurify(purify, policy)` installs both hooks and enables both
   features in one call. Previously `style` was allowed globally with an
@@ -55,6 +113,54 @@ entries below say so explicitly when they do.
   `@openleaf-editor/ui/testing`, so test-only surface is not part of the package's
   public API.
 - The core bundle's gzip budget rises to 110 KB, measured at 108.0.
+
+### Fixed
+
+- **Character marks keep leftover attributes on round trip.** `strong`, `em`,
+  `code`, `u`, `s`, `sub`, `sup`, `b` (as `strong`) and extra attributes on
+  `<a>` (`class`, `data-*`, …) used to be stripped because the carry wrapper
+  ran on nodes only. The same sanitizer filter still drops `on*` handlers and
+  unsafe URLs. Closes #126.
+- **Table captions no longer leak `contenteditable="false"` into clipboard
+  or saved HTML.** The editor still stamps that marker on the live caption so
+  a caret cannot enter it (`CaptionedTableView` when the table bundle is
+  loaded, `tableCaptionNodeView` when it is not). Serializers share `toDOM`
+  and never run node views, so the marker is not emitted; parse also drops
+  it from the caption element itself if contaminated markup is opened.
+  Core no longer installs a competing `table` node view, which would have
+  shadowed column resizing.
+- **`t()` no longer returns `Object.prototype` members as translations.** Catalog
+  lookup is a Map, so a `formats="p.lead=constructor"` label (or `toString`,
+  `__proto__`, …) stays the source string instead of rendering
+  `function Object() { [native code] }` in the dropdown the moment a locale
+  catalog is registered. `{placeholder}` substitution uses `Object.hasOwn`, so
+  `{constructor}` in a template is the same class of miss.
+- **`clearFormatting` keeps per-run language marks.** Links and `dir` already
+  survived because they are content, not appearance; `lang` is the same fact
+  modelled as a mark, so stripping it silently broke WCAG 3.1.2 and lost
+  pronunciation, hyphenation, and `:lang()` for that phrase.
+- **`safeClassList` no longer silently deletes Tailwind, non-ASCII, or
+  leading-digit class tokens.** It used an ASCII-identifier regex, so
+  `md:w-1/2`, `p-[10px]`, `2col`, and `größe-mittel` were dropped whenever
+  another token survived beside them. An image with only `class="md:w-1/2"`
+  kept it as residue; the same class next to `rounded` or `ol-float-left`
+  was gone. Class tokens now follow the same rule as `id`: a non-empty run
+  of non-whitespace. Deduplication, alignment-class exclusion, and the
+  empty-list `null` contract are unchanged. Which classes a deployment
+  stores remains a sanitize policy, not a schema filter.
+- **Editing a link through the dialog no longer deletes `rel` or `id`.** Issue
+  #14 restored `target`; Save still synthesized `rel` from the new-window
+  checkbox and wrote `id: null`. Author tokens (`nofollow`, `sponsored`, `me`,
+  …) are kept, `noopener noreferrer` is merged in for `_blank` rather than
+  replacing the attribute, and `id` round-trips. The same `run` handler backs
+  the toolbar, context menu, and selection toolbar.
+- **`resolveLanguage` no longer returns `Object.prototype` members.** The alias
+  table was a plain object, so `<code class="language-constructor">` resolved to
+  the `Object` constructor: `canHighlight` reported true (`undefined !== null`)
+  and `tokenize` fell out of its switch and returned `undefined` instead of the
+  `null` the highlighter contract uses for an unknown language. The table is a
+  `Map` now, matching `LIST_STYLE_ALIASES`, and `tokenize` has a `default` that
+  returns `null`.
 
 ## 0.1.0-beta.2 - 2026-08-19
 
@@ -123,6 +229,37 @@ package on this version -- they pin each other exactly.
 
 ### Fixed
 
+- **Block-type commands no longer destroy a captioned `<figure>`.** `figure` is a
+  textblock (`content: 'inline+'`), so `setHeading` and `setParagraph` used to
+  retype it as an `<h2>`/`<p>` holding an image and a `<figcaption>`,
+  `toggleCodeBlock` threw `Invalid content for node figure`, and
+  `insertHorizontalRule` split the figure in two. Those commands now refuse a
+  textblock the destination cannot hold, `canInsert` stops at isolating nodes,
+  and the block-type dropdown disables Heading and Paragraph while the caret is
+  in a caption.
+- **A read-only editor was mutated by clicking a `<summary>`.**
+  `disclosurePlugin` toggles `<details>` through `handleDOMEvents.click`, which
+  ProseMirror runs before its `view.editable` gate -- the guard typing, paste,
+  drop and the keymaps get for free. The handler wrote `open` on the node, so
+  `.value` changed and `openleaf:change` fired on a document the host had marked
+  read-only; a host that autosaves on that event, or `FormBridge.sync()` at
+  submit, persisted the fold. The click now returns without a transaction when
+  `!view.editable`, same flag the table context menu and the media resize handle
+  already consult, and does not `preventDefault`, so the browser can still expand
+  a collapsed section on a non-contenteditable surface without writing the node.
+- **Only the first glyph in the character map and emoji picker was reachable
+  from the keyboard.** The panel intercepted Tab (and closed) and had no arrow
+  keys, so 1 of 40 characters and 1 of 32 emoji could be chosen without a
+  mouse. It also used `role="menu"` with plain button children, which is
+  invalid ARIA -- a reader announced a menu with no items. Both pickers now
+  use the colour picker's grid: `role="grid"` / `row` / `gridcell`, a roving
+  tabindex, and Arrow / Home / End navigation. Tab is left alone so it leaves
+  the widget.
+- **Autolink marks the URL, not the punctuation after it.** The href already
+  dropped trailing `.,;:!?`, but the mark still covered the full match, `]`
+  survived into the href, and a parenthesised `www.` URL never matched. One
+  strip — including unmatched `)` / `]` — now sets both the range and the href;
+  a balanced `Foo_(bar)` keeps its closing paren.
 - **One stray `=` in the HTML source box wedged the editor unrecoverably.** The
   HTML parser accepts attribute names `setAttribute` refuses -- `<p ="v">` parses
   to one attribute literally named `="v"` -- and the schema carried those through

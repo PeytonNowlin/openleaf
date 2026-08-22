@@ -50,6 +50,7 @@ import {
   type TagParseRule,
 } from 'prosemirror-model'
 import {
+  INLINE_STYLE_PROPERTIES,
   MODELLED_PROPERTIES,
   applyStyleAttribute,
   indentLevels,
@@ -80,11 +81,11 @@ export interface SchemaExtension {
   /**
    * Re-emit attributes the spec does not model. Defaults to true.
    *
-   * Adding a node type strictly *reduces* fidelity for the tag it claims: before
-   * the node existed, the preservation layer kept the element and every
-   * attribute on it; afterwards the spec keeps only what it declares. A callout
-   * node modelling `class` silently drops `id` and `data-analytics` that used to
-   * survive.
+   * Adding a node or mark type strictly *reduces* fidelity for the tag it
+   * claims: before the type existed, the preservation layer kept the element
+   * and every attribute on it; afterwards the spec keeps only what it declares.
+   * A callout node modelling `class` silently drops `id` and `data-analytics`
+   * that used to survive, and a `strong` mark used to drop `class` the same way.
    *
    * So unmodelled attributes are captured on parse and merged back on
    * serialize, by default, at schema-build time -- which means an author cannot
@@ -245,6 +246,9 @@ const CARRY_SCRUB: Record<string, CarryScrub> = {
     scrubModelledStyle(carried)
     carryRejected(carried, dom, 'start', (value) => listStart(value) !== null)
   },
+  link(carried, dom) {
+    carryRejected(carried, dom, 'id', (value) => safeId(value) !== null)
+  },
   // Tables model a handful of declarations out of a `style` attribute they also
   // declare as an attribute of their own. The scrubs are defined next to the
   // validator that decides what "modelled" means for them, so the two cannot
@@ -369,33 +373,51 @@ function mergeCarried(
   carried: Record<string, string>,
   modelled: Record<string, unknown>,
 ): Record<string, unknown> {
-  const merged: Record<string, unknown> = { ...carried, ...modelled }
-  const before = carried['style']
-  const after = modelled['style']
-  if (typeof before === 'string' && typeof after === 'string') {
-    const declarations = parseDeclarations(before)
-    for (const [name, value] of parseDeclarations(after)) declarations.set(name, value)
-    const style = serializeDeclarations(declarations)
-    if (style !== null) merged['style'] = style
-    else delete merged['style']
+  // Modelled names first so `<a href>` stays `href` then `class`, not the
+  // reverse -- residue used to be spread first and HTML attribute order is
+  // load-bearing for byte-identical round trips.
+  const merged: Record<string, unknown> = { ...modelled }
+  for (const [name, value] of Object.entries(carried)) {
+    if (name === 'style' && typeof merged['style'] === 'string') {
+      const declarations = parseDeclarations(value)
+      for (const [property, css] of parseDeclarations(merged['style'] as string)) {
+        declarations.set(property, css)
+      }
+      const style = serializeDeclarations(declarations)
+      if (style !== null) merged['style'] = style
+      else delete merged['style']
+      continue
+    }
+    if (!(name in modelled)) merged[name] = value
   }
   return merged
 }
 
 /**
- * Wrap a node spec so attributes it does not model survive the round trip.
+ * Wrap a spec so attributes it does not model survive the round trip.
  *
- * Applied to extension nodes unconditionally: they only ever claim markup the
- * preservation layer previously kept in full, so carrying the residue is a pure
- * improvement over the alternative of silently dropping it.
+ * Applied to extension nodes and marks unless they opt out: they only ever
+ * claim markup the preservation layer previously kept in full, so carrying the
+ * residue is a pure improvement over the alternative of silently dropping it.
+ *
+ * Style parse rules are left alone. They match a declaration, not an element,
+ * so there is no attribute list to harvest -- and wrapping them would pass a
+ * CSS string into a collector that expects `HTMLElement.attributes`.
  */
-function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
+function isTagParseRule(rule: ParseRule): rule is TagParseRule {
+  return typeof (rule as TagParseRule).tag === 'string'
+}
+
+function withCarriedAttributes<T extends NodeSpec | MarkSpec>(
+  name: string,
+  spec: T,
+  kind: 'node' | 'mark',
+): T {
   const modelled = new Set(Object.keys(spec.attrs ?? {}))
   const attrs = { ...(spec.attrs ?? {}), [CARRIED_ATTR]: { default: null } }
 
-  // A node's parse rules are always tag rules -- only marks may match styles --
-  // so the narrower type is the accurate one and keeps the map total.
-  const parseDOM = (spec.parseDOM ?? []).map((rule: TagParseRule): TagParseRule => {
+  const parseDOM = (spec.parseDOM ?? []).map((rule: ParseRule): ParseRule => {
+    if (!isTagParseRule(rule)) return rule
     const original = rule.getAttrs
     return {
       ...rule,
@@ -445,8 +467,28 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
           // frame rendered the attacker's document and never fetched YouTube.
           if (isNeverCarriedAttribute(attr.name)) continue
           if (URL_ATTRIBUTES.has(attr.name.toLowerCase()) && !isSafeUrl(attr.value)) continue
+          // Google Docs wraps a paste in `<b id="docs-internal-guid-...">`.
+          // The paste pipeline strips that id; this is the schema-level
+          // backstop on the `strong` mark that claims that wrapper -- not on
+          // every node, or `<p id="docs-internal-guidelines">` would lose a
+          // legitimate id.
+          if (
+            kind === 'mark' &&
+            name === 'strong' &&
+            attr.name === 'id' &&
+            /^docs-internal-guid/i.test(attr.value)
+          ) {
+            continue
+          }
           if (attr.name === 'style') {
-            const css = withoutOfficeMetadata(attr.value)
+            let css = withoutOfficeMetadata(attr.value)
+            if (css !== null && kind === 'mark') {
+              const declarations = parseDeclarations(css)
+              for (const property of INLINE_STYLE_PROPERTIES) {
+                declarations.delete(property)
+              }
+              css = serializeDeclarations(declarations)
+            }
             if (css !== null) carried['style'] = css
             continue
           }
@@ -462,10 +504,13 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
   })
 
   const originalToDOM = spec.toDOM
-  const toDOM: NodeSpec['toDOM'] = originalToDOM
-    ? (node) => {
-        const out = originalToDOM(node)
-        const carried = node.attrs[CARRIED_ATTR] as Record<string, string> | null
+  const toDOM = originalToDOM
+    ? (first: { attrs: Record<string, unknown> }, ...rest: unknown[]) => {
+        const out = (originalToDOM as (
+          first: { attrs: Record<string, unknown> },
+          ...rest: unknown[]
+        ) => DOMOutputSpec)(first, ...rest)
+        const carried = first.attrs[CARRIED_ATTR] as Record<string, string> | null
         if (!carried) return out
         if (!Array.isArray(out)) {
           // `{ dom, contentDOM }`, or a bare node. Both are legal output specs and
@@ -507,7 +552,7 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
       }
     : originalToDOM
 
-  return { ...spec, attrs, parseDOM, ...(toDOM ? { toDOM } : {}) }
+  return { ...spec, attrs, parseDOM, ...(toDOM ? { toDOM } : {}) } as T
 }
 
 /* ------------------------------------------------------------------ *
@@ -578,14 +623,25 @@ function coreNodesWithCarriedAttributes(): OrderedMap<NodeSpec> {
   // it is how `<p class="lead">` became `<p>` on the first save.
   let nodes = OrderedMap.from<NodeSpec>({})
   for (const [name, spec] of Object.entries(coreNodes)) {
-    nodes = nodes.addToEnd(name, SKIP_CARRY.has(name) ? spec : withCarriedAttributes(name, spec))
+    nodes = nodes.addToEnd(name, SKIP_CARRY.has(name) ? spec : withCarriedAttributes(name, spec, 'node'))
   }
   return nodes
 }
 
+function coreMarksWithCarriedAttributes(): OrderedMap<MarkSpec> {
+  // The same hole as core nodes, on the other half of the schema: `<strong
+  // class="brand-name">` became `<strong>` because a mark spec kept the tag and
+  // nothing else, and the carry wrapper never ran.
+  let marks = OrderedMap.from<MarkSpec>({})
+  for (const [name, spec] of Object.entries(coreMarks)) {
+    marks = marks.addToEnd(name, withCarriedAttributes(name, spec, 'mark'))
+  }
+  return marks
+}
+
 export function createSchema(list: readonly SchemaExtension[] = []): Schema {
   let nodes = coreNodesWithCarriedAttributes()
-  let marks = OrderedMap.from<MarkSpec>(coreMarks)
+  let marks = coreMarksWithCarriedAttributes()
   const claimed = new Map<string, string>()
 
   for (const extension of list) {
@@ -594,7 +650,7 @@ export function createSchema(list: readonly SchemaExtension[] = []): Schema {
       claim(claimed, 'node', name, extension, Object.hasOwn(coreNodes, name))
       const prepared = extension.carryUnknownAttributes === false
         ? spec
-        : withCarriedAttributes(name, spec)
+        : withCarriedAttributes(name, spec, 'node')
       // addToEnd, never prepend: a leading block node becomes the document's
       // defaultType and every new document would start with it.
       nodes = nodes.remove(name).addToEnd(name, prepared)
@@ -603,7 +659,10 @@ export function createSchema(list: readonly SchemaExtension[] = []): Schema {
     for (const [name, spec] of Object.entries(extension.marks ?? {})) {
       assertRulePriorities(extension.id, name, spec)
       claim(claimed, 'mark', name, extension, Object.hasOwn(coreMarks, name))
-      marks = marks.remove(name).addToEnd(name, spec)
+      const prepared = extension.carryUnknownAttributes === false
+        ? spec
+        : withCarriedAttributes(name, spec, 'mark')
+      marks = marks.remove(name).addToEnd(name, prepared)
     }
   }
 

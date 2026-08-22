@@ -7,11 +7,11 @@
  */
 
 import { coreSchema, parseHtml } from '@openleaf-editor/core'
-import { EditorState, TextSelection, type Transaction } from 'prosemirror-state'
+import { EditorState, NodeSelection, TextSelection, type Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { registerDefaultItems } from '../src/items.js'
-import { DEFAULT_MENUBAR, MenuBar, PopupMenu } from '../src/menu.js'
+import { DEFAULT_MENUBAR, IMAGE_CONTEXT_ITEMS, MenuBar, PopupMenu } from '../src/menu.js'
 
 registerDefaultItems()
 
@@ -160,6 +160,33 @@ describe('a popup menu', () => {
     menu.attach(fakeView())
     menu.show([{ id: 'bold' }], 10, 10, { label: 'Editor menu' })
     expect(menu.el.getAttribute('aria-label')).toBe('Editor menu')
+    menu.destroy()
+  })
+
+  it('labels the image item Edit image when an image is selected', () => {
+    let state = EditorState.create({
+      doc: parseHtml('<p><img src="/a.png" alt="x"></p>', { schema: coreSchema() }),
+    })
+    let pos: number | null = null
+    state.doc.descendants((node, at) => {
+      if (pos === null && node.type.name === 'image') pos = at
+      return pos === null
+    })
+    state = state.apply(state.tr.setSelection(NodeSelection.create(state.doc, pos!)))
+    const view = {
+      get state() {
+        return state
+      },
+      dispatch(tr: Transaction) {
+        state = state.apply(tr)
+      },
+      focus: () => undefined,
+    } as unknown as EditorView
+    const menu = new PopupMenu(host, document)
+    host.appendChild(menu.el)
+    menu.attach(view)
+    menu.show([...IMAGE_CONTEXT_ITEMS], 10, 10, { trigger })
+    expect(items(menu)[0]?.textContent).toBe('Edit image')
     menu.destroy()
   })
 })

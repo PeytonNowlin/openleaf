@@ -68,6 +68,13 @@ describe('executable content must not survive the round trip', () => {
     expect(roundTrip('<div class="x" OnClick="alert(1)">t</div>')).not.toMatch(/onclick/i)
     expect(roundTrip('<div class="x" onmouseover="alert(1)">t</div>')).not.toMatch(/onmouseover/i)
   })
+
+  it('strips event handlers from mark tags the schema claims', () => {
+    expect(roundTrip('<p><strong class="x" onclick="alert(1)">t</strong></p>')).not.toMatch(/onclick/i)
+    expect(roundTrip('<p><a href="/x" class="btn" onclick="alert(1)">Go</a></p>')).not.toMatch(
+      /onclick/i,
+    )
+  })
 })
 
 describe('dangerous URLs must not survive', () => {

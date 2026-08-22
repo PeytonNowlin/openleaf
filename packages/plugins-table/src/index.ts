@@ -42,7 +42,6 @@ import type { Command } from 'prosemirror-state'
 import type { ViewMutationRecord } from 'prosemirror-view'
 import {
   columnResizing,
-  deleteRow,
   deleteTable,
   mergeCells,
   splitCell,
@@ -56,6 +55,7 @@ import {
   addRowBefore,
   colgroupSyncPlugin,
   deleteColumn,
+  deleteRow,
   inTable,
   insertTable,
   toggleHeaderRow,
@@ -154,10 +154,9 @@ class CaptionedTableView extends TableView {
       return
     }
 
-    // Editor-only, exactly as in core's `toDOM`: the caption renders inside the
-    // editable area but is not part of `contentDOM`, so a caret must not enter
-    // it. Neither attribute reaches the stored HTML, which is produced by
-    // serialization and never by this view.
+    // Editor-only. The caption is not part of `contentDOM`, so a caret must not
+    // enter it. `toDOM` no longer stamps this: clipboard serialization shares
+    // that path and would persist the marker. This view never runs on save.
     rebuilt.setAttribute('contenteditable', 'false')
     rebuilt.setAttribute('data-openleaf-caption', html)
 
@@ -272,6 +271,7 @@ export {
   colgroupHtmlWithWidths,
   colgroupSyncPlugin,
   deleteColumn,
+  deleteRow,
   inTable,
   insertTable,
   mergeStyle,
@@ -290,7 +290,6 @@ export { buildInsertGrid, GRID_SIZE } from './grid.js'
 export { tableContextMenu } from './menu.js'
 
 export {
-  deleteRow,
   deleteTable,
   mergeCells,
   splitCell,

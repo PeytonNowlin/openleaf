@@ -232,6 +232,10 @@ ID list is in [Optional plugins](../README.md#optional-plugins).
 Word import is the ordering exception: install both import packages and call
 `installImport()` before `installDocxImport()`. The DOCX package supplies a
 converter behind the `importFile` control owned by the base import package.
+That converter also refuses a ZIP bomb: 25 MB compressed, 256 MB expanded, and
+it fails closed when the archive's directory cannot be read. See
+[SECURITY.md](../SECURITY.md#scope-and-threat-model) and
+[`@openleaf-editor/plugins-import-docx`](../packages/plugins-import-docx/README.md).
 
 Third-party schema extensions must register before an editor is built because a
 ProseMirror schema is immutable. See

@@ -5,8 +5,10 @@ import { describe, expect, it } from 'vitest'
 import {
   addColumnAfter,
   addRowAfter,
+  addRowBefore,
   colgroupSyncPlugin,
   deleteColumn,
+  deleteRow,
   insertTable,
   setCellVerticalAlign,
   setTableCaption,
@@ -37,6 +39,18 @@ function apply(state: EditorState, command: Command): EditorState {
   })
   expect(ok).toBe(true)
   return next
+}
+
+function tableSectionCounts(state: EditorState): { headerRows: number; footerRows: number } {
+  let headerRows = 0
+  let footerRows = 0
+  state.doc.descendants((node) => {
+    if (node.type.name !== 'table') return true
+    headerRows = (node.attrs['headerRows'] as number) || 0
+    footerRows = (node.attrs['footerRows'] as number) || 0
+    return false
+  })
+  return { headerRows, footerRows }
 }
 
 describe('header cell scope', () => {
@@ -126,6 +140,7 @@ describe('caption, alignment and nested tables', () => {
   })
 })
 
+<<<<<<< HEAD
 
 const THREE_COL =
   '<table><colgroup><col width="100" class="c1"><col width="200" class="c2"><col width="300" class="c3"></colgroup>' +
@@ -243,5 +258,57 @@ describe('colgroup tracks column insert and delete', () => {
     expect(html).toContain('width="140"')
     expect(html).toContain('width="60"')
     expectColgroupMatchesTable(state.doc)
+=======
+describe('table section row counts', () => {
+  // headerRows/footerRows are how serialize rebuilds thead/tfoot. The row
+  // commands have to keep those counts attached to the rows that are still
+  // in those sections; otherwise a data row is promoted into thead (issue #132).
+
+  it('drops headerRows when the header row is deleted, instead of promoting the next row', () => {
+    const start = stateIn(
+      '<table><thead><tr><th>Region</th><th>Total</th></tr></thead>' +
+        '<tbody><tr><td>North</td><td>412</td></tr><tr><td>South</td><td>77</td></tr></tbody></table>',
+      'Region',
+    )
+    expect(tableSectionCounts(start)).toEqual({ headerRows: 1, footerRows: 0 })
+    const next = apply(start, deleteRow)
+    expect(tableSectionCounts(next)).toEqual({ headerRows: 0, footerRows: 0 })
+    const html = serializeHtml(next.doc)
+    expect(html).not.toContain('<thead>')
+    expect(html).toContain('<td>North</td>')
+    expect(html).toContain('<td>South</td>')
+  })
+
+  it('inserts addRowBefore of a header row into the body, not into thead', () => {
+    const start = stateIn(
+      '<table><thead><tr><th>Region</th><th>Total</th></tr></thead>' +
+        '<tbody><tr><td>North</td><td>412</td></tr><tr><td>South</td><td>77</td></tr></tbody></table>',
+      'Region',
+    )
+    const next = apply(start, addRowBefore)
+    expect(tableSectionCounts(next)).toEqual({ headerRows: 1, footerRows: 0 })
+    const html = serializeHtml(next.doc)
+    expect(html).toMatch(/<thead>[\s\S]*Region[\s\S]*<\/thead>/)
+    expect(html).not.toMatch(/<thead>[\s\S]*<td><\/td>[\s\S]*<\/thead>/)
+    expect(html).toContain('<td></td><td></td>')
+    expect(html).toContain('<td>North</td>')
+  })
+
+  it('drops footerRows when the footer row is deleted, instead of promoting the last body row', () => {
+    const start = stateIn(
+      '<table><thead><tr><th>h1</th><th>h2</th></tr></thead>' +
+        '<tbody><tr><td>a</td><td>b</td></tr></tbody>' +
+        '<tfoot><tr><td>c</td><td>d</td></tr></tfoot></table>',
+      'c',
+    )
+    expect(tableSectionCounts(start)).toEqual({ headerRows: 1, footerRows: 1 })
+    const next = apply(start, deleteRow)
+    expect(tableSectionCounts(next)).toEqual({ headerRows: 1, footerRows: 0 })
+    const html = serializeHtml(next.doc)
+    expect(html).not.toContain('<tfoot>')
+    expect(html).toMatch(/<thead>[\s\S]*h1[\s\S]*<\/thead>/)
+    expect(html).toContain('<td>a</td>')
+    expect(html).not.toContain('<td>c</td>')
+>>>>>>> origin/main
   })
 })
