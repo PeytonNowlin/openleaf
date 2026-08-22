@@ -49,7 +49,20 @@ const WORKFLOW = 'release.yml'
 /** Milliseconds between writes. The registry rate-limits this endpoint. */
 const PAUSE = 2_000
 
+/** A read. Output is captured, because the script parses it. Needs no 2FA. */
 const npm = (args) => execFileSync('npm', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+
+/*
+ * A write. `stdio: 'inherit'`, and that is the whole point of a second helper.
+ *
+ * `npm trust` runs an interactive two-factor challenge: it prints a URL, waits
+ * for you to approve in the browser, and reads the terminal. Captured stdio
+ * gives it nothing to print to and nothing to read from, so every write fails
+ * immediately -- with the reason buried in a pipe the script then summarised
+ * into an unhelpful "FAILED". Inheriting the terminal lets npm run its own
+ * prompt, and lets its own error text reach you unedited when one fails.
+ */
+const npmWrite = (args) => execFileSync('npm', args, { stdio: 'inherit' })
 
 /**
  * Is this package already trusting the right repository and workflow?
@@ -128,13 +141,12 @@ async function main() {
   const failed = []
   for (const [index, name] of pending.entries()) {
     if (index > 0) await sleep(PAUSE)
-    process.stdout.write(`  ${name} ... `)
+    console.log(`\n--- ${name} (${index + 1}/${pending.length}) ---`)
     try {
-      npm(['trust', 'github', name, '--repo', REPO, '--file', WORKFLOW, '--allow-publish', '--yes'])
-      console.log('configured')
-    } catch (error) {
-      console.log('FAILED')
-      failed.push(`${name}: ${String(error.stderr ?? error.message).trim().split('\n').pop()}`)
+      npmWrite(['trust', 'github', name, '--repo', REPO, '--file', WORKFLOW, '--allow-publish', '--yes'])
+    } catch {
+      // npm has already printed why, on the inherited stderr.
+      failed.push(name)
     }
   }
 
@@ -142,8 +154,10 @@ async function main() {
     console.error(
       `\n${failed.length} of ${pending.length} could not be configured:\n` +
         failed.map((f) => `  ${f}`).join('\n') +
-        '\n\nRe-run to retry only these. If the failures are 2FA challenges, the\n' +
-        'five-minute skip window expired; re-running opens a fresh one.',
+        '\n\nnpm printed the reason above each failure. Re-run to retry only\n' +
+        'these -- the read pass skips whatever did succeed. If the failures are\n' +
+        '2FA challenges, the five-minute skip window expired and re-running\n' +
+        'opens a fresh one.',
     )
     process.exitCode = 1
     return
