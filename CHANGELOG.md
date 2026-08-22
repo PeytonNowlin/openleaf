@@ -174,6 +174,14 @@ package on this version -- they pin each other exactly.
 
 ### Fixed
 
+- **Only the first glyph in the character map and emoji picker was reachable
+  from the keyboard.** The panel intercepted Tab (and closed) and had no arrow
+  keys, so 1 of 40 characters and 1 of 32 emoji could be chosen without a
+  mouse. It also used `role="menu"` with plain button children, which is
+  invalid ARIA -- a reader announced a menu with no items. Both pickers now
+  use the colour picker's grid: `role="grid"` / `row` / `gridcell`, a roving
+  tabindex, and Arrow / Home / End navigation. Tab is left alone so it leaves
+  the widget.
 - **Autolink marks the URL, not the punctuation after it.** The href already
   dropped trailing `.,;:!?`, but the mark still covered the full match, `]`
   survived into the href, and a parenthesised `www.` URL never matched. One
