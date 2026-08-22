@@ -36,6 +36,39 @@ export interface LinkResult {
   title: string | null
   target: string | null
   rel: string | null
+  id: string | null
+}
+
+/** Tokens the "open in a new window" checkbox is allowed to add or drop. */
+const WINDOW_REL = new Set(['noopener', 'noreferrer'])
+
+/**
+ * Keep author `rel` tokens; only the new-window checkbox may add or drop
+ * `noopener` / `noreferrer`. Replacing the whole attribute (issue #14's first
+ * cut, then #108) deleted `nofollow`, `sponsored`, `me`, and the rest.
+ */
+function mergeLinkRel(
+  existing: string | null | undefined,
+  newWindow: boolean,
+): string | null {
+  const tokens: string[] = []
+  const seen = new Set<string>()
+  for (const token of (existing ?? '').trim().split(/\s+/)) {
+    if (!token) continue
+    const key = token.toLowerCase()
+    if (!newWindow && WINDOW_REL.has(key)) continue
+    if (seen.has(key)) continue
+    seen.add(key)
+    tokens.push(token)
+  }
+  if (newWindow) {
+    for (const extra of ['noopener', 'noreferrer'] as const) {
+      if (seen.has(extra)) continue
+      seen.add(extra)
+      tokens.push(extra)
+    }
+  }
+  return tokens.length > 0 ? tokens.join(' ') : null
 }
 
 export interface ImageResult {
@@ -638,7 +671,13 @@ export function promptFields<T>(
 
 export async function promptForLink(
   doc: Document,
-  existing?: { href?: string; title?: string | null; target?: string | null },
+  existing?: {
+    href?: string
+    title?: string | null
+    target?: string | null
+    rel?: string | null
+    id?: string | null
+  },
   host?: HTMLElement,
 ): Promise<LinkResult | null> {
   const listed = listedLinks()
@@ -718,7 +757,8 @@ export async function promptForLink(
           href,
           title: values['title'] || null,
           target: newWindow ? '_blank' : null,
-          rel: newWindow ? 'noopener noreferrer' : null,
+          rel: mergeLinkRel(existing?.rel, newWindow),
+          id: existing?.id ?? null,
         },
       }
     },

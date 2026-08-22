@@ -9,17 +9,25 @@
  * decision; which characters may appear in one is not.
  */
 
-/** HTML5 ids: no spaces, not empty. */
-const ID = /^[^\s]+$/
-
-/** A single class token. */
-const CLASS_TOKEN = /^-?[_a-zA-Z]+[_a-zA-Z0-9-]*$/
+/**
+ * HTML5 ids and class tokens: a non-empty run of non-whitespace.
+ *
+ * Class names are not CSS identifiers. Tailwind (`md:w-1/2`, `p-[10px]`),
+ * leading digits (`2col`), and non-ASCII (`größe-mittel`) are legal in HTML
+ * and in CSS (with escaping at selector time, which is the site's problem).
+ * Restricting tokens to ASCII identifiers silently deleted half of a mixed
+ * `class` whenever another token survived the filter -- the modelled write
+ * then overrode the residue that would have carried the original string.
+ * Policy about *which* classes a deployment stores belongs in sanitize, not
+ * here.
+ */
+const HTML_TOKEN = /^[^\s]+$/
 
 /** An `id` the schema will store, or null. */
 export function safeId(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null
   const candidate = value.trim()
-  if (candidate === '' || !ID.test(candidate)) return null
+  if (candidate === '' || !HTML_TOKEN.test(candidate)) return null
   return candidate
 }
 
@@ -38,7 +46,7 @@ export function safeClassList(
   const kept: string[] = []
   const seen = new Set<string>()
   for (const token of value.trim().split(/\s+/)) {
-    if (token === '' || exclude.has(token) || !CLASS_TOKEN.test(token)) continue
+    if (token === '' || exclude.has(token) || !HTML_TOKEN.test(token)) continue
     if (seen.has(token)) continue
     seen.add(token)
     kept.push(token)
