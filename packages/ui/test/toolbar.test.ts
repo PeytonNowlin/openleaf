@@ -710,6 +710,90 @@ describe('group dividers', () => {
     for (const [index, group] of groups.entries()) {
       expect(group.matches('.ol-group + .ol-group')).toBe(index > 0)
     }
+  })
+})
+
+describe('the overflow fit loop', () => {
+  /**
+   * A bar with fully measurable geometry, which jsdom does not otherwise give:
+   * every `offsetWidth` there is 0, so the fit arithmetic is invisible.
+   *
+   * `scrollWidth` is a getter over the groups CURRENTLY in the bar, the way the
+   * real one behaves, so the loop's own writes are reflected back at it.
+   */
+  function measurable(
+    toolbar: Toolbar,
+    { budget, groupWidth, moreWidth }: { budget: number; groupWidth: number; moreWidth: number },
+  ): void {
+    Object.defineProperty(toolbar.el, 'clientWidth', { get: () => budget, configurable: true })
+    Object.defineProperty(toolbar.el, 'scrollWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.querySelectorAll(':scope > .ol-group').length * groupWidth
+      },
+    })
+    for (const group of toolbar.el.querySelectorAll(':scope > .ol-group')) {
+      Object.defineProperty(group, 'offsetWidth', { get: () => groupWidth, configurable: true })
+    }
+    const more = toolbar.el.querySelector('.ol-overflow-more')
+    if (more) Object.defineProperty(more, 'offsetWidth', { get: () => moreWidth, configurable: true })
+  }
+
+  function groupsInBar(toolbar: Toolbar): number {
+    return toolbar.el.querySelectorAll(':scope > .ol-group').length
+  }
+
+  /*
+   * The loop decided how many groups to move using only the groups' widths and
+   * the gaps. Once at least one group has left, the previously-hidden More
+   * button is revealed and takes a width and a gap of its own in the row --
+   * which was never counted. So a bar could move exactly enough groups for the
+   * remainder to fit, reveal the trigger, and be over budget again: it settled
+   * only on the next ResizeObserver pass, with a visible flash in between.
+   *
+   * 3 groups x 100 in a 250 budget, with a 60-wide trigger. Moving one group
+   * leaves 200, which fits -- until the trigger makes it 260.
+   */
+  it('counts the More trigger it is about to reveal', () => {
+    const { toolbar, host } = mount('bold | italic | underline')
+    const overflow = new ToolbarOverflow(toolbar.el, host, document)
+    measurable(toolbar, { budget: 250, groupWidth: 100, moreWidth: 60 })
+    overflow.layout()
+
+    const more = toolbar.el.querySelector<HTMLElement>('.ol-overflow-more')!
+    expect(more.hidden).toBe(false)
+    // One group left in the bar: 100 + 60 = 160, inside 250. Two would be
+    // 200 + 60 = 260, which is the overflow the old arithmetic shipped.
+    expect(groupsInBar(toolbar)).toBe(1)
+    overflow.destroy()
+  })
+
+  it('is idempotent, so a second pass moves nothing more', () => {
+    const { toolbar, host } = mount('bold | italic | underline')
+    const overflow = new ToolbarOverflow(toolbar.el, host, document)
+    measurable(toolbar, { budget: 250, groupWidth: 100, moreWidth: 60 })
+    overflow.layout()
+    const settled = groupsInBar(toolbar)
+    overflow.layout()
+    // A loop that converges only on the next resize pass is the flash.
+    expect(groupsInBar(toolbar)).toBe(settled)
+    overflow.destroy()
+  })
+
+  /*
+   * The trigger's footprint must not be charged to a bar that does not need it.
+   * Counting it unconditionally would collapse a group to make room for a
+   * button that was never going to be shown.
+   */
+  it('does not charge for a trigger it will not reveal', () => {
+    const { toolbar, host } = mount('bold | italic')
+    const overflow = new ToolbarOverflow(toolbar.el, host, document)
+    // 2 groups x 100 = 200, comfortably inside 250 -- but 200 + 60 is not.
+    measurable(toolbar, { budget: 250, groupWidth: 100, moreWidth: 60 })
+    overflow.layout()
+
+    expect(toolbar.el.querySelector<HTMLElement>('.ol-overflow-more')!.hidden).toBe(true)
+    expect(groupsInBar(toolbar)).toBe(2)
     overflow.destroy()
   })
 })

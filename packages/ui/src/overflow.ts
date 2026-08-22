@@ -58,6 +58,16 @@ export class ToolbarOverflow {
    * cancelled on destroy so a queued layout cannot run against a torn-down bar.
    */
   #frame: number | null = null
+  /**
+   * The More trigger's own width, cached.
+   *
+   * Its label never changes, so one measurement holds for the life of the bar.
+   * Zero means "not measured yet": `display: none` reports 0, so a hidden
+   * trigger cannot be read, and a value that comes back 0 is retried rather
+   * than pinned -- a first layout before the stylesheet has landed must not
+   * fix a wrong width forever.
+   */
+  #moreWidth = 0
 
   constructor(toolbar: HTMLElement, host: HTMLElement, doc: Document, onLayout?: () => void) {
     this.#toolbar = toolbar
@@ -173,7 +183,19 @@ export class ToolbarOverflow {
     // COMPUTE. In overflow mode the bar is a nowrap flex row with one uniform
     // gap, so moving the last k groups out takes exactly their widths and k
     // gaps off the scroll width. Nothing has to be re-measured between them.
-    let used = total
+    //
+    // `total` was measured with `#more` hidden, so it does not include the
+    // trigger. If nothing overflows, nothing is revealed and that is the right
+    // measurement -- so the fit is checked FIRST, before the trigger's own
+    // footprint enters the arithmetic.
+    if (total <= budget + 1) return
+
+    // From here the trigger WILL be shown, and it takes a width and a gap in
+    // the row. Leaving them out is what let a bar stay overflowing by roughly
+    // the width of the More button: the groups fit, then revealing the trigger
+    // pushed the row back over its budget, and it converged only on the next
+    // ResizeObserver pass -- with a visible flash in between.
+    let used = total + this.#moreFootprint(gap)
     let count = 0
     while (used > budget + 1 && count < groups.length) {
       used -= (widths[groups.length - 1 - count] ?? 0) + gap
@@ -289,6 +311,25 @@ export class ToolbarOverflow {
   /* -------------------------------------------------------------- *
    * Moving groups back and forth
    * -------------------------------------------------------------- */
+
+  /**
+   * What revealing the More trigger costs the row: its own width plus one gap.
+   *
+   * The trigger has to be visible to be measured, so the first call unhides it
+   * for one read and puts it back. That is one extra layout, once per bar, on
+   * the first overflow only -- and it buys the correct answer for every layout
+   * after it. Doing it eagerly in the constructor would not work: the bar may
+   * not be in a document yet, and the stylesheet may not have landed.
+   */
+  #moreFootprint(gap: number): number {
+    if (this.#moreWidth === 0) {
+      const wasHidden = this.#more.hidden
+      this.#more.hidden = false
+      this.#moreWidth = this.#more.offsetWidth
+      this.#more.hidden = wasHidden
+    }
+    return this.#moreWidth === 0 ? 0 : this.#moreWidth + gap
+  }
 
   #restore(): void {
     for (const group of [...this.#panel.children]) this.#toolbar.appendChild(group)
