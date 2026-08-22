@@ -353,6 +353,9 @@ test.describe('an unbounded colspan cannot hang the tab', () => {
     await editor(page).getByText('x').click()
     await page.keyboard.type('y')
     await expect.poll(() => value(page)).toContain('xy')
+  })
+})
+
 /**
  * `readonly`, for the paths that are not behind ProseMirror's `editable` gate.
  *
@@ -375,15 +378,18 @@ test.describe('a read-only table', () => {
       document.querySelector('openleaf-editor')!.setAttribute('readonly', '')
     })
   })
+
   test('opens no context menu on a secondary click', async ({ page }) => {
     await editor(page).getByText('North').click({ button: 'right' })
     await expect(page.getByRole('menu', { name: 'Table' })).toBeHidden()
   })
+
   test('opens none from the keyboard either', async ({ page }) => {
     await editor(page).getByText('North').click()
     await page.keyboard.press('Shift+F10')
     await expect(page.getByRole('menu', { name: 'Table' })).toBeHidden()
   })
+
   test('keeps every row, which Delete row used to take', async ({ page }) => {
     const before = await value(page)
     await editor(page).getByText('North').click({ button: 'right' })
@@ -394,6 +400,7 @@ test.describe('a read-only table', () => {
     expect(await value(page)).toBe(before)
     expect(await value(page)).toContain('North')
   })
+
   test('dismisses a menu that was open when readonly arrived', async ({ page }) => {
     await page.evaluate(() => {
       document.querySelector('openleaf-editor')!.removeAttribute('readonly')
