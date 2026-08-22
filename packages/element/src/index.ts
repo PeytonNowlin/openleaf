@@ -263,6 +263,18 @@ export class OpenLeafEditor extends HTMLElementBase {
    */
   #boundDoc: Document | null = null
   /**
+   * The document the context menu's capture listener went on.
+   *
+   * Same reason as `#boundDoc`, one scope smaller: the chrome can be rebuilt
+   * while the element sits in a document it was adopted into, and
+   * `this.ownerDocument` by then is not the document the listener is on.
+   * Removing from the wrong one is a silent no-op that leaves the listener --
+   * and everything it retains, including the serialized-document cache -- alive
+   * for the life of that document. Toolbar and MenuBar already hold their own
+   * document for exactly this reason.
+   */
+  #contextDoc: Document | null = null
+  /**
    * The last document this editor knew about, as HTML.
    *
    * Written by every build and refreshed on disconnect. It exists so a rebuild
@@ -733,8 +745,7 @@ export class OpenLeafEditor extends HTMLElementBase {
    * editor.
    */
   #destroyChrome(): void {
-    this.removeEventListener('contextmenu', this.#onContextMenu)
-    this.ownerDocument.removeEventListener('pointerdown', this.#onContextPointer, true)
+    this.#unmountContextMenuListeners()
     this.removeEventListener('focusin', this.#onInlineFocus)
     this.removeEventListener('focusout', this.#onInlineBlur)
     this.#resizeObserver?.disconnect()
@@ -861,9 +872,11 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.removeEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
     doc.removeEventListener('fullscreenchange', this.#onFullscreenChange)
     this.removeEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
-    this.removeEventListener('contextmenu', this.#onContextMenu)
-    this.removeEventListener('keydown', this.#onContextKey, true)
-    doc.removeEventListener('pointerdown', this.#onContextPointer, true)
+    // The context menu's three listeners are not removed here: #destroyChrome
+    // below owns all of them, from the document it recorded at mount. Removing
+    // them in two places is how the document-level one came to be removed from
+    // `#boundDoc` in one and `ownerDocument` in the other, and leaked whenever
+    // those differed.
     this.removeEventListener('focusin', this.#onInlineFocus)
     this.removeEventListener('focusout', this.#onInlineBlur)
     this.#resizeObserver?.disconnect()
@@ -1374,6 +1387,21 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#floating.mount(view)
   }
 
+  /**
+   * Every listener `#mountContextMenu` added, removed from where it added it.
+   *
+   * The keydown one used to be dropped only in `#teardown`, which was safe by
+   * accident -- every `#destroyChrome` call site either remounts immediately or
+   * precedes a full teardown, and re-adding the same function reference is a
+   * no-op. Symmetry here is cheaper than that argument.
+   */
+  #unmountContextMenuListeners(): void {
+    this.removeEventListener('contextmenu', this.#onContextMenu)
+    this.removeEventListener('keydown', this.#onContextKey, true)
+    this.#contextDoc?.removeEventListener('pointerdown', this.#onContextPointer, true)
+    this.#contextDoc = null
+  }
+
   #mountContextMenu(): void {
     if (this.getAttribute('contextmenu') === 'none') return
     this.#contextMenu = new PopupMenu(this, this.ownerDocument)
@@ -1381,7 +1409,9 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.appendChild(this.#contextMenu.el)
     this.addEventListener('contextmenu', this.#onContextMenu)
     this.addEventListener('keydown', this.#onContextKey, true)
-    this.ownerDocument.addEventListener('pointerdown', this.#onContextPointer, true)
+    // Recorded, not re-derived at removal time. See #contextDoc.
+    this.#contextDoc = this.ownerDocument
+    this.#contextDoc.addEventListener('pointerdown', this.#onContextPointer, true)
   }
 
   #onContextPointer = (event: PointerEvent): void => {
