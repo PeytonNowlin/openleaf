@@ -29,14 +29,26 @@
 const SCOPE = '.ol-editor .ol-content .ProseMirror'
 
 /**
- * At-rules whose block contains other RULES, so scoping descends into it.
+ * At-rules whose block is NOT a selector list. Everything else is descended into.
  *
- * Everything else is passed through untouched, which is the safe default. The
- * blocks of `@keyframes`, `@font-face`, `@page` and `@property` are not
- * selector lists -- prefixing `from` or `0%` with a class produces a keyframe
- * offset that matches nothing and silently kills the animation.
+ * A denylist rather than an allowlist, and the direction matters: the two ways
+ * of being wrong are not symmetric. Failing to descend into a rule-bearing
+ * at-rule ships its selectors UNSCOPED into the host page, which is the leak
+ * this whole function exists to prevent. Descending into a declaration block
+ * that merely looks like one costs nothing -- it has no inner blocks to rewrite,
+ * so its declarations pass through as they are. An allowlist means every at-rule
+ * CSS gains is a leak until somebody remembers to add it, which
+ * `@starting-style` had already demonstrated.
+ *
+ * `@keyframes` is why this list is not empty: `from`, `to` and `0%` are offsets,
+ * not selectors, and prefixing one with a class produces an offset that matches
+ * nothing and silently kills the animation.
  */
-const NESTED_AT_RULES = new Set(['media', 'supports', 'container', 'layer', 'scope', 'document'])
+const OPAQUE_AT_RULES = new Set([
+  'keyframes', '-webkit-keyframes', '-moz-keyframes', '-o-keyframes',
+  'font-face', 'font-feature-values', 'font-palette-values',
+  'page', 'property', 'counter-style', 'color-profile', 'position-try', 'viewport',
+])
 
 /** Index just past the string literal starting at `start`. */
 function endOfString(css: string, start: number): number {
@@ -66,6 +78,12 @@ function matchingBrace(css: string, open: number): number {
   let i = open
   while (i < css.length) {
     const ch = css[i]
+    // A backslash escape can carry any character, brace and semicolon included:
+    // `.foo\{bar` is one valid class name, not the start of a block.
+    if (ch === '\\') {
+      i += 2
+      continue
+    }
     if (ch === '/' && css[i + 1] === '*') {
       i = endOfComment(css, i)
       continue
@@ -116,6 +134,11 @@ function splitSelectorList(selectors: string): string[] {
   let i = 0
   while (i < selectors.length) {
     const ch = selectors[i]
+    // `.foo\,bar` is one class name whose name contains a comma.
+    if (ch === '\\') {
+      i += 2
+      continue
+    }
     if (ch === '/' && selectors[i + 1] === '*') {
       i = endOfComment(selectors, i)
       continue
@@ -155,6 +178,14 @@ function scopeRules(css: string): string {
   let i = 0
   while (i < css.length) {
     const ch = css[i]
+    // Escapes first, so `.foo\;bar` is one class name rather than a statement
+    // that ends mid-selector -- which split the rule and left both halves
+    // matching nothing.
+    if (ch === '\\') {
+      prelude += css.slice(i, i + 2)
+      i += 2
+      continue
+    }
     if (ch === '/' && css[i + 1] === '*') {
       const stop = endOfComment(css, i)
       prelude += css.slice(i, stop)
@@ -179,9 +210,9 @@ function scopeRules(css: string): string {
       const body = css.slice(i + 1, close)
       out += leading
       if (rule.startsWith('@')) {
-        const name = /^@([\w-]+)/.exec(rule)?.[1]?.toLowerCase() ?? ''
-        // Nested rules are scoped; anything else keeps its block verbatim.
-        out += `${rule}{${NESTED_AT_RULES.has(name) ? scopeRules(body) : body}}`
+        const name = /^@(-?[\w-]+)/.exec(rule)?.[1]?.toLowerCase() ?? ''
+        // Descended into unless its block is known not to hold rules.
+        out += `${rule}{${OPAQUE_AT_RULES.has(name) ? body : scopeRules(body)}}`
       } else {
         // The body is NOT recursed into. A rule nested inside a style rule is
         // relative to its parent, which this has already scoped -- scoping it

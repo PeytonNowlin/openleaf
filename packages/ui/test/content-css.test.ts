@@ -93,6 +93,57 @@ describe('content CSS', () => {
     expect(scoped).toBe('p { color: red')
   })
 
+  /*
+   * `@starting-style` is a rule-bearing at-rule that postdates the first version
+   * of this list, and an allowlist left its contents unscoped -- the same leak,
+   * arriving with the next at-rule CSS gains. The list is a denylist now, so an
+   * unknown at-rule is descended into rather than waved through. Reported by
+   * Codex on #97.
+   */
+  it('scopes a rule inside @starting-style', () => {
+    const scoped = scopeContentCss('@starting-style { p { opacity: 0 } }')
+    expect(scoped).toContain(`${SCOPE} p`)
+  })
+
+  it('scopes rules inside @layer and @container', () => {
+    expect(scopeContentCss('@layer base { p { color: red } }')).toContain(`${SCOPE} p`)
+    expect(scopeContentCss('@container (min-width: 10px) { p { color: red } }')).toContain(
+      `${SCOPE} p`,
+    )
+  })
+
+  it('leaves the declaration blocks of @font-face, @property and @page alone', () => {
+    for (const css of [
+      '@font-face { font-family: X; src: url(a.woff2) }',
+      "@property --x { syntax: '<color>'; inherits: false }",
+      '@page :first { margin: 1in }',
+    ]) {
+      expect(scopeContentCss(css)).toBe(css)
+    }
+  })
+
+  /*
+   * A backslash escape can carry any character, so a selector may legitimately
+   * contain a semicolon, a comma or a brace. The scanner read each of those as
+   * structure: `.foo\;bar` was split into `.foo;` plus a scoped `bar`, and both
+   * halves then matched nothing. Reported by Codex on #97; the comma and brace
+   * cases were the same defect, found while fixing it.
+   */
+  it('treats an escaped semicolon as part of the selector', () => {
+    const scoped = scopeContentCss(String.raw`.foo\;bar { color: red }`)
+    expect(scoped).toBe(String.raw`${SCOPE} .foo\;bar{ color: red }`)
+  })
+
+  it('treats an escaped comma as part of the selector', () => {
+    const scoped = scopeContentCss(String.raw`.foo\,bar { color: red }`)
+    expect(scoped).toBe(String.raw`${SCOPE} .foo\,bar{ color: red }`)
+  })
+
+  it('treats an escaped brace as part of the selector', () => {
+    const scoped = scopeContentCss(String.raw`.foo\{bar { color: red }`)
+    expect(scoped).toBe(String.raw`${SCOPE} .foo\{bar{ color: red }`)
+  })
+
   it('splits the content-css attribute', () => {
     expect(contentCssUrls('/a.css, /b.css')).toEqual(['/a.css', '/b.css'])
   })
