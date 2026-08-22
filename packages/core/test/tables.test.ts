@@ -166,6 +166,43 @@ describe('caption and colgroup survive the round trip', () => {
     expect(roundTrip('<table><tr><td>A</td></tr></table>')).not.toContain('caption')
   })
 
+  /*
+   * The ignore rules above are table-scoped. Without `context: 'table/'` they
+   * also fire for an orphaned `<caption>` or `<col>`, and `ignore` deletes the
+   * text. Whether that happens used to depend on where the element sat in the
+   * document -- destroyed at the start, kept after a paragraph -- which is how
+   * the hole stayed invisible. The six strings pin both directions.
+   */
+  it('keeps the text of an orphaned caption at the start of the document', () => {
+    expect(roundTrip('<caption>Table 1: Revenue</caption>')).toBe(
+      '<caption>Table 1: Revenue</caption>',
+    )
+  })
+
+  it('keeps the text of an orphaned caption before a paragraph', () => {
+    expect(roundTrip('<caption>a</caption><p>b</p>')).toBe('<caption>a</caption><p>b</p>')
+  })
+
+  it('does not ignore an orphaned col', () => {
+    // `<col>` is void in HTML, so the `x` never reaches the parser; the defect
+    // was deleting the element itself (`<p></p>`). Preservation keeps the tag.
+    expect(roundTrip('<col>x</col>')).toBe('<col>')
+  })
+
+  it('keeps an orphaned caption after a paragraph', () => {
+    expect(roundTrip('<p>b</p><caption>a</caption>')).toBe('<p>b</p><p>a</p>')
+  })
+
+  it('keeps an orphaned caption inside a wrapper', () => {
+    expect(roundTrip('<div><caption>orphan</caption></div>')).toBe('<p>orphan</p>')
+  })
+
+  it('still captures a caption that belongs to a table', () => {
+    expect(roundTrip('<table><caption>kept</caption><tr><td>c</td></tr></table>')).toBe(
+      '<table><caption>kept</caption><tbody><tr><td>c</td></tr></tbody></table>',
+    )
+  })
+
   it('never writes contenteditable into saved HTML', () => {
     // toDOM marks a caption inert for the EDITOR, because it renders inside the
     // editable area but outside the node's contentDOM. That attribute is ours,

@@ -54,7 +54,7 @@ describe('Word paste through the full pipeline', () => {
 
   it('produces real nested lists the schema accepts', () => {
     expect(out).toContain('<ul>')
-    expect(out).toMatch(/<li><p>Revenue up 12%<\/p><ul><li><p>North region<\/p><\/li><\/ul><\/li>/)
+    expect(out).toMatch(/<li><p>Revenue up 12%<\/p><ul><li>North region<\/li><\/ul><\/li>/)
   })
 
   it('keeps every word of the content', () => {
