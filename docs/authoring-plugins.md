@@ -912,19 +912,21 @@ Every bundle carries a budget in `BUDGETS_KB` in `scripts/bundle-budgets.mjs`,
 and the gate fails on the first one over. Gzipped, measured against budget:
 
 ```
-openleaf.min.js            117.3 / 121
+openleaf.min.js            117.7 / 121
 openleaf-import-docx.min.js 123.8 / 140
 openleaf-tables.min.js       18.1 /  25
 openleaf-session.min.js       9.2 /  10
 openleaf-highlight.min.js     6.7 /  15
-openleaf-insert.min.js        6.6 /  20
+openleaf-insert.min.js        7.6 /  20
 openleaf-colour.min.js        5.4 /  15
 openleaf-import.min.js        3.3 /  12
 ```
 
 Run `node scripts/bundle-budgets.mjs` for the current numbers rather than
 trusting the ones above; that command is the gate, so its output cannot be
-stale.
+stale. `scripts/check-docs.mjs` also reads this table (and the marked figures
+in `demo/index.html`) against the same measurement, so a drifted number fails
+the docs gate instead of waiting for a reader to notice.
 
 Assume the core headroom is zero. Read its history as the cautionary tale it is:
 the budget started at 90, went to 92 when alignment, colour and image upload
