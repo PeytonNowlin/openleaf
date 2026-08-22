@@ -579,14 +579,14 @@ test.describe('isolating selections (#130)', () => {
     const after = await submittedValue(page)
     expect(after).toContain('X')
     expect(after).toContain('<summary>s</summary>')
-    expect(after).toMatch(/<details[^>]*>[\s\S]*<p>body<\/p><\/details>/)
+    expect(after).toMatch(/<details[^>]*>[\s\S]*body<\/details>/)
     expect(after).not.toMatch(/<\/details><p>body<\/p>/)
 
     await page.keyboard.press('ControlOrMeta+z')
     const undone = await submittedValue(page)
     expect(undone).not.toContain('>X<')
     expect(undone).toContain('<p>quote</p>')
-    expect(undone).toContain('<p>body</p>')
+    expect(undone).toContain('body')
   })
 
   test('Shift+ArrowDown from a quoted paragraph into details stays editable', async ({ page }) => {
@@ -607,6 +607,6 @@ test.describe('isolating selections (#130)', () => {
     expect(errors.filter((message) => /TransformError|Cannot join/.test(message))).toEqual([])
     const after = await submittedValue(page)
     expect(after).toContain('X')
-    expect(after).toMatch(/<details[^>]*>[\s\S]*<p>body<\/p><\/details>/)
+    expect(after).toMatch(/<details[^>]*>[\s\S]*body<\/details>/)
   })
 })

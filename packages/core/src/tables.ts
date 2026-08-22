@@ -38,6 +38,7 @@
 
 import type { DOMOutputSpec, Node as PMNode, NodeSpec } from 'prosemirror-model'
 import { DOMSerializer } from 'prosemirror-model'
+import { Plugin, PluginKey } from 'prosemirror-state'
 import type { NodeView } from 'prosemirror-view'
 import {
   applyStyleAttribute,
@@ -706,6 +707,30 @@ export function tableCaptionNodeView(node: PMNode): NodeView {
   const view: NodeView = { dom: rendered.dom as HTMLElement }
   if (rendered.contentDOM) view.contentDOM = rendered.contentDOM
   return view
+}
+
+const captionViewKey = new PluginKey('openleaf-table-caption-view')
+
+/**
+ * Registers `tableCaptionNodeView` for editors that have not loaded
+ * `@openleaf-editor/plugins-table`.
+ *
+ * Must sit *before* that bundle's plugins in the editor stack.
+ * `EditorView.someProp` walks plugins from the end, so `columnResizing`'s
+ * `CaptionedTableView` still wins when both are present. Putting this view
+ * later is how it once shadowed column resize.
+ */
+export function tableCaptionPlugin(): Plugin {
+  return new Plugin({
+    key: captionViewKey,
+    props: {
+      nodeViews: {
+        table(node) {
+          return tableCaptionNodeView(node)
+        },
+      },
+    },
+  })
 }
 
 export const table_row: NodeSpec = {

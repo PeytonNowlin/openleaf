@@ -83,8 +83,8 @@ describe('isolatingSelectionPlugin', () => {
     const after = serializeHtml(state.doc)
     expect(after).toContain('X')
     expect(after).toContain('<summary>s</summary>')
-    expect(after).toContain('<p>body</p></details>')
-    expect(after).not.toMatch(/<details[^>]*>[\s\S]*<\/details><p>body<\/p>/)
+    expect(after).toContain('body</details>')
+    expect(after).not.toMatch(/<\/details><p>body<\/p>/)
 
     let undone: EditorState | null = null
     expect(undo(state, (tr) => { undone = state.apply(tr) })).toBe(true)

@@ -20,6 +20,16 @@ entries below say so explicitly when they do.
   preservation is going to keep the element, the same bargain `background_color`
   already struck. `#127`
 
+- **The core editor marks a table caption `contenteditable="false"` so a caret
+  cannot enter furniture ProseMirror does not own.** `tableCaptionPlugin` sits
+  ahead of the table-editing bundle so column resize still supplies the live
+  table node view. Stored HTML is unchanged.
+- **Serialized images put `class` before `src`**, matching the stored spelling
+  the round-trip fixtures pin rather than engine insertion order.
+- **Isolating-selection tests follow sole-paragraph unwrap** on a details body:
+  the body stays inside `<details>` after a crossing edit, without requiring a
+  wrapper `<p>` that save would strip.
+
 ### Security
 
 - **`.docx` zip-bomb guard fails closed on forged ZIP64 sentinels.** Writing
