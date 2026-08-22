@@ -9,13 +9,18 @@
  * gate exists to prevent.
  *
  * Run directly (`node scripts/bundle-budgets.mjs`) to build and check; import
- * `BUDGETS_KB` / `checkBundleSizes` to do it as part of a larger gate.
+ * `BUDGETS_KB` / `measureBundleSizes` / `checkBundleSizes` to do it as part of
+ * a larger gate. `check-docs.mjs` consumes the measurements so the numbers
+ * written into docs and the demo cannot drift from what this file just weighed.
  */
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gzipSync } from 'node:zlib'
+
+/** ~100 bytes. A one-decimal claim stays green across a rounding wobble. */
+export const SIZE_CLAIM_TOLERANCE_KB = 0.1
 
 /**
  * The plugin bundles were previously ungated, so they could grow without limit
@@ -105,24 +110,37 @@ function label(file) {
 }
 
 /**
- * Measure every bundle against its budget.
+ * Gzip each budgeted file the same way the gate does.
  *
- * Throws on the first bundle over budget. Returns a one-line summary so the
- * caller can print what the numbers actually were, not just that they passed.
+ * `build: false` reuses whatever is already in `demo/`, so a later check (the
+ * docs gate) can consume the same numbers without paying for a second esbuild.
  */
-export function checkBundleSizes({ build = true } = {}) {
+export function measureBundleSizes({ build = true } = {}) {
   const root = new URL('..', import.meta.url)
   // fileURLToPath, not `.pathname`: this repo's own path contains a space, and
   // a percent-encoded cwd is not a directory.
   if (build) execFileSync('node', ['demo/build.mjs'], { cwd: fileURLToPath(root), stdio: 'ignore' })
 
+  return Object.entries(BUDGETS_KB).map(([file, budget]) => {
+    const bytes = gzipSync(readFileSync(new URL(`demo/${file}`, root))).length
+    const kb = bytes / 1024
+    return { file, budget, bytes, kb, label: label(file) }
+  })
+}
+
+/**
+ * Measure every bundle against its budget.
+ *
+ * Throws on the first bundle over budget. Returns a one-line summary so the
+ * caller can print what the numbers actually were, not just that they passed.
+ */
+export function checkBundleSizes(opts = {}) {
   const measured = []
-  for (const [file, budget] of Object.entries(BUDGETS_KB)) {
-    const kb = gzipSync(readFileSync(new URL(`demo/${file}`, root))).length / 1024
-    if (kb > budget) {
-      throw new Error(`${file} is ${kb.toFixed(1)} KB gzipped, over its ${budget} KB budget`)
+  for (const row of measureBundleSizes(opts)) {
+    if (row.kb > row.budget) {
+      throw new Error(`${row.file} is ${row.kb.toFixed(1)} KB gzipped, over its ${row.budget} KB budget`)
     }
-    measured.push(`${label(file)} ${kb.toFixed(1)}/${budget}`)
+    measured.push(`${row.label} ${row.kb.toFixed(1)}/${row.budget}`)
   }
   return measured.join(', ')
 }
