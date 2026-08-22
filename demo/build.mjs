@@ -29,7 +29,17 @@ const src = (rel) => fileURLToPath(new URL(rel, import.meta.url))
 // site root, so keeping assets adjacent means the local page and the published
 // page are the same file with the same paths.
 mkdirSync(src('./assets'), { recursive: true })
-for (const asset of ['openleaf-logo.png', 'openleaf-logo-dark.png', 'openleaf-mark.png']) {
+for (const asset of [
+  'openleaf-logo.png',
+  'openleaf-logo-dark.png',
+  'openleaf-mark.png',
+  // Two encodings of the same three seconds, so the insert sample can show a
+  // real multi-source player rather than describing one. Small enough to carry:
+  // 13 KB each, a flat gradient that compresses to almost nothing.
+  'sample-clip.webm',
+  'sample-clip.mp4',
+  'sample-poster.png',
+]) {
   cpSync(src(`../assets/${asset}`), src(`./assets/${asset}`))
 }
 
