@@ -165,7 +165,7 @@ matching `iframe` has changed what the editor will store, for every
 document, with no separate policy edit to review.
 
 **`carryUnknownAttributes: false` opts out of the attribute scrub.** By
-default an extension node's unmodelled attributes are captured on parse
+default an extension node's or mark's unmodelled attributes are captured on parse
 and re-emitted on serialize, and that capture filters `on*` handlers and
 unsafe URL schemes on the way through. Setting the flag to `false` skips
 the wrapper entirely — including the filter. It exists for specs that

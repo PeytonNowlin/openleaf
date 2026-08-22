@@ -92,11 +92,12 @@ Nodes are appended, never prepended, because a leading `group: 'block'` node
 becomes the document's `defaultType` and every new document would start with
 your widget.
 
-**Unmodelled attributes are carried for you.** Adding a node type strictly
-*reduces* fidelity for the tag it claims: before your node existed, the
+**Unmodelled attributes are carried for you.** Adding a node or mark type
+strictly *reduces* fidelity for the tag it claims: before your type existed, the
 preservation layer kept the element and every attribute on it; afterwards the
 spec keeps only what it declares, so a callout modelling `class` silently drops
-the `id` and `data-analytics` that used to survive. So the residue is captured
+the `id` and `data-analytics` that used to survive, and a `strong` mark used to
+drop `class` the same way. So the residue is captured
 on parse and merged back on serialize, applied at schema-build time — an author
 cannot opt out by forgetting. `carryUnknownAttributes: false` opts out
 explicitly, and [is security-relevant](#42-sanitization-a-new-element-that-nobody-allowed-is-a-new-element-that-dies)
@@ -321,7 +322,7 @@ explains what happens when a rule loses that race.
 
 Note also what the spec does **not** declare: `data-analytics`, `id`, or
 whatever else a 2011 theme put on that div. It does not have to. Extension nodes
-carry unmodelled attributes through the round trip by default — see
+and marks carry unmodelled attributes through the round trip by default — see
 [1.1](#11-schema-extensions) — so claiming a tag no longer costs the author every
 attribute you did not think of.
 

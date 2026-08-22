@@ -48,6 +48,14 @@ entries below say so explicitly when they do.
   public API.
 - The core bundle's gzip budget rises to 110 KB, measured at 108.0.
 
+### Fixed
+
+- **Character marks keep leftover attributes on round trip.** `strong`, `em`,
+  `code`, `u`, `s`, `sub`, `sup`, `b` (as `strong`) and extra attributes on
+  `<a>` (`class`, `data-*`, …) used to be stripped because the carry wrapper
+  ran on nodes only. The same sanitizer filter still drops `on*` handlers and
+  unsafe URLs. Closes #126.
+
 ## 0.1.0-beta.2 - 2026-08-19
 
 The formatting and structure release. Five new packages, so read the install
