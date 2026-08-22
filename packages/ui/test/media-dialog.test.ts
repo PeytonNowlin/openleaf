@@ -205,3 +205,86 @@ describe('promptForMedia when editing', () => {
     expect((await pending)?.sources).toEqual([])
   })
 })
+
+/**
+ * A player with more encodings than the form has spare rows.
+ *
+ * What this form returns is what replaces the stored sources, so a fixed row
+ * count was a cap on the document rather than on the form: the third and later
+ * encodings of an existing player were deleted by a save made to change its
+ * title.
+ */
+describe('promptForMedia with more sources than spare rows', () => {
+  const three = [
+    { src: '/a.webm', type: 'video/webm' },
+    { src: '/b.mp4', type: 'video/mp4' },
+    { src: '/c.ogv', type: null },
+  ]
+
+  it('gives every existing source a row', () => {
+    void promptForMedia(document, { existing: { src: '/v.mp4', sources: three } })
+    const form = openForm()
+    expect(control<HTMLInputElement>(form, 'alt0').value).toBe('/a.webm')
+    expect(control<HTMLInputElement>(form, 'alt1').value).toBe('/b.mp4')
+    expect(control<HTMLInputElement>(form, 'alt2').value).toBe('/c.ogv')
+  })
+
+  it('still offers spare rows beyond what is there', () => {
+    void promptForMedia(document, { existing: { src: '/v.mp4', sources: three } })
+    const form = openForm()
+    expect(control<HTMLInputElement>(form, 'alt3').value).toBe('')
+    expect(control<HTMLInputElement>(form, 'alt4').value).toBe('')
+  })
+
+  it('returns all of them unchanged when the author edits something else', () => {
+    const pending = promptForMedia(document, { existing: { src: '/v.mp4', sources: three } })
+    const form = openForm()
+    type(form, 'title', 'A new title')
+    submit(form)
+    return pending.then((result) => {
+      expect(result?.sources).toEqual(three)
+      expect(result?.title).toBe('A new title')
+    })
+  })
+
+  it('lets the author add a fourth in a spare row', async () => {
+    const pending = promptForMedia(document, { existing: { src: '/v.mp4', sources: three } })
+    const form = openForm()
+    type(form, 'alt3', '/d.mov')
+    submit(form)
+    expect((await pending)?.sources).toHaveLength(4)
+  })
+})
+
+describe('promptForMedia when editing an embed', () => {
+  it('accepts a watch page and hands back the converted address', async () => {
+    const pending = promptForMedia(document, {
+      existing: { kind: 'iframe', src: 'https://www.youtube.com/embed/aaa' },
+    })
+    const form = openForm()
+    type(form, 'src', 'https://www.youtube.com/watch?v=bbb')
+    submit(form)
+    expect((await pending)?.src).toBe('https://www.youtube.com/watch?v=bbb')
+  })
+
+  it('refuses an address that cannot be embedded, and stays open to say so', () => {
+    void promptForMedia(document, {
+      existing: { kind: 'iframe', src: 'https://www.youtube.com/embed/aaa' },
+    })
+    const form = openForm()
+    type(form, 'src', 'https://evil.example/video')
+    submit(form)
+    // Previously this passed the generic URL check, closed, and then the update
+    // command declined -- a save that silently did nothing.
+    expect(errorText(form)).toContain('embed')
+    expect(form.closest('dialog')?.hasAttribute('open')).toBe(true)
+  })
+
+  it('does not hold a video to the embed allowlist', async () => {
+    const pending = promptForMedia(document, { existing: { kind: 'video', src: '/v.mp4' } })
+    const form = openForm()
+    type(form, 'src', '/other.mp4')
+    submit(form)
+    expect((await pending)?.src).toBe('/other.mp4')
+  })
+})

@@ -2,7 +2,7 @@ import { Slice } from 'prosemirror-model'
 import type { Command, EditorState } from 'prosemirror-state'
 import { NodeSelection } from 'prosemirror-state'
 import { canInsertNode, markIn, nodeIn } from './command-helpers.js'
-import { safeAllowList, safeEmbedSrc } from './embed.js'
+import { embedSrcFor, safeAllowList, safeEmbedSrc } from './embed.js'
 import { parseHtml } from './html.js'
 import { serializationTarget } from './preserve.js'
 import { IMAGE_ALIGN_CLASSES, safeClassList, safeId, type ImageAlign } from './tokens.js'
@@ -232,11 +232,23 @@ export interface MediaAttrs {
   title?: string | null
   width?: string | null
   height?: string | null
+  /**
+   * Omitted means different things on the two paths, deliberately. Inserting a
+   * player with no opinion gets controls, because a player nobody can start is
+   * not much of one. Updating one with no opinion changes nothing, because the
+   * caller did not ask to.
+   */
   controls?: boolean
   poster?: string | null
   allow?: string | null
   allowfullscreen?: boolean
-  /** Alternative addresses, stored as the `<source>` children of the player. */
+  /**
+   * Alternative addresses, stored as the `<source>` children of the player.
+   *
+   * Authoritative for `<source>` on an update: what is passed replaces what is
+   * there. Other furniture -- `<track>` captions -- is carried through, so a
+   * caller that cannot see them cannot delete them.
+   */
   sources?: readonly MediaSource[]
 }
 
@@ -248,16 +260,48 @@ export interface MediaAttrs {
  * of the attribute and become new markup. `appendMediaFurniture` scrubs this
  * again on the way into the document -- this is the belt, that is the braces.
  */
-function mediaFurniture(sources: readonly MediaSource[] | undefined): string | null {
-  if (!sources || sources.length === 0) return null
+function mediaFurniture(
+  sources: readonly MediaSource[] | undefined,
+  keep: string | null = null,
+): string | null {
   const doc = serializationTarget()
   let html = ''
-  for (const source of sources) {
+  for (const source of sources ?? []) {
     if (!isSafeUrl(source.src)) continue
     const el = doc.createElement('source')
     el.setAttribute('src', source.src)
     const type = source.type?.trim()
     if (type) el.setAttribute('type', type)
+    html += el.outerHTML
+  }
+  // Sources first, then the carried furniture: `<source>` before `<track>` is
+  // the order the elements are specified in, and a browser picks its source by
+  // walking the children in order.
+  html += keep ?? ''
+  return html || null
+}
+
+/**
+ * The furniture an edit is not entitled to rewrite.
+ *
+ * `updateMedia` rebuilds the `<source>` children from what its caller hands it,
+ * so anything else living in `furniture` would be deleted by a save the author
+ * thought was a title change. `<track>` captions are the case that matters: a
+ * dialog has no field for them, nobody notices they are gone, and the loss is
+ * of the accessibility furniture specifically.
+ *
+ * So the non-`<source>` children are read off the node and appended unchanged.
+ * They came out of `readMediaFurniture`, which already scrubbed them, and
+ * `appendMediaFurniture` scrubs them again on the way back in.
+ */
+function carriedFurniture(furniture: unknown): string | null {
+  if (typeof furniture !== 'string' || furniture === '') return null
+  const doc = serializationTarget()
+  const tpl = doc.createElement('template')
+  tpl.innerHTML = furniture
+  let html = ''
+  for (const el of Array.from((tpl as HTMLTemplateElement).content.children)) {
+    if (el.nodeName.toLowerCase() === 'source') continue
     html += el.outerHTML
   }
   return html || null
@@ -402,24 +446,36 @@ export function updateMedia(attrs: MediaAttrs): Command {
   return (state, dispatch) => {
     const current = selectedMedia(state)
     if (!current) return false
-    const furniture = current.kind === 'iframe' ? null : mediaFurniture(attrs.sources)
+    const node = state.doc.nodeAt(current.pos)
+    if (!node) return false
+    const furniture =
+      current.kind === 'iframe'
+        ? null
+        : mediaFurniture(attrs.sources, carriedFurniture(node.attrs['furniture']))
     // An iframe has no `<source>` children, so its address is the only thing it
-    // can play and an unsafe one leaves nothing to fall back to.
+    // can play and an unsafe one leaves nothing to fall back to. Converted the
+    // same way the insert path converts it: an author editing a player is
+    // holding the same watch-page URL as an author inserting one, and refusing
+    // it here made the edit a silent no-op.
+    const embed = current.kind === 'iframe' ? embedSrcFor(attrs.src) : null
     if (current.kind === 'iframe') {
-      if (!attrs.src || !safeEmbedSrc(attrs.src)) return false
+      if (!embed) return false
     } else if (!playable(attrs, furniture)) return false
     if (dispatch) {
-      const node = state.doc.nodeAt(current.pos)
-      if (!node) return false
       const next: Record<string, unknown> = { ...node.attrs }
       if (current.kind === 'iframe') {
-        next['src'] = safeEmbedSrc(attrs.src as string)
+        next['src'] = embed
       } else {
         next['src'] = attrs.src && isSafeUrl(attrs.src) ? attrs.src : null
         next['furniture'] = furniture
       }
       next['title'] = attrs.title ?? null
-      if ('controls' in node.attrs) next['controls'] = attrs.controls !== false
+      // `undefined` is "as it was", not "on". A dialog with no controls field
+      // passes nothing, and defaulting that to on gave a control bar to every
+      // controls-less player whose title someone edited.
+      if ('controls' in node.attrs && attrs.controls !== undefined) {
+        next['controls'] = attrs.controls
+      }
       if ('width' in node.attrs) next['width'] = attrs.width ?? null
       if ('height' in node.attrs) next['height'] = attrs.height ?? null
       if ('poster' in node.attrs) {

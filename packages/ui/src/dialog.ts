@@ -20,7 +20,7 @@
  * retry a whole new dialog.
  */
 
-import { isSafeUrl } from '@openleaf-editor/core'
+import { embedSrcFor, isSafeUrl } from '@openleaf-editor/core'
 import { t, withLocale } from './i18n.js'
 import { ensureStyles, registerStyles } from './styles.js'
 import { IMAGE_ACCEPT, dimension, type ImageUploadResult } from './upload.js'
@@ -942,6 +942,13 @@ export interface MediaPromptOptions {
   host?: HTMLElement
   /** Prefilled state, when editing a player already in the document. */
   existing?: {
+    /**
+     * What the selected node is. An `<iframe>` accepts only the addresses the
+     * embed allowlist permits, and the form has to say so itself: the update
+     * command declines anything else, and by then this dialog has closed, so a
+     * rejected address looked like a save that did nothing.
+     */
+    kind?: 'video' | 'audio' | 'iframe'
     src?: string | null
     title?: string | null
     poster?: string | null
@@ -951,18 +958,23 @@ export interface MediaPromptOptions {
   }
 }
 
-/** How many `<source>` rows the dialog offers beyond the main address. */
-const ALT_SOURCE_ROWS = 2
+/** How many empty `<source>` rows the dialog offers for adding new encodings. */
+const SPARE_SOURCE_ROWS = 2
 
 /**
  * The insert-media dialog.
  *
- * Two alternative-source rows rather than one, because that is the shape the
- * format is actually used in: a `<video>` with a `.webm` and an `.mp4` covers
- * every current browser, and offering a single alternative makes the common case
- * the one the author has to work around. Rather than a growable list, because
- * three rows is where the returns stop and a list needs add/remove controls,
- * their keyboard semantics, and a story for reordering.
+ * Two spare alternative-source rows, because that is the shape the format is
+ * actually used in: a `<video>` with a `.webm` and an `.mp4` covers every
+ * current browser, and offering a single alternative makes the common case the
+ * one the author has to work around. Not a growable list with add and remove
+ * controls, which would owe keyboard semantics and a reordering story.
+ *
+ * But the rows are spare capacity *on top of* what the player already has, never
+ * a cap on it. A fixed two rows silently deleted the third and later encodings
+ * of any player that had them, on a save the author made to change the title --
+ * because what this form returns is what replaces the stored sources. Every
+ * existing source gets a row, so the form cannot lose one it was never shown.
  *
  * The type hints are separate fields rather than guessed from the extension. A
  * guess is wrong for exactly the addresses that need it -- a signed URL, or a
@@ -1015,12 +1027,13 @@ export async function promptForMedia(
     },
   ]
 
-  for (let index = 0; index < ALT_SOURCE_ROWS; index += 1) {
+  const sourceRows = existingSources.length + SPARE_SOURCE_ROWS
+  for (let index = 0; index < sourceRows; index += 1) {
     const source = existingSources[index]
     fields.push(
       {
         name: `alt${index}`,
-        label: index === 0 ? 'Alternative address' : 'Second alternative',
+        label: index === 0 ? 'Alternative address' : `Alternative address ${index + 1}`,
         type: 'text',
         value: source?.src ?? '',
         ...(index === 0
@@ -1029,7 +1042,7 @@ export async function promptForMedia(
       },
       {
         name: `altType${index}`,
-        label: index === 0 ? 'Alternative type' : 'Second alternative type',
+        label: index === 0 ? 'Alternative type' : `Alternative type ${index + 1}`,
         type: 'text',
         value: source?.type ?? '',
         ...(index === 0 ? { hint: 'For example video/webm. Optional, but saves a wasted download.' } : {}),
@@ -1048,7 +1061,7 @@ export async function promptForMedia(
     (values) => {
       const src = (values['src'] ?? '').trim()
       const sources: MediaSourceResult[] = []
-      for (let index = 0; index < ALT_SOURCE_ROWS; index += 1) {
+      for (let index = 0; index < sourceRows; index += 1) {
         const address = (values[`alt${index}`] ?? '').trim()
         if (address === '') continue
         if (!isSafeUrl(address)) {
@@ -1066,6 +1079,16 @@ export async function promptForMedia(
         return { error: t('Enter an address, or at least one alternative.'), field: 'src' }
       }
       if (src !== '' && !isSafeUrl(src)) return { error: t(UNSTORABLE_ADDRESS), field: 'src' }
+
+      // An embed is held to the allowlist here rather than after the dialog has
+      // gone. `embedSrcFor` accepts a watch page and converts it, so this
+      // rejects only what genuinely cannot be embedded.
+      if (existing?.kind === 'iframe' && embedSrcFor(src) === null) {
+        return {
+          error: t('That is not an address this editor can embed.'),
+          field: 'src',
+        }
+      }
 
       const poster = (values['poster'] ?? '').trim()
       if (poster !== '' && !isSafeUrl(poster)) {

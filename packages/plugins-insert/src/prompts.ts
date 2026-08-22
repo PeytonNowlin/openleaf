@@ -102,6 +102,7 @@ export async function promptInsertMedia(view: EditorView, host: HTMLElement): Pr
     ...(current
       ? {
           existing: {
+            kind: current.kind,
             src: current.src ?? '',
             title: current.title,
             poster: current.poster,

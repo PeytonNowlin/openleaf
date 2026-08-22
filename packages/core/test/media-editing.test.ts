@@ -218,3 +218,76 @@ describe('updating a selected player', () => {
     expect(html).not.toContain('poster')
   })
 })
+
+/**
+ * What an edit must not throw away.
+ *
+ * `updateMedia` rebuilds the player's furniture from what it is handed, so
+ * anything the dialog does not model is anything the edit deletes. Every case
+ * here is silent data loss on a save the author did not think was destructive --
+ * the failure mode #69 exists for.
+ */
+describe('editing preserves what the dialog does not model', () => {
+  it('keeps caption tracks when only the title changes', () => {
+    const state = selecting(
+      '<video src="/v.mp4" controls><source src="/v.webm">' +
+        '<track kind="captions" src="/c.vtt" srclang="en" label="English"></video>',
+    )
+    const next = run(state, updateMedia({ src: '/v.mp4', title: 'New', sources: [{ src: '/v.webm' }] }))
+    const html = stored(next!)
+    expect(html).toContain('<track')
+    expect(html).toContain('/c.vtt')
+  })
+
+  it('keeps a track even when every source is replaced', () => {
+    const state = selecting(
+      '<video controls><source src="/old.webm"><track kind="captions" src="/c.vtt"></video>',
+    )
+    const next = run(state, updateMedia({ sources: [{ src: '/new.webm' }] }))
+    const html = stored(next!)
+    expect(html).toContain('/new.webm')
+    expect(html).not.toContain('/old.webm')
+    expect(html).toContain('/c.vtt')
+  })
+
+  it('keeps a track on audio too', () => {
+    const state = selecting('<audio src="/a.mp3" controls><track kind="captions" src="/c.vtt"></audio>')
+    const next = run(state, updateMedia({ src: '/b.mp3' }))
+    expect(stored(next!)).toContain('/c.vtt')
+  })
+
+  it('leaves controls alone when the caller does not mention them', () => {
+    // The dialog has no controls field, so `undefined` has to mean "as it was"
+    // rather than "on" -- otherwise editing the title of a controls-less player
+    // silently gives it a control bar.
+    const state = selecting('<video src="/v.mp4"><source src="/v.webm"></video>')
+    expect(selectedMedia(state)!.controls).toBe(false)
+    const next = run(state, updateMedia({ src: '/v.mp4', title: 'New', sources: [{ src: '/v.webm' }] }))
+    expect(selectedMedia(next!)!.controls).toBe(false)
+    expect(stored(next!)).not.toContain('controls')
+  })
+
+  it('still lets a caller turn controls on or off deliberately', () => {
+    const state = selecting('<video src="/v.mp4"></video>')
+    const on = run(state, updateMedia({ src: '/v.mp4', controls: true }))
+    expect(selectedMedia(on!)!.controls).toBe(true)
+    const off = run(on!, updateMedia({ src: '/v.mp4', controls: false }))
+    expect(selectedMedia(off!)!.controls).toBe(false)
+  })
+
+  it('converts a player page when editing an iframe, as inserting one does', () => {
+    const state = selecting('<iframe src="https://www.youtube.com/embed/aaa"></iframe>')
+    const next = run(state, updateMedia({ src: 'https://www.youtube.com/watch?v=bbb' }))
+    expect(next).not.toBeNull()
+    expect(stored(next!)).toContain('youtube.com/embed/bbb')
+  })
+
+  it('reports every source it read back, not just the first two', () => {
+    const found = selectedMedia(
+      selecting(
+        '<video controls><source src="/a.webm"><source src="/b.mp4"><source src="/c.ogv"></video>',
+      ),
+    )
+    expect(found!.sources.map((one) => one.src)).toEqual(['/a.webm', '/b.mp4', '/c.ogv'])
+  })
+})

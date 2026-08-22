@@ -55,8 +55,17 @@ function createElement(kind: ResizableKind, doc: Document): MediaElement {
  * as "may not know yet" rather than "knows now", which is what the `|| 0` guards
  * at the call sites are for.
  */
+function isVideo(el: MediaElement): el is HTMLVideoElement {
+  // `localName`, not `instanceof`. An editor mounted in an iframe builds its
+  // elements from that document, so they are instances of the iframe's
+  // `HTMLVideoElement` and not the outer window's -- `instanceof` is false
+  // across realms, and every video would have been treated as an image: no
+  // poster, no `<source>` children, and source-only players rendering blank.
+  return el.localName === 'video'
+}
+
 function intrinsic(el: MediaElement): { width: number; height: number } {
-  if (el instanceof HTMLVideoElement) return { width: el.videoWidth, height: el.videoHeight }
+  if (isVideo(el)) return { width: el.videoWidth, height: el.videoHeight }
   return { width: el.naturalWidth, height: el.naturalHeight }
 }
 
@@ -133,8 +142,8 @@ function applyVideoAttrs(el: HTMLVideoElement, node: PMNode): void {
 }
 
 function applyAttrs(el: MediaElement, node: PMNode): void {
-  if (el instanceof HTMLVideoElement) applyVideoAttrs(el, node)
-  else applyImageAttrs(el, node)
+  if (isVideo(el)) applyVideoAttrs(el, node)
+  else applyImageAttrs(el as HTMLImageElement, node)
   const title = node.attrs['title']
   if (title) el.title = title as string
   else el.removeAttribute('title')

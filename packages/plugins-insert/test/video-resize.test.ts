@@ -167,3 +167,43 @@ describe('audio', () => {
     expect(dom.querySelector('.ol-img-handle')).toBeNull()
   })
 })
+
+/**
+ * The editor mounted in another document.
+ *
+ * `instanceof HTMLVideoElement` is false across realms: an editor inside an
+ * iframe builds its elements from that document, so they are instances of the
+ * iframe's constructor and not this window's. Every video was therefore taken
+ * for an image -- no poster, no `<source>` children, and a source-only player
+ * rendering blank.
+ */
+describe('a video built in another document', () => {
+  it('is still recognised as a video', () => {
+    const frame = document.createElement('iframe')
+    document.body.append(frame)
+    const inner = frame.contentDocument
+    if (!inner) throw new Error('the iframe has no document')
+    const place = inner.createElement('div')
+    inner.body.append(place)
+
+    const view = new EditorView(place, {
+      state: EditorState.create({
+        doc: parseHtml('<video poster="/p.jpg" controls><source src="/a.webm"></video>', {
+          schema: coreSchema(),
+        }),
+        plugins: [mediaResizePlugin()],
+      }),
+    })
+    try {
+      const el = view.dom.querySelector('video')
+      expect(el).not.toBeNull()
+      // The image branch would have set neither of these.
+      expect(el!.getAttribute('poster')).toBe('/p.jpg')
+      expect(el!.querySelectorAll('source')).toHaveLength(1)
+      expect(view.dom.querySelector('.ol-img-handle')?.getAttribute('aria-label')).toBe('Video width')
+    } finally {
+      view.destroy()
+      frame.remove()
+    }
+  })
+})
