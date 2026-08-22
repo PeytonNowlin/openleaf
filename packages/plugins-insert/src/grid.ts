@@ -148,6 +148,28 @@ export function buildGlyphPicker(
       return
     }
 
+    /*
+     * Tab is handled, and that reverses the note below about leaving it alone.
+     *
+     * Leaving it to the engine is correct in Chromium: the popover sits at the
+     * end of <body>, so Tab walks off the end of the document, and the focusout
+     * handler closes the panel. Firefox does not move focus at all -- measured,
+     * not inferred: after Tab, `document.activeElement` is still the cell and
+     * the popover is still open. That is a keyboard trap (WCAG 2.1.2 No
+     * Keyboard Trap), and Escape being the only way out is exactly the failure
+     * the arrow-key model was added to prevent.
+     *
+     * So the widget decides instead of the engine, the same way it decides for
+     * Escape: close, return focus to the trigger, and do NOT preventDefault, so
+     * the browser's own Tab then runs from the trigger and lands wherever it
+     * would have landed had the panel never been open. Shift+Tab keeps working
+     * backwards for free, which an interception would have had to reimplement.
+     */
+    if (event.key === 'Tab') {
+      close({ returnFocus: true })
+      return
+    }
+
     const index = cells.indexOf(event.target as HTMLButtonElement)
     if (index < 0) return
 
@@ -181,12 +203,14 @@ export function buildGlyphPicker(
     }
   })
 
-  // Tab is not intercepted. There is one tab stop in the grid, so Tab leaves
-  // the widget the way a native control would; swallowing it used to close the
-  // panel while focus sat on the first glyph, which is how only one of forty
-  // characters was reachable from the keyboard. Leaving by any route closes --
-  // the colour picker's failure mode of a hand-rolled popover left open with
-  // nowhere to go.
+  // Leaving by any route closes -- pointer, Escape, Tab, or focus moving for a
+  // reason this widget never hears about. The colour picker's failure mode was a
+  // hand-rolled popover left open with nowhere to go.
+  //
+  // Tab is handled above rather than swallowed. Swallowing it outright is what
+  // once closed the panel while focus sat on the first glyph, which left one of
+  // forty characters reachable from the keyboard; moving focus first and letting
+  // the default action run is the part that makes it safe.
   grid.addEventListener('focusout', () => {
     setTimeout(() => {
       if (!isOpen()) return

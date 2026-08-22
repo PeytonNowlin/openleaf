@@ -14,6 +14,14 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Tab now leaves the emoji and character-map pickers in Firefox, which used to
+  trap the keyboard inside them.** Firefox moved focus nowhere at all from the
+  grid's single tab stop, so the panel stayed open with focus stuck on the first
+  glyph and Escape was the only way out -- a WCAG 2.1.2 (No Keyboard Trap)
+  failure. The grid handles Tab itself now: it closes, returns focus to the
+  trigger, and leaves the key undefaulted so the browser's own Tab carries on
+  from there. All three engines land on the editor, where Chromium previously
+  dropped focus into the browser chrome. Shift+Tab goes backwards for free.
 - **A styled span that also carries a class, `id`, `data-*`, or an unmodelled
   declaration is no longer wrapped in a second colour/font span on the first
   save.** `text_color`, `font_family` and `font_size` now decline when
