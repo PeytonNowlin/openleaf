@@ -5,9 +5,9 @@
  * This lives in `globalSetup` rather than in `webServer.command` because
  * `command` only runs when Playwright *starts* a server. With
  * `reuseExistingServer` on locally, a run that found anything already listening
- * on 4173 skipped the build entirely and tested whatever bundle that server
- * happened to be serving. `globalSetup` runs unconditionally, so reuse stays
- * fast without being unsound.
+ * on the harness port skipped the build entirely and tested whatever bundle that
+ * server happened to be serving. `globalSetup` runs unconditionally, so reuse
+ * stays fast without being unsound.
  *
  * Rebuilding is not sufficient on its own. `serve.mjs` resolves its root from
  * its own location, so a reused server started from ANOTHER checkout keeps
@@ -21,6 +21,11 @@
  * describe itself, which is what makes it work against a server started from an
  * older checkout that has never heard of this check.
  *
+ * port.ts now gives each checkout its own port, so this should no longer fire
+ * for the ordinary two-worktrees case. It stays because the port is a hash: two
+ * paths can collide, and a server started from a checkout that predates port.ts
+ * still sits on the old fixed 4173.
+ *
  * Playwright starts `webServer` plugins before global setup, so the server is
  * already up by the time this runs. That ordering is harmless for the rebuild
  * too: `serve.mjs` reads each file from disk per request, and no test runs until
@@ -31,44 +36,39 @@ import { randomUUID } from 'node:crypto'
 import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { FullConfig } from '@playwright/test'
+import { BASE_URL, PORT } from './port.js'
 
 const ROOT = fileURLToPath(new URL('../../../..', import.meta.url))
 /** Gitignored. Written and removed within this function. */
 const STAMP = '.e2e-checkout-stamp'
 
-function baseUrl(config: FullConfig): string {
-  const configured = config.webServer?.url
-  if (configured) return new URL(configured).origin
-  return `http://localhost:${process.env['PORT'] ?? 4173}`
-}
-
-async function assertServesThisCheckout(config: FullConfig): Promise<void> {
-  const base = baseUrl(config)
+async function assertServesThisCheckout(): Promise<void> {
   const token = randomUUID()
   const stamp = join(ROOT, STAMP)
   writeFileSync(stamp, token)
   try {
-    const response = await fetch(`${base}/${STAMP}`)
+    const response = await fetch(`${BASE_URL}/${STAMP}`)
     const served = response.ok ? (await response.text()).trim() : null
     if (served === token) return
-    const port = new URL(base).port || '80'
     throw new Error(
-      `The server on ${base} is not serving this checkout.\n\n` +
+      `The server on ${BASE_URL} is not serving this checkout.\n\n` +
         'Playwright reuses an existing server outside CI, and that server resolves its\n' +
         "root from its own location -- so it is serving another working tree's bundle, and\n" +
         'rebuilding this one changes nothing it returns. A suite that passes against a\n' +
         'different checkout is worse than a failing one, because it looks like success.\n\n' +
+        'This port is derived from the checkout path, so another worktree should not have\n' +
+        'been on it. Either two paths hashed alike, the server predates that derivation\n' +
+        'and is still on the old fixed 4173, or PORT was set by hand.\n\n' +
         'Stop it and let Playwright start its own:\n' +
-        `  lsof -ti:${port} | xargs -r kill\n`,
+        `  lsof -ti:${PORT} | xargs -r kill\n`,
     )
   } finally {
     rmSync(stamp, { force: true })
   }
 }
 
-export default async function setup(config: FullConfig): Promise<void> {
-  await assertServesThisCheckout(config)
+export default async function setup(): Promise<void> {
+  await assertServesThisCheckout()
   // Inherited stdio, so a build failure is readable in the test output rather
   // than a swallowed exit code. execFileSync throws on a non-zero exit, which
   // fails the run before a single test can pass against a stale artifact.

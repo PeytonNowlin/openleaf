@@ -57,14 +57,30 @@ the change has no user-facing or contributor-facing documentation impact.
 
 ## Do not trust a green e2e run against a server you did not start
 
-The Playwright config reuses an existing server on port 4173 outside CI. The
-bundle rebuild lives in `globalSetup` so that reuse cannot serve a stale
-artifact, but two concurrent `playwright test` invocations still share one
-server and one bundle on disk. If several agents are working in this repo at
-once, do not run the e2e suite concurrently, and if a result surprises you:
+The Playwright config reuses an existing server outside CI. Two things keep that
+sound, and you should know both before you debug a surprising e2e result.
+
+The bundle rebuild lives in `globalSetup` rather than `webServer.command`, so
+reuse cannot serve a stale artifact -- `command` runs only when Playwright
+*starts* a server. And the harness port is derived from the checkout path
+(`packages/element/test/e2e/port.ts`), so each worktree gets its own and reuse
+can only ever find a server started from the tree you are running in. Yours is
+in the `harness server on http://localhost:...` line the server logs at the top
+of a run, and in the abort message below. Pin it if you want a fixed address:
 
 ```sh
-lsof -ti:4173 | xargs -r kill
+PORT=4173 pnpm test:e2e
+```
+
+Concurrent runs in *different* worktrees are therefore fine now. Two concurrent
+`playwright test` invocations in the *same* worktree still share one server and
+one bundle on disk, so do not do that. If `global-setup.ts` aborts with "is not
+serving this checkout", something really is on your port that did not come from
+here -- a server started before the port became per-checkout, a hand-set `PORT`,
+or two paths that hashed alike:
+
+```sh
+lsof -ti:<your port> | xargs -r kill
 node demo/build.mjs
 ```
 
