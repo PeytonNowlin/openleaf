@@ -20,7 +20,7 @@
  * retry a whole new dialog.
  */
 
-import { isSafeUrl } from '@openleaf-editor/core'
+import { embedSrcFor, isSafeUrl } from '@openleaf-editor/core'
 import { t, withLocale } from './i18n.js'
 import { ensureStyles, registerStyles } from './styles.js'
 import { IMAGE_ACCEPT, dimension, type ImageUploadResult } from './upload.js'
@@ -914,6 +914,197 @@ export async function promptForImage(
       return upload(chosen).then((result) => ({
         value: finish(result.src, alt, dimension(result.width), dimension(result.height), values),
       }))
+    },
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * Media
+ * ------------------------------------------------------------------ */
+
+/** One alternative address the author gave the player. */
+export interface MediaSourceResult {
+  src: string
+  type: string | null
+}
+
+export interface MediaResult {
+  /** Empty when the player carries all its addresses in `sources`. */
+  src: string
+  title: string | null
+  poster: string | null
+  width: string | null
+  height: string | null
+  sources: MediaSourceResult[]
+}
+
+export interface MediaPromptOptions {
+  host?: HTMLElement
+  /** Prefilled state, when editing a player already in the document. */
+  existing?: {
+    /**
+     * What the selected node is. An `<iframe>` accepts only the addresses the
+     * embed allowlist permits, and the form has to say so itself: the update
+     * command declines anything else, and by then this dialog has closed, so a
+     * rejected address looked like a save that did nothing.
+     */
+    kind?: 'video' | 'audio' | 'iframe'
+    src?: string | null
+    title?: string | null
+    poster?: string | null
+    width?: string | null
+    height?: string | null
+    sources?: readonly MediaSourceResult[]
+  }
+}
+
+/** How many empty `<source>` rows the dialog offers for adding new encodings. */
+const SPARE_SOURCE_ROWS = 2
+
+/**
+ * The insert-media dialog.
+ *
+ * Two spare alternative-source rows, because that is the shape the format is
+ * actually used in: a `<video>` with a `.webm` and an `.mp4` covers every
+ * current browser, and offering a single alternative makes the common case the
+ * one the author has to work around. Not a growable list with add and remove
+ * controls, which would owe keyboard semantics and a reordering story.
+ *
+ * But the rows are spare capacity *on top of* what the player already has, never
+ * a cap on it. A fixed two rows silently deleted the third and later encodings
+ * of any player that had them, on a save the author made to change the title --
+ * because what this form returns is what replaces the stored sources. Every
+ * existing source gets a row, so the form cannot lose one it was never shown.
+ *
+ * The type hints are separate fields rather than guessed from the extension. A
+ * guess is wrong for exactly the addresses that need it -- a signed URL, or a
+ * stream with no extension at all -- and being wrong here means the browser
+ * downloads a format it cannot play before finding out.
+ */
+export async function promptForMedia(
+  doc: Document,
+  options: MediaPromptOptions = {},
+): Promise<MediaResult | null> {
+  const { host, existing } = options
+  const locale = host?.getAttribute('lang') ?? null
+  const existingSources = existing?.sources ?? []
+  const editing = existing !== undefined
+
+  const fields: FieldSpec[] = [
+    {
+      name: 'src',
+      label: 'Address',
+      type: 'text',
+      value: existing?.src ?? '',
+      hint: 'The video or audio file to play. Leave blank if you only give alternatives below.',
+    },
+    {
+      name: 'title',
+      label: 'Title',
+      type: 'text',
+      value: existing?.title ?? '',
+      hint: 'Shown as a tooltip. Optional.',
+    },
+    {
+      name: 'poster',
+      label: 'Poster image',
+      type: 'text',
+      value: existing?.poster ?? '',
+      hint: 'Shown before the video plays. Ignored for audio.',
+    },
+    {
+      name: 'width',
+      label: 'Width',
+      type: 'text',
+      value: existing?.width ?? '',
+      hint: 'Pixels, or a percentage. Leave blank to use the file’s own size.',
+    },
+    {
+      name: 'height',
+      label: 'Height',
+      type: 'text',
+      value: existing?.height ?? '',
+    },
+  ]
+
+  const sourceRows = existingSources.length + SPARE_SOURCE_ROWS
+  for (let index = 0; index < sourceRows; index += 1) {
+    const source = existingSources[index]
+    fields.push(
+      {
+        name: `alt${index}`,
+        label: index === 0 ? 'Alternative address' : `Alternative address ${index + 1}`,
+        type: 'text',
+        value: source?.src ?? '',
+        ...(index === 0
+          ? { hint: 'Another encoding of the same media, for browsers that cannot play the first.' }
+          : {}),
+      },
+      {
+        name: `altType${index}`,
+        label: index === 0 ? 'Alternative type' : `Alternative type ${index + 1}`,
+        type: 'text',
+        value: source?.type ?? '',
+        ...(index === 0 ? { hint: 'For example video/webm. Optional, but saves a wasted download.' } : {}),
+      },
+    )
+  }
+
+  return showForm<MediaResult>(
+    doc,
+    editing ? 'Edit media' : 'Insert media',
+    fields,
+    {
+      locale,
+      ...(host ? { host } : {}),
+    },
+    (values) => {
+      const src = (values['src'] ?? '').trim()
+      const sources: MediaSourceResult[] = []
+      for (let index = 0; index < sourceRows; index += 1) {
+        const address = (values[`alt${index}`] ?? '').trim()
+        if (address === '') continue
+        if (!isSafeUrl(address)) {
+          return { error: t(UNSTORABLE_ADDRESS), field: `alt${index}` }
+        }
+        const type = (values[`altType${index}`] ?? '').trim()
+        sources.push({ src: address, type: type === '' ? null : type })
+      }
+
+      // One or the other, which is the schema's own rule: a player with neither
+      // an address nor a source has nothing to play, and core declines it. Said
+      // here so the author reads it in the dialog instead of watching the
+      // insertion silently do nothing.
+      if (src === '' && sources.length === 0) {
+        return { error: t('Enter an address, or at least one alternative.'), field: 'src' }
+      }
+      if (src !== '' && !isSafeUrl(src)) return { error: t(UNSTORABLE_ADDRESS), field: 'src' }
+
+      // An embed is held to the allowlist here rather than after the dialog has
+      // gone. `embedSrcFor` accepts a watch page and converts it, so this
+      // rejects only what genuinely cannot be embedded.
+      if (existing?.kind === 'iframe' && embedSrcFor(src) === null) {
+        return {
+          error: t('That is not an address this editor can embed.'),
+          field: 'src',
+        }
+      }
+
+      const poster = (values['poster'] ?? '').trim()
+      if (poster !== '' && !isSafeUrl(poster)) {
+        return { error: t(UNSTORABLE_ADDRESS), field: 'poster' }
+      }
+
+      return {
+        value: {
+          src,
+          title: values['title'] ? values['title'] : null,
+          poster: poster === '' ? null : poster,
+          width: values['width'] ? values['width'] : null,
+          height: values['height'] ? values['height'] : null,
+          sources,
+        },
+      }
     },
   )
 }

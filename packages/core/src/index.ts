@@ -61,6 +61,7 @@ export {
 } from './url.js'
 export {
   EMBED_HOSTS,
+  embedSrcFor,
   isAllowedEmbedSrc,
   safeAllowList,
   safeEmbedSrc,
@@ -146,11 +147,15 @@ export {
   toggleOrderedList,
   // links and images
   insertImage,
+  selectedMedia,
   setLink,
   unsetLink,
+  updateMedia,
   type ImageAttrs,
   type LinkAttrs,
   type MediaAttrs,
+  type MediaSource,
+  type SelectedMedia,
   // history
   redo,
   undo,

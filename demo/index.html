@@ -511,17 +511,42 @@ registerToolbarItem({
   map and the drag-resize handles are the download.
 </p>
 
+<p>
+  The media dialog takes an address, a poster frame, dimensions, and two
+  alternative sources with their type hints — the multi-source and source-only
+  shapes below are reachable from it, not just survivable. Selecting a player and
+  pressing the same button edits it rather than inserting a second one. A pasted
+  watch page is converted to its documented embed URL, because the iframe
+  allowlist accepts <code>youtube.com/embed/</code> and refuses
+  <code>youtube.com/watch</code> — embedding a watch page would nest the whole
+  site UI in your document. Video gets the same drag handle as an image; audio
+  does not, because its schema declares no box to drag.
+</p>
+
+<p>
+  A player is a preview in the editor rather than a working one: no control bar,
+  and a click selects it instead of playing it. That is not a shortcut. Native
+  media chrome handles pointer events itself — in Firefox for the whole element,
+  so no listener in the editor ever fires — and a player you cannot select is a
+  player you can insert once and never edit again. What the document stores is
+  untouched, <code>controls</code> included, because stored HTML is serialized
+  from the node and not from the editing DOM.
+</p>
+
 <pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
-&lt;script src="/js/openleaf-insert.min.js"&gt;&lt;/script&gt;   &lt;!-- 5.9 KB, optional --&gt;</pre>
+&lt;script src="/js/openleaf-insert.min.js"&gt;&lt;/script&gt;   &lt;!-- 6.4 KB, optional --&gt;</pre>
 
 <div style="margin-top:1rem">
   <label for="insert-body" class="visually-hidden">Insert sample</label>
   <openleaf-editor for="insert-body" aria-label="Insert sample"
     toolbar="undo redo | bold italic | image media details anchor | charmap emoji datetime pagebreak nbsp | source"></openleaf-editor>
   <textarea id="insert-body" hidden><details><summary>A collapsible section</summary><p>Its open state round-trips too.</p></details>
-<p>Drag the corner of the image to resize it. Then try the character map, the emoji
-grid, and Insert media — a poster frame and alternate sources are all on the dialog.</p>
-<p><img src="./assets/openleaf-mark.png" alt="The OpenLeaf mark" width="96" height="96"></p></textarea>
+<p>Drag the corner of the image or the video to resize it. Then try the character
+map, the emoji grid, and Insert media — a poster frame and alternate sources are
+on the dialog. Click the video to select it, then press Insert media again to
+edit the player that is already there.</p>
+<p><img src="./assets/openleaf-mark.png" alt="The OpenLeaf mark" width="96" height="96"></p>
+<video controls width="240" poster="./assets/sample-poster.png"><source src="./assets/sample-clip.webm" type="video/webm"><source src="./assets/sample-clip.mp4" type="video/mp4"></video></textarea>
 </div>
 
 <p>

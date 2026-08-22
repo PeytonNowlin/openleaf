@@ -39,7 +39,13 @@ export const INSERT_CSS = `
   outline: none;
 }
 .ol-img-resize { position: relative; display: inline-block; max-width: 100%; }
-.ol-img-resize img { display: block; max-width: 100%; height: auto; }
+.ol-img-resize :is(img, video) { display: block; max-width: 100%; height: auto; }
+/* The video is a preview, not a player: without this the engine's native media
+   chrome eats the click and the node can never be selected -- in Firefox for the
+   whole element, so the player could be inserted and never edited again. Stored
+   HTML is serialized from the node, so the real page is unaffected. */
+.ol-img-resize video { pointer-events: none; }
+
 .ol-img-handle {
   position: absolute; right: 0; bottom: 0;
   width: 12px; height: 12px; margin: 0; padding: 0;
