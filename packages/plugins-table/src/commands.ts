@@ -198,8 +198,12 @@ function maintainTableSections(
       return command(
         state,
         (tr) => {
-          const mapped = tr.mapping.map(table.pos)
-          const next = tr.doc.nodeAt(mapped)
+          const mapped = tr.mapping.mapResult(table.pos)
+          if (mapped.deleted) {
+            dispatch(tr)
+            return
+          }
+          const next = tr.doc.nodeAt(mapped.pos)
           if (next?.type.spec['tableRole'] === 'table') {
             let header = headerRows
             let footer = footerRows
@@ -207,7 +211,7 @@ function maintainTableSections(
               if (index < headerRows) header -= 1
               else if (index >= rowCount - footerRows) footer -= 1
             }
-            tr.setNodeMarkup(mapped, undefined, {
+            tr.setNodeMarkup(mapped.pos, undefined, {
               ...next.attrs,
               headerRows: Math.max(0, header),
               footerRows: Math.max(0, footer),
