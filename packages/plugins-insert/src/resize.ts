@@ -219,6 +219,7 @@ function mediaView(
   node: PMNode,
   view: EditorView,
   getPos: () => number | undefined,
+  availability: Set<() => void>,
 ): NodeView {
   const wrap = view.dom.ownerDocument.createElement('span')
   wrap.className = 'ol-img-resize'
@@ -363,10 +364,35 @@ function mediaView(
     const shown = numeric ? String(value) : (stored === null ? '' : String(stored))
     handle.setAttribute('aria-valuenow', String(numeric ? value : currentWidth()))
     handle.setAttribute('aria-valuemax', String(maxWidth()))
+    syncAvailability()
     // A percentage width is legal in the storage format, and "50%" is a truer
     // thing to say than the pixel count it happens to render at right now.
     handle.setAttribute('aria-valuetext', shown === '' ? 'Automatic' : numeric ? `${shown} pixels` : shown)
   }
+
+  /**
+   * Whether the handle advertises that it can do anything.
+   *
+   * This handle is a real button inside a node view, so it sits outside
+   * ProseMirror's `editable` gate the way the table context menu does -- and a
+   * read-only document could be resized with the arrow keys. The guards are in
+   * `resizeTo` and on `pointerdown`; this is the part that says so, because a
+   * control that silently does nothing is worse than one that admits it.
+   *
+   * Unavailable rather than absent, matching the toolbar. `aria-disabled` rather
+   * than `disabled` keeps a slider focusable, so an author can still read the
+   * current width off it.
+   *
+   * Separate from `sync` and registered with the plugin, because read-only can
+   * be toggled after mount and a node view's `update` only runs when its NODE
+   * changes. It touches one attribute and reads no layout, so refreshing every
+   * media view on the transition costs nothing -- which `sync` could not claim,
+   * since `maxWidth()` measures.
+   */
+  const syncAvailability = (): void => {
+    handle.setAttribute('aria-disabled', view.editable ? 'false' : 'true')
+  }
+  availability.add(syncAvailability)
 
   /**
    * Pixel height that keeps the element's aspect ratio, or null if it is
@@ -380,6 +406,8 @@ function mediaView(
   }
 
   const resizeTo = (raw: number): void => {
+    // See `syncAvailability`: this path is not behind ProseMirror's own gate.
+    if (!view.editable) return
     const pos = getPos()
     if (pos === undefined) return
     const next = Math.max(MIN_WIDTH, Math.round(raw))
@@ -472,6 +500,9 @@ function mediaView(
   }
 
   handle.addEventListener('pointerdown', (event) => {
+    // Guarded at the start of the drag rather than at its commit, so a read-only
+    // document does not even show a resize preview.
+    if (!view.editable) return
     event.preventDefault()
     dragging = true
     moved = false
@@ -549,6 +580,7 @@ function mediaView(
       stop()
       // A detached media element keeps playing. Nothing would be able to stop it.
       release()
+      availability.delete(syncAvailability)
     },
   }
 
@@ -594,11 +626,33 @@ function mediaView(
  * depends on install order.
  */
 export function mediaResizePlugin(): Plugin {
+  /** Every live handle's availability refresher. See `syncAvailability`. */
+  const availability = new Set<() => void>()
   return new Plugin({
+    /*
+     * Only to notice read-only being toggled after mount.
+     *
+     * A node view's `update` runs when its node changes, and a change of
+     * editability is not that -- so without this a handle created while the
+     * document was editable went on saying so after `readonly` arrived. Gated on
+     * the transition rather than run every transaction: this fires on every
+     * keystroke, and doing per-node work here is exactly the per-keystroke cost
+     * that was removed from this editor once already.
+     */
+    view(editor) {
+      let editable = editor.editable
+      return {
+        update(updated) {
+          if (updated.editable === editable) return
+          editable = updated.editable
+          for (const refresh of availability) refresh()
+        },
+      }
+    },
     props: {
       nodeViews: {
-        image: (node, view, getPos) => mediaView('image', node, view, getPos),
-        video: (node, view, getPos) => mediaView('video', node, view, getPos),
+        image: (node, view, getPos) => mediaView('image', node, view, getPos, availability),
+        video: (node, view, getPos) => mediaView('video', node, view, getPos, availability),
       },
     },
   })
