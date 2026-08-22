@@ -763,17 +763,37 @@ export class Toolbar {
     }
 
     for (const { id, control } of this.#customs) {
+      // The control refreshes itself FIRST and availability is written after,
+      // so the toolbar has the last word. The other order let a control that
+      // tracks readonly on its own -- block type does, deliberately -- reset
+      // `disabled` from its own narrower idea of when it is usable and undo
+      // this.
+      if (control.update) {
+        guarded(id, 'update', () => {
+          control.update?.(state)
+          return true
+        })
+      }
+
       // Readonly is the toolbar's business, not each control's: reflecting it
       // here means a custom control gets the same disabled treatment as a button
       // without every plugin author having to remember the attribute exists.
-      const trigger = control.el.querySelector<HTMLButtonElement>('button.ol-btn')
       const unavailable = this.#host.hasAttribute('readonly') || this.#sourceMode
+      const trigger = control.el.querySelector<HTMLButtonElement>('button.ol-btn')
       trigger?.setAttribute('aria-disabled', unavailable ? 'true' : 'false')
-      if (!control.update) continue
-      guarded(id, 'update', () => {
-        control.update?.(state)
-        return true
-      })
+
+      // Native selects too, and `control.el` itself may BE one -- block type's
+      // is (packages/ui/src/block-type.ts), which is how a `<select>` with no
+      // `button.ol-btn` inside it stayed fully operable in source mode: the
+      // author could pick "Heading 3" against the hidden document, and leaving
+      // source view reparsed the textarea over the result and discarded it.
+      //
+      // The real `disabled`, not just aria: with aria alone the select still
+      // opens, still changes its own displayed value, and still fires `change`.
+      for (const select of this.#nativeSelects(control.el)) {
+        select.setAttribute('aria-disabled', unavailable ? 'true' : 'false')
+        select.disabled = unavailable
+      }
     }
 
     if (this.#selects.size > 0) {
@@ -786,6 +806,19 @@ export class Toolbar {
     }
 
     if (transitions.length > 0) this.#announce(transitions.join(', '))
+  }
+
+  /**
+   * Every native select a custom control put in the bar, including the control
+   * element itself. `querySelectorAll` alone misses the latter, and the latter
+   * is the common case: a control whose whole DOM is one select.
+   */
+  #nativeSelects(el: HTMLElement): HTMLSelectElement[] {
+    const found = [...el.querySelectorAll<HTMLSelectElement>('select')]
+    // localName, not `instanceof`: this bar may be built in a second document,
+    // where that document's HTMLSelectElement is a different constructor.
+    if (el.localName === 'select') found.unshift(el as HTMLSelectElement)
+    return found
   }
 
   #syncRegisteredSelect(

@@ -47,7 +47,13 @@ export function blockTypeControl(
     }
   })
   select.addEventListener('change', () => {
-    if (host.hasAttribute('readonly')) return
+    // `select.disabled` as well as the attribute, because readonly is not the
+    // only reason this control goes unavailable: the toolbar disables it in
+    // source view too, where the document this would format is hidden behind a
+    // textarea that gets reparsed over the result. A native disabled select
+    // cannot fire `change` at all -- this is the guard for a synthetic one, and
+    // for the window before the first `update()`.
+    if (host.hasAttribute('readonly') || select.disabled) return
     const value = select.value
     if (value.startsWith('format:')) {
       const { element, className } = formatParts(value.slice('format:'.length))
