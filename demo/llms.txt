@@ -1,0 +1,33 @@
+# OpenLeaf
+
+> OpenLeaf is a framework-agnostic rich text editor for the web: ordinary HTML
+> in and out, with no paid tier, license key, telemetry, or cloud dependency.
+
+OpenLeaf is currently beta. Its APIs may change, it has not yet been proven in
+production, and it has not completed testing with real screen readers. All
+`@openleaf-editor/*` packages in an application must use the same version.
+Editor output is untrusted input and must be sanitized on the server.
+
+## Start here
+
+- [Integration guide](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/docs/integrating-openleaf.md): Canonical instructions for coding agents and developers installing OpenLeaf in plain HTML, React, Vue, Angular, SSR, and server-rendered applications.
+- [Project overview](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/README.md): Capabilities, quick start, optional plugins, package index, and beta limitations.
+- [Live demo](https://peytonnowlin.github.io/openleaf/): Interactive examples of the editor and first-party plugins.
+
+## Safety and API
+
+- [Security](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/SECURITY.md): Server-side sanitization, preserved markup, plugin trust, Content Security Policy, and vulnerability reporting.
+- [Custom element API](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/docs/api-reference.md): Attributes, properties, events, textarea binding, and exported extension hooks.
+- [Sanitizer package](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/packages/sanitize/README.md): DOMPurify setup and adapters for JavaScript, Python Bleach, and PHP HTMLPurifier.
+
+## Frameworks and extension
+
+- [React integration](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/packages/react/README.md): React 18+ controlled wrapper and SSR behavior.
+- [Vue integration](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/packages/vue/README.md): Vue 3 wrapper, v-model, and direct custom-element configuration.
+- [Angular integration](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/packages/angular/README.md): Supported custom-element recipe and two-way binding directive; the old Angular wrapper is withdrawn.
+- [Plugin authoring](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/docs/authoring-plugins.md): Schema extensions, toolbar controls, delivery models, timing, and security responsibilities.
+
+## Source and support
+
+- [Source repository](https://github.com/PeytonNowlin/openleaf): Apache-2.0 source, packages, tests, and contribution history.
+- [Issue tracker](https://github.com/PeytonNowlin/openleaf/issues): Public bug reports and feature proposals. Security reports must use the private process in SECURITY.md.

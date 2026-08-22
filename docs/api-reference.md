@@ -94,13 +94,15 @@ textarea; no transaction and no event.
 
 ## Events
 
-All bubble. None are `composed`, so none cross a shadow-root boundary.
+All bubble. `openleaf:change` is composed, so delegated listeners on `document`
+or `window` also receive it from an editor inside a shadow root. The source-view
+events are not composed and remain inside one.
 
 ### Dispatched by the element
 
 | Event | `detail` | Cancelable | When |
 | --- | --- | --- | --- |
-| `openleaf:change` | — | No | After any transaction where `docChanged` is true. The bound textarea is **already synced** when your listener runs. |
+| `openleaf:change` | `{ value: string }` | No | After any transaction where `docChanged` is true. `value` is a lazy getter for the current HTML, so listeners that do not read it avoid serialization work. The bound textarea may still be waiting for its short deferred sync. |
 | `openleaf:source-open` | `{ textarea }` | No | When source view opens, before the textarea is focused. |
 | `openleaf:source-close` | `{ textarea }` | No | When source view closes, before the textarea is removed and before any write-back. Also fires on disconnect. |
 
@@ -108,8 +110,8 @@ All bubble. None are `composed`, so none cross a shadow-root boundary.
 and Angular wrappers listen to, and what you would listen to yourself.
 
 ```js
-editor.addEventListener('openleaf:change', () => {
-  console.log(editor.value)
+editor.addEventListener('openleaf:change', (event) => {
+  console.log(event.detail.value)
 })
 ```
 
@@ -155,10 +157,13 @@ keeps working untouched — the server reading `$_POST['body']` needs no change.
 `<textarea>` nested inside the element is used automatically, lifted out during
 the build and re-appended hidden so it still posts.
 
-The textarea is written on every document change, when the form is submitted, on
-`formdata`, at the end of the build, and on disconnect — that last one so HTML
-left in an open source box is not lost. A form `reset` goes the other way,
-writing the textarea's restored value back into the editor.
+After a document change, the textarea is marked dirty and written within a short
+delay rather than re-serializing a large document on every keystroke. It is
+flushed synchronously when the form is submitted, on `formdata`, at the end of
+the build, and on disconnect — that last one so HTML left in an open source box
+is not lost. A form `reset` goes the other way, writing the textarea's restored
+value back into the editor. Code that needs current HTML immediately should read
+`openleaf:change`'s `event.detail.value`, not poll the textarea.
 
 Note that only the textarea's `.value` is assigned. No `input` or `change` event
 is fired on it, so a listener on the textarea will not see the editor's edits.

@@ -252,14 +252,21 @@ const boundariesOk = step('package boundaries (peers, one ProseMirror, sideEffec
   return `${names.length} packages, ${pmRanges.size} ProseMirror packages at one range each`
 })
 
-// 8. Every published entry point still imports with no DOM present, by package
+// 8. The integration guide is the entry point for people and coding agents, and
+//    demo/llms.txt is its published discovery path. Keep their local targets,
+//    package coverage, and load-bearing event contract checkable.
+const docsOk = step('integration documentation', () => {
+  run('node', ['scripts/check-docs.mjs'])
+})
+
+// 9. Every published entry point still imports with no DOM present, by package
 //    specifier rather than by file path, so the exports map is exercised too.
 //    See scripts/ssr-imports.mjs for why both halves of that matter.
 const ssrOk = step('SSR imports (every published entry point)', () => {
   run('node', ['scripts/ssr-imports.mjs'])
 })
 
-// 9. Bundle size. The "no build step" promise means integrators load this over
+// 10. Bundle size. The "no build step" promise means integrators load this over
 //    the wire, so the number is a feature and regressions should hurt.
 const sizeOk = step(`bundle size budgets (${describeBudgets()})`, () => checkBundleSizes())
 
@@ -281,6 +288,7 @@ const allOk =
   cleanBuildOk &&
   schemaGuardOk &&
   boundariesOk &&
+  docsOk &&
   ssrOk &&
   sizeOk
 if (quick) {
