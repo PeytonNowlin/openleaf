@@ -64,6 +64,16 @@ entries below say so explicitly when they do.
   public API.
 - The core bundle's gzip budget rises to 110 KB, measured at 108.0.
 
+### Fixed
+
+- **`resolveLanguage` no longer returns `Object.prototype` members.** The alias
+  table was a plain object, so `<code class="language-constructor">` resolved to
+  the `Object` constructor: `canHighlight` reported true (`undefined !== null`)
+  and `tokenize` fell out of its switch and returned `undefined` instead of the
+  `null` the highlighter contract uses for an unknown language. The table is a
+  `Map` now, matching `LIST_STYLE_ALIASES`, and `tokenize` has a `default` that
+  returns `null`.
+
 ## 0.1.0-beta.2 - 2026-08-19
 
 The formatting and structure release. Five new packages, so read the install
