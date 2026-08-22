@@ -27,6 +27,16 @@ test.describe('loading stored content', () => {
     await expect(editor(page).getByText('Load-bearing wrapper.')).toBeVisible()
   })
 
+  test('keeps heading text when stored HTML wraps it in <a id>', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value =
+        '<h2><a id="revenue">Revenue by region</a></h2><p>Body text.</p><p>See <a href="#revenue">the section</a>.</p>'
+    })
+    await expect(editor(page).getByRole('heading', { name: 'Revenue by region' })).toBeVisible()
+    await expect.poll(() => submittedValue(page)).toContain('Revenue by region')
+  })
+
   test('exposes the editable region to assistive technology', async ({ page }) => {
     // Without a role and an accessible name, a screen reader announces an
     // unlabelled text box, which makes the editor unusable rather than merely
