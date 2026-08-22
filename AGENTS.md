@@ -41,6 +41,20 @@ pnpm test:e2e:quick       # chromium only, for a fast loop
 WebKit is not optional either. It is Safari and every iOS browser, and it is
 where selection bugs live. A green chromium run is a smoke test, not a pass.
 
+## Update documentation before you open the PR
+
+Documentation is part of the change, not a follow-up. Before opening or updating
+a PR, search for every document that describes the behavior you changed and
+update all affected copies in the same branch. Check the project README, package
+READMEs, API and security references, integration guides, examples, demo copy,
+and machine-readable indexes such as `demo/llms.txt` as applicable; updating only
+the nearest README is not enough when the same contract is documented elsewhere.
+
+Run `node scripts/check-docs.mjs` for the integration entry points it covers,
+then review the diff yourself for documentation that cannot be checked
+mechanically. In the PR body, summarize the documentation updates, or state why
+the change has no user-facing or contributor-facing documentation impact.
+
 ## Do not trust a green e2e run against a server you did not start
 
 The Playwright config reuses an existing server on port 4173 outside CI. The
