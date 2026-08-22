@@ -67,6 +67,7 @@
 
 import { DROP_WITH_CONTENT } from '@openleaf-editor/content-policy/elements'
 import { deepFreeze } from './freeze.js'
+import { isNeverAllowedAttribute } from './url.js'
 
 export interface ElementPolicy {
   /** Attribute names permitted on this element, beyond the global ones. */
@@ -441,11 +442,41 @@ export function policyForCarriedAttributes(
   return policyForPreserved(base, additions)
 }
 
-/** Every attribute permitted on an element under a policy. */
+/**
+ * Every attribute an element may CARRY under a policy, with the never-allowed
+ * ones removed.
+ *
+ * The filter is here, at the one accessor both the enforcer and the adapter
+ * generators read, rather than in each of them. A policy is data an integrator
+ * is invited to widen -- `policyForCarriedAttributes(DEFAULT_POLICY, { img:
+ * ['srcset'] })` is a supported call -- and a widening that `sanitizeHtml`
+ * refuses while `toDOMPurifyConfig` copies into `ALLOWED_ATTR` is the
+ * cross-runtime divergence this package exists to prevent.
+ */
 export function allowedAttributes(policy: Policy, tag: string): Set<string> {
   const element = policy.elements[tag.toLowerCase()]
   if (!element) return new Set()
-  return new Set([...policy.globalAttributes, ...(element.attributes ?? [])])
+  return new Set(
+    [...policy.globalAttributes, ...(element.attributes ?? [])].filter(
+      (name) => !isNeverAllowedAttribute(name),
+    ),
+  )
+}
+
+/**
+ * One element's carryable attributes, in the policy's own order.
+ *
+ * `allowedAttributes` folds in the globals and returns a Set; the generators
+ * need the per-element list on its own, and need it ordered, because their
+ * output is a file a human reads and re-reads in diffs.
+ */
+export function carriedAttributes(element: ElementPolicy): string[] {
+  return (element.attributes ?? []).filter((name) => !isNeverAllowedAttribute(name))
+}
+
+/** The global attributes a policy may really apply to every element. */
+export function carriedGlobalAttributes(policy: Policy): string[] {
+  return policy.globalAttributes.filter((name) => !isNeverAllowedAttribute(name))
 }
 
 /** Every CSS property permitted inside `style` on an element. */

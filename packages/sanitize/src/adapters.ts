@@ -12,7 +12,12 @@
 
 import { allStyleProperties, filterStyle } from './css.js'
 import { EMBED_ALLOW_TOKENS, EMBED_HOSTS, isAllowedEmbedSrc, safeAllowList } from './embed.js'
-import { allowedStyleProperties, type Policy } from './policy.js'
+import {
+  allowedStyleProperties,
+  carriedAttributes,
+  carriedGlobalAttributes,
+  type Policy,
+} from './policy.js'
 
 /* ------------------------------------------------------------------ *
  * DOMPurify (JavaScript, browser and Node)
@@ -112,9 +117,12 @@ export function toDOMPurifyConfig(
   policy: Policy,
   options: { embedHook?: boolean; styleHook?: boolean } = {},
 ): DOMPurifyConfig {
-  const attributes = new Set(policy.globalAttributes)
+  // Never-allowed attributes are filtered out of both halves. `ALLOWED_ATTR` is
+  // global, so one element permitting `srcset` used to allow it on every kept
+  // element for DOMPurify consumers -- and the reference enforcer refuses it.
+  const attributes = new Set(carriedGlobalAttributes(policy))
   for (const element of Object.values(policy.elements)) {
-    for (const attr of element.attributes ?? []) {
+    for (const attr of carriedAttributes(element)) {
       if (attr !== 'style' || options.styleHook === true) attributes.add(attr)
     }
   }
@@ -336,11 +344,12 @@ export function toBleachConfig(policy: Policy): string {
     'ALLOWED_ATTRIBUTES = {',
   ]
 
-  if (policy.globalAttributes.length > 0) {
-    lines.push(`    "*": [${policy.globalAttributes.map((a) => JSON.stringify(a)).join(', ')}],`)
+  const globals = carriedGlobalAttributes(policy)
+  if (globals.length > 0) {
+    lines.push(`    "*": [${globals.map((a) => JSON.stringify(a)).join(', ')}],`)
   }
   for (const [tag, element] of Object.entries(policy.elements)) {
-    const attrs = element.attributes ?? []
+    const attrs = carriedAttributes(element)
     if (attrs.length === 0) continue
     lines.push(`    ${JSON.stringify(tag)}: [${attrs.map((a) => JSON.stringify(a)).join(', ')}],`)
   }
@@ -456,7 +465,7 @@ export function toBleachConfig(policy: Policy): string {
 export function toHtmlPurifierConfig(policy: Policy): string {
   const allowed = Object.entries(policy.elements)
     .map(([tag, element]) => {
-      const attrs = [...policy.globalAttributes, ...(element.attributes ?? [])]
+      const attrs = [...carriedGlobalAttributes(policy), ...carriedAttributes(element)]
       return attrs.length > 0 ? `${tag}[${attrs.join('|')}]` : tag
     })
     .join(',')

@@ -16,9 +16,12 @@ import {
   isAllowedDeclaration,
   isAllowedEmbedSrc,
   safeAllowList as policySafeAllowList,
+  policyForCarriedAttributes,
   policyForPreserved,
   sanitizeHtml,
+  toBleachConfig,
   toDOMPurifyConfig,
+  toHtmlPurifierConfig,
 } from '../src/index.js'
 
 /**
@@ -303,6 +306,48 @@ describe('the URL attribute list does not drift from content-policy', () => {
    * drift, and this is the assertion that catches it for the whole class rather
    * than for the one attribute that happened to slip through.
    */
+  /*
+   * And the ADAPTERS have to agree, not only the reference enforcer. A policy is
+   * data an integrator is invited to widen -- `policyForCarriedAttributes` is a
+   * supported call -- and a widening that `sanitizeHtml` refuses while
+   * `toDOMPurifyConfig` copies into `ALLOWED_ATTR` is not a guarantee, it is a
+   * coin toss on which runtime they deployed. Reported by Codex on #100.
+   */
+  it('keeps a widened never-carry attribute out of every generated config', () => {
+    const widened = policyForCarriedAttributes(DEFAULT_POLICY, {
+      img: ['src', 'alt', 'srcset', 'imagesrcset'],
+    })
+
+    // The reference enforcer.
+    const out = sanitizeHtml('<img src="/a.png" srcset="https://evil.example/a.png 1x" alt="a">', {
+      policy: widened,
+    })
+    expect(out).not.toContain('srcset')
+
+    // DOMPurify: one global list, so one element permitting it used to allow it
+    // everywhere.
+    expect(toDOMPurifyConfig(widened).ALLOWED_ATTR).not.toContain('srcset')
+    expect(toDOMPurifyConfig(widened).ALLOWED_ATTR).not.toContain('imagesrcset')
+    // The rest of the widening survives: a targeted refusal, not a policy the
+    // generator ignores.
+    expect(toDOMPurifyConfig(widened).ALLOWED_ATTR).toContain('alt')
+
+    // And the two generated server-side configs.
+    for (const generated of [toBleachConfig(widened), toHtmlPurifierConfig(widened)]) {
+      expect(generated).not.toContain('srcset')
+      expect(generated).not.toContain('imagesrcset')
+    }
+  })
+
+  it('keeps an event handler out of every generated config too', () => {
+    const widened = policyForCarriedAttributes(DEFAULT_POLICY, { div: ['class', 'onclick'] })
+    expect(toDOMPurifyConfig(widened).ALLOWED_ATTR).not.toContain('onclick')
+    expect(toDOMPurifyConfig(widened).ALLOWED_ATTR).toContain('class')
+    for (const generated of [toBleachConfig(widened), toHtmlPurifierConfig(widened)]) {
+      expect(generated).not.toContain('onclick')
+    }
+  })
+
   it('permits no attribute content-policy refuses to carry, on any element', () => {
     const permitted: string[] = []
     for (const [element, policy] of Object.entries(DEFAULT_POLICY.elements)) {
