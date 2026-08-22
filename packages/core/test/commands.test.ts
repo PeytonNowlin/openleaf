@@ -139,7 +139,7 @@ describe('heading commands', () => {
 describe('list commands', () => {
   it('wraps a paragraph in a bullet list', () => {
     const state = cursorAt(stateFrom('<p>item</p>'), 3)
-    expect(html(run(state, toggleBulletList))).toBe('<ul><li><p>item</p></li></ul>')
+    expect(html(run(state, toggleBulletList))).toBe('<ul><li>item</li></ul>')
   })
 
   it('unwraps an existing bullet list', () => {
@@ -149,17 +149,17 @@ describe('list commands', () => {
 
   it('wraps in an ordered list', () => {
     const state = cursorAt(stateFrom('<p>item</p>'), 3)
-    expect(html(run(state, toggleOrderedList))).toBe('<ol><li><p>item</p></li></ol>')
+    expect(html(run(state, toggleOrderedList))).toBe('<ol><li>item</li></ol>')
   })
 
   it('converts a bullet list to an ordered list', () => {
     const state = cursorAt(stateFrom('<ul><li><p>item</p></li></ul>'), 4)
-    expect(html(run(state, toggleOrderedList))).toBe('<ol><li><p>item</p></li></ol>')
+    expect(html(run(state, toggleOrderedList))).toBe('<ol><li>item</li></ol>')
   })
 
   it('converts an ordered list to a bullet list', () => {
     const state = cursorAt(stateFrom('<ol><li><p>item</p></li></ol>'), 4)
-    expect(html(run(state, toggleBulletList))).toBe('<ul><li><p>item</p></li></ul>')
+    expect(html(run(state, toggleBulletList))).toBe('<ul><li>item</li></ul>')
   })
 
   it('reports list membership', () => {
@@ -172,7 +172,7 @@ describe('list commands', () => {
 describe('block commands', () => {
   it('wraps in a blockquote and lifts back out', () => {
     const quoted = run(cursorAt(stateFrom('<p>quote me</p>'), 3), toggleBlockquote)
-    expect(html(quoted)).toBe('<blockquote><p>quote me</p></blockquote>')
+    expect(html(quoted)).toBe('<blockquote>quote me</blockquote>')
 
     const unquoted = run(cursorAt(quoted!, 4), toggleBlockquote)
     expect(html(unquoted)).toBe('<p>quote me</p>')
@@ -186,7 +186,7 @@ describe('block commands', () => {
       stateFrom('<blockquote><ul><li><p>item</p></li></ul></blockquote>'),
       5,
     )
-    expect(html(run(state, toggleBlockquote))).toBe('<ul><li><p>item</p></li></ul>')
+    expect(html(run(state, toggleBlockquote))).toBe('<ul><li>item</li></ul>')
   })
 
   it('does not throw when a selection spans a quote into details (#130)', () => {

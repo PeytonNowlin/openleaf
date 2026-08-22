@@ -634,10 +634,11 @@ element will never see its content as a wrapper at all.
 
 #### If you add a normalization pass, guard it with `isInsidePreserved`
 
-`serializeHtml` runs `unwrapSoleCellParagraph` over the whole output to collapse
-`<td><p>x</p></td>` back to `<td>x</td>`, so that adopting OpenLeaf does not
-rewrite every cell of every table in an archive on first save. That pass used a
-plain `querySelectorAll('td, th')` and therefore reached *inside* preserved
+`serializeHtml` runs `unwrapSoleParagraph` over the whole output to collapse a
+sole attribute-free `<p>` inside `td`/`th`, `li`, `blockquote`, and a `<details>`
+body back to direct text, so that adopting OpenLeaf does not rewrite every list,
+quote, disclosure and table in an archive on first save. That pass used a
+plain `querySelectorAll` and therefore reached *inside* preserved
 markup — rewriting a table nested in an unrecognised wrapper that the editor had
 undertaken to return byte-identical.
 
@@ -647,7 +648,7 @@ guard:
 ```ts
 import { isInsidePreserved } from '@openleaf-editor/core'
 
-for (const el of host.querySelectorAll('td, th')) {
+for (const el of host.querySelectorAll('td, th, li, blockquote, details')) {
   if (isInsidePreserved(el)) continue
   // …your normalization…
 }
