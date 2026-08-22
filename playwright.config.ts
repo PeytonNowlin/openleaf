@@ -32,10 +32,15 @@ export default defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
 
+  // The rebuild is HERE and not in `webServer.command`, so the tests can never
+  // pass against a stale artifact -- which would make them worse than no tests
+  // at all. `command` only runs when Playwright starts a server, so with
+  // `reuseExistingServer` on it used to be skipped entirely by any run that
+  // found something already listening on 4173. See global-setup.ts.
+  globalSetup: './packages/element/test/e2e/global-setup.ts',
+
   webServer: {
-    // Rebuild the bundle first, so the tests can never pass against a stale
-    // artifact -- which would make them worse than no tests at all.
-    command: 'node demo/build.mjs && node packages/element/test/e2e/serve.mjs',
+    command: 'node packages/element/test/e2e/serve.mjs',
     url: 'http://localhost:4173/packages/element/test/e2e/harness.html',
     reuseExistingServer: !process.env['CI'],
     stdout: 'pipe',
