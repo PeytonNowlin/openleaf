@@ -284,7 +284,7 @@ describe('commands work against an extended schema', () => {
   })
 
   it('toggleBulletList works', () => {
-    expect(run(stateFrom('<p>i</p>'), toggleBulletList)).toBe('<ul><li><p>i</p></li></ul>')
+    expect(run(stateFrom('<p>i</p>'), toggleBulletList)).toBe('<ul><li>i</li></ul>')
   })
 
   it('predicates read the state schema, not a captured one', () => {
@@ -325,7 +325,7 @@ describe('fidelity holds for every configuration that ships', () => {
   const samples = [
     '<h2 dir="rtl">عنوان</h2>',
     '<p>Text with <strong>b</strong> and <a href="https://example.org">a link</a>.</p>',
-    '<ul><li><p>one</p></li></ul>',
+    '<ul><li>one</li></ul>',
     '<div class="callout" data-id="7"><p>preserved</p></div>',
     '<table border="1"><tbody><tr><th scope="col">H</th></tr></tbody></table>',
     '<pre><code class="language-js">const x = 1</code></pre>',

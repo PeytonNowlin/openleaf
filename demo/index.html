@@ -442,11 +442,11 @@ const ratio = width / height   // division, not a regex
   <textarea id="typo" hidden><p><font face="Verdana">A font tag from 2009. Editable text, not a card.</font></p>
 <p><span style="font-family:Georgia">A family on a span,</span> and <span style="font-size:14pt">a size on another.</span></p>
 <p style="line-height:1.8">A paragraph carrying a line height, which survives the round trip.</p>
-<ol type="a"><li><p>A list using the legacy <code>type</code> attribute.</p></li></ol></textarea>
+<ol type="a"><li>A list using the legacy <code>type</code> attribute.</li></ol></textarea>
 </div>
 
 <p>
-  Open <strong>source</strong> to see what it stored. Three things changed on the
+  Open <strong>source</strong> to see what it stored. Four things changed on the
   way in, and each is a deliberate modernisation rather than a loss:
 </p>
 
@@ -458,6 +458,10 @@ const ratio = width / height   // division, not a regex
   <li><code>&lt;ol type="a"&gt;</code> became
     <code>list-style-type:lower-alpha</code>, the same conversion
     <code>align="center"</code> has always had.</li>
+  <li>A sole attribute-free <code>&lt;p&gt;</code> inside a list item,
+    blockquote, or details body is unwrapped. Word and Google Docs wrap
+    every item that way; storing the extra paragraph changed list height
+    and which CSS rules matched.</li>
   <li>Declarations OpenLeaf models come back in its own spelling and order.
     Anything it does not model goes back byte-for-byte.</li>
 </ul>
