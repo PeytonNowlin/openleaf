@@ -56,11 +56,15 @@ export {
   promptFields,
   promptForImage,
   promptForLink,
+  promptForMedia,
   type FieldOption,
   type FieldSpec,
   type ImagePromptOptions,
   type ImageResult,
   type LinkResult,
+  type MediaPromptOptions,
+  type MediaResult,
+  type MediaSourceResult,
   type PromptFormOptions,
 } from './dialog.js'
 export {

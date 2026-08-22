@@ -126,3 +126,80 @@ export function safeAllowList(value: string | null | undefined): string | null {
   }
   return kept.length > 0 ? kept.join('; ') : null
 }
+
+/**
+ * Rewrite a player *page* into the embed URL the policy above allows.
+ *
+ * `EMBED_HOSTS` deliberately refuses `youtube.com/watch`: embedding a watch page
+ * nests the whole YouTube UI in the document, so only the documented `/embed/`
+ * path is storable. That is the right policy and the wrong thing to hand an
+ * author, because a watch page is the only URL they have -- nobody copies an
+ * `<iframe>` out of a share dialog. The result was an insert that silently did
+ * nothing: the toolbar routed a YouTube link to the iframe command, and
+ * `safeEmbedSrc` then refused it.
+ *
+ * So the conversion lives here, next to the allowlist it has to satisfy, rather
+ * than in a dialog where a second copy of the host list would drift from this
+ * one. Each rule extracts an id with a strict pattern and rebuilds a canonical
+ * URL; nothing is passed through. The return value goes back through
+ * `safeEmbedSrc`, so this function can only ever produce a URL the policy would
+ * have accepted anyway -- it narrows what an author must type, never what the
+ * editor will store.
+ */
+export function embedSrcFor(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  const direct = safeEmbedSrc(value)
+  if (direct) return direct
+
+  const url = parsed(value.trim())
+  if (!url || url.protocol !== 'https:') return null
+  const host = hostnameOf(value)
+  const path = url.pathname
+
+  // Each id pattern is anchored and character-classed. A loose `(.+)` here would
+  // let a crafted path smuggle a second path segment into the rebuilt URL.
+  const ID = /^[\w-]{1,64}$/
+
+  if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+    if (path === '/watch') {
+      const id = url.searchParams.get('v') ?? ''
+      if (ID.test(id)) return safeEmbedSrc(`https://www.${host}/embed/${id}`)
+    }
+    // `/shorts/ID` and `/live/ID` are watch pages under another name.
+    const named = /^\/(?:shorts|live)\/([\w-]{1,64})$/.exec(path)
+    if (named) return safeEmbedSrc(`https://www.${host}/embed/${named[1]}`)
+    return null
+  }
+
+  if (host === 'youtu.be') {
+    const id = path.slice(1)
+    if (ID.test(id)) return safeEmbedSrc(`https://www.youtube.com/embed/${id}`)
+    return null
+  }
+
+  if (host === 'vimeo.com') {
+    const id = /^\/(\d{1,32})$/.exec(path)
+    if (id) return safeEmbedSrc(`https://player.vimeo.com/video/${id[1]}`)
+    return null
+  }
+
+  if (host === 'dailymotion.com') {
+    const id = /^\/video\/([\w-]{1,64})$/.exec(path)
+    if (id) return safeEmbedSrc(`https://www.dailymotion.com/embed/video/${id[1]}`)
+    return null
+  }
+
+  if (host === 'twitch.tv') {
+    const channel = /^\/([\w-]{1,64})$/.exec(path)
+    if (channel) return safeEmbedSrc(`https://player.twitch.tv/?channel=${channel[1]}`)
+    return null
+  }
+
+  if (host === 'open.spotify.com') {
+    const found = /^\/(track|album|playlist|episode|show|artist)\/([\w-]{1,64})$/.exec(path)
+    if (found) return safeEmbedSrc(`https://open.spotify.com/embed/${found[1]}/${found[2]}`)
+    return null
+  }
+
+  return null
+}

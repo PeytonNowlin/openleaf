@@ -61,6 +61,7 @@ export {
 } from './url.js'
 export {
   EMBED_HOSTS,
+  embedSrcFor,
   isAllowedEmbedSrc,
   safeAllowList,
   safeEmbedSrc,

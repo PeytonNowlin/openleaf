@@ -50,7 +50,7 @@ const EXPECTED_EXPORTS = [
   'modelledValue', 'safeDir', 'safeFontFamily', 'safeFontSize', 'safeLang',
   'safeLineHeight', 'safeListStyle',
   // embed allowlist and class/id tokens
-  'EMBED_HOSTS', 'isAllowedEmbedSrc', 'safeAllowList', 'safeEmbedSrc',
+  'EMBED_HOSTS', 'embedSrcFor', 'isAllowedEmbedSrc', 'safeAllowList', 'safeEmbedSrc',
   'IMAGE_ALIGNMENTS', 'IMAGE_ALIGN_CLASS', 'IMAGE_ALIGN_CLASSES', 'imageAlignFromClass',
   'safeClassList', 'safeId',
   // predicates

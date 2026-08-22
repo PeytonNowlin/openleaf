@@ -1,4 +1,5 @@
-import { insertAudio, insertDetails, insertHtml, insertIframe, insertNamedAnchor, insertVideo, setHeadingId, isNodeActive } from '@openleaf-editor/core'
+import { embedSrcFor, insertAudio, insertDetails, insertHtml, insertIframe, insertNamedAnchor, insertVideo, selectedMedia, setHeadingId, updateMedia, isNodeActive } from '@openleaf-editor/core'
+import { promptForMedia } from '@openleaf-editor/ui'
 import { listedSnippets } from './snippets.js'
 import type { EditorView } from 'prosemirror-view'
 
@@ -68,23 +69,82 @@ function ask(doc: Document, title: string, fields: Array<{ name: string; label: 
   })
 }
 
+/** Extensions that mean audio rather than video. */
+const AUDIO_FILES = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus)(\?|#|$)/i
+
+/**
+ * Which node type an address wants to be.
+ *
+ * The alternatives are consulted too: a source-only player has no `src` to
+ * classify, and a set of `.ogg` sources is audio however little the empty main
+ * address says.
+ */
+function mediaKindFor(src: string, sources: readonly { src: string }[]): 'iframe' | 'audio' | 'video' {
+  if (src !== '' && embedSrcFor(src) !== null) return 'iframe'
+  const addresses = [src, ...sources.map((source) => source.src)].filter((one) => one !== '')
+  if (addresses.length > 0 && addresses.every((one) => AUDIO_FILES.test(one))) return 'audio'
+  return 'video'
+}
+
+/**
+ * Insert a player, or edit the one that is selected.
+ *
+ * The same toolbar button does both, because "insert" and "edit" are the same
+ * dialog with the fields already filled in, and a separate control for editing
+ * is one the author has to discover. `selectedMedia` returning null is what
+ * distinguishes them -- and it insists on a real node selection, so a caret that
+ * merely sits near a player still inserts a new one.
+ */
 export async function promptInsertMedia(view: EditorView, host: HTMLElement): Promise<void> {
-  const values = await ask(host.ownerDocument, 'Insert media', [
-    { name: 'src', label: 'Address' },
-    { name: 'title', label: 'Title' },
-  ], host)
-  if (!values?.['src']) {
+  const current = selectedMedia(view.state)
+  const result = await promptForMedia(host.ownerDocument, {
+    host,
+    ...(current
+      ? {
+          existing: {
+            src: current.src ?? '',
+            title: current.title,
+            poster: current.poster,
+            width: current.width,
+            height: current.height,
+            sources: current.sources.map((source) => ({ src: source.src, type: source.type ?? null })),
+          },
+        }
+      : {}),
+  })
+  if (!result) {
     view.focus()
     return
   }
-  const src = values['src']
-  const title = values['title'] || null
-  const kind = /youtube|vimeo|dailymotion|spotify|soundcloud|twitch|google\.com\/maps/i.test(src)
-    ? insertIframe
-    : /\.(mp3|wav|ogg|m4a)(\?|$)/i.test(src)
-      ? insertAudio
-      : insertVideo
-  kind({ src, title })(view.state, view.dispatch, view)
+
+  const attrs = {
+    src: result.src === '' ? null : result.src,
+    title: result.title,
+    poster: result.poster,
+    width: result.width,
+    height: result.height,
+    sources: result.sources.map((source) => ({ src: source.src, type: source.type })),
+  }
+
+  if (current) {
+    // Editing keeps the node type it already had. Retyping the address of a
+    // selected video into a YouTube link should change the address, not silently
+    // replace the node with an iframe and drop the sources beside it.
+    updateMedia(attrs)(view.state, view.dispatch, view)
+    view.focus()
+    return
+  }
+
+  const kind = mediaKindFor(result.src, result.sources)
+  if (kind === 'iframe') {
+    // The converted address, not what the author typed: `insertIframe` runs the
+    // value past the same allowlist, which refuses a watch page.
+    insertIframe({ ...attrs, src: embedSrcFor(result.src) })(view.state, view.dispatch, view)
+    view.focus()
+    return
+  }
+  const insert = kind === 'audio' ? insertAudio : insertVideo
+  insert(attrs)(view.state, view.dispatch, view)
   view.focus()
 }
 

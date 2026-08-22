@@ -917,3 +917,171 @@ export async function promptForImage(
     },
   )
 }
+
+/* ------------------------------------------------------------------ *
+ * Media
+ * ------------------------------------------------------------------ */
+
+/** One alternative address the author gave the player. */
+export interface MediaSourceResult {
+  src: string
+  type: string | null
+}
+
+export interface MediaResult {
+  /** Empty when the player carries all its addresses in `sources`. */
+  src: string
+  title: string | null
+  poster: string | null
+  width: string | null
+  height: string | null
+  sources: MediaSourceResult[]
+}
+
+export interface MediaPromptOptions {
+  host?: HTMLElement
+  /** Prefilled state, when editing a player already in the document. */
+  existing?: {
+    src?: string | null
+    title?: string | null
+    poster?: string | null
+    width?: string | null
+    height?: string | null
+    sources?: readonly MediaSourceResult[]
+  }
+}
+
+/** How many `<source>` rows the dialog offers beyond the main address. */
+const ALT_SOURCE_ROWS = 2
+
+/**
+ * The insert-media dialog.
+ *
+ * Two alternative-source rows rather than one, because that is the shape the
+ * format is actually used in: a `<video>` with a `.webm` and an `.mp4` covers
+ * every current browser, and offering a single alternative makes the common case
+ * the one the author has to work around. Rather than a growable list, because
+ * three rows is where the returns stop and a list needs add/remove controls,
+ * their keyboard semantics, and a story for reordering.
+ *
+ * The type hints are separate fields rather than guessed from the extension. A
+ * guess is wrong for exactly the addresses that need it -- a signed URL, or a
+ * stream with no extension at all -- and being wrong here means the browser
+ * downloads a format it cannot play before finding out.
+ */
+export async function promptForMedia(
+  doc: Document,
+  options: MediaPromptOptions = {},
+): Promise<MediaResult | null> {
+  const { host, existing } = options
+  const locale = host?.getAttribute('lang') ?? null
+  const existingSources = existing?.sources ?? []
+  const editing = existing !== undefined
+
+  const fields: FieldSpec[] = [
+    {
+      name: 'src',
+      label: 'Address',
+      type: 'text',
+      value: existing?.src ?? '',
+      hint: 'The video or audio file to play. Leave blank if you only give alternatives below.',
+    },
+    {
+      name: 'title',
+      label: 'Title',
+      type: 'text',
+      value: existing?.title ?? '',
+      hint: 'Shown as a tooltip. Optional.',
+    },
+    {
+      name: 'poster',
+      label: 'Poster image',
+      type: 'text',
+      value: existing?.poster ?? '',
+      hint: 'Shown before the video plays. Ignored for audio.',
+    },
+    {
+      name: 'width',
+      label: 'Width',
+      type: 'text',
+      value: existing?.width ?? '',
+      hint: 'Pixels, or a percentage. Leave blank to use the file’s own size.',
+    },
+    {
+      name: 'height',
+      label: 'Height',
+      type: 'text',
+      value: existing?.height ?? '',
+    },
+  ]
+
+  for (let index = 0; index < ALT_SOURCE_ROWS; index += 1) {
+    const source = existingSources[index]
+    fields.push(
+      {
+        name: `alt${index}`,
+        label: index === 0 ? 'Alternative address' : 'Second alternative',
+        type: 'text',
+        value: source?.src ?? '',
+        ...(index === 0
+          ? { hint: 'Another encoding of the same media, for browsers that cannot play the first.' }
+          : {}),
+      },
+      {
+        name: `altType${index}`,
+        label: index === 0 ? 'Alternative type' : 'Second alternative type',
+        type: 'text',
+        value: source?.type ?? '',
+        ...(index === 0 ? { hint: 'For example video/webm. Optional, but saves a wasted download.' } : {}),
+      },
+    )
+  }
+
+  return showForm<MediaResult>(
+    doc,
+    editing ? 'Edit media' : 'Insert media',
+    fields,
+    {
+      locale,
+      ...(host ? { host } : {}),
+    },
+    (values) => {
+      const src = (values['src'] ?? '').trim()
+      const sources: MediaSourceResult[] = []
+      for (let index = 0; index < ALT_SOURCE_ROWS; index += 1) {
+        const address = (values[`alt${index}`] ?? '').trim()
+        if (address === '') continue
+        if (!isSafeUrl(address)) {
+          return { error: t(UNSTORABLE_ADDRESS), field: `alt${index}` }
+        }
+        const type = (values[`altType${index}`] ?? '').trim()
+        sources.push({ src: address, type: type === '' ? null : type })
+      }
+
+      // One or the other, which is the schema's own rule: a player with neither
+      // an address nor a source has nothing to play, and core declines it. Said
+      // here so the author reads it in the dialog instead of watching the
+      // insertion silently do nothing.
+      if (src === '' && sources.length === 0) {
+        return { error: t('Enter an address, or at least one alternative.'), field: 'src' }
+      }
+      if (src !== '' && !isSafeUrl(src)) return { error: t(UNSTORABLE_ADDRESS), field: 'src' }
+
+      const poster = (values['poster'] ?? '').trim()
+      if (poster !== '' && !isSafeUrl(poster)) {
+        return { error: t(UNSTORABLE_ADDRESS), field: 'poster' }
+      }
+
+      return {
+        value: {
+          src,
+          title: values['title'] ? values['title'] : null,
+          poster: poster === '' ? null : poster,
+          width: values['width'] ? values['width'] : null,
+          height: values['height'] ? values['height'] : null,
+          sources,
+        },
+      }
+    },
+  )
+}
