@@ -93,6 +93,12 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Editing a link through the dialog no longer deletes `rel` or `id`.** Issue
+  #14 restored `target`; Save still synthesized `rel` from the new-window
+  checkbox and wrote `id: null`. Author tokens (`nofollow`, `sponsored`, `me`,
+  …) are kept, `noopener noreferrer` is merged in for `_blank` rather than
+  replacing the attribute, and `id` round-trips. The same `run` handler backs
+  the toolbar, context menu, and selection toolbar.
 - **`resolveLanguage` no longer returns `Object.prototype` members.** The alias
   table was a plain object, so `<code class="language-constructor">` resolved to
   the `Object` constructor: `canHighlight` reported true (`undefined !== null`)

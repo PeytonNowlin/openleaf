@@ -139,6 +139,51 @@ test.describe('applying formatting', () => {
       /<a href="https:\/\/example\.org" target="_blank" rel="noopener noreferrer">linked<\/a>/,
     )
   })
+
+  test('editing a link keeps author rel tokens', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<p><a href="https://a.example" rel="nofollow sponsored">linked</a></p>'
+    })
+
+    await editor(page).getByRole('link', { name: 'linked' }).click({ clickCount: 3 })
+    await button(page, 'Link').click()
+    await page.getByRole('dialog', { name: 'Edit link' }).getByRole('button', { name: 'Save' }).click()
+
+    await expect.poll(() => page.locator('#body').inputValue()).toMatch(
+      /<a href="https:\/\/a\.example" rel="nofollow sponsored">linked<\/a>/,
+    )
+  })
+
+  test('editing a link keeps id', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<p><a href="https://a.example" id="jump">linked</a></p>'
+    })
+
+    await editor(page).getByRole('link', { name: 'linked' }).click({ clickCount: 3 })
+    await button(page, 'Link').click()
+    await page.getByRole('dialog', { name: 'Edit link' }).getByRole('button', { name: 'Save' }).click()
+
+    await expect.poll(() => page.locator('#body').inputValue()).toMatch(
+      /<a href="https:\/\/a\.example" id="jump">linked<\/a>/,
+    )
+  })
+
+  test('editing a new-window link keeps nofollow with the security tokens', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<p><a href="https://a.example" target="_blank" rel="nofollow noopener">linked</a></p>'
+    })
+
+    await editor(page).getByRole('link', { name: 'linked' }).click({ clickCount: 3 })
+    await button(page, 'Link').click()
+    await page.getByRole('dialog', { name: 'Edit link' }).getByRole('button', { name: 'Save' }).click()
+
+    await expect.poll(() => page.locator('#body').inputValue()).toMatch(
+      /<a href="https:\/\/a\.example" target="_blank" rel="nofollow noopener noreferrer">linked<\/a>/,
+    )
+  })
 })
 
 test.describe('the keyboard model', () => {
