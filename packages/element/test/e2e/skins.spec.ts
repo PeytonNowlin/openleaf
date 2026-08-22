@@ -100,6 +100,46 @@ test.describe('skins', () => {
     expect(await buttonColour(page)).toBe(before)
   })
 
+  /*
+   * Skins in a SECOND document -- an iframe, a print view. Two separate bugs
+   * had to be fixed for this to work, and neither was visible to a jsdom test:
+   *
+   *   1. skins.ts kept a module-global "already installed" string, so the first
+   *      install short-circuited every later document.
+   *   2. registerStyles built its sheet with `new CSSStyleSheet()` from
+   *      whichever realm the module was loaded in. A constructed sheet belongs
+   *      to the document it was built for, and `adoptedStyleSheets` throws
+   *      NotAllowedError for a sheet from another one -- so the second document
+   *      could not have been styled even once the first bug was out of the way.
+   *      Verified in all three engines: top-realm sheet -> NotAllowedError,
+   *      sheet built through the frame's own window -> adopted and applied.
+   *
+   * Driven through `__runtime`, because that is how a host reaches the same
+   * functions: `applySkin` and `ensureSkins` both take the target document.
+   */
+  test('installs the skin palette into a second document', async ({ page }) => {
+    const surface = await page.evaluate(() => {
+      const ui = (window as unknown as {
+        OpenLeaf: { __runtime: Record<string, { ensureSkins(doc: Document): void }> }
+      }).OpenLeaf.__runtime['@openleaf-editor/ui']!
+
+      const frame = document.createElement('iframe')
+      document.body.appendChild(frame)
+      const inner = frame.contentDocument!
+      inner.body.innerHTML = '<div class="ol-editor" data-ol-skin="midnight"></div>'
+
+      ui.ensureSkins(inner)
+
+      const host = inner.querySelector('.ol-editor')!
+      return inner
+        .defaultView!.getComputedStyle(host)
+        .getPropertyValue('--openleaf-color-surface')
+        .trim()
+    })
+    // The midnight palette, resolved inside the iframe.
+    expect(surface).toBe('#0d1117')
+  })
+
   test('an unknown skin warns and leaves the editor alone', async ({ page }) => {
     const warnings: string[] = []
     page.on('console', (m) => {
