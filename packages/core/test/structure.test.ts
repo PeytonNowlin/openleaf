@@ -59,6 +59,65 @@ describe('structure round-trips', () => {
   }
 })
 
+describe('named_anchor does not eat wrapped text', () => {
+  const cases: Array<[string, string]> = [
+    ['wrapped text', '<p><a id="jump">Jump target with text</a></p>'],
+    ['heading wrap', '<h2><a id="sec">Section One</a></h2>'],
+    ['empty jump target', '<p><a id="jump"></a>heading text</p>'],
+    ['a[name] unmatched', '<p><a name="old">Old style anchor text</a></p>'],
+  ]
+
+  for (const [name, html] of cases) {
+    it(`${name} survives a round trip`, () => {
+      expect(roundTrip(html)).toBe(html)
+    })
+  }
+
+  it('id and href is a link, not the empty atom', () => {
+    const html = '<p><a id="jump" href="/x">both</a></p>'
+    const out = roundTrip(html)
+    expect(out).toContain('href="/x"')
+    expect(out).toContain('id="jump"')
+    expect(out).toContain('>both</a>')
+    const doc = parseHtml(html)
+    let namedAnchors = 0
+    doc.descendants((node) => {
+      if (node.type.name === 'named_anchor') namedAnchors += 1
+    })
+    expect(namedAnchors).toBe(0)
+  })
+
+  it('keeps heading text when an <a id> wraps the heading', () => {
+    const html =
+      '<h2><a id="revenue">Revenue by region</a></h2><p>Body text.</p><p>See <a href="#revenue">the section</a>.</p>'
+    const out = roundTrip(html)
+    expect(out).toContain('Revenue by region')
+    expect(out).toBe(html)
+
+    const doc = parseHtml(html)
+    let namedAnchors = 0
+    let linkMarks = 0
+    doc.descendants((node) => {
+      if (node.type.name === 'named_anchor') namedAnchors += 1
+      if (node.marks.some((mark) => mark.type.name === 'link' && mark.attrs['id'] === 'revenue')) {
+        linkMarks += 1
+      }
+    })
+    expect(namedAnchors).toBe(0)
+    expect(linkMarks).toBeGreaterThan(0)
+    expect(doc.textContent).toContain('Revenue by region')
+  })
+
+  it('still models a genuinely empty <a id> as the atom', () => {
+    const doc = parseHtml('<p><a id="jump"></a>heading text</p>')
+    let namedAnchors = 0
+    doc.descendants((node) => {
+      if (node.type.name === 'named_anchor') namedAnchors += 1
+    })
+    expect(namedAnchors).toBe(1)
+  })
+})
+
 describe('unsafe media is dropped', () => {
   it('drops an iframe that is not an allowlisted player', () => {
     expect(roundTrip('<p>ok</p><iframe src="https://evil.example/embed"></iframe>')).not.toContain('iframe')

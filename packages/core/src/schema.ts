@@ -579,7 +579,9 @@ export const coreMarks: Record<string, MarkSpec> = {
 
   link: {
     attrs: {
-      href: {},
+      // Null when the mark is a wrapped named destination (`<a id>` with
+      // text, no href). Empty `<a id></a>` is the `named_anchor` atom.
+      href: { default: null },
       title: { default: null },
       target: { default: null },
       rel: { default: null },
@@ -604,10 +606,30 @@ export const coreMarks: Record<string, MarkSpec> = {
           }
         },
       },
+      {
+        tag: 'a[id]',
+        getAttrs(dom) {
+          const el = dom as Element
+          if (el.hasAttribute('href')) return false
+          const id = safeId(el.getAttribute('id'))
+          if (!id) return false
+          // Empty `<a id>` belongs to `named_anchor`. This rule is the
+          // wrapped-text spelling, so the heading stays in the document.
+          if ((el.textContent ?? '') === '' && !el.firstElementChild) return false
+          return {
+            href: null,
+            title: el.getAttribute('title'),
+            target: el.getAttribute('target'),
+            rel: el.getAttribute('rel'),
+            id,
+          }
+        },
+      },
     ],
     toDOM(node) {
       const { href, title, target, rel, id } = node.attrs
-      const attrs: Record<string, string> = { href: href as string }
+      const attrs: Record<string, string> = {}
+      if (href !== null) attrs['href'] = href as string
       if (title !== null) attrs['title'] = title as string
       if (target !== null) attrs['target'] = target as string
       if (rel !== null) attrs['rel'] = rel as string

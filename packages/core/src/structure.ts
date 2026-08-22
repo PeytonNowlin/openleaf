@@ -311,6 +311,11 @@ export const page_break: NodeSpec = {
  * A link with both `href` and `id` is a mark, not this node. This exists for
  * the jump target that has no text of its own, which is what TinyMCE's
  * anchor plugin inserts and what a decade of CMS content already contains.
+ *
+ * An atom cannot hold content. `<a id="sec">Section</a>` wrapping visible text
+ * is the pre-HTML5 in-page-anchor idiom; claiming it here discarded the text
+ * on parse. Those elements decline so the `link` mark (which already carries
+ * `id`, and `href` only when present) can keep the text editable.
  */
 export const named_anchor: NodeSpec = {
   inline: true,
@@ -324,6 +329,10 @@ export const named_anchor: NodeSpec = {
       getAttrs(dom) {
         const el = dom as Element
         if (el.hasAttribute('href')) return false
+        // An atom cannot hold content. An <a id> WITH text is a jump target
+        // wrapped around a heading -- the commonest legacy spelling -- and
+        // claiming it here deletes the text.
+        if ((el.textContent ?? '') !== '' || el.firstElementChild) return false
         const id = safeId(el.getAttribute('id'))
         if (!id) return false
         return { id }

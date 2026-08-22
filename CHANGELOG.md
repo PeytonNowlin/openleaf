@@ -12,6 +12,15 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **`<a id>` wrapping visible text no longer deletes that text.** `named_anchor`
+  is an empty atom (TinyMCE-style jump targets). Its parse rule claimed any
+  `<a>` with `id` and no `href`, so `<h2><a id="sec">Title</a></h2>` serialized
+  as an empty heading. Contentful `<a id>` is now a `link` mark carrying only
+  `id`; empty `<a id="jump"></a>` is still the atom; `<a id href>` is still a
+  link; `<a name>` is still unmatched.
+
 ### Added
 
 - **Typography toolbar controls in `@openleaf-editor/ui`** — font family, font
