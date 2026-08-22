@@ -244,6 +244,24 @@ const legacyDefaults = (names: readonly string[]): Record<string, { default: nul
 const MAX_COLSPAN = 1000
 const MAX_ROWSPAN = 65534
 /**
+ * The cumulative bound, and why the per-cell one is not enough on its own.
+ *
+ * `MAX_COLSPAN` bounds one attribute. It does not bound their sum, and both
+ * consumers scale in the sum: a row of 5,000 `<td colspan="1000">` cells is
+ * about 125 KB of input and produces a five-million-column table -- measured,
+ * not estimated -- which is the same hung tab the per-cell clamp exists to
+ * prevent, reached by addition instead of by one large number.
+ *
+ * So a row gets a total as well, and each cell is clamped against what the row
+ * has left. A cell arriving with nothing left still claims one column rather
+ * than being dropped: losing a cell silently changes the document, and one
+ * column each is already harmless. That puts the worst case at
+ * `max(cells in the row, MAX_TABLE_COLUMNS)` columns -- linear in the input,
+ * because 5,000 cells cost 5,000 tags to write. Removing the amplification is
+ * the property that matters; a wide table is only ever as wide as its markup.
+ */
+const MAX_TABLE_COLUMNS = 1000
+/**
  * A column wider than this is not a layout.
  *
  * `updateColumnsOnResize` writes each entry straight into `col.style.width`, and
@@ -262,6 +280,42 @@ function readSpan(el: Element, name: 'colspan' | 'rowspan', max: number): number
   const parsed = Number.parseInt(el.getAttribute(name) ?? '1', 10)
   if (!Number.isFinite(parsed) || parsed < 1) return 1
   return Math.min(parsed, max)
+}
+
+/**
+ * Every cell in a row, clamped against the row's cumulative column budget.
+ *
+ * Computed once per row and memoised rather than per cell against its preceding
+ * siblings, which would be quadratic in exactly the row built to be wide. Keyed
+ * by element, so the answer does not depend on the order ProseMirror happens to
+ * visit the cells in, and recomputing it for the same row is a lookup.
+ */
+const rowBudgets = new WeakMap<Element, Map<Element, number>>()
+
+/** Whether this element is a cell, so a stray child cannot spend the budget. */
+function isCell(el: Element): boolean {
+  const name = el.nodeName.toLowerCase()
+  return name === 'td' || name === 'th'
+}
+
+function budgetedColspan(el: Element): number {
+  const row = el.parentElement
+  if (row === null) return readSpan(el, 'colspan', MAX_COLSPAN)
+  let budget = rowBudgets.get(row)
+  if (budget === undefined) {
+    budget = new Map<Element, number>()
+    let used = 0
+    for (const cell of Array.from(row.children)) {
+      if (!isCell(cell)) continue
+      const asked = readSpan(cell, 'colspan', MAX_COLSPAN)
+      // At least one: see the note on MAX_TABLE_COLUMNS about not dropping cells.
+      const granted = Math.max(1, Math.min(asked, MAX_TABLE_COLUMNS - used))
+      budget.set(cell, granted)
+      used += granted
+    }
+    rowBudgets.set(row, budget)
+  }
+  return budget.get(el) ?? readSpan(el, 'colspan', MAX_COLSPAN)
 }
 
 /**
@@ -299,7 +353,9 @@ const cellAttrs = {
 
 function cellGetAttrs(dom: Node): Record<string, unknown> {
   const el = dom as Element
-  const colspan = readSpan(el, 'colspan', MAX_COLSPAN)
+  // Against the row's remaining budget, not just the per-cell ceiling: the sum
+  // is what both consumers actually scale in. See MAX_TABLE_COLUMNS.
+  const colspan = budgetedColspan(el)
   const attrs: Record<string, unknown> = {
     colspan,
     rowspan: readSpan(el, 'rowspan', MAX_ROWSPAN),

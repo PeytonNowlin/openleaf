@@ -148,6 +148,14 @@ package on this version -- they pin each other exactly.
   `data-colwidth` is bounded in the same pass -- digits only, one entry per
   covered column, and a sane ceiling -- because each entry went into
   `col.style.width` unexamined and `Number.isFinite` accepted negatives.
+  A per-cell bound is not enough on its own, so a row also carries a cumulative
+  budget of 1000 columns: 5,000 `<td colspan="1000">` cells are about 125 KB of
+  input and reached the same five-million-column table by addition instead of by
+  one large number. Cells are clamped against what the row has left, and a cell
+  arriving with nothing left still claims a single column rather than being
+  dropped, since losing a cell would change the document silently. The width a
+  table can reach is therefore bounded by the markup that had to be written for
+  it rather than amplified by it.
 - **Tables no longer discard `<caption>`, `<colgroup>` and `<col>`.** These were
   dropped on parse, so opening and saving a captioned table destroyed its caption
   text permanently. A caption is a table's accessible name, which made this an

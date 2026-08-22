@@ -241,7 +241,10 @@ colour to stop applying live, and test it.
   rather than overflowing the stack, and table cell spans are clamped to HTML's
   own limits (`colspan` 1-1000, `rowspan` 1-65534) because both consumers of a
   span scale linearly in it -- one `<col>` element per column, and a cell map of
-  `width * height` entries.
+  `width * height` entries. A row carries a cumulative column budget as well,
+  because bounding one attribute does not bound their sum: 5,000 cells at the
+  per-cell ceiling would otherwise reach the same five-million-column table by
+  addition. A table ends up as wide as its markup, never wider.
 
 ### Out of scope
 

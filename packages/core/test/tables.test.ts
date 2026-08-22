@@ -524,6 +524,55 @@ describe('cell spans are bounded', () => {
     )
   })
 
+  /*
+   * The per-cell clamp does not bound the sum, and the sum is what both
+   * consumers scale in. At 5,000 cells -- about 125 KB of input -- the
+   * unclamped sum was five million columns, the same hung tab reached by
+   * addition rather than by one large number. So a row carries a total too, and
+   * each cell is clamped against what is left of it.
+   *
+   * 200 cells rather than 5,000: the amplification is what is being tested, and
+   * 200 is already 200,000 columns without the budget while staying far inside
+   * the default test timeout. The 5,000-cell version took 8.6s under a loaded
+   * full-suite run and failed on time rather than on the assertion, which is a
+   * flake, not a finding.
+   */
+  it('does not let many maximal spans add up to the same table', async () => {
+    const { TableMap } = await import('prosemirror-tables')
+    const CELLS = 200
+    const doc = parseHtml(`<table><tr>${'<td colspan="1000">x</td>'.repeat(CELLS)}</tr></table>`)
+    const table = doc.firstChild
+    if (!table) throw new Error('no table parsed')
+    const map = TableMap.get(table)
+    // The first cell spends the budget; every later one still claims its own
+    // single column, because dropping a cell would change the document silently.
+    // So the width is bounded by the markup that had to be written for it --
+    // never the product of the cell count and the per-cell ceiling.
+    expect(map.width).toBeLessThanOrEqual(1000 + CELLS)
+    expect(map.map.length).toBe(map.width)
+  })
+
+  it('spends the row budget in document order', () => {
+    const doc = parseHtml(
+      '<table><tr><td colspan="999">a</td><td colspan="1000">b</td><td colspan="7">c</td></tr></table>',
+    )
+    const row = doc.firstChild?.firstChild
+    if (!row) throw new Error('no row parsed')
+    const spans: number[] = []
+    row.forEach((c) => spans.push(c.attrs['colspan'] as number))
+    // 999 fits, the next gets the single remaining column, the last gets one.
+    expect(spans).toEqual([999, 1, 1])
+  })
+
+  it('gives a second row its own budget', () => {
+    const doc = parseHtml(
+      `<table><tr><td colspan="1000">a</td></tr><tr><td colspan="4">b</td></tr></table>`,
+    )
+    const second = doc.firstChild?.child(1)
+    if (!second) throw new Error('no second row')
+    expect(second.child(0).attrs['colspan']).toBe(4)
+  })
+
   it('leaves an ordinary span exactly as it was', () => {
     const html = '<table><tbody><tr><td colspan="2" rowspan="3">A</td></tr></tbody></table>'
     expect(roundTrip(html)).toBe(html)
