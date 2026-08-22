@@ -107,7 +107,11 @@ package on this version -- they pin each other exactly.
   playing with nothing able to stop it. Stored HTML is serialized from the node
   rather than the editing DOM, so `controls` round-trips untouched in either
   state. Covered on Chromium, Firefox and WebKit, because the limitation being
-  lifted is one only Firefox had.
+  lifted is one only Firefox had. A live player keeps the caption track the
+  author switched on: the `<source>` and `<track>` children are rebuilt only when
+  the stored markup actually changes, because a rebuilt `<track>` is a new
+  `TextTrack` whose `mode` starts `disabled` -- so resizing a captioned clip used
+  to switch its captions back off.
 
 ### Fixed
 

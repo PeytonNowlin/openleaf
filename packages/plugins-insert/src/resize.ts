@@ -82,13 +82,23 @@ function applyImageAttrs(img: HTMLImageElement, node: PMNode): void {
 }
 
 /**
+ * The furniture markup each video's children were last built from.
+ *
+ * Weakly keyed, so an element that goes out of the document takes its entry with
+ * it. This exists so `applyVideoAttrs` can tell a real furniture change from the
+ * every-update churn it is otherwise called with -- see the note at the rebuild.
+ */
+const appliedFurniture = new WeakMap<HTMLVideoElement, string>()
+
+/**
  * Put the player's addresses and poster on the element.
  *
- * The `<source>` children live in the node's `furniture` attribute as a markup
- * string -- the shape core stores them in -- so they are rebuilt here rather
- * than set as properties. Rebuilt from scratch on every update, because a
- * dialog that removes a source has to remove it from the live DOM too, and
- * there is no diffing worth doing on two or three elements.
+ * The `<source>` and `<track>` children live in the node's `furniture` attribute
+ * as a markup string -- the shape core stores them in -- so they are rebuilt here
+ * rather than set as properties. Rebuilt whenever that string changes, because a
+ * dialog that removes a source has to remove it from the live DOM too, and there
+ * is no diffing worth doing on two or three elements. Not rebuilt when it has
+ * not changed: that would discard live `TextTrack` state on every update.
  *
  * The player is rendered *without* controls, and made inert by CSS, so that in
  * the editor it is a preview rather than a working player. That is not a
@@ -132,8 +142,17 @@ function applyVideoAttrs(el: HTMLVideoElement, node: PMNode): void {
   // Enough to paint a first frame for a player with no poster, without
   // fetching the whole file into an editor nobody is watching it in.
   el.preload = 'metadata'
+  // Rebuilt only when the markup changed, for the same reason `src` is written
+  // only when it changes -- and it matters more here. A rebuild replaces every
+  // `<track>` with a new element, and a new `<track>` means a new `TextTrack`,
+  // whose `mode` starts out `disabled`. Since this runs on every node update, an
+  // author who turned captions on and then resized the player they were watching
+  // had them turned back off. An update that did not touch the furniture has no
+  // business rebuilding it.
+  const furniture = (node.attrs['furniture'] as string | null) ?? ''
+  if (appliedFurniture.get(el) === furniture) return
+  appliedFurniture.set(el, furniture)
   for (const child of Array.from(el.children)) child.remove()
-  const furniture = node.attrs['furniture'] as string | null
   if (furniture) {
     const tpl = el.ownerDocument.createElement('template')
     tpl.innerHTML = furniture

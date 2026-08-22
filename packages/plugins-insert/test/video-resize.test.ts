@@ -323,6 +323,50 @@ describe('activating the player', () => {
     expect(setAttribute.mock.calls.map(([name]) => name)).not.toContain('src')
   })
 
+  /*
+   * Captions, and the same argument as `src` one test up.
+   *
+   * The `<source>` and `<track>` children are rebuilt from the node's
+   * `furniture` string, and that rebuild used to run on every node update. A new
+   * `<track>` element means a new `TextTrack`, whose `mode` starts `disabled` --
+   * so an author who turned captions on and then resized the player they were
+   * watching had them silently turned back off. jsdom builds no `TextTrack` from
+   * a `<track>` at all, so what is asserted here is the element identity that
+   * the track's state hangs off, which is the mechanism rather than a proxy for
+   * it.
+   */
+  const CAPTIONED =
+    '<p>Alpha.</p><video src="/v.mp4" width="640" controls>' +
+    '<track kind="captions" src="/c.vtt" srclang="en" label="English"></video>'
+
+  it('keeps the caption tracks it already built when an update leaves them alone', () => {
+    const el = renderedVideo(CAPTIONED)
+    stubPlayback(el)
+    const before = el.querySelector('track')
+    expect(before).not.toBeNull()
+    selectTheVideo()
+    click(playButton())
+    press(view!.dom.querySelector('.ol-img-handle')!, 'ArrowRight')
+    expect(el.querySelector('track')).toBe(before)
+  })
+
+  it('still rebuilds them when the furniture really changes', () => {
+    // The reason the rebuild exists: a dialog that removes a source has to
+    // remove it from the live DOM too. Skipping the no-op rebuild must not cost
+    // that.
+    const el = renderedVideo(CAPTIONED)
+    stubPlayback(el)
+    const pos = videoPos()
+    const node = view!.state.doc.nodeAt(pos)!
+    view!.dispatch(
+      view!.state.tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        furniture: '<track kind="captions" src="/de.vtt" srclang="de" label="Deutsch">',
+      }),
+    )
+    expect(el.querySelector('track')?.getAttribute('srclang')).toBe('de')
+  })
+
   it('keeps ProseMirror out of the live player events, and only then', () => {
     // ProseMirror's own mousedown handling calls preventDefault() on a selectable
     // atom, which stops a native control bar responding at all -- the seek bar
