@@ -455,3 +455,180 @@ describe('the preservation marker must not collide with customer content', () =>
     expect(roundTrip(html)).toBe(html)
   })
 })
+
+/**
+ * Cell spans, clamped on parse.
+ *
+ * `colspan` was read straight off the attribute and never bounded, so a single
+ * cell could ask `prosemirror-tables` for an arbitrarily wide table -- and both
+ * of its consumers scale linearly: `TableMap.get` allocates `width * height` map
+ * cells, and the resizing plugin appends one real `<col>` element per column. A
+ * fifty-byte `<td colspan="5000000">` was five million DOM elements built
+ * synchronously, reached through every entry point into the schema.
+ *
+ * The bounds are HTML's own, so a document a browser would have parsed the same
+ * way loses nothing.
+ */
+describe('cell spans are bounded', () => {
+  /** The first cell's attributes, which is where a span lands. */
+  function cellAttrs(html: string): Record<string, unknown> {
+    let found: Record<string, unknown> | null = null
+    parseHtml(html).descendants((node) => {
+      if (found === null && (node.type.name === 'table_cell' || node.type.name === 'table_header')) {
+        found = node.attrs
+      }
+      return true
+    })
+    if (found === null) throw new Error(`no cell parsed from ${html}`)
+    return found
+  }
+
+  const cell = (attr: string): Record<string, unknown> =>
+    cellAttrs(`<table><tr><td ${attr}>A</td></tr></table>`)
+
+  it('clamps colspan to the limit HTML itself imposes', () => {
+    expect(cell('colspan="5000000"')['colspan']).toBe(1000)
+    expect(cell('colspan="1000"')['colspan']).toBe(1000)
+    expect(cell('colspan="999"')['colspan']).toBe(999)
+  })
+
+  it('clamps rowspan the same way', () => {
+    expect(cell('rowspan="99999999"')['rowspan']).toBe(65534)
+    expect(cell('rowspan="3"')['rowspan']).toBe(3)
+  })
+
+  it('normalizes a span below one, which walked the cell map backwards', () => {
+    // `|| 1` caught NaN and 0 and nothing else, so -5 landed verbatim and
+    // computeMap did `mapPos += colspan` with a negative operand.
+    expect(cell('colspan="-5"')['colspan']).toBe(1)
+    expect(cell('colspan="0"')['colspan']).toBe(1)
+    // rowspan="0" means "to the end of the section" in HTML, but the cell map
+    // cannot use a zero, so it normalizes up rather than being carried.
+    expect(cell('rowspan="0"')['rowspan']).toBe(1)
+    expect(cell('colspan="nonsense"')['colspan']).toBe(1)
+  })
+
+  it('does not build a five-million-cell table map', async () => {
+    const { TableMap } = await import('prosemirror-tables')
+    const doc = parseHtml('<table><tr><td colspan="5000000">x</td></tr></table>')
+    const table = doc.firstChild
+    if (!table) throw new Error('no table parsed')
+    const map = TableMap.get(table)
+    expect(map.width).toBe(1000)
+    expect(map.map.length).toBe(1000)
+  })
+
+  it('writes the clamped value back out, not the one it was given', () => {
+    expect(roundTrip('<table><tr><td colspan="5000000">A</td></tr></table>')).toContain(
+      'colspan="1000"',
+    )
+  })
+
+  /*
+   * The per-cell clamp does not bound the sum, and the sum is what both
+   * consumers scale in. At 5,000 cells -- about 125 KB of input -- the
+   * unclamped sum was five million columns, the same hung tab reached by
+   * addition rather than by one large number. So a row carries a total too, and
+   * each cell is clamped against what is left of it.
+   *
+   * 200 cells rather than 5,000: the amplification is what is being tested, and
+   * 200 is already 200,000 columns without the budget while staying far inside
+   * the default test timeout. The 5,000-cell version took 8.6s under a loaded
+   * full-suite run and failed on time rather than on the assertion, which is a
+   * flake, not a finding.
+   */
+  it('does not let many maximal spans add up to the same table', async () => {
+    const { TableMap } = await import('prosemirror-tables')
+    const CELLS = 200
+    const doc = parseHtml(`<table><tr>${'<td colspan="1000">x</td>'.repeat(CELLS)}</tr></table>`)
+    const table = doc.firstChild
+    if (!table) throw new Error('no table parsed')
+    const map = TableMap.get(table)
+    // The first cell spends the budget; every later one still claims its own
+    // single column, because dropping a cell would change the document silently.
+    // So the width is bounded by the markup that had to be written for it --
+    // never the product of the cell count and the per-cell ceiling.
+    expect(map.width).toBeLessThanOrEqual(1000 + CELLS)
+    expect(map.map.length).toBe(map.width)
+  })
+
+  it('spends the row budget in document order', () => {
+    const doc = parseHtml(
+      '<table><tr><td colspan="999">a</td><td colspan="1000">b</td><td colspan="7">c</td></tr></table>',
+    )
+    const row = doc.firstChild?.firstChild
+    if (!row) throw new Error('no row parsed')
+    const spans: number[] = []
+    row.forEach((c) => spans.push(c.attrs['colspan'] as number))
+    // 999 fits, the next gets the single remaining column, the last gets one.
+    expect(spans).toEqual([999, 1, 1])
+  })
+
+  it('gives a second row its own budget', () => {
+    const doc = parseHtml(
+      `<table><tr><td colspan="1000">a</td></tr><tr><td colspan="4">b</td></tr></table>`,
+    )
+    const second = doc.firstChild?.child(1)
+    if (!second) throw new Error('no second row')
+    expect(second.child(0).attrs['colspan']).toBe(4)
+  })
+
+  it('leaves an ordinary span exactly as it was', () => {
+    const html = '<table><tbody><tr><td colspan="2" rowspan="3">A</td></tr></tbody></table>'
+    expect(roundTrip(html)).toBe(html)
+  })
+})
+
+/**
+ * Stored column widths, which land in `col.style.width` unexamined.
+ *
+ * The digits-only test and the length check are `prosemirror-tables`' own rules
+ * for this attribute; the ceiling is ours. What they replace accepted anything
+ * `Number.isFinite` did, which included negatives.
+ */
+describe('colwidth is bounded', () => {
+  function firstColwidth(html: string): number[] | null {
+    let found: number[] | null | undefined
+    parseHtml(html).descendants((node) => {
+      if (found === undefined && node.type.name === 'table_cell') {
+        found = node.attrs['colwidth'] as number[] | null
+      }
+      return true
+    })
+    if (found === undefined) throw new Error(`no cell parsed from ${html}`)
+    return found
+  }
+
+  const width = (attr: string): number[] | null =>
+    firstColwidth(`<table><tr><td ${attr}>A</td></tr></table>`)
+
+  it('keeps a usable width', () => {
+    expect(width('data-colwidth="120"')).toEqual([120])
+  })
+
+  it('keeps one entry per covered column', () => {
+    expect(width('colspan="2" data-colwidth="80,90"')).toEqual([80, 90])
+  })
+
+  it('drops a negative width rather than writing it into the layout', () => {
+    expect(width('data-colwidth="-9999"')).toBeNull()
+  })
+
+  it('drops an absurd width', () => {
+    expect(width('data-colwidth="99999999"')).toBeNull()
+  })
+
+  it('drops a zero, which is not a column width', () => {
+    expect(width('data-colwidth="0"')).toBeNull()
+  })
+
+  it('drops an array that does not match colspan, which would be indexed past its end', () => {
+    expect(width('colspan="2" data-colwidth="80"')).toBeNull()
+    expect(width('data-colwidth="80,90"')).toBeNull()
+  })
+
+  it('drops a non-numeric entry', () => {
+    expect(width('data-colwidth="80,nonsense"')).toBeNull()
+    expect(width('data-colwidth="8e9"')).toBeNull()
+  })
+})

@@ -132,6 +132,30 @@ package on this version -- they pin each other exactly.
   so any future failure in applying source HTML leaves a usable editor rather
   than a blank one. A generated round-trip suite now asserts that
   `serializeHtml(parseHtml(x))` never throws.
+- **An unclamped `colspan` was a browser-hanging denial of service.** Cell spans
+  were read straight off the attribute and never bounded, and both consumers of
+  a span scale linearly in it: `TableMap.get` allocates and fills
+  `width * height` map cells, and the column-resizing view that `plugins-table`
+  installs for every table appends one real `<col>` element per column. So a
+  fifty-byte `<td colspan="5000000">` was five million DOM elements built
+  synchronously and a table asked to lay out half a billion pixels wide --
+  reachable through `element.value`, `parseHtml`, a paste, an import, or content
+  stored before the bound existed. Negative values were worse: `|| 1` caught
+  `NaN` and `0` and nothing else, so `colspan="-5"` survived and `computeMap`
+  walked its write cursor backwards through the map it was filling. `colspan` is
+  now clamped to 1-1000 and `rowspan` to 1-65534, which are HTML's own limits, so
+  no document a browser would have parsed the same way loses anything.
+  `data-colwidth` is bounded in the same pass -- digits only, one entry per
+  covered column, and a sane ceiling -- because each entry went into
+  `col.style.width` unexamined and `Number.isFinite` accepted negatives.
+  A per-cell bound is not enough on its own, so a row also carries a cumulative
+  budget of 1000 columns: 5,000 `<td colspan="1000">` cells are about 125 KB of
+  input and reached the same five-million-column table by addition instead of by
+  one large number. Cells are clamped against what the row has left, and a cell
+  arriving with nothing left still claims a single column rather than being
+  dropped, since losing a cell would change the document silently. The width a
+  table can reach is therefore bounded by the markup that had to be written for
+  it rather than amplified by it.
 - **Tables no longer discard `<caption>`, `<colgroup>` and `<col>`.** These were
   dropped on parse, so opening and saving a captioned table destroyed its caption
   text permanently. A caption is a table's accessible name, which made this an
