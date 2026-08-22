@@ -208,7 +208,7 @@ and attribute-driven:
 - **Floating toolbars** — `selection-toolbar` and `insert-toolbar`.
 - **Fullscreen, help, visual aids** — toolbar ids `fullscreen`, `help`, `visualAids`. F1 opens help.
 - **Autoresize / inline** — grow with content, or hide chrome until focus.
-- **Autolink** — URLs become links on space or Enter. Set `autolink="false"` to disable.
+- **Autolink** — URLs become links on space or Enter. Trailing sentence punctuation and unmatched `)]}'"` stay outside the mark; a balanced `)` in the path (Wikipedia-style) stays in. Set `autolink="false"` to disable.
 - **Formats** — class names from the host’s content CSS, applied to the current block.
 - **Translations** — `lang` plus `registerTranslations('fr', { Bold: 'Gras' })`.
 - **Non-editable regions** — `contenteditable="false"` in stored HTML is honoured while editing and still round-trips.

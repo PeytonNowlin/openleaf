@@ -71,12 +71,15 @@ describe('isInsidePreserved', () => {
     expect(isInsidePreserved(document.createElement('div'))).toBe(false)
   })
 
-  it('is the guard that keeps cell normalization out of preserved tables', () => {
+  it('is the guard that keeps paragraph unwrap out of preserved markup', () => {
     // The pass `serializeHtml` runs is the reference consumer: without the
-    // guard it collapses `<td><p>x</p></td>` inside markup the editor
-    // undertook to return byte-identical.
+    // guard it collapses a sole `<p>` inside markup the editor undertook to
+    // return byte-identical.
     const html = '<div class="wrapper"><table><tbody><tr><td><p>hi</p></td></tr></tbody></table></div>'
     expect(roundTrip(html)).toBe(html)
+    expect(roundTrip('<div class="callout"><ul><li>a</li></ul></div>')).toBe(
+      '<div class="callout"><ul><li>a</li></ul></div>',
+    )
   })
 
   it('is exported from the package index, not just from the module', () => {

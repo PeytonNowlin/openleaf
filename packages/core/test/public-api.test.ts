@@ -87,6 +87,11 @@ const EXPECTED_EXPORTS = [
   // click on placing a caret, so the browser's own disclosure toggle never fires
   // and a collapsed <details> had no gesture that could open it.
   'disclosurePlugin',
+  // A TextSelection that straddles an isolating node (blockquote into details)
+  // makes replace throw and the DOM-derived repair cannot be undone. This is
+  // the clamp that Chromium already does natively.
+  'isolatingSelectionPlugin', 'clampIsolatingTextSelection', 'innermostIsolatingDepth',
+  'textSelectionCrossesIsolating',
   // `formatParts` splits a format token into the element and the class it names.
   // The element half used to be parsed and discarded, so `h2=Section` set
   // class="h2" on a paragraph rather than making it a heading.
@@ -193,9 +198,9 @@ describe('round-trip behaviour', () => {
     ['marks', '<p><strong>b</strong><em>i</em><u>u</u><s>s</s><code>c</code></p>'],
     ['link', '<p><a href="https://example.org" title="T">x</a></p>'],
     ['image with empty alt', '<p><img src="/a.png" alt=""></p>'],
-    ['nested list', '<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul>'],
-    ['ordered list start', '<ol start="3"><li><p>a</p></li></ol>'],
-    ['blockquote', '<blockquote><p>q</p></blockquote>'],
+    ['nested list', '<ul><li><p>a</p><ul><li>b</li></ul></li></ul>'],
+    ['ordered list start', '<ol start="3"><li>a</li></ol>'],
+    ['blockquote', '<blockquote>q</blockquote>'],
     ['code block', '<pre><code>x = 1</code></pre>'],
     ['horizontal rule', '<hr>'],
     ['preserved wrapper', '<div class="callout" data-id="7"><p>p</p></div>'],
@@ -239,7 +244,7 @@ describe('command behaviour', () => {
   })
 
   it('toggleBulletList wraps and unwraps', () => {
-    expect(run(stateFrom('<p>i</p>'), core.toggleBulletList)).toBe('<ul><li><p>i</p></li></ul>')
+    expect(run(stateFrom('<p>i</p>'), core.toggleBulletList)).toBe('<ul><li>i</li></ul>')
   })
 
   it('setLink replaces rather than nests', () => {
