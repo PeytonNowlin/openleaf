@@ -72,7 +72,21 @@ export const BUDGETS_KB = {
   // 118 against a measured 114.7, which is the same ~3 KB of deliberate
   // headroom the paragraph above argues for: enough that the next unrelated
   // patch does not fail on it, not so much that a real regression hides in it.
-  'openleaf.min.js': 118,
+  //
+  // 121 against a measured 117.3, restoring that headroom rather than buying
+  // room for anything new. The 2.6 KB since the line above is a long tail with
+  // no single cause: ~1.5 KB is media editing (#101) -- the insert-media
+  // commands, reading a selected player back out, and converting a player page
+  // to the embed URL the allowlist accepts -- and the rest is the correctness
+  // series either side of it, of which the `<source>` srcset policy (#100) and
+  // the skin-styles and content-CSS scoping fixes (#96, #97) are the largest.
+  //
+  // Worth stating plainly, because 118 minus 117.3 is seven hundred bytes and
+  // this file has been in that trap before: at that margin the gate stops
+  // measuring this project's growth and starts failing on whatever unrelated
+  // patch happens to arrive next, which is how a budget teaches people to raise
+  // it without reading it.
+  'openleaf.min.js': 121,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
