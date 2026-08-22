@@ -13,14 +13,48 @@ import { isSafeUrl } from './url.js'
 const key = new PluginKey('openleaf-autolink')
 
 /**
- * A URL at the end of a typed run. `www.` is accepted because people type it;
- * the href we store is always an absolute `https://` form, so the serializer
- * never emits a scheme-less token a browser would treat as a relative path.
+ * A URL at the end of a typed run. Parentheses are in the match so
+ * `(www.example.com)` and `Foo_(bar)` can both be considered; the strip below
+ * decides which trailing `)` is prose and which is the URL. Angle brackets stay
+ * out because they are HTML delimiters, not URL characters we want to mark.
  */
-const TRAILING_URL = /(?:https?:\/\/|www\.)[^\s<>"'()]+$/i
+const TRAILING_URL = /(?:https?:\/\/|www\.)[^\s<>]+$/i
+
+/**
+ * Closers that end a URL in a sentence, a citation, or quotes. `)` is handled
+ * separately: a trailing one is prose when unmatched, and part of the URL when
+ * it balances an earlier `(`.
+ */
+const TRAILING_PUNCTUATION = /[.,;:!?\]}'"]/
+
+function stripTrailingUrlPunctuation(token: string): string {
+  let s = token
+  while (s.length > 0) {
+    const last = s.charAt(s.length - 1)
+    if (TRAILING_PUNCTUATION.test(last)) {
+      s = s.slice(0, -1)
+      continue
+    }
+    if (last === ')') {
+      let opens = 0
+      let closes = 0
+      for (let i = 0; i < s.length; i++) {
+        const ch = s.charAt(i)
+        if (ch === '(') opens++
+        else if (ch === ')') closes++
+      }
+      if (closes > opens) {
+        s = s.slice(0, -1)
+        continue
+      }
+    }
+    break
+  }
+  return s
+}
 
 export function hrefFromTypedUrl(raw: string): string | null {
-  const trimmed = raw.replace(/[.,;:!?)]+$/, '')
+  const trimmed = stripTrailingUrlPunctuation(raw)
   if (!trimmed) return null
   const href = /^www\./i.test(trimmed) ? `https://${trimmed}` : trimmed
   return isSafeUrl(href) ? href : null
@@ -34,10 +68,13 @@ function trailingUrl(state: EditorState, end: number): { from: number; to: numbe
   const trimmed = raw.replace(/[\s\u00a0]+$/, '')
   const match = TRAILING_URL.exec(trimmed)
   if (!match) return null
-  const href = hrefFromTypedUrl(match[0])
+  const token = match[0]
+  const bare = stripTrailingUrlPunctuation(token)
+  if (!bare) return null
+  const href = hrefFromTypedUrl(bare)
   if (!href) return null
   const from = parentStart + (match.index ?? 0)
-  const to = parentStart + trimmed.length
+  const to = from + bare.length
   if (from >= to) return null
   const link = state.schema.marks['link']
   if (!link) return null

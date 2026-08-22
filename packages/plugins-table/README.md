@@ -78,7 +78,7 @@ the ones you want in the element's `toolbar` attribute:
 | `rowProperties` | Row properties dialog |
 | `cellProperties` | Cell properties dialog |
 | `tableCaption` | Caption dialog |
-| `addRowBefore`, `addRowAfter`, `deleteRow` | Row commands |
+| `addRowBefore`, `addRowAfter`, `deleteRow` | Row commands. They keep `headerRows` / `footerRows` in step so `<thead>` and `<tfoot>` stay on the header and footer rows the author actually has. |
 | `addColumnBefore`, `addColumnAfter`, `deleteColumn` | Column commands |
 | `mergeCells`, `splitCell` | Cell merge and split |
 | `toggleHeaderRow` | Promote or demote the header row |

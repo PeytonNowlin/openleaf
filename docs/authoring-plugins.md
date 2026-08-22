@@ -634,10 +634,11 @@ element will never see its content as a wrapper at all.
 
 #### If you add a normalization pass, guard it with `isInsidePreserved`
 
-`serializeHtml` runs `unwrapSoleCellParagraph` over the whole output to collapse
-`<td><p>x</p></td>` back to `<td>x</td>`, so that adopting OpenLeaf does not
-rewrite every cell of every table in an archive on first save. That pass used a
-plain `querySelectorAll('td, th')` and therefore reached *inside* preserved
+`serializeHtml` runs `unwrapSoleParagraph` over the whole output to collapse a
+sole attribute-free `<p>` inside `td`/`th`, `li`, `blockquote`, and a `<details>`
+body back to direct text, so that adopting OpenLeaf does not rewrite every list,
+quote, disclosure and table in an archive on first save. That pass used a
+plain `querySelectorAll` and therefore reached *inside* preserved
 markup — rewriting a table nested in an unrecognised wrapper that the editor had
 undertaken to return byte-identical.
 
@@ -647,7 +648,7 @@ guard:
 ```ts
 import { isInsidePreserved } from '@openleaf-editor/core'
 
-for (const el of host.querySelectorAll('td, th')) {
+for (const el of host.querySelectorAll('td, th, li, blockquote, details')) {
   if (isInsidePreserved(el)) continue
   // …your normalization…
 }
@@ -1158,6 +1159,25 @@ fill(t('{count} rows deleted'), { count: String(n) })
 `fill` only reads own properties of the values object, so a `{constructor}`
 placeholder in a catalog is left alone rather than stringifying the Object
 constructor.
+
+### 4.11 Isolating nodes clamp the selection at their boundary
+
+`isolating: true` on a node spec is a join/lift contract. It is not, by itself,
+a selection contract. `TextSelection.between` will still build a range whose
+endpoints sit on opposite sides of that node, and Firefox and WebKit will
+report one from Shift+Arrow. Core installs `isolatingSelectionPlugin` in the
+element so that range is narrowed to the anchor's side before the next replace
+— the same clamp Chromium already does natively.
+
+If you add an isolating node, you do **not** need to reimplement that clamp.
+You do need the plugin if you embed ProseMirror yourself rather than using
+`<openleaf-editor>`: without it, a selection that starts in a `blockquote`
+(which can contain `group: 'block'`) and ends inside your node will throw
+`TransformError` on the next keystroke, and the recovery is a DOM-derived
+document with no undo entry. See GitHub issue #130.
+
+Mark a node isolating when joining across it is illegal (`details`, `figure`,
+table cells). Do not use it as a substitute for `group` restrictions.
 
 ---
 

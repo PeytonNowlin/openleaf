@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { tokenize, tokenizeCss, tokenizeHtml, tokenizeJs, type Token } from '../src/tokenize.js'
+import {
+  resolveLanguage,
+  tokenize,
+  tokenizeCss,
+  tokenizeHtml,
+  tokenizeJs,
+  type Token,
+} from '../src/tokenize.js'
 
 const text = (tokens: Token[]): string => tokens.map((t) => t.value).join('')
 /**
@@ -47,10 +54,27 @@ const SAMPLES: Array<[string, 'html' | 'css' | 'js', string]> = [
   ['js arrow', 'js', 'const f = (a, b) => a ?? b'],
 ]
 
+describe('resolveLanguage', () => {
+  it('maps aliases onto the three modelled languages', () => {
+    expect(resolveLanguage('javascript')).toBe('js')
+    expect(resolveLanguage('XML')).toBe('html')
+    expect(resolveLanguage('scss')).toBe('css')
+  })
+
+  it('does not answer with something off Object.prototype', () => {
+    // The alias table used to be an object literal, so `language-constructor`
+    // resolved to the Object constructor and tokenize returned undefined.
+    for (const key of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__']) {
+      expect(resolveLanguage(key)).toBeNull()
+      expect(tokenize('let a = 1', key as 'html')).toBeNull()
+    }
+  })
+})
+
 describe('tokens reconstruct the input exactly', () => {
   for (const [name, language, source] of SAMPLES) {
     it(name, () => {
-      expect(text(tokenize(source, language))).toBe(source)
+      expect(text(tokenize(source, language)!)).toBe(source)
     })
   }
 
