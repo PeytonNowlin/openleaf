@@ -557,6 +557,8 @@ export const coreMarks: Record<string, MarkSpec> = {
   },
 
   language: {
+    // Content, not decoration -- the same claim `dir` makes as a node
+    // attribute. `clearFormatting` keeps this mark for that reason.
     attrs: { lang: {} },
     inclusive: false,
     parseDOM: [

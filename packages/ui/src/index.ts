@@ -14,6 +14,7 @@ export {
 export { SOURCE_TOGGLE_EVENT, FULLSCREEN_TOGGLE_EVENT, VISUAL_AIDS_TOGGLE_EVENT, registerDefaultItems } from './items.js'
 export {
   t,
+  fill,
   setUiLocale,
   uiLocale,
   registerTranslations,

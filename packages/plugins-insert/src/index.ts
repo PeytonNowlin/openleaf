@@ -148,6 +148,6 @@ export function installInsertTools(options: InsertOptions = {}): void {
   })
 }
 
-export { CHARACTERS, EMOJI } from './glyphs.js'
+export { CHARACTERS, EMOJI, GLYPH_COLUMNS } from './glyphs.js'
 export { listedSnippets, registerHtmlSnippets, type HtmlSnippet } from './snippets.js'
 export { imageResizePlugin, mediaResizePlugin, RESIZABLE_MEDIA, type ResizableKind } from './resize.js'
