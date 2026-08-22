@@ -235,6 +235,13 @@ colour to stop applying live, and test it.
 - Prototype pollution or code execution in the parsing path
 - Content-destroying bugs in the preservation layer (we treat silent
   content loss as a security-grade defect)
+- Resource exhaustion reachable from stored content. Anything an attacker can
+  put in a document must not be able to hang the tab that opens it, so the
+  parser bounds what it will build: nesting depth is refused with a named error
+  rather than overflowing the stack, and table cell spans are clamped to HTML's
+  own limits (`colspan` 1-1000, `rowspan` 1-65534) because both consumers of a
+  span scale linearly in it -- one `<col>` element per column, and a cell map of
+  `width * height` entries.
 
 ### Out of scope
 

@@ -305,3 +305,53 @@ test.describe('with the table bundle loaded', () => {
     await expect(editor(page).locator('table table')).toHaveCount(1)
   })
 })
+
+/**
+ * The column-count bound, in the configuration that made it a hung tab.
+ *
+ * `columnResizing({ View: CaptionedTableView })` installs
+ * `updateColumnsOnResize` for every table node view, and that appends one real
+ * `<col>` element per column and sums their widths into the table's `minWidth`.
+ * So the damage from an unbounded `colspan` is only visible with the tables
+ * bundle loaded -- the core-only harness reports zero `<col>` elements for the
+ * same input, which is why this lives here and not in the unit tests.
+ *
+ * Measured against the DOM rather than against a stopwatch: a timing assertion
+ * on a machine under load is a flake, and the element count is the thing that
+ * was wrong.
+ */
+test.describe('an unbounded colspan cannot hang the tab', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(WITH_TABLES)
+    await expect(editor(page)).toBeVisible()
+  })
+
+  test('clamps the columns a single cell can ask for', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<table><tr><td colspan="200000">x</td></tr></table>'
+    })
+    await expect(editor(page).locator('table')).toBeVisible()
+    // 200000 before the clamp, and 5,000,000 for the value in the report.
+    const cols = await editor(page).locator('table colgroup col').count()
+    expect(cols).toBeLessThanOrEqual(1000)
+    // And the table is no longer asked to lay out at twenty million pixels. The
+    // ceiling is the clamp times prosemirror-tables' 100px default column
+    // minimum, which is what a legitimate thousand-column table would also cost.
+    const minWidth = await editor(page)
+      .locator('table')
+      .evaluate((el) => Number.parseInt((el as HTMLElement).style.minWidth || '0', 10))
+    expect(minWidth).toBeLessThanOrEqual(1000 * 100)
+  })
+
+  test('still edits normally afterwards, and stores the clamped span', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<table><tr><td colspan="200000">x</td></tr></table>'
+    })
+    await expect.poll(() => value(page)).toContain('colspan="1000"')
+    await editor(page).getByText('x').click()
+    await page.keyboard.type('y')
+    await expect.poll(() => value(page)).toContain('xy')
+  })
+})

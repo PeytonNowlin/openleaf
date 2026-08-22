@@ -216,18 +216,76 @@ const legacyDefaults = (names: readonly string[]): Record<string, { default: nul
   Object.fromEntries(names.map((name) => [name, { default: null }]))
 
 /**
- * Parse `colwidth` from an inline width style or attribute.
+ * Bounds for the cell span attributes, and why a parser has to impose them.
+ *
+ * Both consumers of `colspan` scale linearly in it. `TableMap.get` allocates and
+ * fills `width * height` map cells, and `updateColumnsOnResize` -- installed for
+ * every table node view by `columnResizing()` in `plugins-table` -- appends one
+ * real `<col>` element per column. So a single stored `<td colspan="5000000">`
+ * was five million DOM elements built synchronously on first render, and a table
+ * asked to lay out half a billion pixels wide. That is a hung tab from a
+ * fifty-byte attribute, reachable through every entry point into the schema:
+ * `element.value`, `parseHtml`, a paste, an import, or content stored before this
+ * bound existed.
+ *
+ * Negative values were worse than large ones. `|| 1` catches `NaN` and `0` and
+ * nothing else, so `colspan="-5"` landed verbatim and `computeMap` then did
+ * `mapPos += colspan` with a negative operand, walking its write cursor backwards
+ * through the map it was filling.
+ *
+ * The numbers are HTML's own limits, so nothing an author could have written in a
+ * document is lost: a browser parsing the same markup clamps it identically.
+ *
+ * Clamping here rather than defending in the consumers is deliberate. The
+ * commands in `plugins-table`, the property dialogs, `fixTables` and the resize
+ * node view all read `node.attrs.colspan` directly, and every one of them would
+ * otherwise need a bound of its own.
+ */
+const MAX_COLSPAN = 1000
+const MAX_ROWSPAN = 65534
+/**
+ * A column wider than this is not a layout.
+ *
+ * `updateColumnsOnResize` writes each entry straight into `col.style.width`, and
+ * sums them into the table's `minWidth`.
+ */
+const MAX_COLWIDTH = 10000
+
+/**
+ * A span attribute, clamped to what HTML itself allows.
+ *
+ * `rowspan="0"` means "to the end of the section" in HTML, but
+ * `prosemirror-tables` requires at least 1 and the schema default is 1, so it
+ * normalizes up rather than being carried as a zero the cell map cannot use.
+ */
+function readSpan(el: Element, name: 'colspan' | 'rowspan', max: number): number {
+  const parsed = Number.parseInt(el.getAttribute(name) ?? '1', 10)
+  if (!Number.isFinite(parsed) || parsed < 1) return 1
+  return Math.min(parsed, max)
+}
+
+/**
+ * Parse `colwidth` from the attribute the serializer writes.
  *
  * `prosemirror-tables` stores column widths as an array of numbers on the cell
- * that starts the column, which is how its resizing plugin reads them.
+ * that starts the column, which is how its resizing plugin reads them -- one
+ * entry per column the cell covers, which is the invariant the commands in
+ * `plugins-table` already document and rely on.
+ *
+ * The digits-only test and the length check are `prosemirror-tables`' own rules
+ * for the same attribute, adopted rather than reinvented. They are stricter than
+ * the `Number.isFinite` test they replace in the two ways that matter: a negative
+ * width no longer survives to be written into `col.style.width`, and an array
+ * that does not match `colspan` is rejected instead of being indexed past its
+ * end. The ceiling is ours, for the same reason the span bounds exist.
  */
-function readColwidth(el: Element): number[] | null {
-  const widthAttr = el.getAttribute('data-colwidth')
-  if (widthAttr) {
-    const parsed = widthAttr.split(',').map((n) => Number.parseInt(n, 10))
-    if (parsed.every((n) => Number.isFinite(n))) return parsed
-  }
-  return null
+function readColwidth(el: Element, colspan: number): number[] | null {
+  const attr = el.getAttribute('data-colwidth')
+  if (!attr || !/^\d+(,\d+)*$/.test(attr)) return null
+  const parsed = attr.split(',').map((n) => Number.parseInt(n, 10))
+  if (parsed.length !== colspan) return null
+  if (parsed.some((n) => n < 1 || n > MAX_COLWIDTH)) return null
+  return parsed
 }
 
 const cellAttrs = {
@@ -241,10 +299,13 @@ const cellAttrs = {
 
 function cellGetAttrs(dom: Node): Record<string, unknown> {
   const el = dom as Element
+  const colspan = readSpan(el, 'colspan', MAX_COLSPAN)
   const attrs: Record<string, unknown> = {
-    colspan: Number.parseInt(el.getAttribute('colspan') ?? '1', 10) || 1,
-    rowspan: Number.parseInt(el.getAttribute('rowspan') ?? '1', 10) || 1,
-    colwidth: readColwidth(el),
+    colspan,
+    rowspan: readSpan(el, 'rowspan', MAX_ROWSPAN),
+    // Read against the clamped colspan, not the attribute: the array has to
+    // match the number of columns the cell actually claims.
+    colwidth: readColwidth(el, colspan),
     ...readAttrs(el, CELL_LEGACY_ATTRS),
     style: readStyle(el, CELL_STYLE_PROPS),
   }
