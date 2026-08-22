@@ -19,6 +19,7 @@ import {
   iframe,
   imageDomAttrs,
   imageParseAttrs,
+  isEmptyNamedAnchorElement,
   named_anchor,
   page_break,
   summary,
@@ -615,7 +616,7 @@ export const coreMarks: Record<string, MarkSpec> = {
           if (!id) return false
           // Empty `<a id>` belongs to `named_anchor`. This rule is the
           // wrapped-text spelling, so the heading stays in the document.
-          if ((el.textContent ?? '') === '' && !el.firstElementChild) return false
+          if (isEmptyNamedAnchorElement(el)) return false
           return {
             href: null,
             title: el.getAttribute('title'),

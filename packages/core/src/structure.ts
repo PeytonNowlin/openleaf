@@ -306,6 +306,15 @@ export const page_break: NodeSpec = {
 }
 
 /**
+ * Whitespace-only interiors count as empty: pretty-printed `<a id="jump">\n</a>`
+ * has no modelled text (`parseHtml` does not preserve whitespace), and treating
+ * it as a link mark would drop the destination entirely.
+ */
+export function isEmptyNamedAnchorElement(el: Element): boolean {
+  return (el.textContent ?? '').trim() === '' && !el.firstElementChild
+}
+
+/**
  * An empty named destination: `<a id="section"></a>`.
  *
  * A link with both `href` and `id` is a mark, not this node. This exists for
@@ -332,7 +341,7 @@ export const named_anchor: NodeSpec = {
         // An atom cannot hold content. An <a id> WITH text is a jump target
         // wrapped around a heading -- the commonest legacy spelling -- and
         // claiming it here deletes the text.
-        if ((el.textContent ?? '') !== '' || el.firstElementChild) return false
+        if (!isEmptyNamedAnchorElement(el)) return false
         const id = safeId(el.getAttribute('id'))
         if (!id) return false
         return { id }

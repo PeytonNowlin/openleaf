@@ -116,6 +116,20 @@ describe('named_anchor does not eat wrapped text', () => {
     })
     expect(namedAnchors).toBe(1)
   })
+
+  it('treats whitespace-only <a id> as the empty atom', () => {
+    const html = '<p><a id="jump">\n</a>Heading</p>'
+    const doc = parseHtml(html)
+    let namedAnchors = 0
+    doc.descendants((node) => {
+      if (node.type.name === 'named_anchor') namedAnchors += 1
+    })
+    expect(namedAnchors).toBe(1)
+    expect(doc.textContent).toContain('Heading')
+    const out = roundTrip(html)
+    expect(out).toContain('id="jump"')
+    expect(out).toContain('Heading')
+  })
 })
 
 describe('unsafe media is dropped', () => {

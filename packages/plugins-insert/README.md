@@ -4,7 +4,7 @@ Insert and structure tools for [OpenLeaf](https://github.com/PeytonNowlin/openle
 
 The matching **schema nodes live in `@openleaf-editor/core`**, so stored `<video>`, `<iframe>`, `<details>` and `<figure>` round-trip whether or not this package is loaded. This bundle is the editing chrome.
 
-The **Anchor** control inserts an empty named destination (`<a id="…"></a>`), the TinyMCE-style jump target. That is a modelled atom. An `<a id>` that *wraps* text — `<h2><a id="sec">Title</a></h2>` — is not that atom: core parses it as a `link` mark with `id` and no `href`, so the heading stays editable and the id round-trips. `<a id href>` is an ordinary link. `<a name>` is unmatched and preserved.
+The **Anchor** control inserts an empty named destination (`<a id="…"></a>`), the TinyMCE-style jump target. That is a modelled atom, including pretty-printed whitespace-only interiors. An `<a id>` that *wraps* text — `<h2><a id="sec">Title</a></h2>` — is not that atom: core parses it as a `link` mark with `id` and no `href`, so the heading stays editable and the id round-trips. `<a id href>` is an ordinary link. `<a name>` is unmatched and preserved.
 
 Iframes are stored only when their `src` is an `https:` URL on a known player host (`youtube.com/embed`, `player.vimeo.com/video`, and the rest of the allowlist). Arbitrary iframes are still dropped.
 

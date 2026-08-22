@@ -18,8 +18,8 @@ entries below say so explicitly when they do.
   is an empty atom (TinyMCE-style jump targets). Its parse rule claimed any
   `<a>` with `id` and no `href`, so `<h2><a id="sec">Title</a></h2>` serialized
   as an empty heading. Contentful `<a id>` is now a `link` mark carrying only
-  `id`; empty `<a id="jump"></a>` is still the atom; `<a id href>` is still a
-  link; `<a name>` is still unmatched.
+  `id`; empty and whitespace-only `<a id="jump"></a>` is still the atom;
+  `<a id href>` is still a link; `<a name>` is still unmatched.
 
 ### Added
 
