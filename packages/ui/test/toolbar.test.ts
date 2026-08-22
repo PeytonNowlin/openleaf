@@ -8,7 +8,7 @@
  * tested in packages/element/test/e2e.
  */
 
-import { coreSchema, parseHtml, serializeHtml } from '@openleaf-editor/core'
+import { coreSchema, parseHtml, serializeHtml, type FormatSpec } from '@openleaf-editor/core'
 import { EditorState, NodeSelection, TextSelection, type Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -49,11 +49,16 @@ function fakeView(html = '<p>hello</p>'): EditorView {
 
 function mount(
   layout: string,
-  options: { host?: HTMLElement; html?: string } = {},
+  options: { host?: HTMLElement; html?: string; formats?: readonly FormatSpec[] } = {},
 ): { toolbar: Toolbar; host: HTMLElement; view: EditorView } {
   const host = options.host ?? document.createElement('div')
   document.body.appendChild(host)
-  const toolbar = new Toolbar(host, document, { layout })
+  // Spread, not `formats: options.formats`: exactOptionalPropertyTypes draws a
+  // line between an absent optional property and one explicitly undefined.
+  const toolbar = new Toolbar(host, document, {
+    layout,
+    ...(options.formats ? { formats: options.formats } : {}),
+  })
   mounted.push(toolbar)
   host.appendChild(toolbar.el)
   const view = fakeView(options.html)
@@ -556,6 +561,49 @@ describe('source mode', () => {
     select.dispatchEvent(new Event('change', { bubbles: true }))
     expect(serializeHtml(view.state.doc)).toBe(before)
     expect(serializeHtml(view.state.doc)).toContain('<figure>')
+  })
+
+  it('keeps a format entry available when only its class half has work to do', () => {
+    // `p.lead` over a paragraph converts nothing, and availability was decided
+    // by the element half alone -- so the entry was disabled in exactly the
+    // place an author reaches for it, and the class was unreachable.
+    const formats: FormatSpec[] = [
+      { token: 'p.lead', label: 'Lead' },
+      { token: 'h2', label: 'Section' },
+      { token: '.note', label: 'Note' },
+    ]
+    const { toolbar, view } = mount('blockType', { formats })
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="blockType"]')!
+    const option = (value: string) => [...select.options].find((o) => o.value === value)!
+
+    expect(option('format:p.lead').disabled).toBe(false)
+    expect(option('format:h2').disabled).toBe(false)
+    expect(option('format:.note').disabled).toBe(false)
+
+    select.value = 'format:p.lead'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(serializeHtml(view.state.doc)).toContain('<p class="lead">')
+  })
+
+  it('leaves a class-free format entry disabled where its element command is', () => {
+    // The figure guard: `h2` in a caption has no class to fall back on, so
+    // enabling it would only strip the caption's own class.
+    const formats: FormatSpec[] = [{ token: 'h2', label: 'Section' }]
+    const html =
+      '<figure><img src="/a.png" alt="a"><figcaption>Caption text</figcaption></figure><p>after</p>'
+    const { toolbar, view } = mount('blockType', { html, formats })
+    let pos: number | null = null
+    view.state.doc.descendants((node, nodePos) => {
+      if (node.type.name !== 'figcaption') return true
+      pos = nodePos + 1
+      return false
+    })
+    if (pos === null) throw new Error('expected a figcaption')
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)))
+    toolbar.update(view.state)
+
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="blockType"]')!
+    expect([...select.options].find((o) => o.value === 'format:h2')!.disabled).toBe(true)
   })
 
   it('reaches a native select any custom control rendered, not just block type', () => {
