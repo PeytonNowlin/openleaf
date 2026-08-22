@@ -24,6 +24,15 @@ entries below say so explicitly when they do.
   central directory are refused so a partial inflate walk cannot undercount.
 ### Fixed
 
+- **A `<figcaption>` outside a `<figure>` no longer grows the document by two
+  empty paragraphs on every save.** The caption node is inline (because a
+  modelled figure holds inline content), and the HTML parser closes an open
+  `<p>` at `figcaption`, so wrapping an orphan in a paragraph made the next
+  parse insert empty paragraphs with no fixed point. The parse rule now only
+  matches inside a figure; an orphan in a paragraph is preserved as a block
+  atom and round-trips without wrapping. A caption already inside an
+  inline-only container such as `summary` stays inline so the details block
+  is not escaped. Nested figures are unchanged.
 - **A selection spanning a `<blockquote>` into a following `<details>` no longer
   throws on the next keystroke, corrupts the document, or loses undo.** Firefox
   and WebKit report a `TextSelection` whose endpoints sit on opposite sides of
