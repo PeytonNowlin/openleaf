@@ -24,6 +24,14 @@ entries below say so explicitly when they do.
   central directory are refused so a partial inflate walk cannot undercount.
 ### Fixed
 
+- **Preserved block elements inside a blockquote or list item no longer grow
+  two empty paragraphs on every save.** `unknownInline` declined only
+  lossless wrappers, so a `<div class="callout">` (or any other tag the HTML
+  parser closes a `<p>` for) became an inline atom, serialized inside a
+  paragraph, and split on the next parse. The catch-all now consults a shared
+  `CLOSES_OPEN_P` list and leaves those tags to `unknownBlock`. Custom
+  elements and genuine inline debris (`<ins>`, `<o:p>`) are unchanged. A
+  second serialize is a fixed point.
 - **A `<figcaption>` outside a `<figure>` no longer grows the document by two
   empty paragraphs on every save.** The caption node is inline (because a
   modelled figure holds inline content), and the HTML parser closes an open

@@ -486,11 +486,12 @@ export const unknownBlock: NodeSpec = {
  *
  * `summary` and `figcaption` fail the same way for the same reason, and
  * `blockquote`, `table_cell` and `table_header` are listed so that a first-child
- * unknown element is wrapped in a paragraph exactly as it is when text precedes
- * it. Those three could hold the block atom legally, so they were not losing
- * content -- but "what you get depends on whether you typed a character first"
- * is not a rule anybody can hold in their head, and consistency here costs
- * nothing.
+ * unknown *inline* element is wrapped in a paragraph exactly as it is when text
+ * precedes it. Those three can also hold a block atom legally. Wrapping a
+ * p-closing element (`div`, `section`, …) in that paragraph is the other
+ * failure: the HTML parser closes the `<p>` on the next parse, leaves empty
+ * paragraphs on both sides, and the document grows by two blanks on every save.
+ * `unknownInline` declines those tags so `unknownBlock` claims them instead.
  *
  * Naming containers explicitly rather than dropping the context altogether:
  * without it the inline rule would outrank `unknownBlock` everywhere, and a
@@ -507,6 +508,71 @@ const INLINE_CONTEXT = [
   'table_header/',
   'blockquote/',
 ].join('|')
+
+/**
+ * Start tags that close an open `<p>` in the HTML "in body" insertion mode.
+ *
+ * Serializing one of these as an inline atom wraps it in `<p>…</p>`. The next
+ * parse cannot keep it there, so it splits into an empty paragraph, the
+ * element, and another empty paragraph -- and the following save wraps it
+ * again. The same unbounded growth `<plaintext>` caused by having no end tag.
+ *
+ * Shared with anything else that must not claim a p-closing element as inline
+ * (`figcaption` being inline is the other door into this). Custom elements are
+ * not on the list: they do not close a `<p>`, so `<drupal-media>` inside a
+ * blockquote is correctly an inline atom.
+ *
+ * Source: WHATWG HTML parsing, "in body" -- every start tag that runs
+ * "if the stack of open elements has a p element in button scope, then close
+ * a p element" before inserting.
+ */
+export const CLOSES_OPEN_P: ReadonlySet<string> = new Set([
+  'address',
+  'article',
+  'aside',
+  'blockquote',
+  'center',
+  'details',
+  'dialog',
+  'dir',
+  'div',
+  'dl',
+  'dt',
+  'dd',
+  'fieldset',
+  'figcaption',
+  'figure',
+  'footer',
+  'header',
+  'hgroup',
+  'main',
+  'menu',
+  'nav',
+  'ol',
+  'p',
+  'search',
+  'section',
+  'summary',
+  'ul',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'listing',
+  'plaintext',
+  'pre',
+  'form',
+  'li',
+  'button',
+  'table',
+  'hr',
+  'xmp',
+  'applet',
+  'marquee',
+  'object',
+])
 
 /**
  * Inline preserved content, for unrecognised markup appearing inside a
@@ -536,6 +602,14 @@ export const unknownInline: NodeSpec = {
       getAttrs(dom) {
         const el = dom as Element
         if (isLosslesslyUnwrappable(el)) return false
+<<<<<<< HEAD
+        // A block-level element inside a paragraph-holding container must not
+        // become an inline atom: emitting it inside `<p>` is markup the HTML
+        // parser will not re-parse as itself. Declining lets unknownBlock
+        // claim it, which blockquote (`block+`) and list_item (`paragraph
+        // block*`) can hold. `<ins>` and custom elements stay on this path.
+        if (CLOSES_OPEN_P.has(el.nodeName.toLowerCase())) return false
+=======
         // `figcaption` closes an open `<p>` on the next parse. Claiming it
         // here as inline would serialize it inside a paragraph and grow the
         // document by two empty paragraphs on every save. Decline only in a
@@ -548,6 +622,7 @@ export const unknownInline: NodeSpec = {
         ) {
           return false
         }
+>>>>>>> origin/main
         return { html: scrub(el), tag: el.nodeName.toLowerCase() }
       },
     },

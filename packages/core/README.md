@@ -44,6 +44,11 @@ A schema-based editor has to decide what it understands, and the usual answer fo
 everything else is to delete it. `core` keeps unrecognised markup as a
 selectable, movable atom that round-trips byte-for-byte instead.
 
+Block-level tags the HTML parser will not keep inside a `<p>` (`div`, `section`,
+and the rest of `CLOSES_OPEN_P`) are stored as block atoms even when they appear
+inside a blockquote or list item. Treating them as inline would wrap them in a
+paragraph the next parse splits, growing two empty paragraphs on every save.
+
 That is why the schema is larger than it might look: `<table>`, `<figure>`,
 `<details>`, `<video>`, allowlisted `<iframe>` embeds and the typography marks are
 all modelled here rather than in an opt-in plugin. Not because every deployment
