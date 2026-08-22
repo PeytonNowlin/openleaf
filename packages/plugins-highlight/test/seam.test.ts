@@ -45,6 +45,14 @@ describe('the built-in default', () => {
     expect(highlight('def f(): pass', 'python')).toBeNull()
     expect(canHighlight('python')).toBe(false)
   })
+
+  it('does not treat Object.prototype names as languages', () => {
+    // `<code class="language-constructor">` used to make canHighlight lie
+    // (undefined !== null) while highlight returned undefined, not null.
+    expect(canHighlight('constructor')).toBe(false)
+    expect(canHighlight('__proto__')).toBe(false)
+    expect(highlight('let a = 1', 'constructor')).toBeNull()
+  })
 })
 
 describe('swapping in refractor', () => {
