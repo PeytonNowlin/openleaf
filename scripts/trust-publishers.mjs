@@ -29,6 +29,7 @@ import { execFileSync } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { publishablePackages } from './dist-tags.mjs'
+import { missingFromRegistry } from './registry-preflight.mjs'
 
 /*
  * The trust relationship, in one place.
@@ -68,23 +69,28 @@ const npmWrite = (args) => execFileSync('npm', args, { stdio: 'inherit' })
  * Is this package already trusting the right repository and workflow?
  *
  * A read needs no 2FA, so this pass is free in the currency that is actually
- * scarce here -- the five-minute window. Any unreadable or unrecognised
- * response is reported as "not configured": re-writing a correct configuration
- * is harmless (a package holds one trusted publisher, so a write replaces
- * rather than duplicates), and skipping a missing one would fail the release.
+ * scarce here -- the five-minute window.
+ *
+ * The match is a substring search over the raw response rather than a walk of a
+ * parsed shape. The first version of this parsed `trustedPublishers`/`results`
+ * arrays and found neither, so every package reported MISSING and a re-run
+ * rewrote all fifteen configurations instead of the one that failed. A response
+ * naming this repository and this workflow file is a configured package, and
+ * that is true whatever npm wraps it in.
  */
 function alreadyTrusted(name) {
-  let parsed
+  let raw
   try {
-    parsed = JSON.parse(npm(['trust', 'list', name, '--json']))
+    raw = npm(['trust', 'list', name, '--json'])
   } catch {
+    // Unreadable: report it as not configured. Re-writing a correct
+    // configuration is harmless -- a package holds one trusted publisher, so a
+    // write replaces rather than duplicates -- while skipping a missing one
+    // would fail the release.
     return false
   }
-  const entries = Array.isArray(parsed) ? parsed : (parsed?.trustedPublishers ?? parsed?.results ?? [])
-  return entries.some((entry) => {
-    const blob = JSON.stringify(entry).toLowerCase()
-    return blob.includes(REPO.toLowerCase()) && blob.includes(WORKFLOW.toLowerCase())
-  })
+  const blob = raw.toLowerCase()
+  return blob.includes(REPO.toLowerCase()) && blob.includes(WORKFLOW.toLowerCase())
 }
 
 async function main() {
@@ -112,15 +118,53 @@ async function main() {
 
   console.log(`checking ${packages.length} packages against ${REPO} / ${WORKFLOW}\n`)
 
+  /*
+   * Which packages the registry has never seen. Shared with the release
+   * workflow's preflight rather than reimplemented, because the fix and the
+   * explanation should not drift between the two places that report it.
+   */
+  const unpublishable = new Set(missingFromRegistry(packages))
+
   const pending = []
+  const unpublished = []
   for (const { name } of packages) {
-    const ok = alreadyTrusted(name)
-    console.log(`  ${ok ? 'ok      ' : 'MISSING '} ${name}`)
-    if (!ok) pending.push(name)
+    if (alreadyTrusted(name)) {
+      console.log(`  ok        ${name}`)
+    } else if (unpublishable.has(name)) {
+      console.log(`  BOOTSTRAP ${name}  (not on the registry yet)`)
+      unpublished.push(name)
+    } else {
+      console.log(`  MISSING   ${name}`)
+      pending.push(name)
+    }
+  }
+
+  /*
+   * Named before anything is written, because it is the one failure here that a
+   * re-run cannot fix. npm has nowhere to record a trusted publisher for a
+   * package that does not exist, and the weekly release cannot create it either
+   * -- its publish carries no token, and an OIDC publish of an unknown package
+   * is exactly the handshake npm rejects. One manual publish breaks the cycle.
+   */
+  if (unpublished.length > 0) {
+    console.log(
+      `\n${unpublished.length} package(s) have never been published, so they cannot be` +
+        '\ntrusted yet. Publish each one once, by hand, then re-run this script:\n' +
+        unpublished
+          .map((name) => `  pnpm --filter ${name} publish --access public --tag beta`)
+          .join('\n') +
+        '\n\nThat publish uses your own credentials and 2FA. It is the only publish' +
+        '\nof its life that does; every release after it goes through the workflow.',
+    )
   }
 
   if (pending.length === 0) {
-    console.log('\nevery package already trusts this workflow')
+    console.log(
+      unpublished.length > 0
+        ? '\nEverything that can be configured already is.'
+        : '\nevery package already trusts this workflow',
+    )
+    process.exitCode = unpublished.length > 0 ? 1 : 0
     return
   }
 
@@ -163,6 +207,13 @@ async function main() {
     return
   }
   console.log(`\nall ${pending.length} configured. Verify with: npm trust list <package>`)
+  if (unpublished.length > 0) {
+    console.error(
+      `\nStill outstanding: ${unpublished.length} never-published package(s), listed above.` +
+        '\nThe weekly release will fail until they exist on the registry.',
+    )
+    process.exitCode = 1
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) await main()

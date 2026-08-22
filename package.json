@@ -20,6 +20,7 @@
     "verify": "node scripts/verify.mjs",
     "bump": "node scripts/bump.mjs",
     "trust-publishers": "node scripts/trust-publishers.mjs",
+    "registry-preflight": "node scripts/registry-preflight.mjs",
     "verify:quick": "node scripts/verify.mjs --quick",
     "publish:beta": "pnpm -r --filter \"./packages/**\" publish --access public --tag beta && node scripts/dist-tags.mjs",
     "dist-tags": "node scripts/dist-tags.mjs"

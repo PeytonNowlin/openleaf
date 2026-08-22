@@ -118,6 +118,31 @@ workflow's name. This workflow avoids all three.
 Verify at any point with `npm trust list @openleaf-editor/core`, and undo with
 `npm trust revoke <package> --id=<id>`.
 
+### A brand-new package needs one manual publish first
+
+Trusted publishing is per-package configuration, and npm has nowhere to record
+it for a package the registry has never seen. The POST returns 404 — the *same*
+404 it returns for a broken trust relationship, which is a genuinely misleading
+error and cost an afternoon the first time.
+
+So a new package is bootstrapped once, by hand, with your own credentials and
+2FA:
+
+```sh
+pnpm --filter @openleaf-editor/<name> publish --access public --tag beta
+node scripts/trust-publishers.mjs        # now it can be trusted
+```
+
+That is the only publish of that package's life that a human performs; every
+release after it goes through the workflow. `scripts/trust-publishers.mjs`
+reports such packages as `BOOTSTRAP` rather than attempting them, and the
+release workflow runs `scripts/registry-preflight.mjs` before the gate so a
+missing package fails in a minute with the fix in the message, instead of half
+way through a publish.
+
+`@openleaf-editor/content-policy` is the outstanding case: it was added three
+hours after 0.1.0-beta.2 shipped, so it has never been published.
+
 ### The one remaining secret
 
 `scripts/dist-tags.mjs` still needs a real token, in the repository secret

@@ -121,6 +121,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
         if: steps.changed.outputs.release == 'true'
 
+      # Fail before the gate, not half way through the publish.
+      #
+      # A package the registry has never seen cannot have a trusted publisher
+      # attached, and an OIDC publish of one is the handshake npm rejects -- with
+      # the same opaque 404 it returns for a genuinely broken trust
+      # relationship. `scripts/registry-preflight.mjs` carries the longer story.
+      - name: Every package exists on the registry
+        if: steps.changed.outputs.release == 'true'
+        run: node scripts/registry-preflight.mjs
+
       - name: Install browsers
         if: steps.changed.outputs.release == 'true'
         run: pnpm exec playwright install --with-deps chromium firefox webkit
