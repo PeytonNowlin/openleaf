@@ -36,6 +36,8 @@ import { coreSchema, parseHtml, serializeHtml, roundTrip } from '@openleaf-edito
 
 roundTrip('<p style="text-align:center">hi</p>')
 // '<p style="text-align:center">hi</p>'
+roundTrip('<p><strong class="brand-name">Acme</strong></p>')
+// '<p><strong class="brand-name">Acme</strong></p>'
 ```
 
 ## The preservation layer is the point

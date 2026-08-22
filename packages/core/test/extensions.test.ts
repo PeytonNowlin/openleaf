@@ -246,6 +246,53 @@ describe('core claimed tags carry residual attributes', () => {
   })
 })
 
+describe('core claimed marks carry residual attributes', () => {
+  /*
+   * Character marks used to keep the tag and drop every attribute on it.
+   * `withCarriedAttributes` ran on nodes only, so `<strong class="brand-name">`
+   * became `<strong>` and `<a class="btn">` lost the class the sanitizer had
+   * allowed through. Issue #126.
+   */
+  const lossless = [
+    '<p><strong class="brand-name">Acme</strong></p>',
+    '<p><strong data-cms-id="7">Acme</strong></p>',
+    '<p><em id="term-1">jus cogens</em></p>',
+    '<p><code class="lang-sh">ls</code></p>',
+    '<p><u title="hover">x</u></p>',
+    '<p><s data-revision="42">old price</s></p>',
+    '<p><sub lang="fr">x</sub></p>',
+    '<p><sup class="fn">1</sup></p>',
+    '<p><a href="/x" class="btn btn-primary">Go</a></p>',
+    '<p><a href="/x" data-track="cta">Go</a></p>',
+    '<p><strong>plain</strong></p>',
+    '<p><a href="/x" title="t" target="_blank" rel="noopener" id="q">Go</a></p>',
+  ]
+
+  for (const html of lossless) {
+    it(`round-trips ${html}`, () => {
+      expect(serializeHtml(parseHtml(html))).toBe(html)
+    })
+  }
+
+  it('normalizes <b> to <strong> and keeps leftover attributes', () => {
+    expect(serializeHtml(parseHtml('<p><b class="brand">Acme</b></p>'))).toBe(
+      '<p><strong class="brand">Acme</strong></p>',
+    )
+  })
+
+  it('still drops event handlers on mark tags', () => {
+    expect(serializeHtml(parseHtml('<p><strong class="x" onclick="alert(1)">Acme</strong></p>'))).toBe(
+      '<p><strong class="x">Acme</strong></p>',
+    )
+  })
+
+  it('does not leak the carrier attribute on a mark', () => {
+    const out = serializeHtml(parseHtml('<p><em class="term">x</em></p>'))
+    expect(out).not.toContain(CARRIED_ATTR)
+    expect(out).not.toContain('__openleaf')
+  })
+})
+
 describe('commands work against an extended schema', () => {
   /*
    * The bug class this refactor creates, and the only test that can catch it.

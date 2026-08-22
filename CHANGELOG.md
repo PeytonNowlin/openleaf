@@ -106,6 +106,11 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Character marks keep leftover attributes on round trip.** `strong`, `em`,
+  `code`, `u`, `s`, `sub`, `sup`, `b` (as `strong`) and extra attributes on
+  `<a>` (`class`, `data-*`, …) used to be stripped because the carry wrapper
+  ran on nodes only. The same sanitizer filter still drops `on*` handlers and
+  unsafe URLs. Closes #126.
 - **Table captions no longer leak `contenteditable="false"` into clipboard
   or saved HTML.** The editor still stamps that marker on the live caption so
   a caret cannot enter it (`CaptionedTableView` when the table bundle is
