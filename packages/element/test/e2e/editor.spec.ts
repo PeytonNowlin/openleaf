@@ -425,3 +425,79 @@ test.describe('late plugin registration', () => {
     await expect(editor(page)).not.toContainText('scratch')
   })
 })
+
+
+/**
+ * Malformed markup in the source box.
+ *
+ * The HTML parser accepts attribute names `setAttribute` refuses -- `<p ="v">`
+ * parses to one attribute literally named `="v"` -- and the schema carried those
+ * through as residue and wrote them back on the way out. So closing the source
+ * view threw from the middle of rendering, after the source box had already been
+ * removed and `sourceMode` flipped but before the content host was unhidden: a
+ * blank rectangle, the Source button still reading pressed, nothing clickable,
+ * and toggling back throwing again. A page reload was the only way out and the
+ * author's work was gone. All three engines, byte-identically.
+ *
+ * The fix has two halves and this asserts both: the schema no longer carries a
+ * name it cannot write, and the teardown restores the view in a `finally` so any
+ * future failure leaves a usable editor rather than a blank one.
+ */
+test.describe('a stray = in the source box', () => {
+  const sourceButton = (page: Page) => page.getByRole('button', { name: 'HTML source' })
+  const sourceBox = (page: Page) => page.getByRole('textbox', { name: 'HTML source' })
+
+  test('closes the source view and leaves an editor the author can use', async ({ page }) => {
+    await sourceButton(page).click()
+    await expect(sourceBox(page)).toBeVisible()
+    await sourceBox(page).fill('<p ="v">typed</p>')
+    await sourceButton(page).click()
+
+    // Visible, not a blank rectangle: the content host was unhidden.
+    await expect(sourceBox(page)).toBeHidden()
+    await expect(editor(page)).toBeVisible()
+    // And the flag and the button agree again.
+    await expect(sourceButton(page)).toHaveAttribute('aria-pressed', 'false')
+
+    // The text survived; only the name that cannot be written was dropped.
+    await expect(editor(page)).toContainText('typed')
+    await expect.poll(() => submittedValue(page)).toContain('typed')
+  })
+
+  test('is still editable afterwards, and source still toggles', async ({ page }) => {
+    await sourceButton(page).click()
+    await sourceBox(page).fill('<p ="v">typed</p>')
+    await sourceButton(page).click()
+
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type('!')
+    await expect.poll(() => submittedValue(page)).toContain('typed!')
+
+    // Toggling back used to throw again, which is what made it unrecoverable.
+    await sourceButton(page).click()
+    await expect(sourceBox(page)).toBeVisible()
+  })
+
+  test('loads a stored document containing one instead of throwing', async ({ page }) => {
+    // `element.value = html` threw on assignment, and `get value` threw too, so
+    // a legacy row or a hand-edited template could not be opened at all and a
+    // framework wrapper threw on every render.
+    const outcome = await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      try {
+        el.value = '<p ="v">Quarterly report</p>'
+      } catch (error) {
+        return { set: String(error), read: null }
+      }
+      try {
+        return { set: null, read: el.value }
+      } catch (error) {
+        return { set: null, read: `THREW: ${String(error)}` }
+      }
+    })
+    expect(outcome.set).toBeNull()
+    expect(outcome.read).toContain('Quarterly report')
+    await expect(editor(page)).toContainText('Quarterly report')
+  })
+})

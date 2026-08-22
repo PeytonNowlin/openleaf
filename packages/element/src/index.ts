@@ -1121,17 +1121,37 @@ export class OpenLeafEditor extends HTMLElementBase {
       return
     }
 
-    // `apply: false` under readonly: the source box is read-only there, so
-    // there is nothing to write back and parsing it would be a no-op that
-    // still lands a transaction.
-    this.#teardownSource({ apply: !this.hasAttribute('readonly') })
-    contentHost.hidden = false
-    this.#toolbar?.setItemState('source', { active: false })
-    this.#toolbar2?.setItemState('source', { active: false })
-    this.#toolbar?.setSourceMode(false)
-    this.#toolbar2?.setSourceMode(false)
-    announce(this, this.#localised('Rich text view'))
-    view.focus()
+    /*
+     * `finally`, because a half-completed teardown is unrecoverable.
+     *
+     * Applying the source parses it and renders the result, and that used to be
+     * able to throw -- `<p ="v">` carried an attribute name `setAttribute`
+     * refuses. The teardown had already removed the source box and flipped
+     * `#sourceMode`, so the throw escaped before the content host was unhidden:
+     * a blank rectangle, `sourceMode` reporting false while the Source button
+     * still read pressed, nothing clickable, and toggling back throwing again.
+     * A page reload was the only way out and the author's work was gone.
+     *
+     * The carried-attribute hole is fixed at its source, in the schema. This is
+     * the other half: whatever a future failure in applying source HTML turns
+     * out to be, it leaves a visible, usable editor. The error still propagates,
+     * because the host should hear about it.
+     *
+     * `apply: false` under readonly: the source box is read-only there, so there
+     * is nothing to write back and parsing it would be a no-op that still lands
+     * a transaction.
+     */
+    try {
+      this.#teardownSource({ apply: !this.hasAttribute('readonly') })
+    } finally {
+      contentHost.hidden = false
+      this.#toolbar?.setItemState('source', { active: false })
+      this.#toolbar2?.setItemState('source', { active: false })
+      this.#toolbar?.setSourceMode(false)
+      this.#toolbar2?.setSourceMode(false)
+      announce(this, this.#localised('Rich text view'))
+      view.focus()
+    }
   }
 
   /**

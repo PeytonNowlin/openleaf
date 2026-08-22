@@ -60,7 +60,7 @@ import { OpenLeafError } from './errors.js'
 import { serializationTarget } from './preserve.js'
 import { coreMarks, coreNodes, listStart } from './schema.js'
 import { CARRIED_STYLE_SCRUBS } from './tables.js'
-import { safeId } from './tokens.js'
+import { isWritableAttributeName, safeId } from './tokens.js'
 import {
   URL_ATTRIBUTES,
   isEventHandlerAttribute,
@@ -427,6 +427,12 @@ function withCarriedAttributes(name: string, spec: NodeSpec): NodeSpec {
           // consume are removed by that node's CARRY_SCRUB instead, which is
           // already how `<p style="text-align:center">` avoids being emitted
           // twice.
+          // Before every other test, because it is the only one about whether
+          // the attribute can exist at all. The HTML parser accepts names
+          // `setAttribute` refuses -- `<p ="v">` parses to an attribute named
+          // `="v"` -- and carrying one meant the throw landed later, in the
+          // middle of rendering the document, from a name no author wrote.
+          if (!isWritableAttributeName(attr.name)) continue
           if (attr.name !== 'style' && modelled.has(attr.name)) continue
           // Same scrub as the preservation layer: carrying `onclick` or a
           // `javascript:` URL would reintroduce exactly the executable content

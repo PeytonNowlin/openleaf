@@ -587,3 +587,80 @@ describe('bidirectional text', () => {
     expect(roundTrip('<p>plain</p>')).toBe('<p>plain</p>')
   })
 })
+
+/**
+ * The invariant underneath every fixture above: a document this parser accepts
+ * is a document this serializer can emit.
+ *
+ * It was not true. The HTML parser accepts attribute names `setAttribute`
+ * refuses -- `<p ="v">` parses to one attribute literally named `="v"` -- and
+ * those were carried through as residue and written back on the way out, so
+ * `serializeHtml(parseHtml(x))` threw `InvalidCharacterError` from the middle of
+ * rendering. One stray `=` typed into the source box left the editor a blank
+ * rectangle with no way back; a stored document containing one could not be
+ * loaded at all.
+ *
+ * Which malformed markup detonated depended on the runtime, which made it worse
+ * rather than better: browsers are laxer than the spec for HTML documents while
+ * jsdom implements the `Name` production strictly, so `class=""lead""` -- an
+ * ordinary template typo -- threw only on the server, in exactly the server-side
+ * round trip `serializeHtml`'s own docstring tells integrators to run. These
+ * cases run in jsdom on purpose: it is the strict end.
+ *
+ * Generated as well as enumerated, because the enumerated list is the one that
+ * was already believed to be complete.
+ */
+describe('parse then serialize never throws', () => {
+  const MALFORMED = [
+    '<p ="v">x</p>',
+    '<p class=""lead"">x</p>',
+    '<h2 id=""a"">t</h2>',
+    '<p "x">y</p>',
+    '<p a<b="1">z</p>',
+    '<td class=""c"">c</td>',
+    '<img src="/a.png" alt=""x"">',
+    '<p =>x</p>',
+    '<div ==="">x</div>',
+    '<span 1="a">x</span>',
+    '<p -x="1">x</p>',
+    '<p .x="1">x</p>',
+    '<table><tr><td ="v">c</td></tr></table>',
+    '<ul><li ="v">i</li></ul>',
+    '<a href="/a" ="v">l</a>',
+  ]
+
+  for (const html of MALFORMED) {
+    it(`survives ${html}`, () => {
+      expect(() => roundTrip(html)).not.toThrow()
+      // Still a document rather than an empty one: the text is the content, and
+      // only the name that cannot be written is dropped.
+      expect(roundTrip(html)).not.toBe('')
+    })
+  }
+
+  it('is a fixed point for malformed input too, so a document cannot decay', () => {
+    for (const html of MALFORMED) {
+      const once = roundTrip(html)
+      expect(roundTrip(once)).toBe(once)
+    }
+  })
+
+  /*
+   * A small deterministic sweep over the attribute-name position, which is where
+   * the parser and `setAttribute` disagree. Deterministic on purpose: a random
+   * corpus that fails once and passes on rerun is not a regression test.
+   */
+  it('survives generated attribute-name garbage', () => {
+    const NOISE = ['=', '"', "'", '<', '>', '/', ' ', '`', '&', '\t', '\n', '1', '-', '.', ':']
+    const TAGS = ['p', 'div', 'span', 'h2', 'li', 'td', 'a', 'img']
+    for (const tag of TAGS) {
+      for (const noise of NOISE) {
+        for (const shape of [`${noise}x`, `x${noise}`, noise, `x${noise}y`]) {
+          const html = `<${tag} ${shape}="v">t</${tag}>`
+          expect(() => roundTrip(html), html).not.toThrow()
+          expect(() => roundTrip(roundTrip(html)), `${html} (second pass)`).not.toThrow()
+        }
+      }
+    }
+  })
+})
