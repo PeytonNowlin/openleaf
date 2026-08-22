@@ -285,11 +285,24 @@ export const figure: NodeSpec = {
   toDOM: () => ['figure', 0],
 }
 
+/**
+ * Caption for a modelled figure, and only for a modelled figure.
+ *
+ * The node is inline because `figure` is `inline+` (an image plus this). The
+ * HTML parser does not agree: `figcaption` is in the "in body" start-tag list
+ * that closes an open `<p>`, so a caption parsed as ordinary inline content
+ * is wrapped in a paragraph on the way out, then split on the way back in,
+ * and each save adds an empty paragraph before the caption and one after.
+ * Restricting the parse rule to `figure/` is what stops that: an orphaned
+ * caption is declined here and claimed by the preservation layer as a block
+ * atom, which is markup the next parse can consume without wrapping it in a
+ * `<p>`. A nested figure stays editable.
+ */
 export const figcaption: NodeSpec = {
   inline: true,
   group: 'inline',
   content: 'inline*',
-  parseDOM: [{ tag: 'figcaption' }],
+  parseDOM: [{ tag: 'figcaption', context: 'figure/' }],
   toDOM: () => ['figcaption', 0],
 }
 

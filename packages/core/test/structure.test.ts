@@ -59,6 +59,50 @@ describe('structure round-trips', () => {
   }
 })
 
+/**
+ * An orphaned `<figcaption>` used to be parsed as inline, wrapped in a
+ * paragraph, then split by the HTML parser on the next load -- two empty
+ * `<p>`s per save, with no fixed point. The regression is unbounded growth,
+ * so the pin is a convergence assertion rather than a single round trip:
+ * the first pass may normalize, the second must not change anything.
+ */
+describe('an orphaned figcaption does not grow the document', () => {
+  const orphans = [
+    '<figcaption>c</figcaption>',
+    '<p><figcaption>c</figcaption></p>',
+    '<p>a<figcaption>c</figcaption></p>',
+    '<p>a<figcaption>c</figcaption>b</p>',
+    '<p>x</p><figcaption>c</figcaption>',
+    '<div><figcaption>c</figcaption></div>',
+    '<p>Report</p><p><figcaption>Table 1</figcaption></p>',
+  ]
+
+  for (const html of orphans) {
+    it(`converges for ${html}`, () => {
+      const once = roundTrip(html)
+      const twice = roundTrip(once)
+      expect(twice).toBe(once)
+    })
+  }
+
+  it('does not keep adding empty paragraphs across many saves', () => {
+    let html = '<figcaption>c</figcaption>'
+    const afterFirst = roundTrip(html)
+    for (let i = 0; i < 6; i++) html = roundTrip(html)
+    expect(html).toBe(afterFirst)
+  })
+
+  it('keeps a figcaption inside summary as inline rather than escaping details', () => {
+    const html = '<details><summary><figcaption>Label</figcaption></summary><p>Body</p></details>'
+    const once = roundTrip(html)
+    const twice = roundTrip(once)
+    expect(twice).toBe(once)
+    expect(once).toContain('Label')
+    expect(once).toContain('<details>')
+    expect(once).toContain('<summary>')
+  })
+})
+
 describe('named_anchor does not eat wrapped text', () => {
   const cases: Array<[string, string]> = [
     ['wrapped text', '<p><a id="jump">Jump target with text</a></p>'],

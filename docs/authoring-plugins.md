@@ -33,7 +33,7 @@ is the better illustration, it says so.
 | Add a toolbar button with active/enabled state | `registerToolbarItem(spec)` | Works |
 | Add icons | `registerIcons(paths)` | Works |
 | Push state a predicate cannot derive | `element.toolbarInstance?.setItemState(id, …)` | Works, per editor |
-| Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins |
+| Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins. A replacement for `link` must round-trip `rel` and `id` the same way `promptForLink` does — merge `noopener noreferrer` for `_blank`, do not wipe author tokens. |
 | Reach the live view | `element.view` | Works |
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
 | **Add a node or mark type** | `registerSchemaExtension({ id, nodes, marks })` | Works — see [1.1](#11-schema-extensions), and note the timing rule: register **before** the editor is built |
@@ -567,7 +567,7 @@ your node is in a race it can lose. The ladder:
 |---|---|---|
 | 100 | `NEVER_PRESERVE` drop rules — `script`, `iframe`, `form`, `input`, `button`, `select`, `textarea`, `link`, `meta`, `template`, and more | Element **and its contents** are discarded |
 | 50 | The default for a rule with no `priority` — every real node in the schema | Your node parses |
-| 1 | `unknown_inline` catch-all, `context: 'paragraph/\|heading/'` | Inline debris becomes an inline atom |
+| 1 | `unknown_inline` catch-all, restricted to paragraph-holding containers | Inline debris becomes an inline atom. Tags the HTML parser will not keep inside a `<p>` (`div`, `section`, `figure`, … — `CLOSES_OPEN_P` in `preserve.ts`) are declined so they do not serialize inside a paragraph and grow two empty paragraphs on every save. |
 | 0 | `unknown_block` catch-all | Anything else becomes a block atom |
 
 **The practical rule: do not set `priority` at all.** The default 50 already

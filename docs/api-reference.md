@@ -186,7 +186,7 @@ with no build step and no second install.
 | `registerTranslations(locale, messages)` | Overlay a locale catalog. |
 | `setUiLocale(locale)` | Set the document-wide UI locale. |
 | `registerImageUploader(fn)` | Handle image uploads. `element.imageUploader` overrides it for one editor. |
-| `registerFilePicker(fn)` | Supply a file browser for link and image dialogs. |
+| `registerFilePicker(fn)` | Supply a file browser for link and image dialogs. The link dialog (`promptForLink`) keeps `rel` and `id` on Save: window-safety tokens are merged, author tokens are not replaced. |
 | `registerLinkList(items)` / `registerImageList(items)` | Preset lists for those dialogs. |
 | `registerImageClasses(items)` | Preset classes offered in the image dialog. |
 | `normalizePastedHtml(html)` | Word/Google Docs paste cleanup, usable outside the editor. |
