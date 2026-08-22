@@ -332,6 +332,34 @@ describe('colour round-trips', () => {
     // for.
     expect(markColor('<p><span style="color:url(evil)">hi</span></p>', 'text_color')).toBeNull()
   })
+
+  it('does not wrap a preserved styled span in a second copy of the same mark', () => {
+    // `style:` rules used to fire on elements the preservation layer also
+    // kept, so the first save nested a live colour/font span around an atom
+    // that already carried the declaration. These must be fixed points, not
+    // merely convergent -- a second pass being stable is what the bug did.
+    const duplicating = [
+      '<p><span style="color:red" class="hl">x</span></p>',
+      '<p><span style="font-family:Arial" class="c">x</span></p>',
+      '<p><span style="font-size:14px" class="c">x</span></p>',
+      '<p><span style="color:red;letter-spacing:1px">x</span></p>',
+      '<p><span style="color:red" data-id="1">x</span></p>',
+    ]
+    const alreadyCorrect = [
+      '<p><span class="hl" style="background-color:yellow">x</span></p>',
+      '<p><span style="color:red">x</span></p>',
+      '<p><font color="red" class="c">x</font></p>',
+    ]
+    for (const html of [...duplicating, ...alreadyCorrect]) {
+      expect(roundTrip(html), html).toBe(html)
+    }
+  })
+
+  it('still yields a colour mark from a paragraph that carries one', () => {
+    // The un-consuming match exists so a host the schema models still
+    // produces a mark. A span-only tag rule would miss it.
+    expect(markColor('<p style="color:red">x</p>', 'text_color')).toBe('red')
+  })
 })
 
 describe('colour commands', () => {
