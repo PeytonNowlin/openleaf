@@ -524,13 +524,18 @@ registerToolbarItem({
 </p>
 
 <p>
-  A player is a preview in the editor rather than a working one: no control bar,
-  and a click selects it instead of playing it. That is not a shortcut. Native
-  media chrome handles pointer events itself — in Firefox for the whole element,
-  so no listener in the editor ever fires — and a player you cannot select is a
-  player you can insert once and never edit again. What the document stores is
-  untouched, <code>controls</code> included, because stored HTML is serialized
-  from the node and not from the editing DOM.
+  A player is a preview in the editor until you ask for one: no control bar, and
+  the first click selects it instead of playing it. That is not a shortcut.
+  Native media chrome handles pointer events itself — in Firefox for the whole
+  element, so no listener in the editor ever fires — and a player you cannot
+  select is a player you can insert once and never edit again. So the preview is
+  the default, and a play button of ours appears over the frame once the node is
+  selected. Pressing it hands that one element its controls and its pointer
+  events back; moving the selection away, or pressing Escape, takes them back, so
+  at most one player is live and no clip keeps playing where nothing can stop it.
+  What the document stores is untouched either way, <code>controls</code>
+  included, because stored HTML is serialized from the node and not from the
+  editing DOM.
 </p>
 
 <pre>&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
@@ -544,7 +549,8 @@ registerToolbarItem({
 <p>Drag the corner of the image or the video to resize it. Then try the character
 map, the emoji grid, and Insert media — a poster frame and alternate sources are
 on the dialog. Click the video to select it, then press Insert media again to
-edit the player that is already there.</p>
+edit the player that is already there — or press the play button that appears
+over it to watch the clip without leaving the editor.</p>
 <p><img src="./assets/openleaf-mark.png" alt="The OpenLeaf mark" width="96" height="96"></p>
 <video controls width="240" poster="./assets/sample-poster.png"><source src="./assets/sample-clip.webm" type="video/webm"><source src="./assets/sample-clip.mp4" type="video/mp4"></video></textarea>
 </div>

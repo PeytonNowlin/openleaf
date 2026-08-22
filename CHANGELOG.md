@@ -95,6 +95,23 @@ package on this version -- they pin each other exactly.
   the attribute the dialog edits.
 - **`<source>` and `<track>` on video and audio**, stored as scrubbed markup on
   the media node.
+- **Click-to-activate for video in the editor.** A player renders as an inert
+  preview -- no control bar, no pointer events -- because native media chrome
+  takes those events for itself, and Firefox takes them for the whole element:
+  nothing in the editor sees the click, ProseMirror never makes a node selection,
+  and a player that cannot be selected cannot be edited. The preview stays the
+  default for that reason, and a selected video now carries a play button of the
+  plugin's own. Pressing it hands that one element its controls and its pointer
+  events back; moving the selection away, or pressing Escape, returns it to a
+  preview and pauses it -- so at most one player is live, and no clip is left
+  playing with nothing able to stop it. Stored HTML is serialized from the node
+  rather than the editing DOM, so `controls` round-trips untouched in either
+  state. Covered on Chromium, Firefox and WebKit, because the limitation being
+  lifted is one only Firefox had. A live player keeps the caption track the
+  author switched on: the `<source>` and `<track>` children are rebuilt only when
+  the stored markup actually changes, because a rebuilt `<track>` is a new
+  `TextTrack` whose `mode` starts `disabled` -- so resizing a captioned clip used
+  to switch its captions back off.
 
 ### Fixed
 

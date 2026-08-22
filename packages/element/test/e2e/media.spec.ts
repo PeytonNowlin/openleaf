@@ -18,6 +18,8 @@ const editor = (page: Page) => page.getByRole('textbox', { name: 'Post body' })
 const toolbar = (page: Page) => page.getByRole('toolbar', { name: 'Formatting' })
 const mediaButton = (page: Page) => toolbar(page).getByRole('button', { name: 'Insert media' })
 const dialog = (page: Page) => page.locator('dialog.ol-dialog')
+const player = (page: Page) => editor(page).locator('video').first()
+const playControl = (page: Page) => editor(page).locator('.ol-media-play')
 const field = (page: Page, name: string) => dialog(page).locator(`[name="${name}"]`)
 
 /** Put a player in the document by hand, so the test starts from stored HTML. */
@@ -26,6 +28,14 @@ async function seed(page: Page, html: string): Promise<void> {
     const el = document.querySelector('openleaf-editor')
     if (el) (el as HTMLElement & { value: string }).value = value
   }, html)
+}
+
+/** Whether the editing DOM is showing a working player or an inert preview. */
+async function isLive(page: Page): Promise<boolean> {
+  return player(page).evaluate(
+    (el) =>
+      (el as HTMLVideoElement).controls && getComputedStyle(el).pointerEvents !== 'none',
+  )
 }
 
 async function selectTheVideo(page: Page): Promise<void> {
@@ -148,5 +158,102 @@ test.describe('editing a player that is already there', () => {
     await seed(page, '<p>Alpha.</p><audio src="/a.mp3" controls></audio>')
     await expect(editor(page).locator('audio')).toBeVisible()
     await expect(editor(page).locator('.ol-img-handle')).toHaveCount(0)
+  })
+
+  /*
+   * Click-to-activate.
+   *
+   * The inert preview is what makes a video selectable, so it stays the default
+   * and one explicit gesture hands a single element its own pointer events back.
+   * Every one of these has to pass on all three engines: the limitation they
+   * exist to lift is there because Firefox routes pointer events for the whole
+   * of a `<video controls>` into its native chrome and Chromium and WebKit do
+   * not, and a green Chromium run said nothing about that.
+   */
+  test.describe('activating the player', () => {
+    test('shows a preview and no play control until the node is selected', async ({ page }) => {
+      await expect(player(page)).toBeVisible()
+      await expect(playControl(page)).toBeHidden()
+      expect(await isLive(page)).toBe(false)
+    })
+
+    test('offers a play control once the node is selected, still as a preview', async ({ page }) => {
+      await selectTheVideo(page)
+      await expect(playControl(page)).toBeVisible()
+      // Selecting is not activating: the first click has to be able to select.
+      expect(await isLive(page)).toBe(false)
+    })
+
+    test('hands the element its controls and its pointer events on the gesture', async ({ page }) => {
+      await selectTheVideo(page)
+      await playControl(page).click()
+      expect(await isLive(page)).toBe(true)
+      // Nothing of ours left over the frame: the native control bar is the
+      // interface from here.
+      await expect(playControl(page)).toBeHidden()
+    })
+
+    test('stays selected while the author is using the player', async ({ page }) => {
+      await selectTheVideo(page)
+      await playControl(page).click()
+      const box = await player(page).boundingBox()
+      if (!box) throw new Error('the video has no box')
+      // Straight at the live element, which is the gesture ProseMirror must not
+      // take for a selection change -- in Firefox it never even sees it.
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.25)
+      await mediaButton(page).click()
+      await expect(dialog(page).locator('h2')).toHaveText('Edit media')
+    })
+
+    test('takes the player back when the selection moves away', async ({ page }) => {
+      await selectTheVideo(page)
+      await playControl(page).click()
+      expect(await isLive(page)).toBe(true)
+      await editor(page).getByText('Alpha.').click()
+      expect(await isLive(page)).toBe(false)
+      await expect(playControl(page)).toBeHidden()
+    })
+
+    test('takes it back on Escape, without losing the selection', async ({ page }) => {
+      await selectTheVideo(page)
+      await playControl(page).click()
+      await page.keyboard.press('Escape')
+      expect(await isLive(page)).toBe(false)
+      // Still the selected node, so the toolbar still edits rather than inserts.
+      await mediaButton(page).click()
+      await expect(dialog(page).locator('h2')).toHaveText('Edit media')
+    })
+
+    // The invariant the whole arrangement exists to protect. If activating a
+    // player could leave a video that can no longer be selected, the edit path
+    // would be unreachable again -- which is the bug this replaces, not repeats.
+    test('can be selected again after having been live', async ({ page }) => {
+      await selectTheVideo(page)
+      await playControl(page).click()
+      await editor(page).getByText('Alpha.').click()
+      await selectTheVideo(page)
+      await mediaButton(page).click()
+      await expect(dialog(page).locator('h2')).toHaveText('Edit media')
+    })
+
+    test('keeps the resize handle working while the player is live', async ({ page }) => {
+      await selectTheVideo(page)
+      await playControl(page).click()
+      const handle = editor(page).locator('.ol-img-handle')
+      await handle.focus()
+      await page.keyboard.press('ArrowRight')
+      expect(await stored(page)).toContain('width="250"')
+      // And the resize did not quietly put the preview back.
+      expect(await isLive(page)).toBe(true)
+    })
+
+    test('changes nothing about what is stored', async ({ page }) => {
+      const before = await stored(page)
+      await selectTheVideo(page)
+      await playControl(page).click()
+      // Stored HTML is serialized from the node, not from the editing DOM, so
+      // activating a preview is not an edit.
+      expect(await stored(page)).toBe(before)
+    })
   })
 })

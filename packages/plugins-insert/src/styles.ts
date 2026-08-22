@@ -45,6 +45,48 @@ export const INSERT_CSS = `
    whole element, so the player could be inserted and never edited again. Stored
    HTML is serialized from the node, so the real page is unaffected. */
 .ol-img-resize video { pointer-events: none; }
+/* ...until the author asks for one. The node view puts this class on a single
+   selected video and takes it off when the selection moves on, so at most one
+   player is live at a time. Specificity, not !important: one class more than the
+   rule above, and after it. */
+.ol-img-resize.ol-media-live video { pointer-events: auto; }
+
+/* The activation gesture: our button, not the engine's -- Firefox routes the
+   whole of a <video controls> into its native chrome, so a listener on the
+   element never hears the pointerdown. Present only while the node is selected,
+   so the first click on a video is still the one that selects it. */
+.ol-media-play {
+  box-sizing: border-box;
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px; height: 44px; padding: 0;
+  border: 2px solid var(--openleaf-color-surface, #fff);
+  border-radius: 50%;
+  background: var(--openleaf-color-accent, #0550ae);
+  color: var(--openleaf-color-surface, #fff);
+  cursor: pointer;
+}
+/* The same trap as the insert grid above: display:flex here is an author
+   declaration and the UA's display:none for [hidden] is not, so without this
+   the button would sit on every video, selected or not. */
+.ol-media-play[hidden] { display: none; }
+.ol-media-play:focus-visible {
+  outline: 2px solid var(--openleaf-color-accent, #0550ae);
+  outline-offset: 3px;
+}
+/* A border triangle: no font can be relied on for a play glyph. */
+.ol-media-play::before {
+  content: "";
+  width: 0; height: 0;
+  margin-left: 4px;
+  border-left: 13px solid currentColor;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+}
 
 .ol-img-handle {
   position: absolute; right: 0; bottom: 0;
