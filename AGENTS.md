@@ -56,6 +56,20 @@ Run `node scripts/check-docs.mjs` for the integration entry points it covers
 be checked mechanically. In the PR body, summarize the documentation updates, or state why
 the change has no user-facing or contributor-facing documentation impact.
 
+## Never bump a version; do write the changelog entry
+
+Every `@openleaf-editor/*` package shares one version, and the weekly release
+workflow owns it -- `.github/workflows/release.yml` bumps all fifteen manifests
+and rolls `## Unreleased` into a dated section every Monday. A version edited in
+a feature branch is a merge conflict with the next release and nothing else.
+
+What a behaviour change does owe: an entry under `## Unreleased` in
+`CHANGELOG.md`, in the same pull request. The release refuses to publish a week
+where commits landed and that section is empty, so skipping it does not save
+work, it moves the work to whoever is looking at a red release run on Monday.
+
+Details in `docs/releasing.md`.
+
 ## Do not trust a green e2e run against a server you did not start
 
 The Playwright config reuses an existing server outside CI. Two things keep that

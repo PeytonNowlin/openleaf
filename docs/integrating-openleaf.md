@@ -6,9 +6,15 @@ path below, and preserve its existing package manager, framework conventions,
 form handling, and test commands.
 
 > [!WARNING]
-> OpenLeaf is currently beta. Use the `@beta` release channel, keep every
-> `@openleaf-editor/*` package on the same version, and review the
+> OpenLeaf is currently beta. Use the `@beta` release channel -- a new beta
+> publishes most Mondays -- keep every `@openleaf-editor/*` package on the same
+> version, and review the
 > [known limitations](../README.md#project-status) before production use.
+
+No `@openleaf-editor/*` package runs an install-time script, so npm 12's
+`allowScripts`-off default needs no `npm approve-scripts` entry for OpenLeaf.
+Releases are published from CI by trusted publishing, so they carry provenance
+attestations that `npm audit signatures` verifies.
 
 ## Choose the integration
 

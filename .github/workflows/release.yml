@@ -1,0 +1,244 @@
+name: Release
+
+# The weekly beta release, unattended.
+#
+# Mondays at 15:23 UTC. The time is picked so a failure is visible: mid-morning
+# US Eastern, in working hours, rather than the small hours where a red run sits
+# unread until the next one joins it. The minute is off the hour for the same
+# reason ci.yml's nightly is -- cron on the hour queues behind everybody else's.
+#
+# What makes an unattended publish defensible here rather than reckless:
+#
+#   - It publishes to the `beta` tag on an 0.x line. There is no stable channel
+#     to break, and `docs/integrating-openleaf.md` already tells integrators the
+#     channel moves.
+#   - It runs the FULL gate, all three engines, not the `--quick` chromium form
+#     that pull requests get. A weekly release is exactly where WebKit is worth
+#     the minutes, and nothing publishes if it fails.
+#   - It refuses to release a week where nothing landed, and refuses a week
+#     where things landed but nobody wrote a changelog entry (bump.mjs throws).
+#   - The version bump is committed and tagged BEFORE the publish, and pushed
+#     after. See the ordering note further down; it is the difference between a
+#     failed publish leaving no trace and it leaving a tag for a version that
+#     does not exist.
+#
+# Actions are pinned to full commit SHAs, same rule and same reasoning as
+# ci.yml. The trailing comment is the version each SHA corresponds to.
+on:
+  schedule:
+    - cron: '23 15 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run the gate and a publish dry run, write nothing to npm or git'
+        type: boolean
+        default: false
+      version:
+        description: 'Explicit version (default: next X.Y.Z-beta.N). Required when the line moves.'
+        type: string
+        required: false
+
+permissions:
+  contents: write # the bump commit, the tag, and the GitHub release
+  # Trusted publishing. npm exchanges this workflow's OIDC token for a
+  # short-lived credential scoped to this repository and this workflow file, so
+  # the publish needs no long-lived npm token at all -- and npm attaches a
+  # provenance attestation automatically, with no `--provenance` flag.
+  #
+  # This is not merely nicer than a token, it is the direction npm is closing
+  # off the alternative: as of 2026-07-31 a 2FA-bypass granular token can no
+  # longer change package access, maintainers, or trusted-publishing config, and
+  # around January 2027 it loses direct publish entirely -- its publishing
+  # surface drops to staging a publish that a human approves with 2FA. A weekly
+  # unattended release cannot answer a 2FA prompt, so OIDC is the only form of
+  # this workflow that still runs next year.
+  id-token: write
+
+# Never two releases at once, and never cancel one in flight: a run killed
+# between `npm publish` and `git push` is the one state nothing here can clean
+# up automatically.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish beta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          # Full history: the "did anything land" check reads the last release
+          # tag, and a shallow clone has no tags to read.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          # Writes an .npmrc containing `_authToken=${NODE_AUTH_TOKEN}`. That
+          # placeholder is left unresolved on the publish step, which is what we
+          # want -- pnpm drops an unresolved placeholder and falls through to
+          # OIDC (pnpm#11513, fixed 2026-05-15, so keep `packageManager` at or
+          # above the pnpm 11 release that carries it). The token is supplied
+          # only to the dist-tag step below, which OIDC cannot cover.
+          registry-url: 'https://registry.npmjs.org'
+
+      # Skip a quiet week.
+      #
+      # Without this, a week with no commits still burns a beta number on an
+      # identical build -- npm would reject the republish of an unchanged
+      # version, but only after the bump was already committed and tagged.
+      #
+      # `git describe` is the source of truth rather than the version in
+      # package.json, because those two have already disagreed once: 0.1.0-beta.2
+      # is in the tree with no `v0.1.0-beta.2` tag. Reading tags means the first
+      # run of this workflow measures from the last tag that actually exists.
+      - name: Anything to release?
+        id: changed
+        run: |
+          last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -z "$last" ]; then
+            echo "no v* tag found; treating everything as unreleased"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          count=$(git rev-list --count "$last..HEAD")
+          echo "$count commit(s) since $last"
+          if [ "$count" -eq 0 ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "last=$last" >> "$GITHUB_OUTPUT"
+
+      - name: Nothing to release
+        if: steps.changed.outputs.release != 'true'
+        run: echo "No commits since ${{ steps.changed.outputs.last }}. Skipping this week."
+
+      - run: pnpm install --frozen-lockfile
+        if: steps.changed.outputs.release == 'true'
+
+      # Fail before the gate, not half way through the publish.
+      #
+      # A package the registry has never seen cannot have a trusted publisher
+      # attached, and an OIDC publish of one is the handshake npm rejects -- with
+      # the same opaque 404 it returns for a genuinely broken trust
+      # relationship. `scripts/registry-preflight.mjs` carries the longer story.
+      - name: Every package exists on the registry
+        if: steps.changed.outputs.release == 'true'
+        run: node scripts/registry-preflight.mjs
+
+      - name: Install browsers
+        if: steps.changed.outputs.release == 'true'
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+
+      # The full gate -- build, typecheck of src AND tests, unit, fidelity, e2e
+      # in all three engines, the dist-dependency and schema-singleton guards,
+      # the docs guard, SSR imports of every published entry point, bundle
+      # budgets. `scripts/verify.mjs` is that list; this workflow does not keep
+      # a second copy of it, for the reasons written at the top of that file.
+      - name: pnpm verify (chromium, firefox, webkit)
+        if: steps.changed.outputs.release == 'true'
+        run: node scripts/verify.mjs
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report-release
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Bump versions and roll the changelog
+        id: bump
+        if: steps.changed.outputs.release == 'true'
+        run: |
+          node scripts/bump.mjs ${{ inputs.version && format('--version={0}', inputs.version) || '' }}
+
+      # Commit and tag locally, publish, then push.
+      #
+      # This order is the whole recovery story. Publishing first and pushing
+      # after means a push failure leaves the registry ahead of the repository
+      # with no record of which version shipped. Pushing first means a publish
+      # failure leaves a tag and a bump commit on main for a version that was
+      # never published, and the next run measures from that tag and skips.
+      #
+      # Committing locally and pushing last makes a failed publish a no-op: the
+      # runner is discarded and main is untouched.
+      - name: Commit and tag
+        if: steps.changed.outputs.release == 'true' && !inputs.dry_run
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name 'openleaf-release[bot]'
+          git config user.email 'peyton.nowlin@theaamgroup.com'
+          # Explicit paths, not `git add -A`: the gate that just ran leaves
+          # playwright-report/, test-results/ and pnpm-publish-summary.json in
+          # the tree, and a release commit is exactly two things.
+          git add CHANGELOG.md packages/*/package.json
+          # Signed off, same rule as every other commit in this repo -- CI's
+          # Sign-off job only walks pull requests, but a release commit that
+          # breaks the invariant is still a release commit that breaks it.
+          git commit -s -m "release: v$VERSION"
+          git tag -a "v$VERSION" -m "v$VERSION"
+
+      # Deliberately NO npm token in this step's environment. pnpm prefers an
+      # OIDC exchange over a static token when one is available, but leaving the
+      # token out means a broken trust configuration fails the release instead of
+      # quietly falling back to token auth and publishing without provenance --
+      # which is the failure you find out about in January 2027, when the
+      # fallback stops existing.
+      #
+      # Every package needs its own trusted publisher on npmjs.com, pointing at
+      # this repository and the workflow FILENAME (`release.yml`, not the path).
+      # See docs/releasing.md.
+      - name: Publish to npm (trusted publishing, OIDC)
+        if: steps.changed.outputs.release == 'true'
+        run: |
+          # `--no-git-checks` because pnpm otherwise refuses to publish from a
+          # branch it does not consider the publish branch, and the runner's
+          # tree carries the uncommitted bump on a dry run.
+          pnpm -r --filter "./packages/**" publish \
+            --access public --tag beta --no-git-checks \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      # `npm publish --tag beta` sets exactly one tag, and npm only assigns
+      # `latest` implicitly on a package's first publish -- so without this,
+      # `npm install @openleaf-editor/element` keeps installing 0.1.0-beta.0.
+      # The long version of that story is at the top of scripts/dist-tags.mjs.
+      #
+      # This is the one step OIDC cannot do: the credential npm mints from the
+      # trust exchange is good for `publish` and `stage publish` and nothing
+      # else, so moving a dist-tag still needs a real token. It is a granular
+      # token scoped to @openleaf-editor, and it is a pre-1.0 artifact -- once
+      # `latest` tracks a stable line, publishes set it implicitly and this step
+      # and its secret both go away.
+      - name: Point latest and beta at the new version
+        if: steps.changed.outputs.release == 'true' && !inputs.dry_run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: node scripts/dist-tags.mjs
+
+      - name: Push the bump and the tag
+        if: steps.changed.outputs.release == 'true' && !inputs.dry_run
+        run: git push origin HEAD:main --follow-tags
+
+      # The changelog section this release just closed, verbatim, as the release
+      # notes. Reusing it rather than generating notes from commit subjects is
+      # the point of insisting `## Unreleased` is non-empty.
+      - name: GitHub release
+        if: steps.changed.outputs.release == 'true' && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          awk -v v="## $VERSION " '
+            index($0, v) == 1 { capture = 1; next }
+            capture && /^## / { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          gh release create "v$VERSION" \
+            --title "v$VERSION" --notes-file release-notes.md --prerelease
