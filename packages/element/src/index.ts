@@ -50,6 +50,7 @@ import {
   coreSchema,
   createRegisteredPlugins,
   insertImage,
+  isolatingSelectionPlugin,
   nonEditablePlugin,
   onEditorPluginsChange,
   onSchemaExtensionsChange,
@@ -462,6 +463,7 @@ export class OpenLeafEditor extends HTMLElementBase {
       keymap(buildKeymap()),
       keymap(baseKeymap),
       nonEditablePlugin(),
+      isolatingSelectionPlugin(),
       disclosurePlugin(),
     ]
     if (this.getAttribute('autolink') !== 'false') {

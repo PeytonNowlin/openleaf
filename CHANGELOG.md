@@ -12,6 +12,17 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **A selection spanning a `<blockquote>` into a following `<details>` no longer
+  throws on the next keystroke, corrupts the document, or loses undo.** Firefox
+  and WebKit report a `TextSelection` whose endpoints sit on opposite sides of
+  an isolating boundary; `replaceSelection` then tries to join `details` onto
+  `blockquote` and throws. Core now clamps that selection to the anchor's side
+  (the same thing Chromium already does natively) for every isolating node, and
+  refuses to run a replace that would throw, so a failure cannot rewrite the
+  document outside history.
+
 ### Added
 
 - **Typography toolbar controls in `@openleaf-editor/ui`** — font family, font

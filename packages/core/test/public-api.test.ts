@@ -87,6 +87,11 @@ const EXPECTED_EXPORTS = [
   // click on placing a caret, so the browser's own disclosure toggle never fires
   // and a collapsed <details> had no gesture that could open it.
   'disclosurePlugin',
+  // A TextSelection that straddles an isolating node (blockquote into details)
+  // makes replace throw and the DOM-derived repair cannot be undone. This is
+  // the clamp that Chromium already does natively.
+  'isolatingSelectionPlugin', 'clampIsolatingTextSelection', 'innermostIsolatingDepth',
+  'textSelectionCrossesIsolating',
   // `formatParts` splits a format token into the element and the class it names.
   // The element half used to be parsed and discarded, so `h2=Section` set
   // class="h2" on a paragraph rather than making it a heading.

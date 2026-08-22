@@ -1,3 +1,4 @@
+import { history, undo } from 'prosemirror-history'
 import { TextSelection, type Command, EditorState } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import {
@@ -7,6 +8,7 @@ import {
   coreSchema,
   insertHorizontalRule,
   insertImage,
+  isolatingSelectionPlugin,
   isMarkActive,
   isNodeActive,
   parseHtml,
@@ -185,6 +187,31 @@ describe('block commands', () => {
       5,
     )
     expect(html(run(state, toggleBlockquote))).toBe('<ul><li><p>item</p></li></ul>')
+  })
+
+  it('does not throw when a selection spans a quote into details (#130)', () => {
+    let state = EditorState.create({
+      doc: parseHtml(
+        '<blockquote><p>quote</p></blockquote><details open><summary>s</summary><p>body</p></details>',
+      ),
+      plugins: [history(), isolatingSelectionPlugin()],
+    })
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3, 12)))
+    expect(() => {
+      state = state.apply(state.tr.insertText('X'))
+    }).not.toThrow()
+    expect(html(state)).toContain('<p>body</p></details>')
+    let undone: EditorState | null = null
+    undo(state, (tr) => {
+      undone = state.apply(tr)
+    })
+    expect(html(undone)).toBe(
+      serializeHtml(
+        parseHtml(
+          '<blockquote><p>quote</p></blockquote><details open><summary>s</summary><p>body</p></details>',
+        ),
+      ),
+    )
   })
 
   it('toggles a code block on and off', () => {
