@@ -48,6 +48,13 @@ entries below say so explicitly when they do.
   public API.
 - The core bundle's gzip budget rises to 110 KB, measured at 108.0.
 
+### Fixed
+
+- **`clearFormatting` keeps per-run language marks.** Links and `dir` already
+  survived because they are content, not appearance; `lang` is the same fact
+  modelled as a mark, so stripping it silently broke WCAG 3.1.2 and lost
+  pronunciation, hyphenation, and `:lang()` for that phrase.
+
 ## 0.1.0-beta.2 - 2026-08-19
 
 The formatting and structure release. Five new packages, so read the install
