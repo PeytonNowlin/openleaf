@@ -248,9 +248,9 @@ const ratio = width / height   // division, not a regex
 <h3>What the server would receive</h3>
 <div class="out" id="output" aria-live="off"></div>
 <p class="subtitle" style="margin:.5rem 0 0">
-  Updated on every change. This is the value of the bound
-  <code>&lt;textarea&gt;</code>, so existing server code reading
-  <code>$_POST['body']</code> keeps working untouched.
+  Updated from <code>openleaf:change</code>. This is the HTML that OpenLeaf
+  flushes to the bound <code>&lt;textarea&gt;</code> before submission, so existing
+  server code reading <code>$_POST['body']</code> keeps working untouched.
 </p>
 
 <h2 id="word">Paste from Microsoft Word</h2>

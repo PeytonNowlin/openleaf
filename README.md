@@ -73,6 +73,24 @@ semantic HTML.
 
 ## Quick start
 
+### Installing with a coding agent
+
+Give the agent the canonical [OpenLeaf integration guide](docs/integrating-openleaf.md).
+It includes a framework decision table, package and plugin rules, server-side
+sanitization requirements, working examples, and a verification checklist. A
+copyable request is:
+
+> Integrate OpenLeaf into this application. First read
+> https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/docs/integrating-openleaf.md,
+> inspect the existing stack and conventions, choose the matching integration,
+> preserve the current package manager and form or state architecture, and run
+> the application's relevant checks when finished.
+
+The published demo also exposes [`/llms.txt`](https://peytonnowlin.github.io/openleaf/llms.txt)
+as a concise, machine-readable index of the authoritative documentation.
+
+### Install manually
+
 Install the custom element from the beta release channel:
 
 ```bash
@@ -96,10 +114,11 @@ Then bind the editor to a textarea in an ordinary form:
 </form>
 ```
 
-The textarea is updated whenever the document changes and immediately before
+The textarea is updated shortly after document changes and synchronously before
 form submission. Set its initial value to load existing HTML. When rendering
 stored HTML inside a textarea from a server template, escape it for the textarea
-context.
+context. Listen to `openleaf:change` and read `event.detail.value` when code
+needs the current HTML immediately.
 
 > [!IMPORTANT]
 > Editor output is untrusted input. Always sanitize submitted HTML on the server;
@@ -281,6 +300,8 @@ package owns, so on its own there is no control to reach it through.
 
 ## Documentation
 
+- [Integration guide](docs/integrating-openleaf.md) — framework selection,
+  installation, security requirements, working examples, and verification
 - [API reference](docs/api-reference.md) — the element's attributes,
   properties, and `openleaf:*` events.
 - [Authoring plugins](docs/authoring-plugins.md) — schema extensions, toolbar

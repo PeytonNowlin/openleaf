@@ -55,10 +55,10 @@ jobs:
         # is byte-identical to the one developed against locally.
         run: node demo/build.mjs
 
-      - name: Fail if the bundle is missing
+      - name: Fail if the bundle or documentation index is missing
         # An empty or partial deploy would replace a working site with a broken
         # one, and Pages has no automatic rollback.
-        run: test -s demo/openleaf.min.js && test -s demo/assets/openleaf-logo.png
+        run: test -s demo/openleaf.min.js && test -s demo/assets/openleaf-logo.png && test -s demo/llms.txt
 
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
