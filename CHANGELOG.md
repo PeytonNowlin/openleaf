@@ -12,6 +12,16 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **A `<figcaption>` outside a `<figure>` no longer grows the document by two
+  empty paragraphs on every save.** The caption node is inline (because a
+  modelled figure holds inline content), and the HTML parser closes an open
+  `<p>` at `figcaption`, so wrapping an orphan in a paragraph made the next
+  parse insert empty paragraphs with no fixed point. The parse rule now only
+  matches inside a figure; an orphan is preserved as a block atom and
+  round-trips without wrapping. Nested figures are unchanged.
+
 ### Added
 
 - **Typography toolbar controls in `@openleaf-editor/ui`** — font family, font

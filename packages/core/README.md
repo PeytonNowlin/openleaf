@@ -49,7 +49,9 @@ That is why the schema is larger than it might look: `<table>`, `<figure>`,
 all modelled here rather than in an opt-in plugin. Not because every deployment
 edits them, but because a node type that is absent is content that becomes an
 atom -- and "we kept your tables and you may not touch them" is not something you
-can tell a CMS with a fifteen-year archive.
+can tell a CMS with a fifteen-year archive. A `<figcaption>` is only a modelled
+node inside a modelled `<figure>`; outside one it is that same atom, so it is
+never emitted inside a `<p>` the next parse would split.
 
 The editing chrome for those things is opt-in. The storage format is not.
 

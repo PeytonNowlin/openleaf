@@ -536,6 +536,12 @@ export const unknownInline: NodeSpec = {
       getAttrs(dom) {
         const el = dom as Element
         if (isLosslesslyUnwrappable(el)) return false
+        // `figcaption` closes an open `<p>` on the next parse. Claiming it
+        // here would serialize it inside a paragraph and grow the document
+        // by two empty paragraphs on every save. Decline so unknownBlock
+        // takes it as a block atom -- the same answer as an orphaned caption
+        // at the top of the document. See figcaption in structure.ts.
+        if (el.nodeName.toLowerCase() === 'figcaption') return false
         return { html: scrub(el), tag: el.nodeName.toLowerCase() }
       },
     },
