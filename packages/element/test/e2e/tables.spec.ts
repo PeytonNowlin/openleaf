@@ -355,3 +355,95 @@ test.describe('an unbounded colspan cannot hang the tab', () => {
     await expect.poll(() => value(page)).toContain('xy')
   })
 })
+
+/**
+ * `readonly`, for the paths that are not behind ProseMirror's `editable` gate.
+ *
+ * Typing, paste, drop and the keymaps are gated by `editable`, and the toolbar
+ * and the element's own menus check the attribute themselves. The table context
+ * menu is bound directly on `view.dom` -- deliberately, so cell-selection
+ * handling in `prosemirror-tables` cannot swallow the event first -- and that is
+ * exactly what took it out of the gate. It opened with all fourteen entries live
+ * on a read-only table, and Delete row worked. Shift+F10 fires `contextmenu`
+ * too, so it was reachable from the keyboard.
+ *
+ * In a real browser rather than only in jsdom, because the whole question is
+ * whether a real secondary click reaches a real listener.
+ */
+test.describe('a read-only table', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(WITH_TABLES)
+    await expect(editor(page)).toBeVisible()
+    await page.evaluate(() => {
+      document.querySelector('openleaf-editor')!.setAttribute('readonly', '')
+    })
+  })
+
+  test('opens no context menu on a secondary click', async ({ page }) => {
+    await editor(page).getByText('North').click({ button: 'right' })
+    await expect(page.getByRole('menu', { name: 'Table' })).toBeHidden()
+  })
+
+  test('opens none from the keyboard either', async ({ page }) => {
+    await editor(page).getByText('North').click()
+    await page.keyboard.press('Shift+F10')
+    await expect(page.getByRole('menu', { name: 'Table' })).toBeHidden()
+  })
+
+  test('keeps every row, which Delete row used to take', async ({ page }) => {
+    const before = await value(page)
+    await editor(page).getByText('North').click({ button: 'right' })
+    const menu = page.getByRole('menu', { name: 'Table' })
+    if (await menu.isVisible()) {
+      await menu.getByRole('menuitem', { name: 'Delete row' }).click()
+    }
+    expect(await value(page)).toBe(before)
+    expect(await value(page)).toContain('North')
+  })
+
+  test('dismisses a menu that was open when readonly arrived', async ({ page }) => {
+    await page.evaluate(() => {
+      document.querySelector('openleaf-editor')!.removeAttribute('readonly')
+    })
+    await editor(page).getByText('North').click({ button: 'right' })
+    const menu = page.getByRole('menu', { name: 'Table' })
+    await expect(menu).toBeVisible()
+    await page.evaluate(() => {
+      document.querySelector('openleaf-editor')!.setAttribute('readonly', '')
+    })
+    await expect(menu).toBeHidden()
+  })
+
+  /*
+   * The point of refusing, which the menu-by-name assertions above do not reach.
+   *
+   * The plugin's listener returning early is not the whole story: the element's
+   * own `contextmenu` listener is on the same event, it recognised the same
+   * table, and it opened the generic "Editor menu" and called
+   * `preventDefault()`. So the browser's menu -- the copy and inspect that is
+   * the entire reason a read-only reader wants a secondary click -- was still
+   * taken away, and the reader was offered a list of edit items that `invoke`
+   * refuses to run. Asserting on the plugin's menu by name passed straight
+   * through that, which is why this asserts on `defaultPrevented` instead.
+   */
+  test('leaves the browser its own menu, rather than swapping in a dead one', async ({ page }) => {
+    await page.evaluate(() => {
+      ;(window as { __prevented?: boolean | null }).__prevented = null
+      document.addEventListener('contextmenu', (event) => {
+        ;(window as { __prevented?: boolean | null }).__prevented = event.defaultPrevented
+      })
+    })
+    await editor(page).getByText('North').click({ button: 'right' })
+    await expect(page.getByRole('menu', { name: 'Table' })).toBeHidden()
+    await expect(page.getByRole('menu', { name: 'Editor menu' })).toBeHidden()
+    expect(
+      await page.evaluate(() => (window as { __prevented?: boolean | null }).__prevented),
+    ).toBe(false)
+  })
+
+  test('opens no editor menu from the keyboard either', async ({ page }) => {
+    await editor(page).getByText('North').click()
+    await page.keyboard.press('Shift+F10')
+    await expect(page.getByRole('menu', { name: 'Editor menu' })).toBeHidden()
+  })
+})
