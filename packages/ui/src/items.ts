@@ -385,10 +385,14 @@ export function registerDefaultItems(): void {
     run: ({ view, host }) => {
       selectLink(view)
       const existing = activeLink(view.state)
+      // All five modelled attrs: dropping `rel`/`id` here is how Save used to
+      // wipe them even when the author changed nothing (#108).
       void promptForLink(host.ownerDocument, {
         href: (existing?.['href'] as string | undefined) ?? '',
         title: (existing?.['title'] as string | undefined) ?? null,
         target: (existing?.['target'] as string | undefined) ?? null,
+        rel: (existing?.['rel'] as string | undefined) ?? null,
+        id: (existing?.['id'] as string | undefined) ?? null,
       }, host).then((result) => {
         if (!result) {
           view.focus()

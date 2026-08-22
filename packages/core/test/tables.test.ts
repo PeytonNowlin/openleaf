@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { DOMSerializer, type Node as PMNode } from 'prosemirror-model'
 import { coreSchema, parseHtml, serializeHtml } from '../src/index.js'
+import { tableCaptionNodeView } from '../src/tables.js'
 
 const roundTrip = (html: string): string => serializeHtml(parseHtml(html))
 
@@ -204,17 +206,40 @@ describe('caption and colgroup survive the round trip', () => {
   })
 
   it('never writes contenteditable into saved HTML', () => {
-    // toDOM marks a caption inert for the EDITOR, because it renders inside the
-    // editable area but outside the node's contentDOM. That attribute is ours,
-    // not the author's, and must not end up in what the server stores.
+    // toDOM used to mark a caption inert for the EDITOR. Clipboard serialization
+    // shares toDOM and is not serializeHtml, so that marker leaked. It is not
+    // the author's, and must not end up in what the server stores.
     const out = roundTrip('<table><caption>Q1</caption><tr><td>A</td></tr></table>')
     expect(out).not.toContain('contenteditable')
   })
 
-  it('marks the caption inert when the EDITOR renders it', () => {
-    // The other half of the pair above. Serialization must not emit
-    // contenteditable; the editor must, or a caret gets into a region
-    // ProseMirror does not manage and the typing is reverted on redraw.
+  it('does not emit contenteditable from toDOM, including clipboard serialization', () => {
+    // Issue #105: DOMSerializer.serializeFragment is what clipboardSerializer
+    // uses, and it does not wrap withSerializationDocument.
+    const doc = parseHtml('<table><caption>Cap</caption><tr><td>a</td></tr></table>')
+    const frag = DOMSerializer.fromSchema(coreSchema()).serializeFragment(doc.content, { document })
+    const host = document.createElement('div')
+    host.appendChild(frag)
+    expect(host.innerHTML).not.toContain('contenteditable')
+    expect(roundTrip(host.innerHTML)).not.toContain('contenteditable')
+  })
+
+  it('drops a leaked contenteditable marker when parsing furniture', () => {
+    const out = roundTrip(
+      '<table><caption contenteditable="false">Q1</caption><tr><td>A</td></tr></table>',
+    )
+    expect(out).toContain('<caption>Q1</caption>')
+    expect(out).not.toContain('contenteditable')
+  })
+
+  it('keeps author contenteditable on a caption descendant', () => {
+    const html =
+      '<table><caption><span contenteditable="false">locked</span></caption><tr><td>A</td></tr></table>'
+    expect(roundTrip(html)).toContain('contenteditable="false"')
+    expect(roundTrip(html)).toContain('locked')
+  })
+
+  it('does not stamp the caption inert from toDOM', () => {
     const doc = parseHtml('<table><caption>Q1</caption><tr><td>A</td></tr></table>')
     let table: unknown = null
     doc.descendants((node) => {
@@ -224,10 +249,24 @@ describe('caption and colgroup survive the round trip', () => {
     const toDOM = coreSchema().nodes['table']?.spec.toDOM
     expect(toDOM).toBeDefined()
     const rendered = toDOM?.(table as never) as { dom: Element; contentDOM?: Element }
-    // A content hole inside a later child is why this returns an element rather
-    // than an output-spec array at all.
     expect(rendered.contentDOM?.nodeName).toBe('TBODY')
     const caption = rendered.dom.querySelector('caption')
+    expect(caption?.hasAttribute('contenteditable')).toBe(false)
+    expect(caption?.textContent).toBe('Q1')
+  })
+
+  it('marks the caption inert when the EDITOR node view renders it', () => {
+    // Serialization must not emit contenteditable; the editor must, or a caret
+    // gets into a region ProseMirror does not manage and the typing is reverted.
+    const doc = parseHtml('<table><caption>Q1</caption><tr><td>A</td></tr></table>')
+    let table: PMNode | undefined
+    doc.descendants((node) => {
+      if (node.type.name === 'table') table = node
+      return true
+    })
+    expect(table).toBeDefined()
+    const rendered = tableCaptionNodeView(table!)
+    const caption = (rendered.dom as Element).querySelector('caption')
     expect(caption?.getAttribute('contenteditable')).toBe('false')
     expect(caption?.textContent).toBe('Q1')
   })

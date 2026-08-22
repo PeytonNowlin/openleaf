@@ -42,7 +42,7 @@ test.describe('the glyph pickers', () => {
     await editor(page).click()
     await toolbar(page).getByRole('button', { name: 'Emoji' }).click()
     await expect(emojiGrid(page)).toBeVisible()
-    await emojiGrid(page).getByRole('button', { name: 'Fire' }).click()
+    await emojiGrid(page).getByRole('gridcell', { name: 'Fire' }).click()
     await expect.poll(() => value(page)).toContain('🔥')
     await expect(emojiGrid(page)).toBeHidden()
   })
@@ -61,6 +61,36 @@ test.describe('the glyph pickers', () => {
     expect(panel!.y).toBeGreaterThanOrEqual(trigger!.y)
     // Clamped to the viewport, so allow slack rather than demanding exactness.
     expect(Math.abs(panel!.x - trigger!.x)).toBeLessThan(240)
+  })
+
+  test('are a grid a reader can navigate with the arrow keys', async ({ page }) => {
+    // role="menu" with button children was invalid ARIA, and the only keydown
+    // handler swallowed Tab and ignored the arrows, so only the first glyph
+    // was reachable from the keyboard. Same model as the colour picker.
+    await toolbar(page).getByRole('button', { name: 'Character map' }).click()
+    await expect(charmapGrid(page)).toBeVisible()
+    await expect(charmapGrid(page)).toHaveAttribute('role', 'grid')
+    await expect(charmapGrid(page).getByRole('gridcell')).toHaveCount(40)
+
+    const cell = (name: string) => charmapGrid(page).getByRole('gridcell', { name })
+    await expect(cell('Copyright')).toBeFocused()
+    await page.keyboard.press('ArrowRight')
+    await expect(cell('Registered')).toBeFocused()
+    await expect(charmapGrid(page)).toBeVisible()
+    await page.keyboard.press('End')
+    await expect(cell('Bullet')).toBeFocused()
+    await page.keyboard.press('Home')
+    await expect(cell('Copyright')).toBeFocused()
+    await page.keyboard.press('ArrowDown')
+    await expect(cell('Ellipsis')).toBeFocused()
+  })
+
+  test('let Tab leave the grid instead of closing it from the first glyph', async ({ page }) => {
+    const button = toolbar(page).getByRole('button', { name: 'Character map' })
+    await button.click()
+    await expect(charmapGrid(page).getByRole('gridcell', { name: 'Copyright' })).toBeFocused()
+    await page.keyboard.press('Tab')
+    await expect(charmapGrid(page).getByRole('gridcell', { name: 'Copyright' })).not.toBeFocused()
   })
 
   test('close on Escape and return focus to the trigger', async ({ page }) => {

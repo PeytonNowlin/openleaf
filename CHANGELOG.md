@@ -12,6 +12,16 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Security
+
+- **`.docx` zip-bomb guard fails closed on forged ZIP64 sentinels.** Writing
+  `0xffff` into the EOCD entry count, or `0xffffffff` into the directory offset,
+  used to make `declaredUncompressedBytes` return `null`, which
+  `assertImportableDocx` treated as allowed. Those sentinels are now honoured
+  only when a ZIP64 EOCD locator sits immediately before the EOCD, an unreadable
+  directory is refused, inflated bytes are bounded independently of what the
+  archive declares, and local records that are not packed immediately before the
+  central directory are refused so a partial inflate walk cannot undercount.
 ### Fixed
 
 - **Selecting an image and opening the Image dialog no longer wipes alt text,
@@ -19,6 +29,23 @@ entries below say so explicitly when they do.
   now prefills from the selected image (including a figure's caption) and
   updates that node in place, so alt text is editable after insert. The control
   reads "Edit image" while an image is selected.
+- **Preserved block elements inside a blockquote or list item no longer grow
+  two empty paragraphs on every save.** `unknownInline` declined only
+  lossless wrappers, so a `<div class="callout">` (or any other tag the HTML
+  parser closes a `<p>` for) became an inline atom, serialized inside a
+  paragraph, and split on the next parse. The catch-all now consults a shared
+  `CLOSES_OPEN_P` list and leaves those tags to `unknownBlock`. Custom
+  elements and genuine inline debris (`<ins>`, `<o:p>`) are unchanged. A
+  second serialize is a fixed point.
+- **A `<figcaption>` outside a `<figure>` no longer grows the document by two
+  empty paragraphs on every save.** The caption node is inline (because a
+  modelled figure holds inline content), and the HTML parser closes an open
+  `<p>` at `figcaption`, so wrapping an orphan in a paragraph made the next
+  parse insert empty paragraphs with no fixed point. The parse rule now only
+  matches inside a figure; an orphan in a paragraph is preserved as a block
+  atom and round-trips without wrapping. A caption already inside an
+  inline-only container such as `summary` stays inline so the details block
+  is not escaped. Nested figures are unchanged.
 - **A selection spanning a `<blockquote>` into a following `<details>` no longer
   throws on the next keystroke, corrupts the document, or loses undo.** Firefox
   and WebKit report a `TextSelection` whose endpoints sit on opposite sides of
@@ -79,6 +106,39 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Table captions no longer leak `contenteditable="false"` into clipboard
+  or saved HTML.** The editor still stamps that marker on the live caption so
+  a caret cannot enter it (`CaptionedTableView` when the table bundle is
+  loaded, `tableCaptionNodeView` when it is not). Serializers share `toDOM`
+  and never run node views, so the marker is not emitted; parse also drops
+  it from the caption element itself if contaminated markup is opened.
+  Core no longer installs a competing `table` node view, which would have
+  shadowed column resizing.
+- **`t()` no longer returns `Object.prototype` members as translations.** Catalog
+  lookup is a Map, so a `formats="p.lead=constructor"` label (or `toString`,
+  `__proto__`, …) stays the source string instead of rendering
+  `function Object() { [native code] }` in the dropdown the moment a locale
+  catalog is registered. `{placeholder}` substitution uses `Object.hasOwn`, so
+  `{constructor}` in a template is the same class of miss.
+- **`clearFormatting` keeps per-run language marks.** Links and `dir` already
+  survived because they are content, not appearance; `lang` is the same fact
+  modelled as a mark, so stripping it silently broke WCAG 3.1.2 and lost
+  pronunciation, hyphenation, and `:lang()` for that phrase.
+- **`safeClassList` no longer silently deletes Tailwind, non-ASCII, or
+  leading-digit class tokens.** It used an ASCII-identifier regex, so
+  `md:w-1/2`, `p-[10px]`, `2col`, and `größe-mittel` were dropped whenever
+  another token survived beside them. An image with only `class="md:w-1/2"`
+  kept it as residue; the same class next to `rounded` or `ol-float-left`
+  was gone. Class tokens now follow the same rule as `id`: a non-empty run
+  of non-whitespace. Deduplication, alignment-class exclusion, and the
+  empty-list `null` contract are unchanged. Which classes a deployment
+  stores remains a sanitize policy, not a schema filter.
+- **Editing a link through the dialog no longer deletes `rel` or `id`.** Issue
+  #14 restored `target`; Save still synthesized `rel` from the new-window
+  checkbox and wrote `id: null`. Author tokens (`nofollow`, `sponsored`, `me`,
+  …) are kept, `noopener noreferrer` is merged in for `_blank` rather than
+  replacing the attribute, and `id` round-trips. The same `run` handler backs
+  the toolbar, context menu, and selection toolbar.
 - **`resolveLanguage` no longer returns `Object.prototype` members.** The alias
   table was a plain object, so `<code class="language-constructor">` resolved to
   the `Object` constructor: `canHighlight` reported true (`undefined !== null`)
@@ -154,6 +214,24 @@ package on this version -- they pin each other exactly.
 
 ### Fixed
 
+- **A read-only editor was mutated by clicking a `<summary>`.**
+  `disclosurePlugin` toggles `<details>` through `handleDOMEvents.click`, which
+  ProseMirror runs before its `view.editable` gate -- the guard typing, paste,
+  drop and the keymaps get for free. The handler wrote `open` on the node, so
+  `.value` changed and `openleaf:change` fired on a document the host had marked
+  read-only; a host that autosaves on that event, or `FormBridge.sync()` at
+  submit, persisted the fold. The click now returns without a transaction when
+  `!view.editable`, same flag the table context menu and the media resize handle
+  already consult, and does not `preventDefault`, so the browser can still expand
+  a collapsed section on a non-contenteditable surface without writing the node.
+- **Only the first glyph in the character map and emoji picker was reachable
+  from the keyboard.** The panel intercepted Tab (and closed) and had no arrow
+  keys, so 1 of 40 characters and 1 of 32 emoji could be chosen without a
+  mouse. It also used `role="menu"` with plain button children, which is
+  invalid ARIA -- a reader announced a menu with no items. Both pickers now
+  use the colour picker's grid: `role="grid"` / `row` / `gridcell`, a roving
+  tabindex, and Arrow / Home / End navigation. Tab is left alone so it leaves
+  the widget.
 - **Autolink marks the URL, not the punctuation after it.** The href already
   dropped trailing `.,;:!?`, but the mark still covered the full match, `]`
   survived into the href, and a parenthesised `www.` URL never matched. One

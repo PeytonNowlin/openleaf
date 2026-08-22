@@ -32,7 +32,7 @@ SSR does not throw.
 | Attribute | Values | Effect |
 | --- | --- | --- |
 | `for` | a textarea's `id` | Binds to that textarea. Rebinding only happens once the view exists. |
-| `readonly` | present / absent | Renders but does not allow editing. Mirrors onto the source textarea, and covers the context menus and the media resize handle as well as typing, paste and drop. |
+| `readonly` | present / absent | Renders but does not allow editing. Mirrors onto the source textarea, and covers the context menus, the media resize handle, and clicking a `<summary>` as well as typing, paste and drop. |
 | `skin` | `midnight`, `paper`, `contrast`, `compact` | Named appearance. |
 | `theme` | `light`, `dark`, `auto` | Anything that is not `light` or `dark` is treated as `auto`, which follows the visitor's system setting. |
 | `lang` | a BCP-47 tag | UI locale, matched against `registerTranslations()`. Relabels the **toolbars only** — not the menubar, floating toolbars or context menu. |
@@ -182,11 +182,12 @@ with no build step and no second install.
 | `registerToolbarItem(spec)` | Add or replace a toolbar control. |
 | `registerIcons(paths)` | Register icon paths for your controls. |
 | `registerStyles(css)` | Adopt a stylesheet for your controls. |
-| `t(source)` | Translate a string. See [authoring-plugins.md §4.10](authoring-plugins.md#410-every-string-you-ship-is-a-translatable-string). |
+| `t(source)` | Translate a string. Missing keys, and names that only exist on `Object.prototype` (`constructor`, `toString`, …), fall back to `source`. See [authoring-plugins.md §4.10](authoring-plugins.md#410-every-string-you-ship-is-a-translatable-string). |
+| `fill(template, values)` | Replace `{name}` placeholders from own properties of `values`. |
 | `registerTranslations(locale, messages)` | Overlay a locale catalog. |
 | `setUiLocale(locale)` | Set the document-wide UI locale. |
 | `registerImageUploader(fn)` | Handle image uploads. `element.imageUploader` overrides it for one editor. |
-| `registerFilePicker(fn)` | Supply a file browser for link and image dialogs. |
+| `registerFilePicker(fn)` | Supply a file browser for link and image dialogs. The link dialog (`promptForLink`) keeps `rel` and `id` on Save: window-safety tokens are merged, author tokens are not replaced. |
 | `registerLinkList(items)` / `registerImageList(items)` | Preset lists for those dialogs. |
 | `registerImageClasses(items)` | Preset classes offered in the image dialog. The dialog prefills from a selected image (`promptForImage({ existing })`) and the `image` item updates in place via `updateImage`. |
 | `normalizePastedHtml(html)` | Word/Google Docs paste cleanup, usable outside the editor. |

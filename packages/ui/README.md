@@ -29,6 +29,11 @@ registry -- and a node built by one is not a node type the other accepts.
 [`@openleaf-editor/element`](../element) already uses this. Import it directly to
 register your own toolbar control, or to reuse the dialogs and icons.
 
+`promptForLink` is the one path behind the Link toolbar button, the link
+context menu, and the selection toolbar. On Save it keeps the mark's `id` and
+merges window-safety tokens (`noopener noreferrer`) into `rel` instead of
+replacing author tokens.
+
 ## Registering a control
 
 ```ts
