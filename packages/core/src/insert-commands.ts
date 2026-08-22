@@ -1,8 +1,10 @@
 import { Slice } from 'prosemirror-model'
-import type { Command } from 'prosemirror-state'
+import type { Command, EditorState } from 'prosemirror-state'
+import { NodeSelection } from 'prosemirror-state'
 import { canInsertNode, markIn, nodeIn } from './command-helpers.js'
 import { safeAllowList, safeEmbedSrc } from './embed.js'
 import { parseHtml } from './html.js'
+import { serializationTarget } from './preserve.js'
 import { IMAGE_ALIGN_CLASSES, safeClassList, safeId, type ImageAlign } from './tokens.js'
 import { isSafeUrl } from './url.js'
 
@@ -208,8 +210,25 @@ export function insertDetails(summaryText = 'Details'): Command {
   }
 }
 
-export interface MediaAttrs {
+/**
+ * One `<source>` row from the insert-media dialog.
+ *
+ * `type` is the MIME hint a browser uses to pick between alternatives without
+ * downloading them. It is optional because a dialog cannot always know it, and
+ * a `<source>` with no type is still a working source.
+ */
+export interface MediaSource {
   src: string
+  type?: string | null
+}
+
+export interface MediaAttrs {
+  /**
+   * Optional, because a player may carry its addresses in `sources` instead --
+   * the source-only shape `mediaAttrs` accepts on parse. One or the other must
+   * be present; a player with neither has nothing to play.
+   */
+  src?: string | null
   title?: string | null
   width?: string | null
   height?: string | null
@@ -217,11 +236,48 @@ export interface MediaAttrs {
   poster?: string | null
   allow?: string | null
   allowfullscreen?: boolean
+  /** Alternative addresses, stored as the `<source>` children of the player. */
+  sources?: readonly MediaSource[]
+}
+
+/**
+ * Build the `furniture` string for a set of alternative sources.
+ *
+ * Built through the DOM rather than by concatenating markup: `setAttribute`
+ * escapes the value for us, so an address containing a quote cannot break out
+ * of the attribute and become new markup. `appendMediaFurniture` scrubs this
+ * again on the way into the document -- this is the belt, that is the braces.
+ */
+function mediaFurniture(sources: readonly MediaSource[] | undefined): string | null {
+  if (!sources || sources.length === 0) return null
+  const doc = serializationTarget()
+  let html = ''
+  for (const source of sources) {
+    if (!isSafeUrl(source.src)) continue
+    const el = doc.createElement('source')
+    el.setAttribute('src', source.src)
+    const type = source.type?.trim()
+    if (type) el.setAttribute('type', type)
+    html += el.outerHTML
+  }
+  return html || null
+}
+
+/**
+ * Does this player have anything to play?
+ *
+ * The schema declines a `<video>` with neither `src` nor sources, so a command
+ * that builds one would insert a node the next parse throws away.
+ */
+function playable(attrs: MediaAttrs, furniture: string | null): boolean {
+  if (furniture !== null) return true
+  return typeof attrs.src === 'string' && isSafeUrl(attrs.src)
 }
 
 export function insertVideo(attrs: MediaAttrs): Command {
   return (state, dispatch) => {
-    if (!isSafeUrl(attrs.src) || !canInsert(state, 'video')) return false
+    const furniture = mediaFurniture(attrs.sources)
+    if (!playable(attrs, furniture) || !canInsert(state, 'video')) return false
     if (dispatch) {
       const type = nodeIn(state, 'video')
       if (!type) return false
@@ -229,7 +285,8 @@ export function insertVideo(attrs: MediaAttrs): Command {
         state.tr
           .replaceSelectionWith(
             type.create({
-              src: attrs.src,
+              src: attrs.src && isSafeUrl(attrs.src) ? attrs.src : null,
+              furniture,
               title: attrs.title ?? null,
               width: attrs.width ?? null,
               height: attrs.height ?? null,
@@ -246,7 +303,8 @@ export function insertVideo(attrs: MediaAttrs): Command {
 
 export function insertAudio(attrs: MediaAttrs): Command {
   return (state, dispatch) => {
-    if (!isSafeUrl(attrs.src) || !canInsert(state, 'audio')) return false
+    const furniture = mediaFurniture(attrs.sources)
+    if (!playable(attrs, furniture) || !canInsert(state, 'audio')) return false
     if (dispatch) {
       const type = nodeIn(state, 'audio')
       if (!type) return false
@@ -254,13 +312,120 @@ export function insertAudio(attrs: MediaAttrs): Command {
         state.tr
           .replaceSelectionWith(
             type.create({
-              src: attrs.src,
+              src: attrs.src && isSafeUrl(attrs.src) ? attrs.src : null,
+              furniture,
               title: attrs.title ?? null,
               controls: attrs.controls !== false,
             }),
           )
           .scrollIntoView(),
       )
+    }
+    return true
+  }
+}
+
+/** The media node kinds the insert-media dialog can round-trip. */
+const MEDIA_KINDS: ReadonlySet<string> = new Set(['video', 'audio', 'iframe'])
+
+export interface SelectedMedia {
+  kind: 'video' | 'audio' | 'iframe'
+  /** Document position of the node, for `setNodeMarkup`. */
+  pos: number
+  src: string | null
+  title: string | null
+  width: string | null
+  height: string | null
+  controls: boolean
+  poster: string | null
+  /** Alternative addresses read back out of the stored `<source>` children. */
+  sources: MediaSource[]
+}
+
+/**
+ * The media node the selection is on, or null.
+ *
+ * Only a `NodeSelection` counts. A caret beside a player is not a selection of
+ * it, and treating it as one would let the dialog silently retarget: the author
+ * clicks away, opens the dialog expecting to insert, and edits the node they
+ * had selected a moment ago instead.
+ */
+export function selectedMedia(state: EditorState): SelectedMedia | null {
+  const selection = state.selection
+  if (!(selection instanceof NodeSelection)) return null
+  const node = selection.node
+  const name = node.type.name
+  if (!MEDIA_KINDS.has(name)) return null
+  const attrs = node.attrs
+  return {
+    kind: name as 'video' | 'audio' | 'iframe',
+    pos: selection.from,
+    src: (attrs['src'] as string | null) ?? null,
+    title: (attrs['title'] as string | null) ?? null,
+    width: (attrs['width'] as string | null) ?? null,
+    height: (attrs['height'] as string | null) ?? null,
+    controls: attrs['controls'] === true,
+    poster: (attrs['poster'] as string | null) ?? null,
+    sources: readMediaSources(attrs['furniture'] as string | null),
+  }
+}
+
+/**
+ * Read stored furniture back into dialog rows.
+ *
+ * Parsed rather than regexed: the string is markup, and the dialog has to show
+ * the author the same addresses the document will play.
+ */
+function readMediaSources(furniture: string | null): MediaSource[] {
+  if (!furniture) return []
+  const doc = serializationTarget()
+  const tpl = doc.createElement('template')
+  tpl.innerHTML = furniture
+  const out: MediaSource[] = []
+  for (const el of Array.from((tpl as HTMLTemplateElement).content.children)) {
+    if (el.nodeName.toLowerCase() !== 'source') continue
+    const src = el.getAttribute('src')
+    if (src === null) continue
+    out.push({ src, type: el.getAttribute('type') })
+  }
+  return out
+}
+
+/**
+ * Update the selected media node in place.
+ *
+ * `setNodeMarkup` rather than replace-with-a-new-node: the position and the
+ * selection both survive, so the player the author was editing is still the
+ * selected one afterwards and a second edit does not have to find it again.
+ */
+export function updateMedia(attrs: MediaAttrs): Command {
+  return (state, dispatch) => {
+    const current = selectedMedia(state)
+    if (!current) return false
+    const furniture = current.kind === 'iframe' ? null : mediaFurniture(attrs.sources)
+    // An iframe has no `<source>` children, so its address is the only thing it
+    // can play and an unsafe one leaves nothing to fall back to.
+    if (current.kind === 'iframe') {
+      if (!attrs.src || !safeEmbedSrc(attrs.src)) return false
+    } else if (!playable(attrs, furniture)) return false
+    if (dispatch) {
+      const node = state.doc.nodeAt(current.pos)
+      if (!node) return false
+      const next: Record<string, unknown> = { ...node.attrs }
+      if (current.kind === 'iframe') {
+        next['src'] = safeEmbedSrc(attrs.src as string)
+      } else {
+        next['src'] = attrs.src && isSafeUrl(attrs.src) ? attrs.src : null
+        next['furniture'] = furniture
+      }
+      next['title'] = attrs.title ?? null
+      if ('controls' in node.attrs) next['controls'] = attrs.controls !== false
+      if ('width' in node.attrs) next['width'] = attrs.width ?? null
+      if ('height' in node.attrs) next['height'] = attrs.height ?? null
+      if ('poster' in node.attrs) {
+        next['poster'] = attrs.poster && isSafeUrl(attrs.poster) ? attrs.poster : null
+      }
+      dispatch(state.tr.setNodeMarkup(current.pos, undefined, next))
     }
     return true
   }
