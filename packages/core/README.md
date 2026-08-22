@@ -36,6 +36,8 @@ import { coreSchema, parseHtml, serializeHtml, roundTrip } from '@openleaf-edito
 
 roundTrip('<p style="text-align:center">hi</p>')
 // '<p style="text-align:center">hi</p>'
+roundTrip('<p><strong class="brand-name">Acme</strong></p>')
+// '<p><strong class="brand-name">Acme</strong></p>'
 ```
 
 ## The preservation layer is the point
@@ -44,12 +46,19 @@ A schema-based editor has to decide what it understands, and the usual answer fo
 everything else is to delete it. `core` keeps unrecognised markup as a
 selectable, movable atom that round-trips byte-for-byte instead.
 
+Block-level tags the HTML parser will not keep inside a `<p>` (`div`, `section`,
+and the rest of `CLOSES_OPEN_P`) are stored as block atoms even when they appear
+inside a blockquote or list item. Treating them as inline would wrap them in a
+paragraph the next parse splits, growing two empty paragraphs on every save.
+
 That is why the schema is larger than it might look: `<table>`, `<figure>`,
 `<details>`, `<video>`, allowlisted `<iframe>` embeds and the typography marks are
 all modelled here rather than in an opt-in plugin. Not because every deployment
 edits them, but because a node type that is absent is content that becomes an
 atom -- and "we kept your tables and you may not touch them" is not something you
-can tell a CMS with a fifteen-year archive.
+can tell a CMS with a fifteen-year archive. A `<figcaption>` is only a modelled
+node inside a modelled `<figure>`; outside one it is that same atom, so it is
+never emitted inside a `<p>` the next parse would split.
 
 The editing chrome for those things is opt-in. The storage format is not.
 
@@ -66,9 +75,31 @@ activeFontFamily(view.state)                          // 'Georgia' | null
 setFontFamily('Georgia')(view.state, view.dispatch)   // boolean
 ```
 
+`selectedImage` / `updateImage` (and the matching media pair) are how the
+insert-image control also edits: a `NodeSelection` on the picture or its
+`<figure>` prefills the dialog, and Save uses `setNodeMarkup` so caption,
+class and dimensions survive.
+
 A predicate returns `null` for a mixed selection rather than the first value it
 finds -- a dropdown showing "Georgia" for a range that is half Georgia would be
 worse than showing nothing.
+
+Block-type commands (`setHeading`, `setParagraph`, `toggleCodeBlock`) refuse a
+textblock whose content the destination cannot hold. A captioned `<figure>` is a
+textblock in the schema (`content: 'inline+'`) but not a paragraph: converting it
+used to produce an `<h2>` holding an image and a `<figcaption>`, and
+`toggleCodeBlock` threw. `canInsert` also stops at an isolating node, so
+inserting an `<hr>` cannot split a figure.
+
+## Isolating selections
+
+If you construct a ProseMirror editor yourself, install
+`isolatingSelectionPlugin()` next to `history()` and the keymap. A
+`TextSelection` that starts in a `<blockquote>` and ends inside a following
+`<details>` otherwise throws on the next keystroke (`Cannot join details onto
+blockquote`), and the recovery rewrites the document with no undo entry.
+`<openleaf-editor>` already installs the plugin. Details are in
+[authoring-plugins.md §4.11](../../docs/authoring-plugins.md#411-isolating-nodes-clamp-the-selection-at-their-boundary).
 
 ## Safety
 

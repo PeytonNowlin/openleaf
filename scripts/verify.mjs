@@ -254,7 +254,8 @@ const boundariesOk = step('package boundaries (peers, one ProseMirror, sideEffec
 
 // 8. The integration guide is the entry point for people and coding agents, and
 //    demo/llms.txt is its published discovery path. Keep their local targets,
-//    package coverage, and load-bearing event contract checkable.
+//    package coverage, load-bearing event contract, and the measured size
+//    claims in authoring-plugins.md / the demo checkable.
 const docsOk = step('integration documentation', () => {
   run('node', ['scripts/check-docs.mjs'])
 })

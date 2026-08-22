@@ -36,7 +36,8 @@
  *   autoresize       grow the canvas with the document
  *   toolbar-overflow collapse overflowing groups into a More menu
  *   readonly         render but do not allow editing
- *   autolink         `false` to stop URLs becoming links on space or Enter
+ *   autolink         `false` to stop URLs becoming links on space or Enter.
+ *                    Trailing prose punctuation is left outside the mark.
  *   visualaids       `false` to hide the guides for invisible structure
  *   aria-label       accessible name for the editable region
  *
@@ -50,6 +51,7 @@ import {
   coreSchema,
   createRegisteredPlugins,
   insertImage,
+  isolatingSelectionPlugin,
   nonEditablePlugin,
   onEditorPluginsChange,
   onSchemaExtensionsChange,
@@ -462,6 +464,7 @@ export class OpenLeafEditor extends HTMLElementBase {
       keymap(buildKeymap()),
       keymap(baseKeymap),
       nonEditablePlugin(),
+      isolatingSelectionPlugin(),
       disclosurePlugin(),
     ]
     if (this.getAttribute('autolink') !== 'false') {
@@ -1264,7 +1267,9 @@ export class OpenLeafEditor extends HTMLElementBase {
    * a property worth more: every image OpenLeaf inserts has been described or
    * explicitly marked decorative. Uploading in parallel would mean either
    * stacking modal dialogs or inserting undescribed images and asking later --
-   * and "later" has no UI, because there is no image-editing dialog yet.
+   * and "later" used to have no UI. The image toolbar item now edits a selected
+   * image, including its alt text; a drop still describes each file before
+   * insert because a drop is not an edit of whatever happens to be selected.
    */
   async #uploadImages(view: EditorView, files: readonly File[]): Promise<void> {
     const uploader = imageUploaderFor(this)

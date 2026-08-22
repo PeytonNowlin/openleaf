@@ -38,7 +38,7 @@ function run(state: EditorState, command: Command): string | null {
 
 describe('structure round-trips', () => {
   const cases: Array<[string, string]> = [
-    ['details', '<details><summary>More</summary><p>body</p></details>'],
+    ['details', '<details><summary>More</summary>body</details>'],
     ['figure', '<figure><img src="/a.png" alt="x"><figcaption>cap</figcaption></figure>'],
     ['heading id', '<h2 id="sec">Title</h2>'],
     ['named anchor', '<p><a id="here"></a>text</p>'],
@@ -57,6 +57,123 @@ describe('structure round-trips', () => {
       expect(roundTrip(html)).toBe(html)
     })
   }
+})
+
+/**
+ * An orphaned `<figcaption>` used to be parsed as inline, wrapped in a
+ * paragraph, then split by the HTML parser on the next load -- two empty
+ * `<p>`s per save, with no fixed point. The regression is unbounded growth,
+ * so the pin is a convergence assertion rather than a single round trip:
+ * the first pass may normalize, the second must not change anything.
+ */
+describe('an orphaned figcaption does not grow the document', () => {
+  const orphans = [
+    '<figcaption>c</figcaption>',
+    '<p><figcaption>c</figcaption></p>',
+    '<p>a<figcaption>c</figcaption></p>',
+    '<p>a<figcaption>c</figcaption>b</p>',
+    '<p>x</p><figcaption>c</figcaption>',
+    '<div><figcaption>c</figcaption></div>',
+    '<p>Report</p><p><figcaption>Table 1</figcaption></p>',
+  ]
+
+  for (const html of orphans) {
+    it(`converges for ${html}`, () => {
+      const once = roundTrip(html)
+      const twice = roundTrip(once)
+      expect(twice).toBe(once)
+    })
+  }
+
+  it('does not keep adding empty paragraphs across many saves', () => {
+    let html = '<figcaption>c</figcaption>'
+    const afterFirst = roundTrip(html)
+    for (let i = 0; i < 6; i++) html = roundTrip(html)
+    expect(html).toBe(afterFirst)
+  })
+
+  it('keeps a figcaption inside summary as inline rather than escaping details', () => {
+    const html = '<details><summary><figcaption>Label</figcaption></summary><p>Body</p></details>'
+    const once = roundTrip(html)
+    const twice = roundTrip(once)
+    expect(twice).toBe(once)
+    expect(once).toContain('Label')
+    expect(once).toContain('<details>')
+    expect(once).toContain('<summary>')
+  })
+})
+
+describe('named_anchor does not eat wrapped text', () => {
+  const cases: Array<[string, string]> = [
+    ['wrapped text', '<p><a id="jump">Jump target with text</a></p>'],
+    ['heading wrap', '<h2><a id="sec">Section One</a></h2>'],
+    ['empty jump target', '<p><a id="jump"></a>heading text</p>'],
+    ['a[name] unmatched', '<p><a name="old">Old style anchor text</a></p>'],
+  ]
+
+  for (const [name, html] of cases) {
+    it(`${name} survives a round trip`, () => {
+      expect(roundTrip(html)).toBe(html)
+    })
+  }
+
+  it('id and href is a link, not the empty atom', () => {
+    const html = '<p><a id="jump" href="/x">both</a></p>'
+    const out = roundTrip(html)
+    expect(out).toContain('href="/x"')
+    expect(out).toContain('id="jump"')
+    expect(out).toContain('>both</a>')
+    const doc = parseHtml(html)
+    let namedAnchors = 0
+    doc.descendants((node) => {
+      if (node.type.name === 'named_anchor') namedAnchors += 1
+    })
+    expect(namedAnchors).toBe(0)
+  })
+
+  it('keeps heading text when an <a id> wraps the heading', () => {
+    const html =
+      '<h2><a id="revenue">Revenue by region</a></h2><p>Body text.</p><p>See <a href="#revenue">the section</a>.</p>'
+    const out = roundTrip(html)
+    expect(out).toContain('Revenue by region')
+    expect(out).toBe(html)
+
+    const doc = parseHtml(html)
+    let namedAnchors = 0
+    let linkMarks = 0
+    doc.descendants((node) => {
+      if (node.type.name === 'named_anchor') namedAnchors += 1
+      if (node.marks.some((mark) => mark.type.name === 'link' && mark.attrs['id'] === 'revenue')) {
+        linkMarks += 1
+      }
+    })
+    expect(namedAnchors).toBe(0)
+    expect(linkMarks).toBeGreaterThan(0)
+    expect(doc.textContent).toContain('Revenue by region')
+  })
+
+  it('still models a genuinely empty <a id> as the atom', () => {
+    const doc = parseHtml('<p><a id="jump"></a>heading text</p>')
+    let namedAnchors = 0
+    doc.descendants((node) => {
+      if (node.type.name === 'named_anchor') namedAnchors += 1
+    })
+    expect(namedAnchors).toBe(1)
+  })
+
+  it('treats whitespace-only <a id> as the empty atom', () => {
+    const html = '<p><a id="jump">\n</a>Heading</p>'
+    const doc = parseHtml(html)
+    let namedAnchors = 0
+    doc.descendants((node) => {
+      if (node.type.name === 'named_anchor') namedAnchors += 1
+    })
+    expect(namedAnchors).toBe(1)
+    expect(doc.textContent).toContain('Heading')
+    const out = roundTrip(html)
+    expect(out).toContain('id="jump"')
+    expect(out).toContain('Heading')
+  })
 })
 
 describe('unsafe media is dropped', () => {

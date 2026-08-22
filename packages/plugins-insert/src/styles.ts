@@ -2,7 +2,6 @@ export const INSERT_CSS = `
 .ol-insert-grid {
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: repeat(8, 2rem);
   gap: 2px;
   padding: 8px;
   max-height: 16rem;
@@ -28,6 +27,16 @@ export const INSERT_CSS = `
  */
 .ol-insert-grid[hidden] { display: none; }
 .ol-insert-grid[popover]:not(:popover-open) { display: none; }
+/*
+ * Must match GLYPH_COLUMNS in glyphs.ts: the keyboard model steps by this
+ * width, and a CSS-only column count would let arrows land in a different
+ * cell than the one the reader announced.
+ */
+.ol-insert-row {
+  display: grid;
+  grid-template-columns: repeat(8, 2rem);
+  gap: 2px;
+}
 .ol-insert-grid button {
   box-sizing: border-box;
   width: 2rem; height: 2rem; margin: 0; padding: 0;

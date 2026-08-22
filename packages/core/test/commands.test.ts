@@ -1,17 +1,24 @@
+import { history, undo } from 'prosemirror-history'
 import { TextSelection, type Command, EditorState } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import {
   activeHeadingLevel,
   activeLink,
   canInsert,
+  clearFormatting,
   coreSchema,
+  indent,
   insertHorizontalRule,
   insertImage,
+  isolatingSelectionPlugin,
   isMarkActive,
   isNodeActive,
   parseHtml,
   serializeHtml,
+  setHeading,
   setLink,
+  setParagraph,
+  setTextAlign,
   toggleBlockquote,
   toggleBold,
   toggleBulletList,
@@ -137,7 +144,7 @@ describe('heading commands', () => {
 describe('list commands', () => {
   it('wraps a paragraph in a bullet list', () => {
     const state = cursorAt(stateFrom('<p>item</p>'), 3)
-    expect(html(run(state, toggleBulletList))).toBe('<ul><li><p>item</p></li></ul>')
+    expect(html(run(state, toggleBulletList))).toBe('<ul><li>item</li></ul>')
   })
 
   it('unwraps an existing bullet list', () => {
@@ -147,17 +154,17 @@ describe('list commands', () => {
 
   it('wraps in an ordered list', () => {
     const state = cursorAt(stateFrom('<p>item</p>'), 3)
-    expect(html(run(state, toggleOrderedList))).toBe('<ol><li><p>item</p></li></ol>')
+    expect(html(run(state, toggleOrderedList))).toBe('<ol><li>item</li></ol>')
   })
 
   it('converts a bullet list to an ordered list', () => {
     const state = cursorAt(stateFrom('<ul><li><p>item</p></li></ul>'), 4)
-    expect(html(run(state, toggleOrderedList))).toBe('<ol><li><p>item</p></li></ol>')
+    expect(html(run(state, toggleOrderedList))).toBe('<ol><li>item</li></ol>')
   })
 
   it('converts an ordered list to a bullet list', () => {
     const state = cursorAt(stateFrom('<ol><li><p>item</p></li></ol>'), 4)
-    expect(html(run(state, toggleBulletList))).toBe('<ul><li><p>item</p></li></ul>')
+    expect(html(run(state, toggleBulletList))).toBe('<ul><li>item</li></ul>')
   })
 
   it('reports list membership', () => {
@@ -170,7 +177,7 @@ describe('list commands', () => {
 describe('block commands', () => {
   it('wraps in a blockquote and lifts back out', () => {
     const quoted = run(cursorAt(stateFrom('<p>quote me</p>'), 3), toggleBlockquote)
-    expect(html(quoted)).toBe('<blockquote><p>quote me</p></blockquote>')
+    expect(html(quoted)).toBe('<blockquote>quote me</blockquote>')
 
     const unquoted = run(cursorAt(quoted!, 4), toggleBlockquote)
     expect(html(unquoted)).toBe('<p>quote me</p>')
@@ -184,7 +191,32 @@ describe('block commands', () => {
       stateFrom('<blockquote><ul><li><p>item</p></li></ul></blockquote>'),
       5,
     )
-    expect(html(run(state, toggleBlockquote))).toBe('<ul><li><p>item</p></li></ul>')
+    expect(html(run(state, toggleBlockquote))).toBe('<ul><li>item</li></ul>')
+  })
+
+  it('does not throw when a selection spans a quote into details (#130)', () => {
+    let state = EditorState.create({
+      doc: parseHtml(
+        '<blockquote><p>quote</p></blockquote><details open><summary>s</summary><p>body</p></details>',
+      ),
+      plugins: [history(), isolatingSelectionPlugin()],
+    })
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3, 12)))
+    expect(() => {
+      state = state.apply(state.tr.insertText('X'))
+    }).not.toThrow()
+    expect(html(state)).toContain('<p>body</p></details>')
+    let undone: EditorState | null = null
+    undo(state, (tr) => {
+      undone = state.apply(tr)
+    })
+    expect(html(undone)).toBe(
+      serializeHtml(
+        parseHtml(
+          '<blockquote><p>quote</p></blockquote><details open><summary>s</summary><p>body</p></details>',
+        ),
+      ),
+    )
   })
 
   it('toggles a code block on and off', () => {
@@ -254,6 +286,48 @@ describe('images', () => {
   })
 })
 
+describe('clearFormatting', () => {
+  it('declines when the selection is only a language run', () => {
+    const state = selectAll(
+      stateFrom('<p>The French say <span lang="fr">bonjour</span> often</p>'),
+    )
+    expect(run(state, clearFormatting)).toBeNull()
+    expect(serializeHtml(state.doc)).toBe(
+      '<p>The French say <span lang="fr">bonjour</span> often</p>',
+    )
+  })
+
+  it('strips strong around a language run and leaves the language', () => {
+    const state = selectAll(
+      stateFrom('<p>The French say <strong><span lang="fr">bonjour</span></strong> often</p>'),
+    )
+    expect(html(run(state, clearFormatting))).toBe(
+      '<p>The French say <span lang="fr">bonjour</span> often</p>',
+    )
+  })
+
+  it('declines when the selection is only a link', () => {
+    const state = selectAll(stateFrom('<p>see <a href="/x">here</a> now</p>'))
+    expect(run(state, clearFormatting)).toBeNull()
+    expect(serializeHtml(state.doc)).toBe('<p>see <a href="/x">here</a> now</p>')
+  })
+
+  it('keeps direction, which is content', () => {
+    const state = selectAll(stateFrom('<p dir="rtl" style="text-align:center">שלום</p>'))
+    const out = html(run(state, clearFormatting))
+    expect(out).toContain('dir="rtl"')
+    expect(out).not.toContain('text-align')
+    expect(out).toContain('שלום')
+  })
+
+  it('declines when the selection is only language and structure', () => {
+    const state = selectAll(
+      stateFrom('<p dir="rtl">The French say <span lang="fr">bonjour</span></p>'),
+    )
+    expect(run(state, clearFormatting)).toBeNull()
+  })
+})
+
 describe('canInsert', () => {
   it('permits an image inside a paragraph', () => {
     expect(canInsert(cursorAt(stateFrom('<p>x</p>'), 2), 'image')).toBe(true)
@@ -261,5 +335,88 @@ describe('canInsert', () => {
 
   it('refuses an image inside a code block, where inline nodes are not allowed', () => {
     expect(canInsert(cursorAt(stateFrom('<pre><code>x</code></pre>'), 2), 'image')).toBe(false)
+  })
+
+  it('refuses a horizontal rule inside an isolating figure', () => {
+    expect(canInsert(cursorInCaption(stateFrom(CAPTIONED_FIGURE)), 'horizontal_rule')).toBe(false)
+  })
+})
+
+const CAPTIONED_FIGURE =
+  '<figure><img src="/openleaf-mark.png" alt="a"><figcaption>Caption text</figcaption></figure><p>after</p>'
+
+function cursorInCaption(state: EditorState): EditorState {
+  let pos: number | null = null
+  state.doc.descendants((node, nodePos) => {
+    if (node.type.name !== 'figcaption') return true
+    pos = nodePos + 1
+    return false
+  })
+  if (pos === null) throw new Error('expected a figcaption')
+  return cursorAt(state, pos)
+}
+
+describe('block commands inside a figure caption', () => {
+  /*
+   * `figure` is `content: 'inline+'`, so `isTextblock` is true. Without a
+   * `validContent` guard, setHeading retyped the figure as an <h2> holding an
+   * image and a figcaption, toggleCodeBlock threw, and insertHorizontalRule
+   * split the figure in two. Issue #131.
+   */
+  const commands: Array<[string, Command, boolean]> = [
+    ['toggleCodeBlock', toggleCodeBlock, false],
+    ['setHeading(2)', setHeading(2), false],
+    ['setParagraph', setParagraph, false],
+    ['insertHorizontalRule', insertHorizontalRule, false],
+    ['toggleBlockquote', toggleBlockquote, false],
+    ['toggleBulletList', toggleBulletList, false],
+    ['toggleOrderedList', toggleOrderedList, false],
+    ['indent', indent, false],
+    ['setTextAlign(center)', setTextAlign('center'), false],
+    ['clearFormatting', clearFormatting, false],
+  ]
+
+  for (const [name, command, shouldApply] of commands) {
+    it(`${name} is ${shouldApply ? 'enabled' : 'disabled'} and leaves the figure intact`, () => {
+      const state = cursorInCaption(stateFrom(CAPTIONED_FIGURE))
+      const before = serializeHtml(state.doc)
+      expect(command(state)).toBe(shouldApply)
+      const next = run(state, command)
+      if (shouldApply) {
+        expect(next).not.toBeNull()
+        expect(html(next)).toContain('<figure>')
+      } else {
+        expect(next).toBeNull()
+        expect(serializeHtml(state.doc)).toBe(before)
+      }
+    })
+  }
+
+  it('does not throw toggleCodeBlock at any position inside the figure', () => {
+    const state = stateFrom(CAPTIONED_FIGURE)
+    const figure = state.doc.firstChild
+    if (!figure) throw new Error('expected a figure')
+    for (let pos = 1; pos < figure.nodeSize; pos += 1) {
+      const at = cursorAt(state, pos)
+      expect(toggleCodeBlock(at)).toBe(false)
+      expect(() => {
+        toggleCodeBlock(at, () => {
+          throw new Error('dispatched')
+        })
+      }).not.toThrow()
+    }
+  })
+
+  it('keeps the figure when a range also covers a heading', () => {
+    const state = selectAll(
+      stateFrom(
+        '<h2 id="h">head</h2><figure><img src="/a.png" alt="a"><figcaption>c</figcaption></figure>',
+      ),
+    )
+    expect(() => run(state, toggleCodeBlock)).not.toThrow()
+    const out = html(run(state, toggleCodeBlock))
+    expect(out).toContain('<figure>')
+    expect(out).toContain('<figcaption>c</figcaption>')
+    expect(out).not.toContain('<h2')
   })
 })

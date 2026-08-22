@@ -165,7 +165,7 @@ outdent also sit in the Format menu and keep their keyboard shortcuts.
 | Subscript / superscript | `Mod+=` / `Mod+Shift+=`, and the F1 shortcut list |
 | Direction, language | `setDir`, `toggleDir`, `setLanguage` |
 | List style | `setListStyle` |
-| Remove all of it | `clearFormatting` |
+| Strip appearance | `clearFormatting` (keeps links, `dir`, and `lang`) |
 
 The commands are exported from `@openleaf-editor/core` and take the same
 `(state, dispatch, view)` shape as every other command, so wiring your own
@@ -202,11 +202,13 @@ and attribute-driven:
 ```
 
 - **Menubar** — `menubar` enables Edit, Insert, Format, View, and Help.
-- **Context menus** — right-click a link, image, or table. Set `contextmenu="none"` to disable.
+- **Context menus** — right-click a link, image, or table. An image offers
+  **Edit image** and prefills the dialog from the selected picture. Set
+  `contextmenu="none"` to disable.
 - **Floating toolbars** — `selection-toolbar` and `insert-toolbar`.
 - **Fullscreen, help, visual aids** — toolbar ids `fullscreen`, `help`, `visualAids`. F1 opens help.
 - **Autoresize / inline** — grow with content, or hide chrome until focus.
-- **Autolink** — URLs become links on space or Enter. Set `autolink="false"` to disable.
+- **Autolink** — URLs become links on space or Enter. Trailing sentence punctuation and unmatched `)]}'"` stay outside the mark; a balanced `)` in the path (Wikipedia-style) stays in. Set `autolink="false"` to disable.
 - **Formats** — class names from the host’s content CSS, applied to the current block.
 - **Translations** — `lang` plus `registerTranslations('fr', { Bold: 'Gras' })`.
 - **Non-editable regions** — `contenteditable="false"` in stored HTML is honoured while editing and still round-trips.
@@ -323,7 +325,10 @@ OpenLeaf applies different rules to different sources:
 
 Round-trip fixtures cover legacy CMS markup, bidirectional text, nested lists,
 tables, Word, and Google Docs. A change that reduces stored-content fidelity is
-treated as a regression even when the resulting HTML appears cleaner.
+treated as a regression even when the resulting HTML appears cleaner. The link
+dialog is part of that contract: Save merges `noopener noreferrer` onto an
+existing `rel` when the link opens in a new window, and it round-trips `id`.
+It does not replace author tokens such as `nofollow` or `sponsored`.
 
 If OpenLeaf changes or drops real-world markup from your CMS, a redacted fixture
 is one of the most useful contributions you can make. See

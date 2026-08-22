@@ -19,6 +19,7 @@ import {
   iframe,
   imageDomAttrs,
   imageParseAttrs,
+  isEmptyNamedAnchorElement,
   named_anchor,
   page_break,
   summary,
@@ -510,14 +511,14 @@ export const coreMarks: Record<string, MarkSpec> = {
         getAttrs(dom) {
           const el = dom as HTMLElement
           // Only when the span is nothing but formatting this mark can hold.
-          // A tag rule CONSUMES the element, and a mark has nowhere to put the
-          // rest of it, so claiming `<span class="hl" style="background-color:
-          // #ffff00">` deleted the class outright -- and `style="background-
-          // color:#ffff00;letter-spacing:1px"` lost the letter-spacing the same
-          // way, with no residue, because a mark is not a node and the carry
-          // mechanism never sees it. Declining leaves the element to the
-          // preservation layer, which keeps it whole. This is the same bargain
-          // `font[color]` and `span[lang]` already strike a few lines away.
+          // A tag rule CONSUMES the element. Character marks now carry leftover
+          // attributes the way nodes do, but this rule still declines a span
+          // that is more than a highlight: claiming
+          // `<span class="hl" style="background-color:#ffff00;letter-spacing:1px">`
+          // would swallow declarations other style-marks and the preservation
+          // layer are meant to see. Declining leaves the element whole. This is
+          // the same bargain `font[color]` and `span[lang]` already strike a
+          // few lines away.
           if (!isSpanOnlyStyling(el)) return false
           const fromAttr = parseDeclarations(el.getAttribute('style')).get('background-color')
           const color = safeColor(el.style.backgroundColor) ?? safeColor(fromAttr)
@@ -591,6 +592,8 @@ export const coreMarks: Record<string, MarkSpec> = {
   },
 
   language: {
+    // Content, not decoration -- the same claim `dir` makes as a node
+    // attribute. `clearFormatting` keeps this mark for that reason.
     attrs: { lang: {} },
     inclusive: false,
     parseDOM: [
@@ -614,7 +617,9 @@ export const coreMarks: Record<string, MarkSpec> = {
 
   link: {
     attrs: {
-      href: {},
+      // Null when the mark is a wrapped named destination (`<a id>` with
+      // text, no href). Empty `<a id></a>` is the `named_anchor` atom.
+      href: { default: null },
       title: { default: null },
       target: { default: null },
       rel: { default: null },
@@ -639,10 +644,30 @@ export const coreMarks: Record<string, MarkSpec> = {
           }
         },
       },
+      {
+        tag: 'a[id]',
+        getAttrs(dom) {
+          const el = dom as Element
+          if (el.hasAttribute('href')) return false
+          const id = safeId(el.getAttribute('id'))
+          if (!id) return false
+          // Empty `<a id>` belongs to `named_anchor`. This rule is the
+          // wrapped-text spelling, so the heading stays in the document.
+          if (isEmptyNamedAnchorElement(el)) return false
+          return {
+            href: null,
+            title: el.getAttribute('title'),
+            target: el.getAttribute('target'),
+            rel: el.getAttribute('rel'),
+            id,
+          }
+        },
+      },
     ],
     toDOM(node) {
       const { href, title, target, rel, id } = node.attrs
-      const attrs: Record<string, string> = { href: href as string }
+      const attrs: Record<string, string> = {}
+      if (href !== null) attrs['href'] = href as string
       if (title !== null) attrs['title'] = title as string
       if (target !== null) attrs['target'] = target as string
       if (rel !== null) attrs['rel'] = rel as string

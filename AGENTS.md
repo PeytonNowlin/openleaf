@@ -50,9 +50,10 @@ READMEs, API and security references, integration guides, examples, demo copy,
 and machine-readable indexes such as `demo/llms.txt` as applicable; updating only
 the nearest README is not enough when the same contract is documented elsewhere.
 
-Run `node scripts/check-docs.mjs` for the integration entry points it covers,
-then review the diff yourself for documentation that cannot be checked
-mechanically. In the PR body, summarize the documentation updates, or state why
+Run `node scripts/check-docs.mjs` for the integration entry points it covers
+(and the measured size claims in `docs/authoring-plugins.md` §4.5 and
+`demo/index.html`), then review the diff yourself for documentation that cannot
+be checked mechanically. In the PR body, summarize the documentation updates, or state why
 the change has no user-facing or contributor-facing documentation impact.
 
 ## Do not trust a green e2e run against a server you did not start

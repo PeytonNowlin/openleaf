@@ -2,6 +2,7 @@ import { File } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { deflateRawSync } from 'node:zlib'
 import { parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { clearFileConverters, convertFile, registerFileConverter } from '@openleaf-editor/plugins-import'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -9,6 +10,7 @@ import { createDocxConverter, type DocxImage, type DocxMammoth, type DocxOptions
 import {
   assertImportableDocx,
   declaredUncompressedBytes,
+  inflatedUncompressedBytes,
   isDocxType,
   looksLikeZip,
 } from '../src/guards.js'
@@ -235,4 +237,135 @@ describe('what a .docx has to be before mammoth reads it', () => {
     await installForTest({ limits: { maxUncompressedBytes: 1024 } })
     await expect(convertFile(docxFile(), document)).rejects.toThrow(/expands to/)
   })
+
+  it('refuses an honest archive that declares more than the expansion ceiling', async () => {
+    const file = zipAsDocx(oversizedZip())
+    await expect(
+      assertImportableDocx(file, { maxBytes: 25 * 1024 * 1024, maxUncompressedBytes: 1024 }),
+    ).rejects.toThrow(/expands to/)
+  })
+
+  it('refuses a forged ZIP64 entry-count sentinel without a locator', async () => {
+    // Two bytes in the EOCD used to make declaredUncompressedBytes return null,
+    // which the caller treated as allowed. The archive is still a readable ZIP.
+    const bytes = oversizedZip({ entries: 0xffff })
+    const file = zipAsDocx(bytes)
+    expect(declaredUncompressedBytes(new Uint8Array(bytes).buffer as ArrayBuffer)).toBeNull()
+    await expect(
+      assertImportableDocx(file, { maxBytes: 25 * 1024 * 1024, maxUncompressedBytes: 1024 }),
+    ).rejects.toThrow(/directory could not be read/)
+  })
+
+  it('refuses local records separated by padding so inflate cannot undercount', async () => {
+    const bytes = oversizedZip({ padAfterFirstLocal: 1 })
+    const buffer = new Uint8Array(bytes).buffer as ArrayBuffer
+    const declared = declaredUncompressedBytes(buffer)
+    expect(declared).not.toBeNull()
+    expect(declared!).toBeGreaterThan(1024)
+    expect(await inflatedUncompressedBytes(buffer, 256 * 1024 * 1024)).toBeNull()
+    await expect(
+      assertImportableDocx(zipAsDocx(bytes), {
+        maxBytes: 25 * 1024 * 1024,
+        maxUncompressedBytes: 256 * 1024 * 1024,
+      }),
+    ).rejects.toThrow(/directory could not be read/)
+  })
+
+  it('refuses a forged ZIP64 directory-offset sentinel without a locator', async () => {
+    const bytes = oversizedZip({ directoryAt: 0xffffffff })
+    const file = zipAsDocx(bytes)
+    expect(declaredUncompressedBytes(new Uint8Array(bytes).buffer as ArrayBuffer)).toBeNull()
+    await expect(
+      assertImportableDocx(file, { maxBytes: 25 * 1024 * 1024, maxUncompressedBytes: 1024 }),
+    ).rejects.toThrow(/directory could not be read/)
+  })
 })
+
+/**
+ * Minimal ZIP of two deflated entries, built in memory so the regression never
+ * checks in a bomb. `word/document.xml` is 8 KB of spaces -- past the 1 KB
+ * ceiling the tests use, nowhere near a real expansion bomb.
+ *
+ * `entries` / `directoryAt` overwrite the EOCD fields a ZIP64 writer would set
+ * to sentinels. The central directory itself is left honest, which is the
+ * forgery: a tolerant reader still inflates the payload.
+ */
+function oversizedZip(patch: { entries?: number; directoryAt?: number; padAfterFirstLocal?: number } = {}): Buffer {
+  const types = Buffer.from(
+    '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>',
+  )
+  const document = Buffer.alloc(8 * 1024, 0x20)
+  return buildZip(
+    [
+      { name: '[Content_Types].xml', data: types },
+      { name: 'word/document.xml', data: document },
+    ],
+    patch,
+  )
+}
+
+function zipAsDocx(bytes: Buffer): globalThis.File {
+  return new File([new Uint8Array(bytes)], 'report.docx', { type: DOCX_TYPE }) as unknown as globalThis.File
+}
+
+function crc32(data: Uint8Array): number {
+  let crc = ~0
+  for (let i = 0; i < data.length; i += 1) {
+    crc ^= data[i]!
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
+    }
+  }
+  return ~crc >>> 0
+}
+
+function buildZip(
+  files: { name: string; data: Buffer }[],
+  patch: { entries?: number; directoryAt?: number; padAfterFirstLocal?: number },
+): Buffer {
+  const locals: Buffer[] = []
+  const centrals: Buffer[] = []
+  let offset = 0
+  for (const file of files) {
+    const name = Buffer.from(file.name)
+    const compressed = deflateRawSync(file.data)
+    const crc = crc32(file.data)
+    const local = Buffer.alloc(30)
+    local.writeUInt32LE(0x04034b50, 0)
+    local.writeUInt16LE(20, 4)
+    local.writeUInt16LE(8, 8)
+    local.writeUInt32LE(crc, 14)
+    local.writeUInt32LE(compressed.length, 18)
+    local.writeUInt32LE(file.data.length, 22)
+    local.writeUInt16LE(name.length, 26)
+    locals.push(Buffer.concat([local, name, compressed]))
+
+    const central = Buffer.alloc(46)
+    central.writeUInt32LE(0x02014b50, 0)
+    central.writeUInt16LE(20, 4)
+    central.writeUInt16LE(20, 6)
+    central.writeUInt16LE(8, 8)
+    central.writeUInt32LE(crc, 16)
+    central.writeUInt32LE(compressed.length, 20)
+    central.writeUInt32LE(file.data.length, 24)
+    central.writeUInt16LE(name.length, 28)
+    central.writeUInt32LE(offset, 42)
+    centrals.push(Buffer.concat([central, name]))
+    offset += 30 + name.length + compressed.length
+    if (locals.length === 1 && patch.padAfterFirstLocal) {
+      locals.push(Buffer.alloc(patch.padAfterFirstLocal))
+      offset += patch.padAfterFirstLocal
+    }
+  }
+
+  const localPart = Buffer.concat(locals)
+  const directory = Buffer.concat(centrals)
+  const eocd = Buffer.alloc(22)
+  eocd.writeUInt32LE(0x06054b50, 0)
+  const entries = patch.entries ?? files.length
+  eocd.writeUInt16LE(entries, 8)
+  eocd.writeUInt16LE(entries, 10)
+  eocd.writeUInt32LE(directory.length, 12)
+  eocd.writeUInt32LE(patch.directoryAt ?? localPart.length, 16)
+  return Buffer.concat([localPart, directory, eocd])
+}
