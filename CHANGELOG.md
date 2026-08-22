@@ -141,6 +141,11 @@ package on this version -- they pin each other exactly.
 
 ### Fixed
 
+- **Autolink marks the URL, not the punctuation after it.** The href already
+  dropped trailing `.,;:!?`, but the mark still covered the full match, `]`
+  survived into the href, and a parenthesised `www.` URL never matched. One
+  strip — including unmatched `)` / `]` — now sets both the range and the href;
+  a balanced `Foo_(bar)` keeps its closing paren.
 - **One stray `=` in the HTML source box wedged the editor unrecoverably.** The
   HTML parser accepts attribute names `setAttribute` refuses -- `<p ="v">` parses
   to one attribute literally named `="v"` -- and the schema carried those through

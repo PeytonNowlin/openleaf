@@ -36,7 +36,8 @@
  *   autoresize       grow the canvas with the document
  *   toolbar-overflow collapse overflowing groups into a More menu
  *   readonly         render but do not allow editing
- *   autolink         `false` to stop URLs becoming links on space or Enter
+ *   autolink         `false` to stop URLs becoming links on space or Enter.
+ *                    Trailing prose punctuation is left outside the mark.
  *   visualaids       `false` to hide the guides for invisible structure
  *   aria-label       accessible name for the editable region
  *
