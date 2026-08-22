@@ -22,6 +22,7 @@ import {
   addRowAfter as addRowAfterRaw,
   addRowBefore as addRowBeforeRaw,
   CellSelection,
+  deleteRow as deleteRowRaw,
   TableMap,
   toggleHeaderRow as toggleHeaderRowRaw,
 } from 'prosemirror-tables'
@@ -160,9 +161,122 @@ export function withCellScope(command: Command): Command {
 
 export const addColumnAfter = withCellScope(addColumnAfterRaw)
 export const addColumnBefore = withCellScope(addColumnBeforeRaw)
-export const addRowAfter = withCellScope(addRowAfterRaw)
-export const addRowBefore = withCellScope(addRowBeforeRaw)
+export const addRowAfter = withCellScope(maintainTableSections(addRowAfterRaw, 'after'))
+export const addRowBefore = withCellScope(maintainTableSections(addRowBeforeRaw, 'before'))
+export const deleteRow = withCellScope(maintainTableSections(deleteRowRaw, 'delete'))
 export const toggleHeaderRow = withCellScope(toggleHeaderRowRaw)
+
+/**
+ * Keep `headerRows` / `footerRows` attached to the rows that actually live in
+ * those sections.
+ *
+ * The counts are how serialize rebuilds `<thead>` and `<tfoot>` (see html.ts).
+ * Upstream row commands never touch them, so deleting the header row left
+ * `headerRows: 1` and the first data row was serialized as `<thead>`. Inserting
+ * above the header left the empty row in `<thead>` and demoted the real header
+ * into `<tbody>`. The same shift happens at `<tfoot>`.
+ *
+ * Deletes decrement the count for the section the removed rows belonged to.
+ * Inserts that would land inside a section are redirected to the nearest body
+ * slot instead: the author asked for a row, not a new header or footer.
+ */
+function maintainTableSections(
+  command: Command,
+  kind: 'before' | 'after' | 'delete',
+): Command {
+  return (state, dispatch, view) => {
+    const table = findTable(state.selection.$from)
+    if (!table) return command(state, dispatch, view)
+
+    const headerRows = (table.node.attrs['headerRows'] as number) || 0
+    const footerRows = (table.node.attrs['footerRows'] as number) || 0
+    const rowCount = table.node.childCount
+    const indices = selectedRowIndices(state, table.node, table.pos)
+
+    if (kind === 'delete') {
+      if (!dispatch) return command(state, undefined, view)
+      return command(
+        state,
+        (tr) => {
+          const mapped = tr.mapping.map(table.pos)
+          const next = tr.doc.nodeAt(mapped)
+          if (next?.type.spec['tableRole'] === 'table') {
+            let header = headerRows
+            let footer = footerRows
+            for (const index of indices) {
+              if (index < headerRows) header -= 1
+              else if (index >= rowCount - footerRows) footer -= 1
+            }
+            tr.setNodeMarkup(mapped, undefined, {
+              ...next.attrs,
+              headerRows: Math.max(0, header),
+              footerRows: Math.max(0, footer),
+            })
+          }
+          dispatch(tr)
+        },
+        view,
+      )
+    }
+
+    const rowIndex = indices[0]
+    if (rowIndex === undefined) return command(state, dispatch, view)
+
+    const natural = kind === 'before' ? rowIndex : rowIndex + 1
+    let insertAt = natural
+    if (insertAt < headerRows) insertAt = headerRows
+    if (insertAt > rowCount - footerRows) insertAt = rowCount - footerRows
+
+    if (insertAt === natural) return command(state, dispatch, view)
+    if (!dispatch) return command(state, undefined, view)
+
+    const working = stateWithRowSelection(state, table.node, table.pos, insertAt, rowCount)
+    const redirected = insertAt >= rowCount ? addRowAfterRaw : addRowBeforeRaw
+    return redirected(working, dispatch)
+  }
+}
+
+function selectedRowIndices(state: EditorState, table: Node, tablePos: number): number[] {
+  const found = new Set<number>()
+  const addFrom = ($pos: ResolvedPos) => {
+    const row = findRow($pos)
+    if (!row) return
+    const index = rowIndexAt(table, tablePos, row.pos)
+    if (index >= 0) found.add(index)
+  }
+  const { selection } = state
+  if (selection instanceof CellSelection) {
+    selection.forEachCell((_node, pos) => {
+      addFrom(state.doc.resolve(pos + 1))
+    })
+  } else {
+    addFrom(selection.$from)
+  }
+  return [...found].sort((a, b) => a - b)
+}
+
+function rowIndexAt(table: Node, tablePos: number, rowPos: number): number {
+  let offset = tablePos + 1
+  for (let i = 0; i < table.childCount; i += 1) {
+    if (offset === rowPos) return i
+    offset += table.child(i).nodeSize
+  }
+  return -1
+}
+
+function stateWithRowSelection(
+  state: EditorState,
+  table: Node,
+  tablePos: number,
+  insertAt: number,
+  rowCount: number,
+): EditorState {
+  const rowIndex = insertAt >= rowCount ? rowCount - 1 : insertAt
+  let pos = tablePos + 1
+  for (let i = 0; i < rowIndex; i += 1) pos += table.child(i).nodeSize
+  const cellPos = pos + 1
+  return state.apply(state.tr.setSelection(TextSelection.near(state.doc.resolve(cellPos + 1))))
+}
 
 export function selectedCellPositions(state: EditorState): number[] {
   const { selection } = state
