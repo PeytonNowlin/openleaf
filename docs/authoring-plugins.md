@@ -102,6 +102,15 @@ cannot opt out by forgetting. `carryUnknownAttributes: false` opts out
 explicitly, and [is security-relevant](#42-sanitization-a-new-element-that-nobody-allowed-is-a-new-element-that-dies)
 because the capture is also where `on*` handlers and unsafe URLs are filtered.
 
+The capture also refuses an attribute name that cannot be written back. The HTML
+parser accepts names `setAttribute` rejects — `<p ="v">` parses to one attribute
+literally named `="v"` — and carrying one meant the throw arrived later, in the
+middle of rendering the document. The test is the XML `Name` production rather
+than whatever the current host accepts, because browsers are laxer than the spec
+for HTML documents and jsdom is not: a name accepted in a browser session would
+otherwise throw on a jsdom server. A name a parser only produced through error
+recovery is not content anybody authored, so nothing is lost.
+
 Everything downstream of the schema is already schema-agnostic. Commands resolve
 types per call from `state.schema` and decline rather than throw when a type is
 absent; `parseHtml` and `serializeHtml` take an optional `schema` in

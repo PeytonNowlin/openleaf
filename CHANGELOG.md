@@ -98,6 +98,23 @@ package on this version -- they pin each other exactly.
 
 ### Fixed
 
+- **One stray `=` in the HTML source box wedged the editor unrecoverably.** The
+  HTML parser accepts attribute names `setAttribute` refuses -- `<p ="v">` parses
+  to one attribute literally named `="v"` -- and the schema carried those through
+  as residue and wrote them back on serialize, so the throw arrived from the
+  middle of rendering a document. Closing the source view left the source box
+  removed, `sourceMode` reporting false while the Source button still read
+  pressed, and the content host still hidden: a blank rectangle with nothing
+  clickable, toggling back throwing again, and the author's work gone. Assigning
+  such a document to `element.value` threw on assignment and `get value` threw on
+  read, so a legacy row or a hand-edited template could not be opened at all.
+  Fixed in both halves: the attribute capture now refuses a name that is not an
+  XML `Name` -- the spec's rule rather than the host's, because browsers are
+  laxer than jsdom and content stored in a browser session would otherwise throw
+  on a server -- and the source-view teardown restores the editor in a `finally`,
+  so any future failure in applying source HTML leaves a usable editor rather
+  than a blank one. A generated round-trip suite now asserts that
+  `serializeHtml(parseHtml(x))` never throws.
 - **Tables no longer discard `<caption>`, `<colgroup>` and `<col>`.** These were
   dropped on parse, so opening and saving a captioned table destroyed its caption
   text permanently. A caption is a table's accessible name, which made this an

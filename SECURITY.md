@@ -171,7 +171,9 @@ unsafe URL schemes on the way through. Setting the flag to `false` skips
 the wrapper entirely — including the filter. It exists for specs that
 model every attribute they claim and would otherwise emit duplicates; it
 is not a performance knob, and a plugin setting it is making a
-security-relevant choice.
+security-relevant choice. The same capture is where an attribute name
+that cannot be written back is refused, so opting out also opts out of
+the check that keeps `serializeHtml(parseHtml(x))` from throwing.
 
 Neither of these is a reason not to use plugins. They are the reason the
 answer to "can I load this third-party plugin?" is the same as the answer
