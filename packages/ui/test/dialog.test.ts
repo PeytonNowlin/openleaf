@@ -93,6 +93,79 @@ describe('promptForLink with a page list', () => {
   })
 })
 
+/**
+ * Issue #108: Save without changing fields must not wipe `rel` or `id`.
+ * Issue #14 restored `target`; a naive rel rewrite still dropped author tokens.
+ */
+describe('promptForLink preserves rel and id on an unchanged Save', () => {
+  it('keeps rel tokens on a same-window link', async () => {
+    const pending = promptForLink(document, {
+      href: 'https://a.example',
+      title: null,
+      target: null,
+      rel: 'nofollow sponsored',
+      id: null,
+    })
+    submit(openForm())
+    expect(await pending).toMatchObject({
+      href: 'https://a.example',
+      rel: 'nofollow sponsored',
+      id: null,
+      target: null,
+    })
+  })
+
+  it('keeps id on a link that is also a jump target', async () => {
+    const pending = promptForLink(document, {
+      href: 'https://a.example',
+      title: null,
+      target: null,
+      rel: null,
+      id: 'jump',
+    })
+    submit(openForm())
+    expect(await pending).toMatchObject({
+      href: 'https://a.example',
+      rel: null,
+      id: 'jump',
+    })
+  })
+
+  it('keeps nofollow on a _blank link and only adds missing window tokens', async () => {
+    const pending = promptForLink(document, {
+      href: 'https://a.example',
+      title: null,
+      target: '_blank',
+      rel: 'nofollow noopener',
+      id: null,
+    })
+    const form = openForm()
+    expect(control<HTMLInputElement>(form, 'newWindow').checked).toBe(true)
+    submit(form)
+    expect(await pending).toMatchObject({
+      href: 'https://a.example',
+      target: '_blank',
+      rel: 'nofollow noopener noreferrer',
+      id: null,
+    })
+  })
+
+  it('drops only noopener and noreferrer when the new-window box is unchecked', async () => {
+    const pending = promptForLink(document, {
+      href: 'https://a.example',
+      target: '_blank',
+      rel: 'nofollow noopener noreferrer',
+    })
+    const form = openForm()
+    control<HTMLInputElement>(form, 'newWindow').checked = false
+    submit(form)
+    expect(await pending).toMatchObject({
+      target: null,
+      rel: 'nofollow',
+    })
+  })
+})
+
 describe('promptForImage with an image list', () => {
   it('lets a chosen image replace the address of an existing image', async () => {
     registerImageList(() => [{ value: '/new.png', title: 'New' }])
@@ -102,6 +175,51 @@ describe('promptForImage with an image list', () => {
     expect(control<HTMLInputElement>(form, 'src').value).toBe('/new.png')
     submit(form)
     expect((await pending)?.src).toBe('/new.png')
+  })
+})
+
+describe('promptForImage when editing', () => {
+  it('prefills the fields and keeps dimensions the dialog does not expose', async () => {
+    const pending = promptForImage(document, {
+      existing: {
+        src: '/a.png',
+        alt: 'A goat on a roof',
+        title: 'Goat',
+        className: 'rounded',
+        align: 'left',
+        caption: 'Fig 1',
+        width: '640',
+        height: '480',
+      },
+    })
+    const form = openForm()
+    expect(form.querySelector('h2')?.textContent).toBe('Edit image')
+    expect(control<HTMLInputElement>(form, 'src').value).toBe('/a.png')
+    expect(control<HTMLInputElement>(form, 'alt').value).toBe('A goat on a roof')
+    expect(control<HTMLInputElement>(form, 'title').value).toBe('Goat')
+    expect(control<HTMLInputElement>(form, 'className').value).toBe('rounded')
+    expect(control<HTMLSelectElement>(form, 'align').value).toBe('left')
+    expect(control<HTMLInputElement>(form, 'caption').value).toBe('Fig 1')
+    submit(form)
+    expect(await pending).toMatchObject({
+      src: '/a.png',
+      alt: 'A goat on a roof',
+      title: 'Goat',
+      className: 'rounded',
+      align: 'left',
+      caption: 'Fig 1',
+      width: '640',
+      height: '480',
+    })
+  })
+
+  it('ticks decorative when the stored alt is empty', async () => {
+    const pending = promptForImage(document, { existing: { src: '/a.png', alt: '' } })
+    const form = openForm()
+    const decorative = control<HTMLInputElement>(form, 'decorative')
+    expect(decorative.checked).toBe(true)
+    submit(form)
+    expect((await pending)?.alt).toBe('')
   })
 })
 

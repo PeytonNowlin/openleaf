@@ -880,11 +880,13 @@ export function activeLanguage(state: EditorState): string | null {
  * Strip character formatting and block decoration from the selection.
  *
  * Links stay: they are a destination, not a look. Direction stays: it is
- * content. Headings and lists stay: they are structure. Alignment, indent,
- * line height, fonts, colours, and the common character marks go.
+ * content. Language stays: it is the same kind of fact as direction, only
+ * modelled as a mark (`<span lang>`) rather than a node attribute. Headings
+ * and lists stay: they are structure. Alignment, indent, line height, fonts,
+ * colours, and the common character marks go.
  */
 export const clearFormatting: Command = (state, dispatch) => {
-  const keep = new Set(['link'])
+  const keep = new Set(['link', 'language'])
   const { empty, $from } = state.selection
   const marks = Object.values(state.schema.marks).filter((type) => !keep.has(type.name))
 
@@ -957,15 +959,18 @@ export {
   insertPageBreak,
   insertText,
   insertVideo,
+  selectedImage,
   selectedMedia,
   setHeadingId,
   setLink,
   unsetLink,
+  updateImage,
   updateMedia,
   type ImageAttrs,
   type LinkAttrs,
   type MediaAttrs,
   type MediaSource,
+  type SelectedImage,
   type SelectedMedia,
 } from './insert-commands.js'
 

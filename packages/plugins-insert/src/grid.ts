@@ -1,6 +1,7 @@
 import { iconElement, type ToolbarContext, type ToolbarControl } from '@openleaf-editor/ui'
 import { insertText } from '@openleaf-editor/core'
 import type { EditorState } from 'prosemirror-state'
+import { GLYPH_COLUMNS } from './glyphs.js'
 
 const SUPPORTS_POPOVER =
   typeof HTMLElement !== 'undefined' && 'popover' in HTMLElement.prototype
@@ -22,29 +23,47 @@ export function buildGlyphPicker(
   trigger.className = 'ol-btn'
   trigger.dataset['olId'] = ctx.id ?? options.label
   trigger.setAttribute('aria-label', options.label)
-  trigger.setAttribute('aria-haspopup', 'true')
+  trigger.setAttribute('aria-haspopup', 'grid')
   trigger.setAttribute('aria-expanded', 'false')
   trigger.appendChild(iconElement(options.icon, doc))
 
+  /*
+   * A real grid, not a pile of buttons under role="menu". menu requires
+   * menuitem children; a <button>'s implicit role is button, so a reader
+   * announced a menu with no items while forty focusable buttons sat inside
+   * it. Follows plugins-colour/src/picker.ts, which follows plugins-table.
+   */
   const grid = doc.createElement('div')
   grid.className = 'ol-insert-grid'
-  grid.setAttribute('role', 'menu')
+  grid.setAttribute('role', 'grid')
   grid.setAttribute('aria-label', options.label)
   if (SUPPORTS_POPOVER) grid.setAttribute('popover', 'manual')
 
-  for (const item of options.items) {
+  const cells: HTMLButtonElement[] = []
+  let row: HTMLDivElement | null = null
+  options.items.forEach((item, index) => {
+    if (index % GLYPH_COLUMNS === 0) {
+      row = doc.createElement('div')
+      row.className = 'ol-insert-row'
+      row.setAttribute('role', 'row')
+      grid.appendChild(row)
+    }
     const button = doc.createElement('button')
     button.type = 'button'
     button.textContent = item.char
+    button.setAttribute('role', 'gridcell')
     button.setAttribute('aria-label', item.name)
     button.title = item.name
+    // One tab stop for the whole grid; the arrow keys move within it.
+    button.tabIndex = index === 0 ? 0 : -1
     button.addEventListener('click', () => {
       insertText(item.char)(view.state, view.dispatch, view)
       close()
       view.focus()
     })
-    grid.appendChild(button)
-  }
+    cells.push(button)
+    row?.appendChild(button)
+  })
 
   wrap.appendChild(trigger)
   if (!SUPPORTS_POPOVER) wrap.appendChild(grid)
@@ -53,17 +72,16 @@ export function buildGlyphPicker(
   const isOpen = (): boolean =>
     SUPPORTS_POPOVER ? grid.matches(':popover-open') : !grid.hidden
 
-  const close = (): void => {
+  const close = (options: { returnFocus?: boolean } = {}): void => {
     trigger.setAttribute('aria-expanded', 'false')
     if (!SUPPORTS_POPOVER) {
       grid.hidden = true
-      return
-    }
-    // Guarded: hidePopover() throws on an element that is not showing, and
-    // destroy() closes whether or not the picker was ever opened.
-    if (grid.matches(':popover-open')) {
+    } else if (grid.matches(':popover-open')) {
+      // Guarded: hidePopover() throws on an element that is not showing, and
+      // destroy() closes whether or not the picker was ever opened.
       ;(grid as HTMLElement & { hidePopover(): void }).hidePopover()
     }
+    if (options.returnFocus) trigger.focus()
   }
 
   /**
@@ -90,6 +108,12 @@ export function buildGlyphPicker(
     grid.style.top = `${Math.round(top)}px`
   }
 
+  const focusCell = (button: HTMLButtonElement | undefined): void => {
+    if (!button) return
+    for (const cell of cells) cell.tabIndex = cell === button ? 0 : -1
+    button.focus()
+  }
+
   const open = (): void => {
     trigger.setAttribute('aria-expanded', 'true')
     if (!SUPPORTS_POPOVER) grid.hidden = false
@@ -97,7 +121,8 @@ export function buildGlyphPicker(
       ;(grid as HTMLElement & { showPopover(): void }).showPopover()
     }
     place()
-    grid.querySelector('button')?.focus()
+    const current = cells.find((cell) => cell.tabIndex === 0)
+    focusCell(current ?? cells[0])
   }
 
   // `hidden` is the fallback path's only lever. On the popover path the popover
@@ -117,21 +142,69 @@ export function buildGlyphPicker(
     }
   })
   grid.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' || event.key === 'Tab') {
+    if (event.key === 'Escape') {
       event.preventDefault()
-      close()
-      trigger.focus()
+      close({ returnFocus: true })
+      return
+    }
+
+    const index = cells.indexOf(event.target as HTMLButtonElement)
+    if (index < 0) return
+
+    const move = (next: number): void => {
+      event.preventDefault()
+      focusCell(cells[Math.max(0, Math.min(next, cells.length - 1))])
+    }
+    const rowIndex = Math.floor(index / GLYPH_COLUMNS)
+
+    switch (event.key) {
+      case 'ArrowRight':
+        move(index + 1)
+        break
+      case 'ArrowLeft':
+        move(index - 1)
+        break
+      case 'ArrowDown':
+        move(index + GLYPH_COLUMNS)
+        break
+      case 'ArrowUp':
+        move(index - GLYPH_COLUMNS)
+        break
+      case 'Home':
+        move(rowIndex * GLYPH_COLUMNS)
+        break
+      case 'End':
+        move(rowIndex * GLYPH_COLUMNS + GLYPH_COLUMNS - 1)
+        break
+      default:
+        break
     }
   })
 
+  // Tab is not intercepted. There is one tab stop in the grid, so Tab leaves
+  // the widget the way a native control would; swallowing it used to close the
+  // panel while focus sat on the first glyph, which is how only one of forty
+  // characters was reachable from the keyboard. Leaving by any route closes --
+  // the colour picker's failure mode of a hand-rolled popover left open with
+  // nowhere to go.
+  grid.addEventListener('focusout', () => {
+    setTimeout(() => {
+      if (!isOpen()) return
+      const active = doc.activeElement
+      if (active && (grid.contains(active) || trigger.contains(active))) return
+      close()
+    }, 0)
+  })
+
   /*
-   * Three behaviours the colour picker records as necessary and this grid did
-   * without: keeping the selection through a mousedown -- whose absence WebKit
-   * turns into a control that closes as though it had worked -- dismissal by a
-   * click elsewhere, and closing when the page moves under a panel positioned
-   * against the viewport.
+   * Four behaviours the colour picker records as necessary. The first three
+   * this grid already had: keeping the selection through a mousedown -- whose
+   * absence WebKit turns into a control that closes as though it had worked --
+   * dismissal by a click elsewhere, and closing when the page moves under a
+   * panel positioned against the viewport. The fourth is the keyboard model
+   * above: arrows, Home, End, a roving tabindex, and Tab left alone.
    */
-  for (const button of grid.querySelectorAll('button')) {
+  for (const button of cells) {
     button.addEventListener('mousedown', (event) => event.preventDefault())
   }
 

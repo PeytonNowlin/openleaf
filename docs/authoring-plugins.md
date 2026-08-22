@@ -33,7 +33,7 @@ is the better illustration, it says so.
 | Add a toolbar button with active/enabled state | `registerToolbarItem(spec)` | Works |
 | Add icons | `registerIcons(paths)` | Works |
 | Push state a predicate cannot derive | `element.toolbarInstance?.setItemState(id, …)` | Works, per editor |
-| Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins |
+| Replace a built-in toolbar item | `registerToolbarItem` with an existing id | Works, last write wins. A replacement for `link` must round-trip `rel` and `id` the same way `promptForLink` does — merge `noopener noreferrer` for `_blank`, do not wipe author tokens. |
 | Reach the live view | `element.view` | Works |
 | Add a keyboard binding | a `keymap()` plugin via `registerEditorPlugin` | Works, but cannot shadow a core binding — see [4.6](#46-keyboard-bindings-cannot-shadow-core-bindings) |
 | **Add a node or mark type** | `registerSchemaExtension({ id, nodes, marks })` | Works — see [1.1](#11-schema-extensions), and note the timing rule: register **before** the editor is built |
@@ -438,6 +438,10 @@ registerToolbarItem({
 })
 ```
 
+`label` is the default accessible name. `labelFor(state)` is for a control that
+does two different things, the way the built-in `image` item inserts or edits.
+Do not use it to bake "pressed" into a toggle; `aria-pressed` already does that.
+
 For a preset dropdown, use `type: 'select'`. Option values should be the spelling
 the schema stores so `getValue` can match them after a round-trip:
 
@@ -568,7 +572,7 @@ your node is in a race it can lose. The ladder:
 |---|---|---|
 | 100 | `NEVER_PRESERVE` drop rules — `script`, `iframe`, `form`, `input`, `button`, `select`, `textarea`, `link`, `meta`, `template`, and more | Element **and its contents** are discarded |
 | 50 | The default for a rule with no `priority` — every real node in the schema | Your node parses |
-| 1 | `unknown_inline` catch-all, `context: 'paragraph/\|heading/'` | Inline debris becomes an inline atom |
+| 1 | `unknown_inline` catch-all, restricted to paragraph-holding containers | Inline debris becomes an inline atom. Tags the HTML parser will not keep inside a `<p>` (`div`, `section`, `figure`, … — `CLOSES_OPEN_P` in `preserve.ts`) are declined so they do not serialize inside a paragraph and grow two empty paragraphs on every save. |
 | 0 | `unknown_block` catch-all | Anything else becomes a block atom |
 
 **The practical rule: do not set `priority` at all.** The default 50 already
@@ -1149,8 +1153,17 @@ built — the ordinary case for a script tag — still reaches them.
 
 **What not to do.** Do not concatenate. `t('Deleted ') + n + t(' rows')` is
 untranslatable into any language whose word order differs from English, which is
-most of them. Build the whole sentence as one key and interpolate into the
-result.
+most of them. Build the whole sentence as one key and interpolate with `fill`:
+
+```ts
+import { fill, t } from '@openleaf-editor/ui'
+
+fill(t('{count} rows deleted'), { count: String(n) })
+```
+
+`fill` only reads own properties of the values object, so a `{constructor}`
+placeholder in a catalog is left alone rather than stringifying the Object
+constructor.
 
 ### 4.11 Isolating nodes clamp the selection at their boundary
 

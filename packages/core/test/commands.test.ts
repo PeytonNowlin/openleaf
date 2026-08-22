@@ -5,6 +5,7 @@ import {
   activeHeadingLevel,
   activeLink,
   canInsert,
+  clearFormatting,
   coreSchema,
   insertHorizontalRule,
   insertImage,
@@ -278,6 +279,48 @@ describe('images', () => {
     // An absent alt and alt="" are different statements to a screen reader.
     const state = cursorAt(stateFrom('<p>x</p>'), 2)
     expect(html(run(state, insertImage({ src: '/a.png' })))).not.toContain('alt=')
+  })
+})
+
+describe('clearFormatting', () => {
+  it('declines when the selection is only a language run', () => {
+    const state = selectAll(
+      stateFrom('<p>The French say <span lang="fr">bonjour</span> often</p>'),
+    )
+    expect(run(state, clearFormatting)).toBeNull()
+    expect(serializeHtml(state.doc)).toBe(
+      '<p>The French say <span lang="fr">bonjour</span> often</p>',
+    )
+  })
+
+  it('strips strong around a language run and leaves the language', () => {
+    const state = selectAll(
+      stateFrom('<p>The French say <strong><span lang="fr">bonjour</span></strong> often</p>'),
+    )
+    expect(html(run(state, clearFormatting))).toBe(
+      '<p>The French say <span lang="fr">bonjour</span> often</p>',
+    )
+  })
+
+  it('declines when the selection is only a link', () => {
+    const state = selectAll(stateFrom('<p>see <a href="/x">here</a> now</p>'))
+    expect(run(state, clearFormatting)).toBeNull()
+    expect(serializeHtml(state.doc)).toBe('<p>see <a href="/x">here</a> now</p>')
+  })
+
+  it('keeps direction, which is content', () => {
+    const state = selectAll(stateFrom('<p dir="rtl" style="text-align:center">שלום</p>'))
+    const out = html(run(state, clearFormatting))
+    expect(out).toContain('dir="rtl"')
+    expect(out).not.toContain('text-align')
+    expect(out).toContain('שלום')
+  })
+
+  it('declines when the selection is only language and structure', () => {
+    const state = selectAll(
+      stateFrom('<p dir="rtl">The French say <span lang="fr">bonjour</span></p>'),
+    )
+    expect(run(state, clearFormatting)).toBeNull()
   })
 })
 

@@ -21,7 +21,7 @@
  */
 
 import { embedSrcFor, isSafeUrl } from '@openleaf-editor/core'
-import { t, withLocale } from './i18n.js'
+import { fill, t, withLocale } from './i18n.js'
 import { ensureStyles, registerStyles } from './styles.js'
 import { IMAGE_ACCEPT, dimension, type ImageUploadResult } from './upload.js'
 import {
@@ -36,6 +36,39 @@ export interface LinkResult {
   title: string | null
   target: string | null
   rel: string | null
+  id: string | null
+}
+
+/** Tokens the "open in a new window" checkbox is allowed to add or drop. */
+const WINDOW_REL = new Set(['noopener', 'noreferrer'])
+
+/**
+ * Keep author `rel` tokens; only the new-window checkbox may add or drop
+ * `noopener` / `noreferrer`. Replacing the whole attribute (issue #14's first
+ * cut, then #108) deleted `nofollow`, `sponsored`, `me`, and the rest.
+ */
+function mergeLinkRel(
+  existing: string | null | undefined,
+  newWindow: boolean,
+): string | null {
+  const tokens: string[] = []
+  const seen = new Set<string>()
+  for (const token of (existing ?? '').trim().split(/\s+/)) {
+    if (!token) continue
+    const key = token.toLowerCase()
+    if (!newWindow && WINDOW_REL.has(key)) continue
+    if (seen.has(key)) continue
+    seen.add(key)
+    tokens.push(token)
+  }
+  if (newWindow) {
+    for (const extra of ['noopener', 'noreferrer'] as const) {
+      if (seen.has(extra)) continue
+      seen.add(extra)
+      tokens.push(extra)
+    }
+  }
+  return tokens.length > 0 ? tokens.join(' ') : null
 }
 
 export interface ImageResult {
@@ -638,7 +671,13 @@ export function promptFields<T>(
 
 export async function promptForLink(
   doc: Document,
-  existing?: { href?: string; title?: string | null; target?: string | null },
+  existing?: {
+    href?: string
+    title?: string | null
+    target?: string | null
+    rel?: string | null
+    id?: string | null
+  },
   host?: HTMLElement,
 ): Promise<LinkResult | null> {
   const listed = listedLinks()
@@ -718,7 +757,8 @@ export async function promptForLink(
           href,
           title: values['title'] || null,
           target: newWindow ? '_blank' : null,
-          rel: newWindow ? 'noopener noreferrer' : null,
+          rel: mergeLinkRel(existing?.rel, newWindow),
+          id: existing?.id ?? null,
         },
       }
     },
@@ -736,6 +776,8 @@ export interface ImagePromptOptions {
     className?: string | null
     align?: 'left' | 'right' | 'center' | null
     caption?: string | null
+    width?: string | null
+    height?: string | null
   }
 }
 
@@ -753,7 +795,7 @@ export async function promptForImage(
   // this is the only place that has the value.
   const inLocale = (source: string, values: Record<string, string> = {}): string =>
     withLocale(locale, () =>
-      t(source).replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole),
+      fill(t(source), values),
     )
 
   const describe: FieldSpec = {
@@ -859,7 +901,7 @@ export async function promptForImage(
 
   return showForm<ImageResult>(
     doc,
-    file ? 'Describe this image' : 'Insert image',
+    file ? 'Describe this image' : existing ? 'Edit image' : 'Insert image',
     fields,
     {
       locale,
@@ -867,6 +909,7 @@ export async function promptForImage(
       extraCheckbox: {
         name: 'decorative',
         label: 'This image is decorative and needs no description',
+        checked: existing?.alt === '',
       },
       ...(file ? { note: inLocale('Ready to upload: {file}', { file: file.name }) } : {}),
       busyLabel: 'Uploading…',
@@ -908,7 +951,12 @@ export async function promptForImage(
       const alt = values['decorative'] === 'on' ? '' : (values['alt'] ?? '')
 
       if (!chosen || !upload) {
-        return { value: finish(src, alt, null, null, values) }
+        // Keep dimensions the dialog does not expose. Uploading a new file
+        // replaces them with what the uploader measured; a typed-address save
+        // must not zero them out or a prefilled edit drops width and height.
+        return {
+          value: finish(src, alt, existing?.width ?? null, existing?.height ?? null, values),
+        }
       }
 
       return upload(chosen).then((result) => ({
