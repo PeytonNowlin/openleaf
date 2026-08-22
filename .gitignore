@@ -38,6 +38,6 @@ demo/openleaf-session.min.js.map
 demo/openleaf-insert.min.js
 demo/openleaf-insert.min.js.map
 
-# Written and removed by the e2e global setup, which proves the server on 4173
+# Written and removed by the e2e global setup, which proves the harness server
 # is serving this checkout rather than another one's bundle.
 .e2e-checkout-stamp

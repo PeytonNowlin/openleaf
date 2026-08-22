@@ -12,6 +12,10 @@ import { extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = fileURLToPath(new URL('../../../..', import.meta.url))
+// Playwright passes the port it derived for this checkout (port.ts) through
+// `webServer.env`, so the two cannot drift. 4173 is only the fallback for
+// starting this server by hand, and a hand-started server on it will be refused
+// by the stamp check of any checkout whose derived port is something else.
 const PORT = Number(process.env['PORT'] ?? 4173)
 
 const TYPES = {
