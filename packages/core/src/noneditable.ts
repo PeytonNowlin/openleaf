@@ -12,7 +12,6 @@ import type { Node as PMNode } from 'prosemirror-model'
 import { Plugin, PluginKey } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { CARRIED_ATTR } from './extensions.js'
-import { tableCaptionNodeView } from './tables.js'
 
 const key = new PluginKey('openleaf-noneditable')
 
@@ -88,11 +87,6 @@ export function nonEditablePlugin(): Plugin {
       return !blocked
     },
     props: {
-      // Caption inertness is editor-DOM only: serializers never run node views,
-      // so this cannot leak `contenteditable="false"` into clipboard or saved HTML.
-      nodeViews: {
-        table: tableCaptionNodeView,
-      },
       decorations(state) {
         const decorations: Decoration[] = []
         state.doc.descendants((node, pos) => {

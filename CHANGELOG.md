@@ -50,12 +50,14 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
-- **Editing a link through the dialog no longer deletes `rel` or `id`.** Issue
-  #14 restored `target`; Save still synthesized `rel` from the new-window
-  checkbox and wrote `id: null`. Author tokens (`nofollow`, `sponsored`, `me`,
-  …) are kept, `noopener noreferrer` is merged in for `_blank` rather than
-  replacing the attribute, and `id` round-trips. The same `run` handler backs
-  the toolbar, context menu, and selection toolbar.
+- **Table captions no longer leak `contenteditable="false"` into clipboard
+  or saved HTML.** The editor still stamps that marker on the live caption so
+  a caret cannot enter it (`CaptionedTableView` when the table bundle is
+  loaded, `tableCaptionNodeView` when it is not). Serializers share `toDOM`
+  and never run node views, so the marker is not emitted; parse also drops
+  it from the caption element itself if contaminated markup is opened.
+  Core no longer installs a competing `table` node view, which would have
+  shadowed column resizing.
 
 ## 0.1.0-beta.2 - 2026-08-19
 

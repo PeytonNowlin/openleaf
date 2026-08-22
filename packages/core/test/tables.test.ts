@@ -195,6 +195,13 @@ describe('caption and colgroup survive the round trip', () => {
     expect(out).not.toContain('contenteditable')
   })
 
+  it('keeps author contenteditable on a caption descendant', () => {
+    const html =
+      '<table><caption><span contenteditable="false">locked</span></caption><tr><td>A</td></tr></table>'
+    expect(roundTrip(html)).toContain('contenteditable="false"')
+    expect(roundTrip(html)).toContain('locked')
+  })
+
   it('does not stamp the caption inert from toDOM', () => {
     const doc = parseHtml('<table><caption>Q1</caption><tr><td>A</td></tr></table>')
     let table: unknown = null

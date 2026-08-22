@@ -447,7 +447,6 @@ const FURNITURE_TAGS: ReadonlySet<string> = new Set(['caption', 'colgroup', 'col
  */
 function dropFurnitureInertMarker(el: Element): void {
   el.removeAttribute('contenteditable')
-  for (const child of Array.from(el.children)) dropFurnitureInertMarker(child)
 }
 
 /** Serialized direct children of `el` matching `tags`, in document order. */
