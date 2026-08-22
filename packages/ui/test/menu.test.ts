@@ -185,6 +185,56 @@ describe('the menubar', () => {
     bar.destroy()
   })
 
+  /*
+   * A menubar shares ONE PopupMenu across every menu on it, and builds its
+   * triggers without ids. `show()` auto-assigned an id derived from the popup's
+   * own name, so every trigger it touched got the same string: open Edit, then
+   * Insert, and two buttons carried one DOM id. `aria-labelledby` resolves to
+   * the first match in tree order, so the Insert menu was announced as "Edit".
+   * The old single-trigger test could not see it.
+   */
+  it('names each menu after the trigger that opened it', () => {
+    const bar = mountBar()
+    const triggers = [...bar.el.querySelectorAll<HTMLButtonElement>('.ol-menu-trigger')]
+    expect(triggers.length).toBeGreaterThan(1)
+
+    const names: string[] = []
+    const ids: string[] = []
+    for (const button of triggers) {
+      button.click()
+      const menu = host.querySelector<HTMLElement>('.ol-menu:not([hidden])')
+      expect(menu).not.toBeNull()
+      const labelledBy = menu!.getAttribute('aria-labelledby')!
+      ids.push(labelledBy)
+      // Resolved the way a screen reader resolves it: the FIRST element in the
+      // document with that id, not the trigger we happen to hold.
+      names.push(document.getElementById(labelledBy)!.textContent ?? '')
+      button.click()
+    }
+
+    expect(names).toEqual(triggers.map((el) => el.textContent))
+    expect(new Set(ids).size).toBe(ids.length)
+    bar.destroy()
+  })
+
+  it('leaves no duplicate ids behind in the document', () => {
+    const bar = mountBar()
+    const triggers = [...bar.el.querySelectorAll<HTMLButtonElement>('.ol-menu-trigger')]
+    for (const button of triggers) {
+      button.click()
+      button.click()
+    }
+    // `close()` deliberately keeps the id it assigned -- an id that comes and
+    // goes breaks any aria reference a host set up against it -- so the ids
+    // accumulate and every one of them has to be unique.
+    const assigned = triggers.map((el) => el.id).filter(Boolean)
+    expect(assigned).toHaveLength(triggers.length)
+    for (const id of assigned) {
+      expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1)
+    }
+    bar.destroy()
+  })
+
   it('keeps one tab stop as the arrow keys move along it', () => {
     const bar = mountBar()
     const triggers = [...bar.el.querySelectorAll<HTMLElement>('.ol-menu-trigger')]
