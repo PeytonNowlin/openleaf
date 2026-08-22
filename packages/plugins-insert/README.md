@@ -82,3 +82,13 @@ registerImageClasses(['align-left', 'full-width'])
 
 Name the ones you want in the element's `toolbar` attribute. An id nothing has
 registered logs a warning rather than being skipped silently.
+
+## Character map and emoji
+
+Both pickers are the same control: a toolbar trigger and a grid of named glyphs.
+Arrow keys move by one and by a row, Home and End go to the ends of a row,
+Escape closes and returns focus to the trigger, and Tab leaves the widget
+(there is one tab stop inside the grid). The grid is `role="grid"` with row and
+gridcell structure, matching the colour picker, so a screen reader can say
+which cell the author is on.
+

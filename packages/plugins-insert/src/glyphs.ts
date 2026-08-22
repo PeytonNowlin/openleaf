@@ -1,3 +1,12 @@
+/**
+ * Columns per row in the character and emoji grids.
+ *
+ * The keyboard model (arrow keys, Home, End) reads this, not a CSS value. The
+ * stylesheet's `repeat(8, 2rem)` has to stay in lockstep -- that is why the
+ * colour picker exports `PALETTE_COLUMNS` rather than counting cells at runtime.
+ */
+export const GLYPH_COLUMNS = 8
+
 /** Common typographic characters, named for the grid's accessible labels. */
 export const CHARACTERS: ReadonlyArray<{ char: string; name: string }> = [
   { char: '©', name: 'Copyright' },
