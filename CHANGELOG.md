@@ -195,6 +195,16 @@ package on this version -- they pin each other exactly.
 
 ### Fixed
 
+- **A read-only editor was mutated by clicking a `<summary>`.**
+  `disclosurePlugin` toggles `<details>` through `handleDOMEvents.click`, which
+  ProseMirror runs before its `view.editable` gate -- the guard typing, paste,
+  drop and the keymaps get for free. The handler wrote `open` on the node, so
+  `.value` changed and `openleaf:change` fired on a document the host had marked
+  read-only; a host that autosaves on that event, or `FormBridge.sync()` at
+  submit, persisted the fold. The click now returns without a transaction when
+  `!view.editable`, same flag the table context menu and the media resize handle
+  already consult, and does not `preventDefault`, so the browser can still expand
+  a collapsed section on a non-contenteditable surface without writing the node.
 - **Only the first glyph in the character map and emoji picker was reachable
   from the keyboard.** The panel intercepted Tab (and closed) and had no arrow
   keys, so 1 of 40 characters and 1 of 32 emoji could be chosen without a

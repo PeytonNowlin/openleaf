@@ -45,6 +45,25 @@ export function disclosurePlugin(): Plugin {
           const summary = from?.closest?.('summary')
           if (!summary || !view.dom.contains(summary)) return false
 
+          /*
+           * `handleDOMEvents` runs before ProseMirror's `view.editable` check
+           * (`runCustomHandler` is first in `initInput`). Typing, paste, drop
+           * and the keymaps get that gate for free; this click does not, so a
+           * read-only editor still flipped `open` and fired `openleaf:change`.
+           *
+           * `view.editable` rather than the host's `readonly` attribute, same
+           * as the table context menu and the media resize handle: it is the
+           * flag ProseMirror itself consults, the element derives it from the
+           * attribute, and a view mounted without the custom element can set
+           * it directly.
+           *
+           * Returning false, not swallowing the event: outside contenteditable
+           * the browser toggles a `<details>` natively, so collapsed sections
+           * stay readable without writing the node. `preventDefault` below is
+           * only needed when we own the toggle.
+           */
+          if (!view.editable) return false
+
           const $pos = view.state.doc.resolve(view.posAtDOM(summary, 0))
           for (let depth = $pos.depth; depth >= 0; depth -= 1) {
             const node = $pos.node(depth)
