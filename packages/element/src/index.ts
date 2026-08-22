@@ -1456,6 +1456,8 @@ export class OpenLeafEditor extends HTMLElementBase {
    */
   #onContextKey = (event: KeyboardEvent): void => {
     if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return
+    // See `#onContextMenu`: the keyboard route to the same edit-only menu.
+    if (this.hasAttribute('readonly')) return
     const view = this.#view
     if (!view) return
     if (!this.#showContext(view, this.#contextItemsAtCaret(view.state), null)) return
@@ -1510,6 +1512,14 @@ export class OpenLeafEditor extends HTMLElementBase {
   #onContextMenu = (event: MouseEvent): void => {
     const view = this.#view
     if (!view) return
+    // Before anything else, and before `preventDefault`: every entry in these
+    // menus is an edit. `invoke` already refuses to run one under `readonly`, so
+    // opening the menu offered a list of items that silently did nothing -- and
+    // worse, opening it at all called `preventDefault()` and took away the
+    // browser's own menu, which is the copy-and-inspect a read-only reader is
+    // left with. The table plugin's menu makes the same check on the same event;
+    // this is the other listener on it.
+    if (this.hasAttribute('readonly')) return
     const clicked = event.target
     if (!(clicked instanceof Element) || !this.#contentHost?.contains(clicked)) return
     const items = clicked.closest('a')

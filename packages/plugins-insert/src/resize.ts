@@ -488,6 +488,13 @@ function mediaView(
     const width = previewWidth
     stop()
     if (!commit) return
+    // Rechecked at the commit, not only at the `pointerdown` that started the
+    // drag. `readonly` can arrive mid-gesture -- a permission change, a lock, a
+    // host toggling the attribute -- and the start-only guard has already passed
+    // by then, so this is the last point at which a width can be refused. `stop`
+    // above has already dropped the preview, so refusing here leaves the element
+    // at the width the document actually says.
+    if (!view.editable) return
     const pos = getPos()
     if (pos === undefined) return
     view.dispatch(

@@ -170,7 +170,14 @@ package on this version -- they pin each other exactly.
   `readonly` arrives while it is up. The handle reports `aria-disabled` rather
   than silently doing nothing, kept accurate across a `readonly` toggle by
   watching for that transition only -- not per transaction, which would put
-  per-node work back on every keystroke.
+  per-node work back on every keystroke. The element's own context menu is
+  refused under `readonly` too, on both the pointer and the Shift+F10 route:
+  every entry in it is an edit that `invoke` already declined to run, so opening
+  it offered a dead list *and* called `preventDefault()`, taking away the
+  browser's own copy-and-inspect menu -- which is the whole of what a read-only
+  reader wants from a secondary click. And the resize drag is re-checked at the
+  commit rather than only at the `pointerdown` that began it, since `readonly`
+  can arrive mid-gesture and the start guard has passed by then.
 - **Tables no longer discard `<caption>`, `<colgroup>` and `<col>`.** These were
   dropped on parse, so opening and saving a captioned table destroyed its caption
   text permanently. A caption is a table's accessible name, which made this an

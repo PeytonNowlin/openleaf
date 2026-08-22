@@ -406,4 +406,37 @@ test.describe('a read-only table', () => {
     })
     await expect(menu).toBeHidden()
   })
+
+  /*
+   * The point of refusing, which the menu-by-name assertions above do not reach.
+   *
+   * The plugin's listener returning early is not the whole story: the element's
+   * own `contextmenu` listener is on the same event, it recognised the same
+   * table, and it opened the generic "Editor menu" and called
+   * `preventDefault()`. So the browser's menu -- the copy and inspect that is
+   * the entire reason a read-only reader wants a secondary click -- was still
+   * taken away, and the reader was offered a list of edit items that `invoke`
+   * refuses to run. Asserting on the plugin's menu by name passed straight
+   * through that, which is why this asserts on `defaultPrevented` instead.
+   */
+  test('leaves the browser its own menu, rather than swapping in a dead one', async ({ page }) => {
+    await page.evaluate(() => {
+      ;(window as { __prevented?: boolean | null }).__prevented = null
+      document.addEventListener('contextmenu', (event) => {
+        ;(window as { __prevented?: boolean | null }).__prevented = event.defaultPrevented
+      })
+    })
+    await editor(page).getByText('North').click({ button: 'right' })
+    await expect(page.getByRole('menu', { name: 'Table' })).toBeHidden()
+    await expect(page.getByRole('menu', { name: 'Editor menu' })).toBeHidden()
+    expect(
+      await page.evaluate(() => (window as { __prevented?: boolean | null }).__prevented),
+    ).toBe(false)
+  })
+
+  test('opens no editor menu from the keyboard either', async ({ page }) => {
+    await editor(page).getByText('North').click()
+    await page.keyboard.press('Shift+F10')
+    await expect(page.getByRole('menu', { name: 'Editor menu' })).toBeHidden()
+  })
 })

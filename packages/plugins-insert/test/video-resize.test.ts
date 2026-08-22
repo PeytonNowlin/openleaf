@@ -523,6 +523,35 @@ describe('readonly', () => {
     expect(storedAttr('image', 'width')).toBe('650')
   })
 
+  /*
+   * The commit, not just the start.
+   *
+   * `pointerdown` refuses a drag on a read-only document, but that guard has
+   * already passed by the time `pointerup` arrives -- and `readonly` can turn up
+   * mid-gesture, from a permission change or a host toggling the attribute. The
+   * width was then written anyway, which is the same defect the start guard was
+   * added for, one event later.
+   */
+  it('refuses to commit a drag that readonly interrupted', () => {
+    const place = document.createElement('div')
+    document.body.append(place)
+    view = new EditorView(place, {
+      state: EditorState.create({
+        doc: parseHtml(IMAGE, { schema: coreSchema() }),
+        plugins: [mediaResizePlugin()],
+      }),
+    })
+    const handle = view.dom.querySelector('.ol-img-handle')!
+    handle.dispatchEvent(
+      new MouseEvent('pointerdown', { bubbles: true, cancelable: true, clientX: 100 }),
+    )
+    window.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40 }))
+    // Mid-drag, before the pointer comes up.
+    view.setProps({ editable: () => false })
+    window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }))
+    expect(storedAttr('image', 'width')).toBe('640')
+  })
+
   it('goes unavailable when readonly arrives after mount', () => {
     const place = document.createElement('div')
     document.body.append(place)
