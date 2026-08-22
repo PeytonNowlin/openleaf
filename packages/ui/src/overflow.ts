@@ -58,16 +58,6 @@ export class ToolbarOverflow {
    * cancelled on destroy so a queued layout cannot run against a torn-down bar.
    */
   #frame: number | null = null
-  /**
-   * The More trigger's own width, cached.
-   *
-   * Its label never changes, so one measurement holds for the life of the bar.
-   * Zero means "not measured yet": `display: none` reports 0, so a hidden
-   * trigger cannot be read, and a value that comes back 0 is retried rather
-   * than pinned -- a first layout before the stylesheet has landed must not
-   * fix a wrong width forever.
-   */
-  #moreWidth = 0
 
   constructor(toolbar: HTMLElement, host: HTMLElement, doc: Document, onLayout?: () => void) {
     this.#toolbar = toolbar
@@ -162,7 +152,18 @@ export class ToolbarOverflow {
 
   layout(): void {
     this.#restore()
-    this.#more.hidden = true
+    // Revealed BEFORE the reads, not after the compute. The trigger takes a
+    // width and a gap in the row the moment it is shown, and it cannot be
+    // measured while hidden -- `display: none` reports 0. Showing it here means
+    // its footprint is inside the same `scrollWidth` as everything else, so the
+    // arithmetic needs no second measurement and no second layout pass.
+    //
+    // Measured every time rather than cached: the width follows
+    // `--openleaf-button-size`, which a skin or an integrator token changes at
+    // runtime (compact is 28px, the default 32px, coarse-pointer 40px), so a
+    // value pinned at first layout goes quietly wrong on the next density
+    // change.
+    this.#more.hidden = false
     this.#close()
 
     // READ. Every measurement is taken here, while the bar is fully expanded,
@@ -171,37 +172,49 @@ export class ToolbarOverflow {
     // ten-group bar paid for ten layouts -- from a ResizeObserver watching the
     // element it was resizing.
     const budget = this.#toolbar.clientWidth
-    if (budget === 0) return
     const groups = this.#groups()
     const total = this.#toolbar.scrollWidth
     const widths = groups.map((group) => group.offsetWidth)
+    const moreWidth = this.#more.offsetWidth
     const gap =
       Number.parseFloat(
         this.#toolbar.ownerDocument.defaultView?.getComputedStyle(this.#toolbar).columnGap ?? '',
       ) || 0
 
+    if (budget === 0) {
+      this.#more.hidden = true
+      return
+    }
+
     // COMPUTE. In overflow mode the bar is a nowrap flex row with one uniform
     // gap, so moving the last k groups out takes exactly their widths and k
     // gaps off the scroll width. Nothing has to be re-measured between them.
     //
-    // `total` was measured with `#more` hidden, so it does not include the
-    // trigger. If nothing overflows, nothing is revealed and that is the right
-    // measurement -- so the fit is checked FIRST, before the trigger's own
-    // footprint enters the arithmetic.
-    if (total <= budget + 1) return
+    // The trigger's footprint has to come back OUT to answer "does this bar
+    // overflow at all", because a bar that fits never shows one -- and charging
+    // it for a button it will not show would collapse a group for nothing.
+    const trigger = moreWidth > 0 ? moreWidth + gap : 0
+    if (total - trigger <= budget + 1) {
+      this.#more.hidden = true
+      return
+    }
 
-    // From here the trigger WILL be shown, and it takes a width and a gap in
-    // the row. Leaving them out is what let a bar stay overflowing by roughly
-    // the width of the More button: the groups fit, then revealing the trigger
-    // pushed the row back over its budget, and it converged only on the next
-    // ResizeObserver pass -- with a visible flash in between.
-    let used = total + this.#moreFootprint(gap)
+    // Past here the trigger stays, so `total` -- which already includes it -- is
+    // the right starting point. Leaving it out is what let a bar stay
+    // overflowing by roughly the width of the More button: the groups fit, then
+    // revealing the trigger pushed the row back over its budget, and it
+    // converged only on the next ResizeObserver pass, with a visible flash in
+    // between.
+    let used = total
     let count = 0
     while (used > budget + 1 && count < groups.length) {
       used -= (widths[groups.length - 1 - count] ?? 0) + gap
       count += 1
     }
-    if (count === 0) return
+    if (count === 0) {
+      this.#more.hidden = true
+      return
+    }
 
     // WRITE. Backwards, inserted at the front, so the panel keeps the bar's
     // order. The controls themselves move -- they are not cloned -- which is
@@ -211,10 +224,10 @@ export class ToolbarOverflow {
       if (group) this.#panel.insertBefore(group, this.#panel.firstChild)
     }
 
-    this.#more.hidden = false
-    // No separator elements to hide. The divider is a border on the group, so a
-    // group that moved into the panel takes its own rule with it and cannot
-    // leave one stranded at the end of the bar.
+    // The trigger is already visible -- revealed before the reads, above. And
+    // there are no separator elements to hide: the divider is a border on the
+    // group, so a group that moved into the panel takes its own rule with it
+    // and cannot leave one stranded at the end of the bar.
     this.#onLayout?.()
     void this.#host
   }
@@ -311,25 +324,6 @@ export class ToolbarOverflow {
   /* -------------------------------------------------------------- *
    * Moving groups back and forth
    * -------------------------------------------------------------- */
-
-  /**
-   * What revealing the More trigger costs the row: its own width plus one gap.
-   *
-   * The trigger has to be visible to be measured, so the first call unhides it
-   * for one read and puts it back. That is one extra layout, once per bar, on
-   * the first overflow only -- and it buys the correct answer for every layout
-   * after it. Doing it eagerly in the constructor would not work: the bar may
-   * not be in a document yet, and the stylesheet may not have landed.
-   */
-  #moreFootprint(gap: number): number {
-    if (this.#moreWidth === 0) {
-      const wasHidden = this.#more.hidden
-      this.#more.hidden = false
-      this.#moreWidth = this.#more.offsetWidth
-      this.#more.hidden = wasHidden
-    }
-    return this.#moreWidth === 0 ? 0 : this.#moreWidth + gap
-  }
 
   #restore(): void {
     for (const group of [...this.#panel.children]) this.#toolbar.appendChild(group)

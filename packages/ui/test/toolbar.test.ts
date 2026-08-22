@@ -724,19 +724,34 @@ describe('the overflow fit loop', () => {
   function measurable(
     toolbar: Toolbar,
     { budget, groupWidth, moreWidth }: { budget: number; groupWidth: number; moreWidth: number },
-  ): void {
+  ): { setMoreWidth: (next: number) => void } {
+    let currentMoreWidth = moreWidth
     Object.defineProperty(toolbar.el, 'clientWidth', { get: () => budget, configurable: true })
+    const more = toolbar.el.querySelector<HTMLElement>('.ol-overflow-more')
     Object.defineProperty(toolbar.el, 'scrollWidth', {
       configurable: true,
       get(this: HTMLElement) {
-        return this.querySelectorAll(':scope > .ol-group').length * groupWidth
+        const groups = this.querySelectorAll(':scope > .ol-group').length * groupWidth
+        // A real bar's scroll width counts the trigger once it is visible, and
+        // the loop reveals it before measuring -- so the stub has to as well,
+        // or the arithmetic under test is not the arithmetic that runs.
+        return groups + (more && !more.hidden ? currentMoreWidth : 0)
       },
     })
     for (const group of toolbar.el.querySelectorAll(':scope > .ol-group')) {
       Object.defineProperty(group, 'offsetWidth', { get: () => groupWidth, configurable: true })
     }
-    const more = toolbar.el.querySelector('.ol-overflow-more')
-    if (more) Object.defineProperty(more, 'offsetWidth', { get: () => moreWidth, configurable: true })
+    if (more) {
+      Object.defineProperty(more, 'offsetWidth', {
+        configurable: true,
+        get: () => (more.hidden ? 0 : currentMoreWidth),
+      })
+    }
+    return {
+      setMoreWidth: (next: number) => {
+        currentMoreWidth = next
+      },
+    }
   }
 
   function groupsInBar(toolbar: Toolbar): number {
@@ -785,6 +800,35 @@ describe('the overflow fit loop', () => {
    * Counting it unconditionally would collapse a group to make room for a
    * button that was never going to be shown.
    */
+  /*
+   * The width follows `--openleaf-button-size`, which a skin or an integrator
+   * token changes at runtime -- compact is 28px, the default 32px,
+   * coarse-pointer styling 40px. A width pinned at first layout goes quietly
+   * wrong on the next density change, and near a fit threshold that either
+   * leaves the revealed row overflowing or hides a group it did not need to.
+   * Reported by Codex on #98; the first version of this fix cached it.
+   */
+  it('re-measures the trigger when density changes', () => {
+    const { toolbar, host } = mount('bold | italic | underline')
+    const overflow = new ToolbarOverflow(toolbar.el, host, document)
+    const bar = measurable(toolbar, { budget: 250, groupWidth: 100, moreWidth: 20 })
+
+    // 3 x 100 = 300 over budget; move one, 200 + 20 = 220 fits.
+    overflow.layout()
+    expect(groupsInBar(toolbar)).toBe(2)
+
+    // The trigger grows. 200 + 60 = 260 no longer fits, so another group goes.
+    bar.setMoreWidth(60)
+    overflow.layout()
+    expect(groupsInBar(toolbar)).toBe(1)
+
+    // And shrinking it gives the group back rather than staying pessimistic.
+    bar.setMoreWidth(20)
+    overflow.layout()
+    expect(groupsInBar(toolbar)).toBe(2)
+    overflow.destroy()
+  })
+
   it('does not charge for a trigger it will not reveal', () => {
     const { toolbar, host } = mount('bold | italic')
     const overflow = new ToolbarOverflow(toolbar.el, host, document)
