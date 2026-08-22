@@ -19,8 +19,10 @@ entries below say so explicitly when they do.
   modelled figure holds inline content), and the HTML parser closes an open
   `<p>` at `figcaption`, so wrapping an orphan in a paragraph made the next
   parse insert empty paragraphs with no fixed point. The parse rule now only
-  matches inside a figure; an orphan is preserved as a block atom and
-  round-trips without wrapping. Nested figures are unchanged.
+  matches inside a figure; an orphan in a paragraph is preserved as a block
+  atom and round-trips without wrapping. A caption already inside an
+  inline-only container such as `summary` stays inline so the details block
+  is not escaped. Nested figures are unchanged.
 
 ### Added
 
