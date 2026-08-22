@@ -101,6 +101,15 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **`safeClassList` no longer silently deletes Tailwind, non-ASCII, or
+  leading-digit class tokens.** It used an ASCII-identifier regex, so
+  `md:w-1/2`, `p-[10px]`, `2col`, and `größe-mittel` were dropped whenever
+  another token survived beside them. An image with only `class="md:w-1/2"`
+  kept it as residue; the same class next to `rounded` or `ol-float-left`
+  was gone. Class tokens now follow the same rule as `id`: a non-empty run
+  of non-whitespace. Deduplication, alignment-class exclusion, and the
+  empty-list `null` contract are unchanged. Which classes a deployment
+  stores remains a sanitize policy, not a schema filter.
 - **Editing a link through the dialog no longer deletes `rel` or `id`.** Issue
   #14 restored `target`; Save still synthesized `rel` from the new-window
   checkbox and wrote `id: null`. Author tokens (`nofollow`, `sponsored`, `me`,
