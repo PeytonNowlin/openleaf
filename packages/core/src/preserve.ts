@@ -602,12 +602,27 @@ export const unknownInline: NodeSpec = {
       getAttrs(dom) {
         const el = dom as Element
         if (isLosslesslyUnwrappable(el)) return false
+<<<<<<< HEAD
         // A block-level element inside a paragraph-holding container must not
         // become an inline atom: emitting it inside `<p>` is markup the HTML
         // parser will not re-parse as itself. Declining lets unknownBlock
         // claim it, which blockquote (`block+`) and list_item (`paragraph
         // block*`) can hold. `<ins>` and custom elements stay on this path.
         if (CLOSES_OPEN_P.has(el.nodeName.toLowerCase())) return false
+=======
+        // `figcaption` closes an open `<p>` on the next parse. Claiming it
+        // here as inline would serialize it inside a paragraph and grow the
+        // document by two empty paragraphs on every save. Decline only in a
+        // paragraph so unknownBlock can take it; in summary/heading/list
+        // item, declining would send it to unknownBlock, which those
+        // containers cannot hold. See figcaption in structure.ts.
+        if (
+          el.nodeName.toLowerCase() === 'figcaption' &&
+          el.parentElement?.nodeName.toLowerCase() === 'p'
+        ) {
+          return false
+        }
+>>>>>>> origin/main
         return { html: scrub(el), tag: el.nodeName.toLowerCase() }
       },
     },
