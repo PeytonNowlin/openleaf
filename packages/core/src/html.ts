@@ -152,38 +152,64 @@ export function parseHtml(html: string, opts?: HtmlIOOptions): PMNode {
 }
 
 /**
- * Collapse `<td><p>text</p></td>` back to `<td>text</td>`.
+ * Collapse a sole attribute-free `<p>` back to its container's direct children.
  *
- * Table cells hold `block+` content, because real tables contain paragraphs and
- * lists. The consequence is that parsing the overwhelmingly common legacy form
- * `<td>text</td>` produces a cell containing a paragraph, and serializing it
- * back would write `<td><p>text</p></td>` -- rewriting every cell of every table
- * in a CMS the first time each post is opened and saved.
+ * Several containers hold block content (`table_cell` is `block+`, `list_item`
+ * is `paragraph block*`, `blockquote` is `block+`, `details` is `summary
+ * block+`). Parsing the overwhelmingly common legacy form -- `<td>text</td>`,
+ * `<li>text</li>`, `<blockquote>quoted</blockquote>`, a details body that is
+ * just text -- therefore produces a paragraph, and serializing it back would
+ * write the wrapper into every list, quote, disclosure and table in a CMS the
+ * first time each post is opened and saved.
  *
  * That is a normalization rather than information loss, but "we changed every
- * table in your archive" is not a thing this project gets to do quietly. So a
- * cell holding exactly one attribute-free paragraph is unwrapped on the way out.
+ * list in your archive" is not a thing this project gets to do quietly. So a
+ * container whose modelled content is exactly one attribute-free paragraph is
+ * unwrapped on the way out. For `<details>` that means the body after
+ * `<summary>`, not the whole element.
  *
- * The asymmetry is deliberate and worth stating: a cell that was authored as
- * `<td><p>text</p></td>` also comes back as `<td>text</td>`. That form is rare
- * in the content this editor inherits, and the alternative is rewriting the
- * common case instead of the rare one.
+ * The same rule as cells still applies to mixed content: `<li>a<ul><li>b</li>
+ * </ul></li>` parses to a paragraph plus a nested list, so the outer paragraph
+ * stays. The inner item is a sole paragraph and unwraps.
+ *
+ * The asymmetry is deliberate and worth stating: a container that was authored
+ * as `<li><p>text</p></li>` also comes back as `<li>text</li>`. That form is
+ * rare in the content this editor inherits, and the alternative is rewriting
+ * the common case instead of the rare one.
  */
-function unwrapSoleCellParagraph(host: Element): void {
-  for (const cell of Array.from(host.querySelectorAll('td, th'))) {
-    // Never reach inside preserved markup. A table nested in an unrecognised
+function unwrapSoleParagraph(host: Element): void {
+  for (const container of Array.from(host.querySelectorAll('td, th, li, blockquote, details'))) {
+    // Never reach inside preserved markup. A list nested in an unrecognised
     // wrapper is content we undertook to return byte-identical, and a
-    // normalization that is right for our own tables is a broken promise there.
-    if (isInsidePreserved(cell)) continue
-    if (cell.childElementCount !== 1) continue
-    const only = cell.firstElementChild
-    if (!only || only.nodeName !== 'P' || only.attributes.length > 0) continue
-    // Only when the paragraph is the cell's entire content; a stray text node
-    // beside it means the markup is doing something we should not touch.
-    if (cell.childNodes.length !== 1) continue
-    while (only.firstChild) cell.insertBefore(only.firstChild, only)
-    cell.removeChild(only)
+    // normalization that is right for our own nodes is a broken promise there.
+    if (isInsidePreserved(container)) continue
+    const only = soleAttributeFreeParagraph(container)
+    if (!only) continue
+    while (only.firstChild) container.insertBefore(only.firstChild, only)
+    container.removeChild(only)
   }
+}
+
+/**
+ * The paragraph this pass is allowed to unwrap, or null.
+ *
+ * `details` always has a `<summary>` sibling, so "entire content is one `<p>`"
+ * would never fire there. Everything else uses the cell rule: one child node,
+ * and it is an attribute-free `<p>`.
+ */
+function soleAttributeFreeParagraph(container: Element): Element | null {
+  const candidates =
+    container.nodeName === 'DETAILS'
+      ? Array.from(container.childNodes).filter(
+          (node) => !(node.nodeType === 1 && (node as Element).nodeName === 'SUMMARY'),
+        )
+      : Array.from(container.childNodes)
+  if (candidates.length !== 1) return null
+  const only = candidates[0]
+  if (!only || only.nodeType !== 1) return null
+  const el = only as Element
+  if (el.nodeName !== 'P' || el.attributes.length > 0) return null
+  return el
 }
 
 /**
@@ -196,7 +222,7 @@ function unwrapSoleCellParagraph(host: Element): void {
  *
  * Only for tables that HAD a section. Deriving a `<thead>` from the presence of
  * `<th>` cells would look like an improvement and would rewrite every table in
- * an archive that never used one, which is the change `unwrapSoleCellParagraph`
+ * an archive that never used one, which is the change `unwrapSoleParagraph`
  * argues at length this project does not get to make quietly.
  *
  * The counts are clamped rather than trusted, because the document can have
@@ -258,7 +284,7 @@ export function serializeHtml(node: PMNode, opts?: HtmlIOOptions): string {
     const fragment = serializerFor(target).serializeFragment(node.content, { document: doc })
     const host = doc.createElement('div')
     host.appendChild(fragment)
-    unwrapSoleCellParagraph(host)
+    unwrapSoleParagraph(host)
     restoreTableSections(host, doc)
     return host.innerHTML
   })
