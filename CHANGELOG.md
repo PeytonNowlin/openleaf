@@ -14,12 +14,20 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **A selection spanning a `<blockquote>` into a following `<details>` no longer
+  throws on the next keystroke, corrupts the document, or loses undo.** Firefox
+  and WebKit report a `TextSelection` whose endpoints sit on opposite sides of
+  an isolating boundary; `replaceSelection` then tries to join `details` onto
+  `blockquote` and throws. Core now clamps that selection to the anchor's side
+  (the same thing Chromium already does natively) for every isolating node, and
+  refuses to run a replace that would throw, so a failure cannot rewrite the
+  document outside history.
 - **`<a id>` wrapping visible text no longer deletes that text.** `named_anchor`
   is an empty atom (TinyMCE-style jump targets). Its parse rule claimed any
   `<a>` with `id` and no `href`, so `<h2><a id="sec">Title</a></h2>` serialized
   as an empty heading. Contentful `<a id>` is now a `link` mark carrying only
   `id`; empty and whitespace-only `<a id="jump"></a>` is still the atom;
-  `<a id href>` is still a link; `<a name>` is still unmatched.
+  `<a id href>` is still a link;   `<a name>` is still unmatched.
 
 ### Added
 

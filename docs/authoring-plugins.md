@@ -1151,6 +1151,25 @@ untranslatable into any language whose word order differs from English, which is
 most of them. Build the whole sentence as one key and interpolate into the
 result.
 
+### 4.11 Isolating nodes clamp the selection at their boundary
+
+`isolating: true` on a node spec is a join/lift contract. It is not, by itself,
+a selection contract. `TextSelection.between` will still build a range whose
+endpoints sit on opposite sides of that node, and Firefox and WebKit will
+report one from Shift+Arrow. Core installs `isolatingSelectionPlugin` in the
+element so that range is narrowed to the anchor's side before the next replace
+— the same clamp Chromium already does natively.
+
+If you add an isolating node, you do **not** need to reimplement that clamp.
+You do need the plugin if you embed ProseMirror yourself rather than using
+`<openleaf-editor>`: without it, a selection that starts in a `blockquote`
+(which can contain `group: 'block'`) and ends inside your node will throw
+`TransformError` on the next keystroke, and the recovery is a DOM-derived
+document with no undo entry. See GitHub issue #130.
+
+Mark a node isolating when joining across it is illegal (`details`, `figure`,
+table cells). Do not use it as a substitute for `group` restrictions.
+
 ---
 
 ## 5. Checklist before you submit
