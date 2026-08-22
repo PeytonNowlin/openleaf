@@ -266,6 +266,14 @@ export const summary: NodeSpec = {
  * A captioned image. Figures that contain anything other than an image and an
  * optional caption are left to the preservation layer: claiming them here
  * would flatten a complex figure into a shape it cannot round-trip.
+ *
+ * `content: 'inline+'` makes this a textblock, the same as a paragraph. Block-
+ * type commands must not retype it: the destination cannot hold an image plus
+ * figcaption, and treating it as a paragraph is how a heading dropdown used to
+ * destroy the figure. The guards live on the commands (`validContent`, and
+ * `canInsert` stopping at `isolating`) rather than a tighter content
+ * expression, because stored `<figure><img>…<figcaption>` is inline children
+ * in this schema and changing that is a parse/serialize rewrite.
  */
 export const figure: NodeSpec = {
   group: 'block',

@@ -45,7 +45,9 @@ Three item types. `button` is the common case. `select` builds a native
 `<select>` from `options`, `getValue` and `applyValue` -- use it for a fixed
 preset list. `custom` hands you `render` and expects a `ToolbarControl` back,
 which is how the colour swatch grid and the block-type control exist without the
-toolbar knowing their ids.
+toolbar knowing their ids. The block-type dropdown disables Heading and Paragraph
+when those commands would not apply -- a captioned figure is a textblock, but
+retyping it is how those entries used to destroy the `<figure>`.
 
 Registering an item declares capability; it does not rearrange anyone's toolbar.
 Layout is the integrator's `toolbar` attribute.

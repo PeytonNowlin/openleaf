@@ -48,6 +48,14 @@ entries below say so explicitly when they do.
   public API.
 - The core bundle's gzip budget rises to 110 KB, measured at 108.0.
 
+### Fixed
+
+- **Character marks keep leftover attributes on round trip.** `strong`, `em`,
+  `code`, `u`, `s`, `sub`, `sup`, `b` (as `strong`) and extra attributes on
+  `<a>` (`class`, `data-*`, …) used to be stripped because the carry wrapper
+  ran on nodes only. The same sanitizer filter still drops `on*` handlers and
+  unsafe URLs. Closes #126.
+
 ## 0.1.0-beta.2 - 2026-08-19
 
 The formatting and structure release. Five new packages, so read the install
@@ -114,6 +122,15 @@ package on this version -- they pin each other exactly.
   to switch its captions back off.
 
 ### Fixed
+
+- **Block-type commands no longer destroy a captioned `<figure>`.** `figure` is a
+  textblock (`content: 'inline+'`), so `setHeading` and `setParagraph` used to
+  retype it as an `<h2>`/`<p>` holding an image and a `<figcaption>`,
+  `toggleCodeBlock` threw `Invalid content for node figure`, and
+  `insertHorizontalRule` split the figure in two. Those commands now refuse a
+  textblock the destination cannot hold, `canInsert` stops at isolating nodes,
+  and the block-type dropdown disables Heading and Paragraph while the caret is
+  in a caption.
 
 - **One stray `=` in the HTML source box wedged the editor unrecoverably.** The
   HTML parser accepts attribute names `setAttribute` refuses -- `<p ="v">` parses

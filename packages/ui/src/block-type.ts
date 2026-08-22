@@ -2,6 +2,7 @@ import {
   activeBlockClass,
   activeHeadingLevel,
   formatParts,
+  isNodeActive,
   setBlockClass,
   setHeading,
   setParagraph,
@@ -33,6 +34,12 @@ export function blockTypeControl(
     option.value = value
     select.add(option)
   }
+  // Empty value for selections that are not a paragraph or heading (a figure
+  // caption). Without it the control would display "Paragraph" over a node
+  // setParagraph cannot convert.
+  addOption('', '')
+  select.options[0]!.hidden = true
+  select.options[0]!.disabled = true
   for (const [value, label] of options) addOption(label, value)
   for (const format of formats) addOption(t(format.label), `format:${format.token}`)
 
@@ -55,6 +62,7 @@ export function blockTypeControl(
     // for the window before the first `update()`.
     if (host.hasAttribute('readonly') || select.disabled) return
     const value = select.value
+    if (!value) return
     if (value.startsWith('format:')) {
       const { element, className } = formatParts(value.slice('format:'.length))
       if (element === 'p') setParagraph(view.state, view.dispatch, view)
@@ -83,15 +91,44 @@ export function blockTypeControl(
       const readonly = host.hasAttribute('readonly')
       select.setAttribute('aria-disabled', readonly ? 'true' : 'false')
       select.disabled = readonly
+      for (const option of Array.from(select.options)) {
+        if (option.value === '') continue
+        option.disabled = readonly || !blockTypeAvailable(state, option.value)
+      }
       const formatClass = activeBlockClass(state)
       const level = activeHeadingLevel(state)
-      const activeElement = level === null ? 'p' : `h${level}`
+      const inParagraph = isNodeActive(state, 'paragraph')
+      const activeElement = level === null ? (inParagraph ? 'p' : null) : `h${level}`
       const matching = formats.find((format) => {
         const { element, className } = formatParts(format.token)
         return className === formatClass && (element === null || element === activeElement)
       })
-      const next = matching ? `format:${matching.token}` : level === null ? 'p' : String(level)
+      const next = matching
+        ? `format:${matching.token}`
+        : level !== null
+          ? String(level)
+          : inParagraph
+            ? 'p'
+            : ''
       if (select.value !== next) select.value = next
     },
   }
+}
+
+/**
+ * Whether this dropdown entry's command would apply. A figure is a textblock
+ * but not a paragraph; without this check Heading and Paragraph stay enabled
+ * in a caption and choosing one destroys the figure.
+ */
+function blockTypeAvailable(state: EditorState, value: string): boolean {
+  if (value.startsWith('format:')) {
+    const { element } = formatParts(value.slice('format:'.length))
+    if (element === 'p') return setParagraph(state)
+    if (element !== null && /^h[1-6]$/.test(element)) {
+      return setHeading(Number(element.slice(1)))(state)
+    }
+    return true
+  }
+  if (value === 'p') return setParagraph(state)
+  return setHeading(Number(value))(state)
 }
