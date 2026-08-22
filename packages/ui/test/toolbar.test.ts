@@ -532,6 +532,32 @@ describe('source mode', () => {
     expect(serializeHtml(view.state.doc)).toBe(before)
   })
 
+  it('disables Heading and Paragraph while the caret is in a figure caption', () => {
+    const html =
+      '<figure><img src="/a.png" alt="a"><figcaption>Caption text</figcaption></figure><p>after</p>'
+    const { toolbar, view } = mount('blockType', { html })
+    let pos: number | null = null
+    view.state.doc.descendants((node, nodePos) => {
+      if (node.type.name !== 'figcaption') return true
+      pos = nodePos + 1
+      return false
+    })
+    if (pos === null) throw new Error('expected a figcaption')
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)))
+    toolbar.update(view.state)
+
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="blockType"]')!
+    expect(select.value).toBe('')
+    expect([...select.options].find((option) => option.value === 'p')?.disabled).toBe(true)
+    expect([...select.options].find((option) => option.value === '2')?.disabled).toBe(true)
+
+    const before = serializeHtml(view.state.doc)
+    select.value = '2'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(serializeHtml(view.state.doc)).toBe(before)
+    expect(serializeHtml(view.state.doc)).toContain('<figure>')
+  })
+
   it('reaches a native select any custom control rendered, not just block type', () => {
     registerToolbarItem({
       id: 'nativeSelect',

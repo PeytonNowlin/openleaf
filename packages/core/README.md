@@ -84,6 +84,13 @@ A predicate returns `null` for a mixed selection rather than the first value it
 finds -- a dropdown showing "Georgia" for a range that is half Georgia would be
 worse than showing nothing.
 
+Block-type commands (`setHeading`, `setParagraph`, `toggleCodeBlock`) refuse a
+textblock whose content the destination cannot hold. A captioned `<figure>` is a
+textblock in the schema (`content: 'inline+'`) but not a paragraph: converting it
+used to produce an `<h2>` holding an image and a `<figcaption>`, and
+`toggleCodeBlock` threw. `canInsert` also stops at an isolating node, so
+inserting an `<hr>` cannot split a figure.
+
 ## Isolating selections
 
 If you construct a ProseMirror editor yourself, install

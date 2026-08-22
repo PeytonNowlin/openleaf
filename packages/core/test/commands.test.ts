@@ -7,6 +7,7 @@ import {
   canInsert,
   clearFormatting,
   coreSchema,
+  indent,
   insertHorizontalRule,
   insertImage,
   isolatingSelectionPlugin,
@@ -14,7 +15,10 @@ import {
   isNodeActive,
   parseHtml,
   serializeHtml,
+  setHeading,
   setLink,
+  setParagraph,
+  setTextAlign,
   toggleBlockquote,
   toggleBold,
   toggleBulletList,
@@ -331,5 +335,88 @@ describe('canInsert', () => {
 
   it('refuses an image inside a code block, where inline nodes are not allowed', () => {
     expect(canInsert(cursorAt(stateFrom('<pre><code>x</code></pre>'), 2), 'image')).toBe(false)
+  })
+
+  it('refuses a horizontal rule inside an isolating figure', () => {
+    expect(canInsert(cursorInCaption(stateFrom(CAPTIONED_FIGURE)), 'horizontal_rule')).toBe(false)
+  })
+})
+
+const CAPTIONED_FIGURE =
+  '<figure><img src="/openleaf-mark.png" alt="a"><figcaption>Caption text</figcaption></figure><p>after</p>'
+
+function cursorInCaption(state: EditorState): EditorState {
+  let pos: number | null = null
+  state.doc.descendants((node, nodePos) => {
+    if (node.type.name !== 'figcaption') return true
+    pos = nodePos + 1
+    return false
+  })
+  if (pos === null) throw new Error('expected a figcaption')
+  return cursorAt(state, pos)
+}
+
+describe('block commands inside a figure caption', () => {
+  /*
+   * `figure` is `content: 'inline+'`, so `isTextblock` is true. Without a
+   * `validContent` guard, setHeading retyped the figure as an <h2> holding an
+   * image and a figcaption, toggleCodeBlock threw, and insertHorizontalRule
+   * split the figure in two. Issue #131.
+   */
+  const commands: Array<[string, Command, boolean]> = [
+    ['toggleCodeBlock', toggleCodeBlock, false],
+    ['setHeading(2)', setHeading(2), false],
+    ['setParagraph', setParagraph, false],
+    ['insertHorizontalRule', insertHorizontalRule, false],
+    ['toggleBlockquote', toggleBlockquote, false],
+    ['toggleBulletList', toggleBulletList, false],
+    ['toggleOrderedList', toggleOrderedList, false],
+    ['indent', indent, false],
+    ['setTextAlign(center)', setTextAlign('center'), false],
+    ['clearFormatting', clearFormatting, false],
+  ]
+
+  for (const [name, command, shouldApply] of commands) {
+    it(`${name} is ${shouldApply ? 'enabled' : 'disabled'} and leaves the figure intact`, () => {
+      const state = cursorInCaption(stateFrom(CAPTIONED_FIGURE))
+      const before = serializeHtml(state.doc)
+      expect(command(state)).toBe(shouldApply)
+      const next = run(state, command)
+      if (shouldApply) {
+        expect(next).not.toBeNull()
+        expect(html(next)).toContain('<figure>')
+      } else {
+        expect(next).toBeNull()
+        expect(serializeHtml(state.doc)).toBe(before)
+      }
+    })
+  }
+
+  it('does not throw toggleCodeBlock at any position inside the figure', () => {
+    const state = stateFrom(CAPTIONED_FIGURE)
+    const figure = state.doc.firstChild
+    if (!figure) throw new Error('expected a figure')
+    for (let pos = 1; pos < figure.nodeSize; pos += 1) {
+      const at = cursorAt(state, pos)
+      expect(toggleCodeBlock(at)).toBe(false)
+      expect(() => {
+        toggleCodeBlock(at, () => {
+          throw new Error('dispatched')
+        })
+      }).not.toThrow()
+    }
+  })
+
+  it('keeps the figure when a range also covers a heading', () => {
+    const state = selectAll(
+      stateFrom(
+        '<h2 id="h">head</h2><figure><img src="/a.png" alt="a"><figcaption>c</figcaption></figure>',
+      ),
+    )
+    expect(() => run(state, toggleCodeBlock)).not.toThrow()
+    const out = html(run(state, toggleCodeBlock))
+    expect(out).toContain('<figure>')
+    expect(out).toContain('<figcaption>c</figcaption>')
+    expect(out).not.toContain('<h2')
   })
 })

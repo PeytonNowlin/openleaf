@@ -191,6 +191,15 @@ function setBlockTypeCarrying(
         // false, and it has to be asked with the attributes this call would
         // actually write -- otherwise a no-op conversion looks like a change.
         if (!node.isTextblock || node.hasMarkup(type, attrsFor(node))) return
+        // A figure is a textblock (`content: 'inline+'`) but its children are an
+        // image and a caption -- retyping it produces an <h2> holding a
+        // <figcaption>. `heading` and `paragraph` also accept inline content, so
+        // `validContent` is not enough; isolating is what marks a textblock that
+        // is not a retypable paragraph.
+        if (node.type.spec.isolating) return
+        // `code_block` cannot hold an image or a figcaption, which is where the
+        // TransformError came from when this check was missing.
+        if (!type.validContent(node.content)) return
         if (node.type === type) {
           applicable = true
           return
@@ -206,7 +215,23 @@ function setBlockTypeCarrying(
     if (dispatch) {
       const tr = state.tr
       for (const range of selectedRanges(state)) {
-        tr.setBlockType(range.$from.pos, range.$to.pos, type, attrsFor)
+        // Per node, not the whole range: `setBlockType` on a span that also
+        // covers a figure would still try to retype that figure, which is the
+        // TransformError a select-all used to throw even after the
+        // applicability check started skipping it.
+        state.doc.nodesBetween(range.$from.pos, range.$to.pos, (node, pos) => {
+          if (!node.isTextblock || node.hasMarkup(type, attrsFor(node))) return
+          if (node.type.spec.isolating) return
+          if (!type.validContent(node.content)) return
+          if (node.type !== type) {
+            const $pos = state.doc.resolve(pos)
+            const index = $pos.index()
+            if (!$pos.parent.canReplaceWith(index, index + 1, type)) return
+          }
+          const mappedFrom = tr.mapping.map(pos)
+          const mappedTo = tr.mapping.map(pos + node.nodeSize)
+          tr.setBlockType(mappedFrom, mappedTo, type, attrsFor)
+        })
       }
       dispatch(tr.scrollIntoView())
     }
