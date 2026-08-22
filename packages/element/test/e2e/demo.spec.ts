@@ -184,6 +184,72 @@ test.describe('the demo page', () => {
   })
 
   /*
+   * Content CSS in the shapes real stylesheets are written in.
+   *
+   * `scopeContentCss` used to recognise a selector only where it followed the
+   * start of the input or a `}`, so a rule inside `@media` -- which follows the
+   * media block's `{` -- shipped UNSCOPED and restyled the whole admin page.
+   * And selector lists were split on every `,`, which turned `p:is(.a, .b)`
+   * into an invalid selector the engine drops, so the rule stopped applying to
+   * the canvas at all. Both are asserted here, in a browser, because a string
+   * test cannot tell a valid selector from one that merely looks scoped.
+   */
+  test('scopes content CSS inside @media, and keeps :is() intact', async ({ page }) => {
+    await page.route('**/probe-scope.css', (route) =>
+      route.fulfill({
+        contentType: 'text/css',
+        body: [
+          '@media (min-width: 300px) { p { color: rgb(1, 2, 3) } }',
+          'p:is(.narrow, .lead) { outline-color: rgb(4, 5, 6) }',
+        ].join('\n'),
+      }),
+    )
+    await page.goto(DEMO)
+    await expect(page.locator('openleaf-editor[for="body"] .ProseMirror')).toBeVisible({ timeout: 15000 })
+    await page.evaluate(() => {
+      const wrap = document.createElement('div')
+      wrap.id = 'scope-wrap'
+      document.body.appendChild(wrap)
+      // A paragraph OUTSIDE any editor -- the admin chrome the scoping protects.
+      const outside = document.createElement('p')
+      outside.id = 'outside-any-editor'
+      outside.textContent = 'chrome'
+      wrap.appendChild(outside)
+      wrap.insertAdjacentHTML(
+        'beforeend',
+        '<openleaf-editor id="scoped" content-css="/probe-scope.css"></openleaf-editor>',
+      )
+    })
+
+    const canvasParagraph = '#scoped .ProseMirror p'
+    await expect(page.locator(canvasParagraph)).toBeVisible({ timeout: 10000 })
+
+    // The @media rule reaches the canvas...
+    await expect
+      .poll(() => page.evaluate((sel) => getComputedStyle(document.querySelector(sel)!).color, canvasParagraph), {
+        timeout: 10000,
+      })
+      .toBe('rgb(1, 2, 3)')
+
+    // ...and nothing else on the page.
+    const outsideColour = await page.evaluate(
+      () => getComputedStyle(document.getElementById('outside-any-editor')!).color,
+    )
+    expect(outsideColour).not.toBe('rgb(1, 2, 3)')
+
+    // The `:is()` rule survived as a valid selector rather than being mangled
+    // into one the engine drops.
+    const outline = await page.evaluate((sel) => {
+      const p = document.querySelector(sel)!
+      p.classList.add('lead')
+      return getComputedStyle(p).outlineColor
+    }, canvasParagraph)
+    expect(outline).toBe('rgb(4, 5, 6)')
+
+    await page.evaluate(() => document.getElementById('scope-wrap')?.remove())
+  })
+
+  /*
    * An editor built under a `display: none` ancestor -- a hidden tab, a
    * collapsed dialog, the ordinary shape of a CMS form -- measures every caret
    * at 0,0. It used to show the insert bar there anyway: visible inside a hidden
