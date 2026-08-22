@@ -165,7 +165,7 @@ outdent also sit in the Format menu and keep their keyboard shortcuts.
 | Subscript / superscript | `Mod+=` / `Mod+Shift+=`, and the F1 shortcut list |
 | Direction, language | `setDir`, `toggleDir`, `setLanguage` |
 | List style | `setListStyle` |
-| Remove all of it | `clearFormatting` |
+| Strip appearance | `clearFormatting` (keeps links, `dir`, and `lang`) |
 
 The commands are exported from `@openleaf-editor/core` and take the same
 `(state, dispatch, view)` shape as every other command, so wiring your own

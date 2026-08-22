@@ -101,6 +101,10 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **`clearFormatting` keeps per-run language marks.** Links and `dir` already
+  survived because they are content, not appearance; `lang` is the same fact
+  modelled as a mark, so stripping it silently broke WCAG 3.1.2 and lost
+  pronunciation, hyphenation, and `:lang()` for that phrase.
 - **`safeClassList` no longer silently deletes Tailwind, non-ASCII, or
   leading-digit class tokens.** It used an ASCII-identifier regex, so
   `md:w-1/2`, `p-[10px]`, `2col`, and `größe-mittel` were dropped whenever
