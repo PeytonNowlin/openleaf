@@ -1,0 +1,13 @@
+<!--
+  A preserved block element inside a paragraph-holding container.
+
+  The HTML parser closes an open <p> for these tags, so claiming them as
+  unknown_inline serializes them inside a paragraph that the next parse
+  splits -- two empty paragraphs per save, without bound. They must be
+  unknown_block instead, and a second round trip must be a fixed point.
+-->
+<blockquote><div class="callout" data-callout-id="7">Load-bearing wrapper.</div></blockquote>
+<ul>
+  <li><section class="note">First-child section</section></li>
+</ul>
+<blockquote><aside class="callout">Aside in a quote.</aside></blockquote>

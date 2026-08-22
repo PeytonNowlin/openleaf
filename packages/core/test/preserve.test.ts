@@ -89,3 +89,62 @@ describe('isInsidePreserved', () => {
     expect(baseSchema.nodes['unknown_block']).toBeDefined()
   })
 })
+
+/**
+ * A p-closing element claimed as unknown_inline is serialized inside `<p>`
+ * and the HTML parser splits that paragraph on the next parse. One roundTrip
+ * looks fine; the second is the one that grows. Convergence is the check.
+ */
+describe('preserved block elements in paragraph-holding containers', () => {
+  const P_CLOSING = [
+    'div', 'section', 'aside', 'nav', 'center', 'header', 'footer', 'main',
+    'address', 'fieldset', 'dl', 'menu', 'dialog', 'hr', 'figure',
+  ] as const
+
+  function expectFixedPoint(html: string): string {
+    const once = roundTrip(html)
+    expect(roundTrip(once), html).toBe(once)
+    expect(roundTrip(roundTrip(once)), html).toBe(once)
+    return once
+  }
+
+  it('does not grow a callout div inside a blockquote on every save', () => {
+    const html = '<blockquote><div class="callout">Note</div></blockquote>'
+    const once = expectFixedPoint(html)
+    expect(once).toBe(html)
+    expect(once).not.toContain('<p></p>')
+  })
+
+  it.each(P_CLOSING)('is a fixed point for <%s> inside a blockquote', (tag) => {
+    const inner = tag === 'hr' ? '<hr class="break">' : `<${tag} class="callout">Note</${tag}>`
+    const once = expectFixedPoint(`<blockquote>${inner}</blockquote>`)
+    expect(once.match(/<p><\/p>/g) ?? []).toHaveLength(0)
+  })
+
+  it.each(P_CLOSING)('is a fixed point for <%s> as the first child of a list item', (tag) => {
+    const inner = tag === 'hr' ? '<hr class="break">' : `<${tag} class="callout">Note</${tag}>`
+    expectFixedPoint(`<ul><li>${inner}</li></ul>`)
+  })
+
+  it('still wraps a genuine inline unknown as the first child of a list item', () => {
+    const html = '<ol><li><ins>a</ins></li><li>b</li></ol>'
+    const once = expectFixedPoint(html)
+    expect(once).toContain('<ins>a</ins>')
+    expect(once).toContain('<ol>')
+  })
+
+  it('still treats a custom element as inline, because it does not close a p', () => {
+    const html = '<blockquote><drupal-media data-uuid="1"></drupal-media></blockquote>'
+    const once = expectFixedPoint(html)
+    expect(once).toContain('drupal-media')
+    expect(once).toContain('data-uuid="1"')
+  })
+
+  it('leaves a p-closing element inside a heading as a fixed point', () => {
+    expectFixedPoint('<h2><div class="callout">Note</div></h2>')
+  })
+
+  it('leaves a p-closing element inside a table cell as a fixed point', () => {
+    expectFixedPoint('<table><tr><td><div class="callout">Note</div></td></tr></table>')
+  })
+})

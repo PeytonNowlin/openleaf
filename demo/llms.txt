@@ -16,7 +16,7 @@ Editor output is untrusted input and must be sanitized on the server.
 
 ## Safety and API
 
-- [Security](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/SECURITY.md): Server-side sanitization, preserved markup, plugin trust, Content Security Policy, and vulnerability reporting.
+- [Security](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/SECURITY.md): Server-side sanitization, preserved markup, plugin trust, Content Security Policy, `.docx` zip-bomb limits, and vulnerability reporting.
 - [Custom element API](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/docs/api-reference.md): Attributes, properties, events, textarea binding, and exported extension hooks.
 - [Sanitizer package](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/packages/sanitize/README.md): DOMPurify setup and adapters for JavaScript, Python Bleach, and PHP HTMLPurifier.
 
