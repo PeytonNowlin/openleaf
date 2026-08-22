@@ -19,7 +19,7 @@ import { CHARACTERS, EMOJI } from './glyphs.js'
 import { buildGlyphPicker } from './grid.js'
 import { INSERT_ICONS } from './icons.js'
 import { promptInsertAnchor, promptInsertDetails, promptInsertMedia, promptInsertSnippet } from './prompts.js'
-import { imageResizePlugin } from './resize.js'
+import { mediaResizePlugin } from './resize.js'
 import { listedSnippets, registerHtmlSnippets, type HtmlSnippet } from './snippets.js'
 import { INSERT_CSS } from './styles.js'
 
@@ -51,7 +51,7 @@ export function installInsertTools(options: InsertOptions = {}): void {
 
   registerIcons(INSERT_ICONS)
   registerStyles(INSERT_CSS)
-  registerEditorPlugin(() => [imageResizePlugin()])
+  registerEditorPlugin(() => [mediaResizePlugin()])
 
   registerToolbarItem({
     id: 'media',
@@ -150,4 +150,4 @@ export function installInsertTools(options: InsertOptions = {}): void {
 
 export { CHARACTERS, EMOJI } from './glyphs.js'
 export { listedSnippets, registerHtmlSnippets, type HtmlSnippet } from './snippets.js'
-export { imageResizePlugin } from './resize.js'
+export { imageResizePlugin, mediaResizePlugin, RESIZABLE_MEDIA, type ResizableKind } from './resize.js'

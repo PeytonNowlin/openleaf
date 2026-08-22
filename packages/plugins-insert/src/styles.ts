@@ -39,7 +39,10 @@ export const INSERT_CSS = `
   outline: none;
 }
 .ol-img-resize { position: relative; display: inline-block; max-width: 100%; }
-.ol-img-resize img { display: block; max-width: 100%; height: auto; }
+.ol-img-resize :is(img, video) { display: block; max-width: 100%; height: auto; }
+/* A video is block-level and inline-block wrapping it would shrink to the
+   controls' intrinsic width, so the wrapper takes the width the author set. */
+.ol-img-resize:has(video) { display: block; }
 .ol-img-handle {
   position: absolute; right: 0; bottom: 0;
   width: 12px; height: 12px; margin: 0; padding: 0;

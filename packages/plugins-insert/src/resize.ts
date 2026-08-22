@@ -12,7 +12,7 @@ import type { EditorView, NodeView } from 'prosemirror-view'
  * percentage is not a valid width attribute value either, so it goes on the
  * style, which is editor-only DOM and never serialized.
  */
-function setDimension(img: HTMLImageElement, name: 'width' | 'height', raw: unknown): void {
+function setDimension(img: MediaElement, name: 'width' | 'height', raw: unknown): void {
   const value = raw === null || raw === undefined ? '' : String(raw).trim()
   if (value === '') {
     img.removeAttribute(name)
@@ -28,21 +28,101 @@ function setDimension(img: HTMLImageElement, name: 'width' | 'height', raw: unkn
   img.style.setProperty(name, value)
 }
 
-function applyAttrs(img: HTMLImageElement, node: PMNode): void {
+/**
+ * The node types this plugin gives a resize handle.
+ *
+ * Not `audio`: its spec declares no `width`/`height`, because an audio player
+ * has no intrinsic box -- only the height of whatever controls the browser
+ * draws. A handle there would write dimensions the schema drops on the next
+ * parse, which is a control that appears to work and does not.
+ */
+export const RESIZABLE_MEDIA = ['image', 'video'] as const
+
+export type ResizableKind = (typeof RESIZABLE_MEDIA)[number]
+
+/** The element a node of this kind renders to in the live editor. */
+type MediaElement = HTMLImageElement | HTMLVideoElement
+
+function createElement(kind: ResizableKind, doc: Document): MediaElement {
+  return kind === 'video' ? doc.createElement('video') : doc.createElement('img')
+}
+
+/**
+ * The element's own idea of its size, for aspect ratio and for the drag ceiling.
+ *
+ * An image knows this as soon as it decodes; a video only once it has fetched
+ * enough to have metadata, and reports 0 until then. Both are therefore treated
+ * as "may not know yet" rather than "knows now", which is what the `|| 0` guards
+ * at the call sites are for.
+ */
+function intrinsic(el: MediaElement): { width: number; height: number } {
+  if (el instanceof HTMLVideoElement) return { width: el.videoWidth, height: el.videoHeight }
+  return { width: el.naturalWidth, height: el.naturalHeight }
+}
+
+function applyImageAttrs(img: HTMLImageElement, node: PMNode): void {
   img.src = node.attrs['src'] as string
   const alt = node.attrs['alt']
   if (alt !== null) img.alt = alt as string
   else img.removeAttribute('alt')
-  const title = node.attrs['title']
-  if (title) img.title = title as string
-  else img.removeAttribute('title')
-  setDimension(img, 'width', node.attrs['width'])
-  setDimension(img, 'height', node.attrs['height'])
   const align = node.attrs['align'] as ImageAlign | null
   const classes = [align ? IMAGE_ALIGN_CLASS[align] : '', (node.attrs['className'] as string | null) ?? '']
     .filter((part) => part !== '')
     .join(' ')
   img.className = classes
+}
+
+/**
+ * Put the player's addresses and poster on the element.
+ *
+ * The `<source>` children live in the node's `furniture` attribute as a markup
+ * string -- the shape core stores them in -- so they are rebuilt here rather
+ * than set as properties. Rebuilt from scratch on every update, because a
+ * dialog that removes a source has to remove it from the live DOM too, and
+ * there is no diffing worth doing on two or three elements.
+ *
+ * `controls` is forced on regardless of what the node says. A video with no
+ * controls in a read-only page is a design choice; in an editor it is an opaque
+ * rectangle the author cannot scrub, and the attribute the document stores is
+ * unaffected either way because stored HTML is serialized from the node.
+ */
+function applyVideoAttrs(el: HTMLVideoElement, node: PMNode): void {
+  const src = node.attrs['src'] as string | null
+  if (src !== null) el.setAttribute('src', src)
+  else el.removeAttribute('src')
+  const poster = node.attrs['poster'] as string | null
+  if (poster !== null) el.setAttribute('poster', poster)
+  else el.removeAttribute('poster')
+  el.controls = true
+  for (const child of Array.from(el.children)) child.remove()
+  const furniture = node.attrs['furniture'] as string | null
+  if (furniture) {
+    const tpl = el.ownerDocument.createElement('template')
+    tpl.innerHTML = furniture
+    // Only the furniture tags, and only their addresses: this string has been
+    // through core's `scrub` already, and re-adopting it wholesale into the live
+    // document is the class of mistake #64 exists to prevent.
+    for (const source of Array.from((tpl as HTMLTemplateElement).content.children)) {
+      const name = source.nodeName.toLowerCase()
+      if (name !== 'source' && name !== 'track') continue
+      const copy = el.ownerDocument.createElement(name)
+      for (const attr of ['src', 'type', 'kind', 'srclang', 'label']) {
+        const value = source.getAttribute(attr)
+        if (value !== null) copy.setAttribute(attr, value)
+      }
+      el.appendChild(copy)
+    }
+  }
+}
+
+function applyAttrs(el: MediaElement, node: PMNode): void {
+  if (el instanceof HTMLVideoElement) applyVideoAttrs(el, node)
+  else applyImageAttrs(el, node)
+  const title = node.attrs['title']
+  if (title) el.title = title as string
+  else el.removeAttribute('title')
+  setDimension(el, 'width', node.attrs['width'])
+  setDimension(el, 'height', node.attrs['height'])
 }
 
 /** One arrow press, and one Shift+arrow press, in CSS pixels. */
@@ -65,16 +145,21 @@ const MIN_WIDTH = 16
  * screen reader speaks `aria-valuetext` on every change, so the new width is
  * read out without a live region racing it and saying the same thing twice.
  */
-function imageView(node: PMNode, view: EditorView, getPos: () => number | undefined): NodeView {
+function mediaView(
+  kind: ResizableKind,
+  node: PMNode,
+  view: EditorView,
+  getPos: () => number | undefined,
+): NodeView {
   const wrap = view.dom.ownerDocument.createElement('span')
   wrap.className = 'ol-img-resize'
-  const img = view.dom.ownerDocument.createElement('img')
+  const img = createElement(kind, view.dom.ownerDocument)
   applyAttrs(img, node)
   const handle = view.dom.ownerDocument.createElement('button')
   handle.type = 'button'
   handle.className = 'ol-img-handle'
   handle.setAttribute('role', 'slider')
-  handle.setAttribute('aria-label', 'Image width')
+  handle.setAttribute('aria-label', kind === 'video' ? 'Video width' : 'Image width')
   handle.setAttribute('aria-orientation', 'horizontal')
   handle.setAttribute('aria-valuemin', String(MIN_WIDTH))
   wrap.append(img, handle)
@@ -83,7 +168,7 @@ function imageView(node: PMNode, view: EditorView, getPos: () => number | undefi
   const maxWidth = (): number => {
     const box = Math.round(view.dom.getBoundingClientRect().width)
     if (box > MIN_WIDTH) return box
-    return Math.max(img.naturalWidth || 0, currentWidth() * 2, 1000)
+    return Math.max(intrinsic(img).width || 0, currentWidth() * 2, 1000)
   }
 
   /**
@@ -113,12 +198,22 @@ function imageView(node: PMNode, view: EditorView, getPos: () => number | undefi
     handle.setAttribute('aria-valuetext', shown === '' ? 'Automatic' : numeric ? `${shown} pixels` : shown)
   }
 
+  /**
+   * Pixel height that keeps the element's aspect ratio, or null if it is
+   * unknown -- a video that has not loaded metadata yet reports 0x0, and
+   * guessing a height for it would squash the frame once it arrives.
+   */
+  const heightFor = (width: number): string | null => {
+    const { width: nw, height: nh } = intrinsic(img)
+    const ratio = nh && nw ? nh / nw : 0
+    return ratio ? String(Math.round(width * ratio)) : null
+  }
+
   const resizeTo = (raw: number): void => {
     const pos = getPos()
     if (pos === undefined) return
     const next = Math.max(MIN_WIDTH, Math.round(raw))
-    const ratio = img.naturalHeight && img.naturalWidth ? img.naturalHeight / img.naturalWidth : 0
-    const height = ratio ? String(Math.round(next * ratio)) : null
+    const height = heightFor(next)
     view.dispatch(
       view.state.tr.setNodeMarkup(pos, undefined, {
         ...view.state.doc.nodeAt(pos)?.attrs,
@@ -152,12 +247,6 @@ function imageView(node: PMNode, view: EditorView, getPos: () => number | undefi
   let frame = 0
 
   const win = (): (Window & typeof globalThis) | null => wrap.ownerDocument.defaultView
-
-  /** Pixel height that keeps the image's aspect ratio, or null if it is unknown. */
-  const heightFor = (width: number): string | null => {
-    const ratio = img.naturalHeight && img.naturalWidth ? img.naturalHeight / img.naturalWidth : 0
-    return ratio ? String(Math.round(width * ratio)) : null
-  }
 
   const paint = (): void => {
     frame = 0
@@ -274,7 +363,7 @@ function imageView(node: PMNode, view: EditorView, getPos: () => number | undefi
   return {
     dom: wrap,
     update(updated) {
-      if (updated.type.name !== 'image') return false
+      if (updated.type.name !== kind) return false
       applyAttrs(img, updated)
       sync(updated)
       return true
@@ -288,12 +377,29 @@ function imageView(node: PMNode, view: EditorView, getPos: () => number | undefi
   }
 }
 
-export function imageResizePlugin(): Plugin {
+/**
+ * Drag-resize handles for the media that has a box to drag.
+ *
+ * One plugin for both kinds rather than one per kind: a `nodeViews` prop is a
+ * map keyed by node name, so two plugins each claiming `image` would not
+ * compose -- the later registration would simply win, and which one that is
+ * depends on install order.
+ */
+export function mediaResizePlugin(): Plugin {
   return new Plugin({
     props: {
       nodeViews: {
-        image: (node, view, getPos) => imageView(node, view, getPos),
+        image: (node, view, getPos) => mediaView('image', node, view, getPos),
+        video: (node, view, getPos) => mediaView('video', node, view, getPos),
       },
     },
   })
+}
+
+/**
+ * @deprecated Use `mediaResizePlugin`, which also handles video. Kept because
+ * this name is in the published API of 0.1.0-beta.2.
+ */
+export function imageResizePlugin(): Plugin {
+  return mediaResizePlugin()
 }
