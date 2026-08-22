@@ -19,16 +19,33 @@ entries below say so explicitly when they do.
   save.** `text_color`, `font_family` and `font_size` now decline when
   preservation is going to keep the element, the same bargain `background_color`
   already struck. `#127`
-
+- **Inserting or deleting a table column keeps a stored `<colgroup>` in step
+  with the cells.** Widths and classes that lived only on inherited `<col>`
+  elements used to describe the previous columns after a column command.
+- **A formats-dropdown entry whose token names both an element and a class is
+  available over a block that already is that element.** `p.lead=Lead` went
+  disabled the moment the caret sat in a paragraph -- the one place an author
+  reaches for it -- because availability was decided by the element half alone
+  and `setParagraph` declines a paragraph. Either half having work to do is now
+  enough. A class-free entry such as `h2` stays disabled where its own command
+  is, so the figure-caption guard is unchanged.
 - **The core editor marks a table caption `contenteditable="false"` so a caret
   cannot enter furniture ProseMirror does not own.** `tableCaptionPlugin` sits
   ahead of the table-editing bundle so column resize still supplies the live
   table node view. Stored HTML is unchanged.
 - **Serialized images put `class` before `src`**, matching the stored spelling
   the round-trip fixtures pin rather than engine insertion order.
-- **Isolating-selection tests follow sole-paragraph unwrap** on a details body:
-  the body stays inside `<details>` after a crossing edit, without requiring a
-  wrapper `<p>` that save would strip.
+- **Isolating-selection tests follow sole-paragraph unwrap** on a details body
+  and in a blockquote: the body stays inside `<details>` after a crossing edit,
+  and undo restores `<blockquote>quote</blockquote>`, without either assertion
+  requiring a wrapper `<p>` that save would strip.
+- **The unit-test timeout survives a saturated CI runner.** Two guards in the
+  suite are deliberately adversarial and synchronous -- `parseHtml` at extreme
+  depth, and sanitize's 20000-level input -- and each blocks a worker for around
+  thirty seconds on a two-core runner. Being synchronous they outran their own
+  timeout, but they starved the asynchronous `.docx` tests scheduled beside
+  them, which then failed at exactly the 5000ms default having done no work at
+  all. Ten green tests reported as failures on every push.
 
 ### Security
 

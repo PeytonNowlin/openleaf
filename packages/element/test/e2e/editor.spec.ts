@@ -585,7 +585,10 @@ test.describe('isolating selections (#130)', () => {
     await page.keyboard.press('ControlOrMeta+z')
     const undone = await submittedValue(page)
     expect(undone).not.toContain('>X<')
-    expect(undone).toContain('<p>quote</p>')
+    // The blockquote's sole attribute-free paragraph unwraps on save, so undo
+    // restores `<blockquote>quote</blockquote>` -- pinning the wrapper `<p>`
+    // asserted a spelling `serializeHtml` no longer emits.
+    expect(undone).toContain('<blockquote>quote</blockquote>')
     expect(undone).toContain('body')
   })
 

@@ -119,15 +119,26 @@ export function blockTypeControl(
  * Whether this dropdown entry's command would apply. A figure is a textblock
  * but not a paragraph; without this check Heading and Paragraph stay enabled
  * in a caption and choosing one destroys the figure.
+ *
+ * A format entry runs TWO commands, so it is available when either half has
+ * work to do. `p.lead` over a paragraph converts nothing -- `setParagraph`
+ * declines a block that is already a paragraph -- but it still has a class to
+ * set, and testing only the element half disabled the entry in the one place
+ * an author would reach for it. The class half is consulted only when the
+ * token actually names a class: `h2` alone in a caption stays disabled rather
+ * than becoming an entry that strips the caption's class and nothing else.
  */
 function blockTypeAvailable(state: EditorState, value: string): boolean {
   if (value.startsWith('format:')) {
-    const { element } = formatParts(value.slice('format:'.length))
-    if (element === 'p') return setParagraph(state)
-    if (element !== null && /^h[1-6]$/.test(element)) {
-      return setHeading(Number(element.slice(1)))(state)
-    }
-    return true
+    const { element, className } = formatParts(value.slice('format:'.length))
+    const elementApplies =
+      element === 'p'
+        ? setParagraph(state)
+        : element !== null && /^h[1-6]$/.test(element)
+          ? setHeading(Number(element.slice(1)))(state)
+          : null
+    if (elementApplies === null) return true
+    return elementApplies || (className !== null && setBlockClass(className)(state))
   }
   if (value === 'p') return setParagraph(state)
   return setHeading(Number(value))(state)
