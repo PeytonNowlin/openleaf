@@ -12,6 +12,23 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **A selection spanning a `<blockquote>` into a following `<details>` no longer
+  throws on the next keystroke, corrupts the document, or loses undo.** Firefox
+  and WebKit report a `TextSelection` whose endpoints sit on opposite sides of
+  an isolating boundary; `replaceSelection` then tries to join `details` onto
+  `blockquote` and throws. Core now clamps that selection to the anchor's side
+  (the same thing Chromium already does natively) for every isolating node, and
+  refuses to run a replace that would throw, so a failure cannot rewrite the
+  document outside history.
+- **`<a id>` wrapping visible text no longer deletes that text.** `named_anchor`
+  is an empty atom (TinyMCE-style jump targets). Its parse rule claimed any
+  `<a>` with `id` and no `href`, so `<h2><a id="sec">Title</a></h2>` serialized
+  as an empty heading. Contentful `<a id>` is now a `link` mark carrying only
+  `id`; empty and whitespace-only `<a id="jump"></a>` is still the atom;
+  `<a id href>` is still a link;   `<a name>` is still unmatched.
+
 ### Added
 
 - **Typography toolbar controls in `@openleaf-editor/ui`** — font family, font
@@ -32,6 +49,13 @@ entries below say so explicitly when they do.
 
 ### Changed
 
+- **`serializeHtml` unwraps a sole attribute-free paragraph in list items,
+  blockquotes and `<details>` bodies**, the same pass table cells already had.
+  Opening and saving `<ul><li>a</li></ul>` no longer rewrites it as
+  `<li><p>a</p></li>`, which changed list height and which CSS rules matched.
+  Mixed content (a list item that is a paragraph plus a nested list) still keeps
+  the outer wrapper; only a container whose entire modelled content is that one
+  paragraph unwraps. A list inside preserved markup is still left byte-identical.
 - **`toDOMPurifyConfig` now withholds `style` as well as `iframe` by default**,
   and `configureDOMPurify(purify, policy)` installs both hooks and enables both
   features in one call. Previously `style` was allowed globally with an
@@ -58,6 +82,13 @@ entries below say so explicitly when they do.
   it from the caption element itself if contaminated markup is opened.
   Core no longer installs a competing `table` node view, which would have
   shadowed column resizing.
+- **`resolveLanguage` no longer returns `Object.prototype` members.** The alias
+  table was a plain object, so `<code class="language-constructor">` resolved to
+  the `Object` constructor: `canHighlight` reported true (`undefined !== null`)
+  and `tokenize` fell out of its switch and returned `undefined` instead of the
+  `null` the highlighter contract uses for an unknown language. The table is a
+  `Map` now, matching `LIST_STYLE_ALIASES`, and `tokenize` has a `default` that
+  returns `null`.
 
 ## 0.1.0-beta.2 - 2026-08-19
 
@@ -126,6 +157,11 @@ package on this version -- they pin each other exactly.
 
 ### Fixed
 
+- **Autolink marks the URL, not the punctuation after it.** The href already
+  dropped trailing `.,;:!?`, but the mark still covered the full match, `]`
+  survived into the href, and a parenthesised `www.` URL never matched. One
+  strip — including unmatched `)` / `]` — now sets both the range and the href;
+  a balanced `Foo_(bar)` keeps its closing paren.
 - **One stray `=` in the HTML source box wedged the editor unrecoverably.** The
   HTML parser accepts attribute names `setAttribute` refuses -- `<p ="v">` parses
   to one attribute literally named `="v"` -- and the schema carried those through

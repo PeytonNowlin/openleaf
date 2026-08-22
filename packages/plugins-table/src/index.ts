@@ -43,7 +43,6 @@ import type { ViewMutationRecord } from 'prosemirror-view'
 import {
   columnResizing,
   deleteColumn,
-  deleteRow,
   deleteTable,
   mergeCells,
   splitCell,
@@ -56,6 +55,7 @@ import {
   addRowAfter,
   addRowBefore,
   colgroupSyncPlugin,
+  deleteRow,
   inTable,
   insertTable,
   toggleHeaderRow,
@@ -270,6 +270,7 @@ export {
   addRowBefore,
   colgroupHtmlWithWidths,
   colgroupSyncPlugin,
+  deleteRow,
   inTable,
   insertTable,
   mergeStyle,
@@ -289,7 +290,6 @@ export { tableContextMenu } from './menu.js'
 
 export {
   deleteColumn,
-  deleteRow,
   deleteTable,
   mergeCells,
   splitCell,

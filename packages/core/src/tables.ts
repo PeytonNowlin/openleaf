@@ -622,10 +622,17 @@ export const table: NodeSpec = {
      * them the preservation layer's catch-all claims a `<caption>` as an
      * unrecognised block, and `table_row+` refuses to accept it, so the caption
      * is dropped a second way by a different mechanism.
+     *
+     * They are scoped with `context: 'table/'`. `DOMParser.fromSchema` flattens
+     * every spec's parse rules into one list; a rule declared on `table` is
+     * otherwise global. Unscoped `ignore` also fired for an orphaned
+     * `<caption>` or `<col>` -- a fragment, a partial paste, a leftover after
+     * the table was deleted -- and `ignore` takes the element's text with it.
+     * Outside a table the preservation layer keeps the markup instead.
      */
-    { tag: 'colgroup', ignore: true },
-    { tag: 'col', ignore: true },
-    { tag: 'caption', ignore: true },
+    { tag: 'colgroup', ignore: true, context: 'table/' },
+    { tag: 'col', ignore: true, context: 'table/' },
+    { tag: 'caption', ignore: true, context: 'table/' },
   ],
   toDOM(node) {
     const attrs = writeAttrs(node.attrs, TABLE_LEGACY_ATTRS)
