@@ -199,7 +199,13 @@ async function inflateRawLength(payload: ArrayBuffer, remaining: number): Promis
   const stream = new DecompressionStream('deflate-raw')
   const writer = stream.writable.getWriter()
   const reader = stream.readable.getReader()
-  const written = writer.write(payload).then(() => writer.close(), () => undefined)
+  // A VIEW, never the bare ArrayBuffer. Both are `BufferSource` to the type
+  // checker, and the newest V8 quietly tolerates the buffer -- but Node 22,
+  // which is what CI runs, accepts it, emits nothing, and never closes the
+  // readable. The first `reader.read()` then waits forever. That is not a test
+  // artifact: this guard runs on every `.docx` a site imports, so the import
+  // hung rather than failing, with no error to report.
+  const written = writer.write(new Uint8Array(payload)).then(() => writer.close(), () => undefined)
 
   let total = 0
   try {

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
 import {
   BUDGETS_KB,
-  SIZE_CLAIM_TOLERANCE_KB,
+  sizeClaimToleranceKb,
   measureBundleSizes,
 } from './bundle-budgets.mjs'
 
@@ -108,7 +108,7 @@ function claimKey(row) {
 
 function claimMatches(claimed, measuredKb, integer) {
   if (integer) return Math.round(measuredKb) === claimed
-  return Math.abs(claimed - measuredKb) <= SIZE_CLAIM_TOLERANCE_KB
+  return Math.abs(claimed - measuredKb) <= sizeClaimToleranceKb(measuredKb)
 }
 
 function expectedClaim(measuredKb, integer) {

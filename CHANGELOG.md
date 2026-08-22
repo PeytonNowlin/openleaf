@@ -39,13 +39,27 @@ entries below say so explicitly when they do.
   and in a blockquote: the body stays inside `<details>` after a crossing edit,
   and undo restores `<blockquote>quote</blockquote>`, without either assertion
   requiring a wrapper `<p>` that save would strip.
-- **The unit-test timeout survives a saturated CI runner.** Two guards in the
-  suite are deliberately adversarial and synchronous -- `parseHtml` at extreme
-  depth, and sanitize's 20000-level input -- and each blocks a worker for around
-  thirty seconds on a two-core runner. Being synchronous they outran their own
-  timeout, but they starved the asynchronous `.docx` tests scheduled beside
-  them, which then failed at exactly the 5000ms default having done no work at
-  all. Ten green tests reported as failures on every push.
+- **The `.docx` zip-bomb guard no longer hangs forever on Node 22.**
+  `inflateRawLength` handed `DecompressionStream`'s writer the bare
+  `ArrayBuffer` rather than a view over it. Both satisfy `BufferSource`, and the
+  newest V8 tolerates the buffer, but Node 22 -- which is what CI runs -- accepts
+  the write, emits no output, and never closes the readable, so the first
+  `reader.read()` waits forever. `assertImportableDocx` runs on every imported
+  `.docx`, so an import hung with nothing to report rather than succeeding or
+  failing. Ten tests timed out on every push because of it.
+- **A documented bundle-size claim is checked against a tolerance that survives
+  a different zlib.** `gzipSync` output length is not reproducible across zlib
+  builds -- CI's Node 22 weighs the docx bundle at 125.4 KB where a Node 26
+  workstation weighs the same bytes at 124.5 KB -- so the ~100-byte tolerance
+  meant the claim written on one machine could not pass on the other, and the
+  documentation step failed on a mismatch no edit could fix. Now a percent of
+  the measurement. The exact ceilings in `BUDGETS_KB` are still what stop a real
+  size regression.
+- **The glyph-picker Tab test no longer races the close it provokes.** Tab
+  moves focus out of the grid and `focusout` then closes the panel by design, so
+  the cell leaves the accessibility tree; the assertion was a role query and
+  reported "element(s) not found" whenever the close landed first. It locates
+  the cell by attribute now, the way the grid locators in that file already do.
 
 ### Security
 
