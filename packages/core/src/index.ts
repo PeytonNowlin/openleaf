@@ -169,6 +169,12 @@ export {
 export { autolinkPlugin, hrefFromTypedUrl } from './autolink.js'
 export { visualAidsPlugin } from './visual-aids.js'
 export { disclosurePlugin } from './disclosure.js'
+export {
+  clampIsolatingTextSelection,
+  innermostIsolatingDepth,
+  isolatingSelectionPlugin,
+  textSelectionCrossesIsolating,
+} from './isolating-selection.js'
 export { isNonEditableNode, nonEditablePlugin } from './noneditable.js'
 export {
   activeBlockClass,

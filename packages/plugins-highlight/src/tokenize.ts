@@ -53,21 +53,27 @@ export interface Token {
 
 export type Language = 'html' | 'css' | 'js'
 
-/** Language aliases seen on `class="language-*"` in real content. */
-const ALIASES: Record<string, Language> = {
-  html: 'html', xml: 'html', xhtml: 'html', svg: 'html', markup: 'html', vue: 'html',
-  css: 'css', scss: 'css', less: 'css',
-  js: 'js', javascript: 'js', jsx: 'js', mjs: 'js', cjs: 'js',
-  ts: 'js', typescript: 'js', tsx: 'js', json: 'js',
-}
+/**
+ * A Map, not an object literal, because the lookup key is author-controlled
+ * (`class="language-*"` on stored or pasted `<code>`). An object inherits
+ * `Object.prototype`, so `ALIASES['constructor']` answered with the `Object`
+ * constructor, `canHighlight` reported true, and `tokenize` fell out of its
+ * switch and returned `undefined`. A Map has no prototype keys to find.
+ */
+const ALIASES = new Map<string, Language>([
+  ['html', 'html'], ['xml', 'html'], ['xhtml', 'html'], ['svg', 'html'], ['markup', 'html'], ['vue', 'html'],
+  ['css', 'css'], ['scss', 'css'], ['less', 'css'],
+  ['js', 'js'], ['javascript', 'js'], ['jsx', 'js'], ['mjs', 'js'], ['cjs', 'js'],
+  ['ts', 'js'], ['typescript', 'js'], ['tsx', 'js'], ['json', 'js'],
+])
 
 /** Resolve a language name, or null when it is one we do not model. */
 export function resolveLanguage(name: string | null | undefined): Language | null {
   if (!name) return null
-  return ALIASES[name.toLowerCase()] ?? null
+  return ALIASES.get(name.toLowerCase()) ?? null
 }
 
-export const SUPPORTED_LANGUAGES = [...new Set(Object.keys(ALIASES))].sort()
+export const SUPPORTED_LANGUAGES = [...ALIASES.keys()].sort()
 
 /* ------------------------------------------------------------------ *
  * Shared scanning helpers
@@ -369,7 +375,7 @@ export function tokenizeHtml(source: string): Token[] {
 }
 
 /** Tokenize source in the given language. */
-export function tokenize(source: string, language: Language): Token[] {
+export function tokenize(source: string, language: Language): Token[] | null {
   switch (language) {
     case 'html':
       return tokenizeHtml(source)
@@ -377,5 +383,11 @@ export function tokenize(source: string, language: Language): Token[] {
       return tokenizeCss(source)
     case 'js':
       return tokenizeJs(source)
+    default:
+      // The `Language` union is exhaustive above. A runtime value that is not
+      // one of those -- historically `Object` from a prototype lookup -- must
+      // still honour the Highlighter contract: null means "I do not know this
+      // language", never `undefined` from falling out of the switch.
+      return null
   }
 }
