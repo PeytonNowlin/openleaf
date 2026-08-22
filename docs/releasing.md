@@ -78,22 +78,45 @@ pipeline. See [the npm changelog entry](https://github.blog/changelog/2026-07-08
 
 ### One-time setup, per package
 
-Trusted publishing is configured **per package**, on npmjs.com, for all fifteen:
-*Settings → Trusted publisher → GitHub Actions*, with
+Trusted publishing is configured **per package**, and there are fifteen of them.
+Do it from the CLI rather than the website:
 
-- organization/user: `PeytonNowlin`
-- repository: `openleaf`
-- workflow: `release.yml` — the **filename only**. The full path
-  `.github/workflows/release.yml` is the most common way to get this wrong.
-- environment: leave empty.
+```sh
+npm login                                  # once; needs npm >= 11.15.0
+node scripts/trust-publishers.mjs --dry-run  # what it would configure
+node scripts/trust-publishers.mjs          # configure it
+```
+
+The script reads which packages already trust this workflow before writing
+anything, so it is safe to re-run and it only ever spends the 2FA window on
+packages that need it. The first write triggers a two-factor challenge, and npm's
+web prompt offers to **skip 2FA for the next five minutes** — take it, and the
+remaining fourteen go through unattended. There is a two-second pause between
+writes because the registry rate-limits the endpoint.
+
+The equivalent by hand, per package, is npmjs.com → the package → *Settings* →
+*Trusted publishing* → *Select your publisher* → **GitHub Actions**:
+
+| Field | Value |
+| --- | --- |
+| Organization or user | `PeytonNowlin` |
+| Repository | `openleaf` |
+| Workflow filename | `release.yml` — the **filename only**. `.github/workflows/release.yml` is the usual way to get this wrong, and it fails later as a 404 on the publish that reads like a broken token. |
+| Environment name | leave empty |
+| Allowed actions | `npm publish` only |
+
+`npm stage publish` is deliberately **not** granted. Staged publishing exists to
+defer a publish for a human to approve with 2FA, which is the opposite of what
+this pipeline is for; granting only what the weekly run uses means a stolen OIDC
+claim cannot stage anything either.
 
 Three constraints worth knowing before you debug a failure: it does not work on
 self-hosted runners, the repository must be the one running the workflow, and a
 `workflow_call` indirection breaks validation because npm checks the *calling*
 workflow's name. This workflow avoids all three.
 
-Since 2026-07-31, editing trusted-publisher configuration itself requires an
-interactive 2FA challenge, so this is browser work and cannot be scripted.
+Verify at any point with `npm trust list @openleaf-editor/core`, and undo with
+`npm trust revoke <package> --id=<id>`.
 
 ### The one remaining secret
 
@@ -108,6 +131,12 @@ why the script reads the registry first and writes only the tags that are
 actually wrong. And it is a pre-1.0 artifact: once `latest` tracks a stable line
 instead of the newest prerelease, publishes set `latest` implicitly, and this
 step and its secret both go away.
+
+Because of it, do **not** turn on *Publishing access → require two-factor
+authentication and disallow tokens* while that step exists. It does not affect
+trusted publishing, so the publish would keep working -- and the dist-tag writes
+would start failing every Monday, leaving `latest` pinned to whichever
+prerelease it last reached. That setting is the right end state, after 1.0.
 
 Also check once, before trusting the first unattended run: that `main` accepts a
 push from `GITHUB_TOKEN`. If branch protection rejects it, the publish will have
