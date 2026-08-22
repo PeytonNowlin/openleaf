@@ -401,6 +401,34 @@ test.describe('styling delivery', () => {
     expect(height).toBeGreaterThanOrEqual(24)
   })
 
+  test('draws a rule between toolbar groups', async ({ page }) => {
+    // The divider is a border on the group, not a standalone element. The bar
+    // used to emit an `.ol-sep` div between groups, which made
+    // `.ol-group + .ol-group` unmatchable, so no divider rendered in any theme
+    // -- invisible to every jsdom test, because jsdom does not cascade.
+    //
+    // Measured as `offsetWidth - clientWidth`, which is the border as LAYOUT
+    // sees it, rather than through getComputedStyle. Not a stylistic
+    // preference: on WebKit the two groups holding a `<select>` report
+    // `--ol-border` as the empty string on a first read after build, so
+    // `border-inline-start: 1px solid var(--ol-border)` reads back as `0px`
+    // even though the border is there -- both engines agree on the geometry,
+    // and a forced style recalculation makes WebKit agree on the string too.
+    // It reproduces identically on a build that emits no dividers at all, so it
+    // is a stale CSSOM read rather than anything this test is about. Layout is
+    // also the better question: it is what the author actually sees.
+    const borders = await toolbar(page).evaluate((bar) =>
+      [...bar.querySelectorAll<HTMLElement>(':scope > .ol-group')].map(
+        (group) => group.offsetWidth - group.clientWidth,
+      ),
+    )
+    expect(borders.length).toBeGreaterThan(1)
+    // The first group opens the bar and draws no rule against its edge.
+    expect(borders[0]).toBe(0)
+    // Every group after it draws one against the group before.
+    for (const border of borders.slice(1)) expect(border).toBeGreaterThan(0)
+  })
+
   test('respects a themed custom property', async ({ page }) => {
     await page.evaluate(() => {
       document.documentElement.style.setProperty('--openleaf-button-size', '48px')

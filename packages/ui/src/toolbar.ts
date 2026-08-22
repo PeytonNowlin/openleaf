@@ -385,8 +385,12 @@ export class Toolbar {
 
     for (const token of this.#layout.split(/\s+/).filter(Boolean)) {
       if (token === '|') {
+        // No separator ELEMENT. The divider is a border on the group -- see
+        // css.ts -- and an element between two groups is exactly what stopped
+        // `.ol-group + .ol-group` from ever matching, so no divider rendered in
+        // any theme. An empty group is also not appended, so `a | | b` gets one
+        // divider rather than a doubled rule.
         if (group.childElementCount > 0) this.el.appendChild(group)
-        this.el.appendChild(this.#newSeparator())
         group = this.#newGroup()
         continue
       }
@@ -469,14 +473,6 @@ export class Toolbar {
     const group = this.#doc.createElement('div')
     group.className = 'ol-group'
     return group
-  }
-
-  #newSeparator(): HTMLDivElement {
-    const sep = this.#doc.createElement('div')
-    sep.className = 'ol-sep'
-    // Decorative. A separator announced as "separator" twenty times is noise.
-    sep.setAttribute('aria-hidden', 'true')
-    return sep
   }
 
   #buildButton(spec: ToolbarItemSpec): HTMLButtonElement {
