@@ -42,7 +42,6 @@ import type { Command } from 'prosemirror-state'
 import type { ViewMutationRecord } from 'prosemirror-view'
 import {
   columnResizing,
-  deleteColumn,
   deleteRow,
   deleteTable,
   mergeCells,
@@ -56,6 +55,7 @@ import {
   addRowAfter,
   addRowBefore,
   colgroupSyncPlugin,
+  deleteColumn,
   inTable,
   insertTable,
   toggleHeaderRow,
@@ -271,6 +271,7 @@ export {
   addRowBefore,
   colgroupHtmlWithWidths,
   colgroupSyncPlugin,
+  deleteColumn,
   inTable,
   insertTable,
   mergeStyle,
@@ -289,7 +290,6 @@ export { buildInsertGrid, GRID_SIZE } from './grid.js'
 export { tableContextMenu } from './menu.js'
 
 export {
-  deleteColumn,
   deleteRow,
   deleteTable,
   mergeCells,

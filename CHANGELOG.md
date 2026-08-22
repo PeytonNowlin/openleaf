@@ -12,6 +12,14 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **A styled span that also carries a class, `id`, `data-*`, or an unmodelled
+  declaration is no longer wrapped in a second colour/font span on the first
+  save.** `text_color`, `font_family` and `font_size` now decline when
+  preservation is going to keep the element, the same bargain `background_color`
+  already struck. `#127`
+
 ### Added
 
 - **Typography toolbar controls in `@openleaf-editor/ui`** — font family, font

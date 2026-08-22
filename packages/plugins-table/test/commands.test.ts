@@ -1,7 +1,18 @@
 import { parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { EditorState, TextSelection, type Command, type Transaction } from 'prosemirror-state'
+import { TableMap } from 'prosemirror-tables'
 import { describe, expect, it } from 'vitest'
-import { addColumnAfter, addRowAfter, insertTable, setCellVerticalAlign, setTableCaption, setTableColgroup, toggleHeaderRow } from '../src/index.js'
+import {
+  addColumnAfter,
+  addRowAfter,
+  colgroupSyncPlugin,
+  deleteColumn,
+  insertTable,
+  setCellVerticalAlign,
+  setTableCaption,
+  setTableColgroup,
+  toggleHeaderRow,
+} from '../src/index.js'
 
 function stateIn(html: string, text: string): EditorState {
   const doc = parseHtml(html)
@@ -112,5 +123,125 @@ describe('caption, alignment and nested tables', () => {
     const html = serializeHtml(apply(start, insertTable(2, 2)).doc)
     expect(html.match(/<table/g)?.length).toBe(2)
     expect(html).toContain('<th scope="col">')
+  })
+})
+
+
+const THREE_COL =
+  '<table><colgroup><col width="100" class="c1"><col width="200" class="c2"><col width="300" class="c3"></colgroup>' +
+  '<tr><td>a</td><td>b</td><td>c</td></tr></table>'
+
+/** Columns the stored colgroup claims to describe, honouring `span`. */
+function colgroupCoverage(html: string): number {
+  const group = html.match(/<colgroup[\s\S]*?<\/colgroup>/)?.[0] ?? ''
+  let columns = 0
+  for (const match of group.matchAll(/<col\b([^>]*)>/g)) {
+    const span = /span="(\d+)"/.exec(match[1] ?? '')
+    columns += span ? Number(span[1]) : 1
+  }
+  return columns
+}
+
+function tableWidth(doc: ReturnType<typeof parseHtml>): number {
+  let width = 0
+  doc.descendants((node) => {
+    if (node.type.spec['tableRole'] === 'table') {
+      width = TableMap.get(node).width
+      return false
+    }
+    return true
+  })
+  return width
+}
+
+function expectColgroupMatchesTable(doc: ReturnType<typeof parseHtml>): void {
+  expect(colgroupCoverage(serializeHtml(doc))).toBe(tableWidth(doc))
+}
+
+describe('colgroup tracks column insert and delete', () => {
+  it('drops the middle <col> so the last column keeps class c3', () => {
+    const next = apply(stateIn(THREE_COL, 'b'), deleteColumn)
+    const html = serializeHtml(next.doc)
+    expect(html).toContain('class="c1"')
+    expect(html).toContain('class="c3"')
+    expect(html).not.toContain('class="c2"')
+    expect(html).toContain('width="100"')
+    expect(html).toContain('width="300"')
+    expect(html).not.toContain('width="200"')
+    expectColgroupMatchesTable(next.doc)
+  })
+
+  it('inserts a bare <col> so later columns keep their own widths', () => {
+    const next = apply(stateIn(THREE_COL, 'a'), addColumnAfter)
+    const html = serializeHtml(next.doc)
+    expect(html).toContain('class="c1"')
+    expect(html).toContain('class="c2"')
+    expect(html).toContain('class="c3"')
+    expect(html).toMatch(/<colgroup>.*<col>.*class="c2"/)
+    expectColgroupMatchesTable(next.doc)
+  })
+
+  it('drops the last <col> without shifting the ones that remain', () => {
+    const next = apply(stateIn(THREE_COL, 'c'), deleteColumn)
+    const html = serializeHtml(next.doc)
+    expect(html).toContain('class="c1"')
+    expect(html).toContain('class="c2"')
+    expect(html).not.toContain('class="c3"')
+    expectColgroupMatchesTable(next.doc)
+  })
+
+  it('decrements span when the deleted column sits inside a spanned <col>', () => {
+    const start = stateIn(
+      '<table><colgroup><col span="2" width="100" class="wide"><col width="80" class="narrow"></colgroup>' +
+        '<tr><td>a</td><td>b</td><td>c</td></tr></table>',
+      'a',
+    )
+    const next = apply(start, deleteColumn)
+    const html = serializeHtml(next.doc)
+    expect(html).toContain('class="wide"')
+    expect(html).not.toContain('span=')
+    expect(html).toContain('class="narrow"')
+    expectColgroupMatchesTable(next.doc)
+  })
+
+  it('splits a spanned <col> around an insert so later columns keep their width', () => {
+    const start = stateIn(
+      '<table><colgroup><col span="2" width="100" class="wide"><col width="80"></colgroup>' +
+        '<tr><td>a</td><td>b</td><td>c</td></tr></table>',
+      'a',
+    )
+    const next = apply(start, addColumnAfter)
+    const html = serializeHtml(next.doc)
+    expect(html).toMatch(/class="wide".*<col>.*class="wide"/)
+    expect(html).toContain('width="80"')
+    expectColgroupMatchesTable(next.doc)
+  })
+
+  it('still patches widths from a resize after a delete, without restoring the dropped <col>', () => {
+    const afterDelete = apply(stateIn(THREE_COL, 'b'), deleteColumn)
+    let state = EditorState.create({
+      doc: afterDelete.doc,
+      selection: TextSelection.create(afterDelete.doc, 1),
+      plugins: [colgroupSyncPlugin()],
+    })
+    let tr = state.tr
+    let index = 0
+    state.doc.descendants((node, pos) => {
+      if (node.type.spec['tableRole'] !== 'cell' && node.type.spec['tableRole'] !== 'header_cell') {
+        return true
+      }
+      if (index === 0) tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, colwidth: [140] })
+      if (index === 1) tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, colwidth: [60] })
+      index += 1
+      return false
+    })
+    state = state.apply(tr)
+    const html = serializeHtml(state.doc)
+    expect(html).toContain('class="c1"')
+    expect(html).toContain('class="c3"')
+    expect(html).not.toContain('class="c2"')
+    expect(html).toContain('width="140"')
+    expect(html).toContain('width="60"')
+    expectColgroupMatchesTable(state.doc)
   })
 })
