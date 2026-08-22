@@ -32,6 +32,13 @@ entries below say so explicitly when they do.
 
 ### Changed
 
+- **`serializeHtml` unwraps a sole attribute-free paragraph in list items,
+  blockquotes and `<details>` bodies**, the same pass table cells already had.
+  Opening and saving `<ul><li>a</li></ul>` no longer rewrites it as
+  `<li><p>a</p></li>`, which changed list height and which CSS rules matched.
+  Mixed content (a list item that is a paragraph plus a nested list) still keeps
+  the outer wrapper; only a container whose entire modelled content is that one
+  paragraph unwraps. A list inside preserved markup is still left byte-identical.
 - **`toDOMPurifyConfig` now withholds `style` as well as `iframe` by default**,
   and `configureDOMPurify(purify, policy)` installs both hooks and enables both
   features in one call. Previously `style` was allowed globally with an

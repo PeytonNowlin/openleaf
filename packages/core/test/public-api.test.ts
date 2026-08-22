@@ -193,9 +193,9 @@ describe('round-trip behaviour', () => {
     ['marks', '<p><strong>b</strong><em>i</em><u>u</u><s>s</s><code>c</code></p>'],
     ['link', '<p><a href="https://example.org" title="T">x</a></p>'],
     ['image with empty alt', '<p><img src="/a.png" alt=""></p>'],
-    ['nested list', '<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul>'],
-    ['ordered list start', '<ol start="3"><li><p>a</p></li></ol>'],
-    ['blockquote', '<blockquote><p>q</p></blockquote>'],
+    ['nested list', '<ul><li><p>a</p><ul><li>b</li></ul></li></ul>'],
+    ['ordered list start', '<ol start="3"><li>a</li></ol>'],
+    ['blockquote', '<blockquote>q</blockquote>'],
     ['code block', '<pre><code>x = 1</code></pre>'],
     ['horizontal rule', '<hr>'],
     ['preserved wrapper', '<div class="callout" data-id="7"><p>p</p></div>'],
@@ -239,7 +239,7 @@ describe('command behaviour', () => {
   })
 
   it('toggleBulletList wraps and unwraps', () => {
-    expect(run(stateFrom('<p>i</p>'), core.toggleBulletList)).toBe('<ul><li><p>i</p></li></ul>')
+    expect(run(stateFrom('<p>i</p>'), core.toggleBulletList)).toBe('<ul><li>i</li></ul>')
   })
 
   it('setLink replaces rather than nests', () => {
