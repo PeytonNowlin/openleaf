@@ -2,7 +2,10 @@
  * Table commands that are not already in `prosemirror-tables`.
  *
  * Property edits, caption/colgroup, nested insert and vertical alignment live
- * here so a test can apply them without standing up a toolbar.
+ * here so a test can apply them without standing up a toolbar. Column insert and
+ * delete also reindex the stored colgroup here: the upstream commands only move
+ * cells, and `colgroupFromCellWidths` never runs unless a cell already has
+ * `colwidth`.
  */
 
 import {
@@ -22,6 +25,7 @@ import {
   addRowAfter as addRowAfterRaw,
   addRowBefore as addRowBeforeRaw,
   CellSelection,
+  deleteColumn as deleteColumnRaw,
   deleteRow as deleteRowRaw,
   TableMap,
   toggleHeaderRow as toggleHeaderRowRaw,
@@ -159,8 +163,85 @@ export function withCellScope(command: Command): Command {
   }
 }
 
-export const addColumnAfter = withCellScope(addColumnAfterRaw)
-export const addColumnBefore = withCellScope(addColumnBeforeRaw)
+/**
+ * Columns the selection covers, as a half-open range on the table map.
+ *
+ * `prosemirror-tables` uses the same rect for insert-after (`right`) and
+ * insert-before (`left`). Reading it here, before the command rewrites the
+ * cells, is what lets the colgroup patch aim at the same index.
+ */
+function selectedColumnRange(state: EditorState): { tablePos: number; left: number; right: number } | null {
+  const table = findTable(state.selection.$from)
+  if (!table) return null
+  const map = TableMap.get(table.node)
+  const tableStart = table.pos + 1
+  const sel = state.selection
+  const rect =
+    sel instanceof CellSelection
+      ? map.rectBetween(sel.$anchorCell.pos - tableStart, sel.$headCell.pos - tableStart)
+      : (() => {
+          const cell = findCell(sel.$from)
+          return cell ? map.findCell(cell.pos - tableStart) : null
+        })()
+  if (!rect) return null
+  return { tablePos: table.pos, left: rect.left, right: rect.right }
+}
+
+/**
+ * Reindex the stored colgroup the same way the column command reindexes cells.
+ *
+ * `colgroupFromCellWidths` only runs when a cell carries `colwidth`. Tables
+ * whose widths live only on inherited `<col>` elements never hit that path, so
+ * insert/delete used to leave the furniture describing the previous columns:
+ * every remaining column inherited the previous column's width and class.
+ */
+function withColgroupColumns(
+  kind: 'before' | 'after' | 'delete',
+  command: Command,
+): Command {
+  return (state, dispatch, view) => {
+    if (!dispatch) return command(state, undefined, view)
+    const range = selectedColumnRange(state)
+    return command(
+      state,
+      (tr) => {
+        if (range) applyColgroupColumnChange(tr, range, kind)
+        dispatch(tr)
+      },
+      view,
+    )
+  }
+}
+
+function applyColgroupColumnChange(
+  tr: Transaction,
+  range: { tablePos: number; left: number; right: number },
+  kind: 'before' | 'after' | 'delete',
+): void {
+  const pos = tr.mapping.map(range.tablePos)
+  const table = tr.doc.nodeAt(pos)
+  if (!table || table.type.spec['tableRole'] !== 'table') return
+  const stored = table.attrs['colgroup'] as string | null | undefined
+  if (!stored) return
+
+  let next = stored
+  if (kind === 'delete') {
+    for (let col = range.right - 1; col >= range.left; col -= 1) {
+      next = colgroupHtmlDeleteColumn(next, col) ?? next
+    }
+  } else {
+    next = colgroupHtmlInsertColumn(next, kind === 'before' ? range.left : range.right) ?? next
+  }
+
+  const width = TableMap.get(table).width
+  next = colgroupHtmlMatchWidth(next, width) ?? next
+  if (next === stored) return
+  tr.setNodeMarkup(pos, undefined, { ...table.attrs, colgroup: next })
+}
+
+export const addColumnAfter = withColgroupColumns('after', withCellScope(addColumnAfterRaw))
+export const addColumnBefore = withColgroupColumns('before', withCellScope(addColumnBeforeRaw))
+export const deleteColumn = withColgroupColumns('delete', deleteColumnRaw)
 export const addRowAfter = withCellScope(maintainTableSections(addRowAfterRaw, 'after'))
 export const addRowBefore = withCellScope(maintainTableSections(addRowBeforeRaw, 'before'))
 export const deleteRow = withCellScope(maintainTableSections(deleteRowRaw, 'delete'))
@@ -518,6 +599,101 @@ export function colgroupHtmlWithWidths(
   }
 
   return parsed.group.outerHTML
+}
+
+/**
+ * Insert a bare `<col>` so columns after `at` keep the `<col>` they already had.
+ *
+ * A spanned element that covers `at` is split around the insertion rather than
+ * widened: the new column must not inherit the neighbour's class or width, which
+ * is the same shift insert-without-a-patch produced for unspanned columns.
+ */
+export function colgroupHtmlInsertColumn(
+  existing: string | null | undefined,
+  at: number,
+): string | null {
+  const parsed = colsOf(existing)
+  if (!parsed) return existing ?? null
+
+  let column = 0
+  for (const col of parsed.cols) {
+    const span = spanOf(col)
+    if (at <= column) {
+      parsed.group.insertBefore(parsed.group.ownerDocument.createElement('col'), col)
+      return parsed.group.outerHTML
+    }
+    if (at < column + span) {
+      const left = at - column
+      const right = span - left
+      const parent = col.parentNode
+      if (!parent) break
+      if (left > 0) {
+        const before = col.cloneNode(false) as Element
+        setSpan(before, left)
+        parent.insertBefore(before, col)
+      }
+      parent.insertBefore(parsed.group.ownerDocument.createElement('col'), col)
+      setSpan(col, right)
+      return parsed.group.outerHTML
+    }
+    column += span
+  }
+
+  parsed.group.appendChild(parsed.group.ownerDocument.createElement('col'))
+  return parsed.group.outerHTML
+}
+
+/**
+ * Drop the `<col>` covering column `at`, or decrement its `span` when it covers
+ * more than one column.
+ */
+export function colgroupHtmlDeleteColumn(
+  existing: string | null | undefined,
+  at: number,
+): string | null {
+  const parsed = colsOf(existing)
+  if (!parsed) return existing ?? null
+
+  let column = 0
+  for (const col of parsed.cols) {
+    const span = spanOf(col)
+    if (at >= column && at < column + span) {
+      if (span <= 1) col.remove()
+      else setSpan(col, span - 1)
+      return parsed.group.outerHTML
+    }
+    column += span
+  }
+  return existing ?? null
+}
+
+/** Pad or trim so the colgroup describes exactly `columns` columns. */
+function colgroupHtmlMatchWidth(existing: string | null | undefined, columns: number): string | null {
+  const parsed = colsOf(existing)
+  if (!parsed) return existing ?? null
+
+  let coverage = 0
+  for (const col of [...parsed.group.querySelectorAll('col')]) coverage += spanOf(col)
+
+  while (coverage < columns) {
+    parsed.group.appendChild(parsed.group.ownerDocument.createElement('col'))
+    coverage += 1
+  }
+  while (coverage > columns) {
+    const cols = [...parsed.group.querySelectorAll('col')]
+    const last = cols[cols.length - 1]
+    if (!last) break
+    const span = spanOf(last)
+    if (span <= 1) last.remove()
+    else setSpan(last, span - 1)
+    coverage -= 1
+  }
+  return parsed.group.outerHTML
+}
+
+function setSpan(col: Element, span: number): void {
+  if (span <= 1) col.removeAttribute('span')
+  else col.setAttribute('span', String(span))
 }
 
 function setWidth(col: Element, width: string): void {

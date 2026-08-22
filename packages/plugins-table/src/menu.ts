@@ -22,12 +22,13 @@
 import type { Command } from 'prosemirror-state'
 import { Plugin, TextSelection } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
-import { deleteColumn, deleteTable, mergeCells, splitCell } from 'prosemirror-tables'
+import { deleteTable, mergeCells, splitCell } from 'prosemirror-tables'
 import {
   addColumnAfter,
   addColumnBefore,
   addRowAfter,
   addRowBefore,
+  deleteColumn,
   deleteRow,
   findTable,
   inTable,

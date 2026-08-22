@@ -62,6 +62,11 @@ child node for that, and `prosemirror-tables` derives its cell map from
 `table.childCount`, so it needs an upstream fix first. The caption dialog is how
 you change one meanwhile.
 
+Inserting or deleting a column reindexes a stored `<colgroup>` with the cells.
+Without that, every remaining column inherited the previous `<col>`'s width and
+class. Column resize still patches widths onto the same elements, so the two
+paths do not fight.
+
 ## License
 
 Apache-2.0.
