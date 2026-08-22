@@ -50,6 +50,7 @@ import {
   type TagParseRule,
 } from 'prosemirror-model'
 import {
+  INLINE_STYLE_PROPERTIES,
   MODELLED_PROPERTIES,
   applyStyleAttribute,
   indentLevels,
@@ -407,7 +408,11 @@ function isTagParseRule(rule: ParseRule): rule is TagParseRule {
   return typeof (rule as TagParseRule).tag === 'string'
 }
 
-function withCarriedAttributes<T extends NodeSpec | MarkSpec>(name: string, spec: T): T {
+function withCarriedAttributes<T extends NodeSpec | MarkSpec>(
+  name: string,
+  spec: T,
+  kind: 'node' | 'mark',
+): T {
   const modelled = new Set(Object.keys(spec.attrs ?? {}))
   const attrs = { ...(spec.attrs ?? {}), [CARRIED_ATTR]: { default: null } }
 
@@ -462,13 +467,28 @@ function withCarriedAttributes<T extends NodeSpec | MarkSpec>(name: string, spec
           // frame rendered the attacker's document and never fetched YouTube.
           if (isNeverCarriedAttribute(attr.name)) continue
           if (URL_ATTRIBUTES.has(attr.name.toLowerCase()) && !isSafeUrl(attr.value)) continue
-          // Google Docs wraps a paste in `<b id="docs-internal-guid-...">`. The
-          // paste pipeline strips that id; this is the schema-level backstop so a
-          // bypassed normalizer cannot import the artefact now that marks carry
-          // leftover attributes. Same class of exception as `mso-*` above.
-          if (attr.name === 'id' && /^docs-internal-guid/i.test(attr.value)) continue
+          // Google Docs wraps a paste in `<b id="docs-internal-guid-...">`.
+          // The paste pipeline strips that id; this is the schema-level
+          // backstop on the `strong` mark that claims that wrapper -- not on
+          // every node, or `<p id="docs-internal-guidelines">` would lose a
+          // legitimate id.
+          if (
+            kind === 'mark' &&
+            name === 'strong' &&
+            attr.name === 'id' &&
+            /^docs-internal-guid/i.test(attr.value)
+          ) {
+            continue
+          }
           if (attr.name === 'style') {
-            const css = withoutOfficeMetadata(attr.value)
+            let css = withoutOfficeMetadata(attr.value)
+            if (css !== null && kind === 'mark') {
+              const declarations = parseDeclarations(css)
+              for (const property of INLINE_STYLE_PROPERTIES) {
+                declarations.delete(property)
+              }
+              css = serializeDeclarations(declarations)
+            }
             if (css !== null) carried['style'] = css
             continue
           }
@@ -603,7 +623,7 @@ function coreNodesWithCarriedAttributes(): OrderedMap<NodeSpec> {
   // it is how `<p class="lead">` became `<p>` on the first save.
   let nodes = OrderedMap.from<NodeSpec>({})
   for (const [name, spec] of Object.entries(coreNodes)) {
-    nodes = nodes.addToEnd(name, SKIP_CARRY.has(name) ? spec : withCarriedAttributes(name, spec))
+    nodes = nodes.addToEnd(name, SKIP_CARRY.has(name) ? spec : withCarriedAttributes(name, spec, 'node'))
   }
   return nodes
 }
@@ -614,7 +634,7 @@ function coreMarksWithCarriedAttributes(): OrderedMap<MarkSpec> {
   // nothing else, and the carry wrapper never ran.
   let marks = OrderedMap.from<MarkSpec>({})
   for (const [name, spec] of Object.entries(coreMarks)) {
-    marks = marks.addToEnd(name, withCarriedAttributes(name, spec))
+    marks = marks.addToEnd(name, withCarriedAttributes(name, spec, 'mark'))
   }
   return marks
 }
@@ -630,7 +650,7 @@ export function createSchema(list: readonly SchemaExtension[] = []): Schema {
       claim(claimed, 'node', name, extension, Object.hasOwn(coreNodes, name))
       const prepared = extension.carryUnknownAttributes === false
         ? spec
-        : withCarriedAttributes(name, spec)
+        : withCarriedAttributes(name, spec, 'node')
       // addToEnd, never prepend: a leading block node becomes the document's
       // defaultType and every new document would start with it.
       nodes = nodes.remove(name).addToEnd(name, prepared)
@@ -641,7 +661,7 @@ export function createSchema(list: readonly SchemaExtension[] = []): Schema {
       claim(claimed, 'mark', name, extension, Object.hasOwn(coreMarks, name))
       const prepared = extension.carryUnknownAttributes === false
         ? spec
-        : withCarriedAttributes(name, spec)
+        : withCarriedAttributes(name, spec, 'mark')
       marks = marks.remove(name).addToEnd(name, prepared)
     }
   }
