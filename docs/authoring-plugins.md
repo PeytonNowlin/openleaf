@@ -903,12 +903,12 @@ Every bundle carries a budget in `BUDGETS_KB` in `scripts/bundle-budgets.mjs`,
 and the gate fails on the first one over. Gzipped, measured against budget:
 
 ```
-openleaf.min.js            114.7 / 118
+openleaf.min.js            117.3 / 121
 openleaf-import-docx.min.js 123.8 / 140
 openleaf-tables.min.js       18.1 /  25
 openleaf-session.min.js       9.2 /  10
 openleaf-highlight.min.js     6.7 /  15
-openleaf-insert.min.js        5.9 /  20
+openleaf-insert.min.js        6.6 /  20
 openleaf-colour.min.js        5.4 /  15
 openleaf-import.min.js        3.3 /  12
 ```
