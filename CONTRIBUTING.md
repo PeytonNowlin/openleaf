@@ -82,6 +82,21 @@ fix(paste): strip mso-list markers without collapsing nesting
 docs(governance): clarify trademark use in plugin names
 ```
 
+## Releases
+
+You do not cut one. A beta ships every Monday from
+[`.github/workflows/release.yml`](.github/workflows/release.yml), unattended,
+and it owns every `version` field in the repo.
+
+What that asks of a pull request is one thing: **if it changes behaviour, add an
+entry under `## Unreleased` in [CHANGELOG.md](CHANGELOG.md)**. The release fails
+outright if commits landed with that section empty, because notes nobody wrote
+are worse than a skipped week.
+
+Never bump a `version` in a branch. See [docs/releasing.md](docs/releasing.md)
+for the full pipeline, the off-cadence dispatch, and how to recover a release
+that half-happened.
+
 ## What we will and will not take
 
 **Wanted:** paste-fidelity fixtures from real documents (redact anything

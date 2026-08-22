@@ -6,8 +6,9 @@ path below, and preserve its existing package manager, framework conventions,
 form handling, and test commands.
 
 > [!WARNING]
-> OpenLeaf is currently beta. Use the `@beta` release channel, keep every
-> `@openleaf-editor/*` package on the same version, and review the
+> OpenLeaf is currently beta. Use the `@beta` release channel -- a new beta
+> publishes most Mondays -- keep every `@openleaf-editor/*` package on the same
+> version, and review the
 > [known limitations](../README.md#project-status) before production use.
 
 ## Choose the integration
