@@ -101,6 +101,14 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Table captions no longer leak `contenteditable="false"` into clipboard
+  or saved HTML.** The editor still stamps that marker on the live caption so
+  a caret cannot enter it (`CaptionedTableView` when the table bundle is
+  loaded, `tableCaptionNodeView` when it is not). Serializers share `toDOM`
+  and never run node views, so the marker is not emitted; parse also drops
+  it from the caption element itself if contaminated markup is opened.
+  Core no longer installs a competing `table` node view, which would have
+  shadowed column resizing.
 - **`t()` no longer returns `Object.prototype` members as translations.** Catalog
   lookup is a Map, so a `formats="p.lead=constructor"` label (or `toString`,
   `__proto__`, …) stays the source string instead of rendering

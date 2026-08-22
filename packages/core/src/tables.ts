@@ -36,14 +36,16 @@
  * a navigable table into a grid of unrelated values.
  */
 
-import type { DOMOutputSpec, NodeSpec } from 'prosemirror-model'
+import type { DOMOutputSpec, Node as PMNode, NodeSpec } from 'prosemirror-model'
+import { DOMSerializer } from 'prosemirror-model'
+import type { NodeView } from 'prosemirror-view'
 import {
   applyStyleAttribute,
   parseDeclarations,
   safeColor,
   serializeDeclarations,
 } from './css.js'
-import { isSerializing, scrub, serializationTarget } from './preserve.js'
+import { scrub, serializationTarget } from './preserve.js'
 
 /** Presentational attributes legacy CMS content puts on `<table>`. */
 const TABLE_LEGACY_ATTRS = ['border', 'cellpadding', 'cellspacing', 'width', 'align', 'summary', 'class'] as const
@@ -433,12 +435,28 @@ function cellToDOM(tag: 'td' | 'th') {
  */
 const FURNITURE_TAGS: ReadonlySet<string> = new Set(['caption', 'colgroup', 'col'])
 
+/**
+ * Drop `contenteditable` from furniture before it is stored as a node attr.
+ *
+ * The editor stamps `contenteditable="false"` on a live caption so a caret
+ * cannot enter it. That marker is not author content. Clipboard HTML used to
+ * carry it (DOMSerializer does not run inside `serializeHtml`), parse then
+ * kept it via `scrub`, and from then on it was in the document permanently.
+ * Stripping here is how already-contaminated markup, and any future serializer
+ * hole, cannot persist it.
+ */
+function dropFurnitureInertMarker(el: Element): void {
+  el.removeAttribute('contenteditable')
+}
+
 /** Serialized direct children of `el` matching `tags`, in document order. */
 function readFurniture(el: Element, tags: readonly string[]): string | null {
   let html = ''
   for (const child of Array.from(el.children)) {
     if (!tags.includes(child.nodeName.toLowerCase())) continue
-    html += scrub(child)
+    const clone = child.cloneNode(true) as Element
+    dropFurnitureInertMarker(clone)
+    html += scrub(clone)
     // HTML permits exactly one caption; a second is somebody else's bug and
     // concatenating it would render two. Take the first and stop.
     if (child.nodeName.toLowerCase() === 'caption') break
@@ -453,15 +471,17 @@ function readFurniture(el: Element, tags: readonly string[]): string | null {
  * illegal inside a `<div>` and would be silently discarded there -- the same
  * reason the preservation layer uses one.
  */
-function appendFurniture(table: Element, html: string, doc: Document, inert: boolean): void {
+function appendFurniture(table: Element, html: string, doc: Document): void {
   const tpl = doc.createElement('template')
   tpl.innerHTML = html
   for (const child of Array.from((tpl as HTMLTemplateElement).content.children)) {
     if (!FURNITURE_TAGS.has(child.nodeName.toLowerCase())) continue
-    // Editor only. A caption sits inside the editable area but outside the
-    // node's contentDOM, so without this a caret can enter text ProseMirror
-    // will discard on its next redraw.
-    if (inert) child.setAttribute('contenteditable', 'false')
+    // Never stamp `contenteditable` here. `toDOM` is shared by the editor, by
+    // `serializeHtml`, and by clipboard serialization (`DOMSerializer` is
+    // called with no `withSerializationDocument` wrap). Emitting the inert
+    // marker for "not serializeHtml" leaked it into clipboard HTML, then into
+    // stored content on paste. The editor applies the marker in a node view
+    // (`tableCaptionNodeView`) that serializers never run.
     table.appendChild(child)
   }
 }
@@ -642,8 +662,8 @@ export const table: NodeSpec = {
     // Document order is fixed by HTML: caption first, then colgroup, then rows.
     // Emitting them in any other order produces markup browsers reshuffle, which
     // would make the round-trip lossy again by a subtler route.
-    if (caption) appendFurniture(table, caption, doc, !isSerializing())
-    if (colgroup) appendFurniture(table, colgroup, doc, false)
+    if (caption) appendFurniture(table, caption, doc)
+    if (colgroup) appendFurniture(table, colgroup, doc)
 
     const tbody = doc.createElement('tbody')
     table.appendChild(tbody)
@@ -658,6 +678,34 @@ export const table: NodeSpec = {
     if (header || footer) tableSectionRows.set(table, { header, footer })
     return { dom: table, contentDOM: tbody }
   },
+}
+
+/**
+ * Editor-only table node view: same DOM as `toDOM`, plus `contenteditable="false"`
+ * on a preserved caption.
+ *
+ * A caption sits inside the editable area but outside the node's `contentDOM`,
+ * so without the marker a caret can enter text ProseMirror will discard on its
+ * next redraw. Serializers (`serializeHtml`, clipboard `DOMSerializer`) never
+ * consult node views, so the marker cannot reach stored or clipboard HTML.
+ *
+ * `@openleaf-editor/plugins-table` replaces this with `CaptionedTableView`, which
+ * stamps the same attribute on the caption it rebuilds. Until that bundle loads,
+ * this is the view the core editor uses.
+ */
+export function tableCaptionNodeView(node: PMNode): NodeView {
+  const spec = node.type.spec.toDOM!(node)
+  const rendered = Array.isArray(spec)
+    ? DOMSerializer.renderSpec(document, spec)
+    : (spec as unknown as { dom: Node; contentDOM?: HTMLElement | null })
+  const root = rendered.dom
+  if (root instanceof Element) {
+    const first = root.firstElementChild
+    if (first && first.nodeName === 'CAPTION') first.setAttribute('contenteditable', 'false')
+  }
+  const view: NodeView = { dom: rendered.dom as HTMLElement }
+  if (rendered.contentDOM) view.contentDOM = rendered.contentDOM
+  return view
 }
 
 export const table_row: NodeSpec = {
