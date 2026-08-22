@@ -664,3 +664,59 @@ describe('parse then serialize never throws', () => {
     }
   })
 })
+
+describe('unwrap of a sole attribute-free paragraph', () => {
+  /*
+   * Table cells already had this pass. list_item, blockquote and details
+   * body have the same shape and used to grow a `<p>` on first save, which
+   * is a rendering change (UA `p` margins, child selectors) as well as a
+   * markup rewrite. Mixed content follows the cell rule: more than one
+   * child keeps the wrapper.
+   */
+  const cases: Array<[string, string, string]> = [
+    ['bare list items', '<ul><li>a</li><li>b</li></ul>', '<ul><li>a</li><li>b</li></ul>'],
+    ['bare ordered item', '<ol><li>one</li></ol>', '<ol><li>one</li></ol>'],
+    [
+      'nested list: outer mixed, inner sole',
+      '<ul><li>a<ul><li>b</li></ul></li></ul>',
+      '<ul><li><p>a</p><ul><li>b</li></ul></li></ul>',
+    ],
+    ['bare blockquote', '<blockquote>quoted text</blockquote>', '<blockquote>quoted text</blockquote>'],
+    [
+      'details body, not the summary',
+      '<details><summary>s</summary>body</details>',
+      '<details><summary>s</summary>body</details>',
+    ],
+    [
+      'authored wrappers also unwrap (same asymmetry as cells)',
+      '<ul><li><p>a</p></li></ul>',
+      '<ul><li>a</li></ul>',
+    ],
+    [
+      'two paragraphs stay wrapped',
+      '<ul><li><p>a</p><p>b</p></li></ul>',
+      '<ul><li><p>a</p><p>b</p></li></ul>',
+    ],
+    [
+      'classed paragraph stays wrapped',
+      '<ul><li><p class="lead">x</p></li></ul>',
+      '<ul><li><p class="lead">x</p></li></ul>',
+    ],
+    [
+      'table cells still unwrap',
+      '<table><tbody><tr><td>cell</td></tr></tbody></table>',
+      '<table><tbody><tr><td>cell</td></tr></tbody></table>',
+    ],
+    [
+      'list inside preserved markup is byte-identical',
+      '<div class="callout"><ul><li>a</li></ul></div>',
+      '<div class="callout"><ul><li>a</li></ul></div>',
+    ],
+  ]
+
+  for (const [name, input, expected] of cases) {
+    it(name, () => {
+      expect(roundTrip(input)).toBe(expected)
+    })
+  }
+})

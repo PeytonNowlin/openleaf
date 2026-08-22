@@ -65,16 +65,16 @@ describe('bindings actually work', () => {
   })
 
   it('Mod-Shift-8 makes a bulleted list', () => {
-    expect(press(stateFrom('<p>item</p>'), 'Mod-Shift-8')).toBe('<ul><li><p>item</p></li></ul>')
+    expect(press(stateFrom('<p>item</p>'), 'Mod-Shift-8')).toBe('<ul><li>item</li></ul>')
   })
 
   it('Mod-Shift-7 makes a numbered list', () => {
-    expect(press(stateFrom('<p>item</p>'), 'Mod-Shift-7')).toBe('<ol><li><p>item</p></li></ol>')
+    expect(press(stateFrom('<p>item</p>'), 'Mod-Shift-7')).toBe('<ol><li>item</li></ol>')
   })
 
   it('Mod-Shift-. quotes a paragraph', () => {
     expect(press(stateFrom('<p>quote</p>'), 'Mod-Shift-.')).toBe(
-      '<blockquote><p>quote</p></blockquote>',
+      '<blockquote>quote</blockquote>',
     )
   })
 
@@ -88,7 +88,7 @@ describe('bindings actually work', () => {
     // Position 6 is the end of "one"; 5 would split mid-word, which is also
     // correct behaviour but not what this test is about.
     const out = press(stateFrom('<ul><li><p>one</p></li></ul>', 6), 'Enter')
-    expect(out).toBe('<ul><li><p>one</p></li><li><p></p></li></ul>')
+    expect(out).toBe('<ul><li>one</li><li></li></ul>')
   })
 
   it('Enter still splits an ordinary paragraph', () => {

@@ -38,7 +38,7 @@ function run(state: EditorState, command: Command): string | null {
 
 describe('structure round-trips', () => {
   const cases: Array<[string, string]> = [
-    ['details', '<details><summary>More</summary><p>body</p></details>'],
+    ['details', '<details><summary>More</summary>body</details>'],
     ['figure', '<figure><img src="/a.png" alt="x"><figcaption>cap</figcaption></figure>'],
     ['heading id', '<h2 id="sec">Title</h2>'],
     ['named anchor', '<p><a id="here"></a>text</p>'],
