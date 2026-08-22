@@ -337,6 +337,45 @@ describe('protections that do not depend on the policy staying narrow', () => {
     expect(out).not.toContain('ping')
   })
 
+  /*
+   * `DEFAULT_POLICY` permitted `srcset` on `<source>` and no checker read it:
+   * not in `NEVER_ALLOWED`, not in `urlAttributes`. So
+   * `<picture><source srcset="https://evil.example/track.png 1x"></picture>`
+   * survived verbatim, with an attacker-chosen URL list nothing validated --
+   * while content-policy classifies the attribute as never-carryable on exactly
+   * that ground ("comma-separated URL lists no single-URL check reads") and
+   * core's security suite pins that the editor strips it.
+   */
+  it('drops srcset from the element the default policy used to permit it on', () => {
+    const out = clean('<picture><source srcset="https://evil.example/track.png 1x"></picture>')
+    expect(out).not.toContain('srcset')
+    expect(out).not.toContain('evil.example')
+  })
+
+  it('strips srcset and imagesrcset even when a policy permits them', () => {
+    const policy = policyForPreserved(DEFAULT_POLICY, {
+      div: ['class', 'srcset', 'imagesrcset'],
+    })
+    const out = sanitizeHtml(
+      '<div class="k" srcset="https://evil.example/a.png 1x" imagesrcset="https://evil.example/b.png">x</div>',
+      { policy },
+    )
+    expect(out).not.toContain('srcset')
+    expect(out).not.toContain('evil.example')
+    // The rest of the widening still works: this is a targeted refusal, not a
+    // policy the enforcer ignores.
+    expect(out).toContain('class="k"')
+  })
+
+  it('keeps the attributes on <source> that are not URL lists', () => {
+    const out = clean(
+      '<video controls><source src="/a.webm" type="video/webm" media="(min-width: 40em)" sizes="100vw"></video>',
+    )
+    expect(out).toContain('src="/a.webm"')
+    expect(out).toContain('type="video/webm"')
+    expect(out).toContain('media="(min-width: 40em)"')
+  })
+
   it('removes HTML comments rather than re-emitting them verbatim', () => {
     // Inert as parsed here, and live the moment a downstream template layer
     // unwraps or regex-strips comments -- a routine thing for one to do.

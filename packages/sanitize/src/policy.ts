@@ -215,7 +215,15 @@ export const DEFAULT_POLICY: Policy = deepFreeze({
      * of its own. Without them here a server-side pass would unwrap the sources
      * out of every such player and then delete the player for having no source.
      */
-    source: { attributes: ['src', 'type', 'media', 'srcset', 'sizes'] },
+    /*
+     * No `srcset`. content-policy classifies it as never-carryable -- "comma-
+     * separated URL lists no single-URL check reads" -- and nothing here reads
+     * one either: it is not in `urlAttributes`, so permitting it was permitting
+     * an attacker-chosen URL list blind. The editor never emits one; source-only
+     * media carries its address in `src`. `sizes` and `media` stay: a length
+     * list and a media query, neither of which is a URL.
+     */
+    source: { attributes: ['src', 'type', 'media', 'sizes'] },
     track: { attributes: ['src', 'kind', 'srclang', 'label', 'default'] },
     /*
      * Iframes are allowlisted by host in sanitize.ts, not by being listed here.

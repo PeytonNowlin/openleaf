@@ -1,3 +1,4 @@
+import { NEVER_CARRY_ATTRIBUTES } from '@openleaf-editor/content-policy/url'
 import {
   EMBED_HOSTS,
   URL_ATTRIBUTES,
@@ -291,6 +292,28 @@ describe('the URL attribute list does not drift from content-policy', () => {
   it('names nothing content-policy does not', () => {
     const extra = DEFAULT_POLICY.urlAttributes.filter((name) => !URL_ATTRIBUTES.has(name))
     expect(extra).toEqual([])
+  })
+
+  /*
+   * The gap the two tests above cannot see. `srcset` is not a URL attribute in
+   * content-policy's taxonomy -- it is a refused one, because no single-URL
+   * check can read a comma-separated candidate list -- so neither list named it,
+   * and `DEFAULT_POLICY` permitted it on `<source>` with nothing validating the
+   * value. Permitting an attribute the shared module refuses outright is a
+   * drift, and this is the assertion that catches it for the whole class rather
+   * than for the one attribute that happened to slip through.
+   */
+  it('permits no attribute content-policy refuses to carry, on any element', () => {
+    const permitted: string[] = []
+    for (const [element, policy] of Object.entries(DEFAULT_POLICY.elements)) {
+      for (const name of policy.attributes ?? []) {
+        if (NEVER_CARRY_ATTRIBUTES.has(name)) permitted.push(`${element}[${name}]`)
+      }
+    }
+    for (const name of DEFAULT_POLICY.globalAttributes) {
+      if (NEVER_CARRY_ATTRIBUTES.has(name)) permitted.push(`*[${name}]`)
+    }
+    expect(permitted).toEqual([])
   })
 })
 

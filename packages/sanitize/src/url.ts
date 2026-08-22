@@ -6,6 +6,7 @@
  * import it, rather than each writing its own copy and drifting.
  */
 export {
+  NEVER_CARRY_ATTRIBUTES,
   URL_ATTRIBUTES,
   isEventHandlerAttribute,
   isSafeUrl,
