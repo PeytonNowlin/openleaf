@@ -19,8 +19,9 @@ entries below say so explicitly when they do.
   used to make `declaredUncompressedBytes` return `null`, which
   `assertImportableDocx` treated as allowed. Those sentinels are now honoured
   only when a ZIP64 EOCD locator sits immediately before the EOCD, an unreadable
-  directory is refused, and inflated bytes are bounded independently of what the
-  archive declares.
+  directory is refused, inflated bytes are bounded independently of what the
+  archive declares, and local records that are not packed immediately before the
+  central directory are refused so a partial inflate walk cannot undercount.
 
 ### Added
 

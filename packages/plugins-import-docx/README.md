@@ -59,7 +59,8 @@ converter refuses a file over 25 MB on disk or 256 MB expanded
 (`DEFAULT_DOCX_LIMITS`). The expanded figure is read from the ZIP central
 directory, then checked again against the bytes that actually inflate. An
 unreadable directory -- including a ZIP64 sentinel that is not corroborated by a
-ZIP64 EOCD locator immediately before the EOCD -- is refused rather than treated
+ZIP64 EOCD locator immediately before the EOCD, or local file records that are
+not packed immediately before the central directory -- is refused rather than treated
 as under the limit. Override both ceilings through `installDocxImport({ limits })`.
 
 ## Its own bundle, for a reason

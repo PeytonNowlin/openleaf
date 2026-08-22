@@ -53,7 +53,8 @@ vulnerability in your application, and no configuration of OpenLeaf can fix it.
 **Word `.docx` import is bounded before it is parsed.** A `.docx` is a ZIP.
 `@openleaf-editor/plugins-import-docx` refuses a file whose central directory
 cannot be read, whose ZIP64 sentinels are not corroborated by a ZIP64 EOCD
-locator immediately before the EOCD, or whose declared or actually inflated
+locator immediately before the EOCD, whose local records are not packed
+immediately before the central directory, or whose declared or actually inflated
 size exceeds 256 MB (25 MB compressed). Forging a ZIP64 sentinel used to skip
 the expansion ceiling; that path now fails closed. The check lives in
 `packages/plugins-import-docx/src/guards.ts`.
@@ -256,7 +257,8 @@ colour to stop applying live, and test it.
 - Resource exhaustion reachable from a dropped `.docx`. The Word importer
   measures expansion from the ZIP central directory *and* from inflate, and
   fails closed when the directory cannot be read -- including ZIP64 sentinels
-  that are not backed by a real ZIP64 EOCD locator.
+  that are not backed by a real ZIP64 EOCD locator, and local records that are
+  not packed immediately before the central directory.
 
 ### Out of scope
 

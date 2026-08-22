@@ -222,7 +222,12 @@ async function inflateRawLength(payload: ArrayBuffer, remaining: number): Promis
 /**
  * Bytes that actually inflate, walking local file headers. Null when the walk
  * cannot establish a total -- data descriptors, unknown methods, ZIP64 sizes
- * without extra fields, or an inflate that overruns the remaining budget.
+ * without extra fields, an inflate that overruns the remaining budget, or
+ * local records that are not packed immediately before the central directory.
+ *
+ * Data descriptors (general-purpose bit 3) are refused on purpose: the local
+ * header then omits sizes, so this walk cannot bound the payload. Word does
+ * not write that form for `.docx`.
  */
 export async function inflatedUncompressedBytes(
   bytes: ArrayBuffer,
@@ -282,6 +287,12 @@ export async function inflatedUncompressedBytes(
       return null
     }
   }
+
+  // Local records are packed, then the central directory. Padding or a
+  // second local record after junk would stop this walk while JSZip still
+  // finds every entry from the directory -- fail closed rather than treat
+  // a partial inflate total as the archive's size.
+  if (at + 4 > size || view.getUint32(at, true) !== CENTRAL_FILE_HEADER) return null
 
   return total
 }

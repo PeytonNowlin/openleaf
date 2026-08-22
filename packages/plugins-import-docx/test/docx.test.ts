@@ -10,6 +10,7 @@ import { createDocxConverter, type DocxImage, type DocxMammoth, type DocxOptions
 import {
   assertImportableDocx,
   declaredUncompressedBytes,
+  inflatedUncompressedBytes,
   isDocxType,
   looksLikeZip,
 } from '../src/guards.js'
@@ -255,6 +256,21 @@ describe('what a .docx has to be before mammoth reads it', () => {
     ).rejects.toThrow(/directory could not be read/)
   })
 
+  it('refuses local records separated by padding so inflate cannot undercount', async () => {
+    const bytes = oversizedZip({ padAfterFirstLocal: 1 })
+    const buffer = new Uint8Array(bytes).buffer as ArrayBuffer
+    const declared = declaredUncompressedBytes(buffer)
+    expect(declared).not.toBeNull()
+    expect(declared!).toBeGreaterThan(1024)
+    expect(await inflatedUncompressedBytes(buffer, 256 * 1024 * 1024)).toBeNull()
+    await expect(
+      assertImportableDocx(zipAsDocx(bytes), {
+        maxBytes: 25 * 1024 * 1024,
+        maxUncompressedBytes: 256 * 1024 * 1024,
+      }),
+    ).rejects.toThrow(/directory could not be read/)
+  })
+
   it('refuses a forged ZIP64 directory-offset sentinel without a locator', async () => {
     const bytes = oversizedZip({ directoryAt: 0xffffffff })
     const file = zipAsDocx(bytes)
@@ -274,7 +290,7 @@ describe('what a .docx has to be before mammoth reads it', () => {
  * to sentinels. The central directory itself is left honest, which is the
  * forgery: a tolerant reader still inflates the payload.
  */
-function oversizedZip(patch: { entries?: number; directoryAt?: number } = {}): Buffer {
+function oversizedZip(patch: { entries?: number; directoryAt?: number; padAfterFirstLocal?: number } = {}): Buffer {
   const types = Buffer.from(
     '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>',
   )
@@ -305,7 +321,7 @@ function crc32(data: Uint8Array): number {
 
 function buildZip(
   files: { name: string; data: Buffer }[],
-  patch: { entries?: number; directoryAt?: number },
+  patch: { entries?: number; directoryAt?: number; padAfterFirstLocal?: number },
 ): Buffer {
   const locals: Buffer[] = []
   const centrals: Buffer[] = []
@@ -336,6 +352,10 @@ function buildZip(
     central.writeUInt32LE(offset, 42)
     centrals.push(Buffer.concat([central, name]))
     offset += 30 + name.length + compressed.length
+    if (locals.length === 1 && patch.padAfterFirstLocal) {
+      locals.push(Buffer.alloc(patch.padAfterFirstLocal))
+      offset += patch.padAfterFirstLocal
+    }
   }
 
   const localPart = Buffer.concat(locals)
