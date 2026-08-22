@@ -48,6 +48,18 @@ entries below say so explicitly when they do.
   public API.
 - The core bundle's gzip budget rises to 110 KB, measured at 108.0.
 
+### Fixed
+
+- **`safeClassList` no longer silently deletes Tailwind, non-ASCII, or
+  leading-digit class tokens.** It used an ASCII-identifier regex, so
+  `md:w-1/2`, `p-[10px]`, `2col`, and `größe-mittel` were dropped whenever
+  another token survived beside them. An image with only `class="md:w-1/2"`
+  kept it as residue; the same class next to `rounded` or `ol-float-left`
+  was gone. Class tokens now follow the same rule as `id`: a non-empty run
+  of non-whitespace. Deduplication, alignment-class exclusion, and the
+  empty-list `null` contract are unchanged. Which classes a deployment
+  stores remains a sanitize policy, not a schema filter.
+
 ## 0.1.0-beta.2 - 2026-08-19
 
 The formatting and structure release. Five new packages, so read the install
