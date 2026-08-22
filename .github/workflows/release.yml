@@ -40,6 +40,19 @@ on:
 
 permissions:
   contents: write # the bump commit, the tag, and the GitHub release
+  # Trusted publishing. npm exchanges this workflow's OIDC token for a
+  # short-lived credential scoped to this repository and this workflow file, so
+  # the publish needs no long-lived npm token at all -- and npm attaches a
+  # provenance attestation automatically, with no `--provenance` flag.
+  #
+  # This is not merely nicer than a token, it is the direction npm is closing
+  # off the alternative: as of 2026-07-31 a 2FA-bypass granular token can no
+  # longer change package access, maintainers, or trusted-publishing config, and
+  # around January 2027 it loses direct publish entirely -- its publishing
+  # surface drops to staging a publish that a human approves with 2FA. A weekly
+  # unattended release cannot answer a 2FA prompt, so OIDC is the only form of
+  # this workflow that still runs next year.
+  id-token: write
 
 # Never two releases at once, and never cancel one in flight: a run killed
 # between `npm publish` and `git push` is the one state nothing here can clean
@@ -65,8 +78,12 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
-          # Writes an .npmrc that reads NODE_AUTH_TOKEN, which is what makes the
-          # publish and the dist-tag writes work without a 2FA prompt.
+          # Writes an .npmrc containing `_authToken=${NODE_AUTH_TOKEN}`. That
+          # placeholder is left unresolved on the publish step, which is what we
+          # want -- pnpm drops an unresolved placeholder and falls through to
+          # OIDC (pnpm#11513, fixed 2026-05-15, so keep `packageManager` at or
+          # above the pnpm 11 release that carries it). The token is supplied
+          # only to the dist-tag step below, which OIDC cannot cover.
           registry-url: 'https://registry.npmjs.org'
 
       # Skip a quiet week.
@@ -158,20 +175,22 @@ jobs:
           git commit -s -m "release: v$VERSION"
           git tag -a "v$VERSION" -m "v$VERSION"
 
-      - name: Publish to npm
+      # Deliberately NO npm token in this step's environment. pnpm prefers an
+      # OIDC exchange over a static token when one is available, but leaving the
+      # token out means a broken trust configuration fails the release instead of
+      # quietly falling back to token auth and publishing without provenance --
+      # which is the failure you find out about in January 2027, when the
+      # fallback stops existing.
+      #
+      # Every package needs its own trusted publisher on npmjs.com, pointing at
+      # this repository and the workflow FILENAME (`release.yml`, not the path).
+      # See docs/releasing.md.
+      - name: Publish to npm (trusted publishing, OIDC)
         if: steps.changed.outputs.release == 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           # `--no-git-checks` because pnpm otherwise refuses to publish from a
           # branch it does not consider the publish branch, and the runner's
           # tree carries the uncommitted bump on a dry run.
-          #
-          # No `--provenance`: pnpm 11's publish does not implement npm's
-          # provenance or trusted-publishing flags (`pnpm publish --help`), so
-          # attestations would mean packing here and publishing each tarball
-          # with `npm publish` instead. Worth doing; not worth coupling to the
-          # first version of this workflow.
           pnpm -r --filter "./packages/**" publish \
             --access public --tag beta --no-git-checks \
             ${{ inputs.dry_run && '--dry-run' || '' }}
@@ -180,6 +199,13 @@ jobs:
       # `latest` implicitly on a package's first publish -- so without this,
       # `npm install @openleaf-editor/element` keeps installing 0.1.0-beta.0.
       # The long version of that story is at the top of scripts/dist-tags.mjs.
+      #
+      # This is the one step OIDC cannot do: the credential npm mints from the
+      # trust exchange is good for `publish` and `stage publish` and nothing
+      # else, so moving a dist-tag still needs a real token. It is a granular
+      # token scoped to @openleaf-editor, and it is a pre-1.0 artifact -- once
+      # `latest` tracks a stable line, publishes set it implicitly and this step
+      # and its secret both go away.
       - name: Point latest and beta at the new version
         if: steps.changed.outputs.release == 'true' && !inputs.dry_run
         env:

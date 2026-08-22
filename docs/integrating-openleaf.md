@@ -11,6 +11,11 @@ form handling, and test commands.
 > version, and review the
 > [known limitations](../README.md#project-status) before production use.
 
+No `@openleaf-editor/*` package runs an install-time script, so npm 12's
+`allowScripts`-off default needs no `npm approve-scripts` entry for OpenLeaf.
+Releases are published from CI by trusted publishing, so they carry provenance
+attestations that `npm audit signatures` verifies.
+
 ## Choose the integration
 
 | Application | Package | Binding |

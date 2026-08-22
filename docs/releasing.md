@@ -58,26 +58,77 @@ Locally, `pnpm bump --dry-run` prints the same plan the workflow would follow.
 
 ## Setup and credentials
 
-The workflow needs one secret: **`NPM_TOKEN`**, a granular npm access token with
-read and write permission on the `@openleaf-editor` scope. An *automation* token
-is required rather than a publish token with 2FA, because the run has no way to
-answer a one-time-password prompt — and `dist-tags.mjs` would otherwise die
-part-way through its thirty registry writes when a code expired.
+The publish authenticates with **trusted publishing (OIDC)**. There is no
+long-lived npm token in the publish path: the workflow presents its GitHub OIDC
+token, npm exchanges it for a credential scoped to this repository and this
+workflow file, and attaches a provenance attestation automatically -- no
+`--provenance` flag, because pnpm does not implement one.
 
-Two things to check once, before trusting the first unattended run:
+That is not just the nicer option, it is the only one with a future. npm is
+closing the alternative in two steps:
 
-- The token is scoped to `@openleaf-editor/*` only, and stored as a repository
-  secret (or in an environment with required reviewers, if you would rather keep
-  a human in the loop after all).
-- `main` accepts a push from `GITHUB_TOKEN`. If branch protection rejects it,
-  the publish will have already succeeded and the bump commit will be stranded
-  on the runner — either allow the release bot through, or move the workflow to
-  opening a release pull request instead.
+| Date | What changes |
+| --- | --- |
+| 2026-07-31 | A 2FA-bypass granular token can no longer create or delete tokens, change package access or maintainers, or touch trusted-publishing configuration. |
+| ~January 2027 | A 2FA-bypass token loses **direct publish**. Its publishing surface drops to reading private packages and *staging* a publish that a human approves with 2FA. |
 
-Provenance attestations are not published. `pnpm publish` does not implement
-npm's `--provenance` or trusted-publishing flags, so attesting would mean
-packing with pnpm and publishing each tarball with `npm publish`. That is worth
-doing and is not done yet.
+An unattended Monday release cannot answer a 2FA challenge, so after that second
+date a token-based version of this workflow simply stops being a release
+pipeline. See [the npm changelog entry](https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/).
+
+### One-time setup, per package
+
+Trusted publishing is configured **per package**, on npmjs.com, for all fifteen:
+*Settings → Trusted publisher → GitHub Actions*, with
+
+- organization/user: `PeytonNowlin`
+- repository: `openleaf`
+- workflow: `release.yml` — the **filename only**. The full path
+  `.github/workflows/release.yml` is the most common way to get this wrong.
+- environment: leave empty.
+
+Three constraints worth knowing before you debug a failure: it does not work on
+self-hosted runners, the repository must be the one running the workflow, and a
+`workflow_call` indirection breaks validation because npm checks the *calling*
+workflow's name. This workflow avoids all three.
+
+Since 2026-07-31, editing trusted-publisher configuration itself requires an
+interactive 2FA challenge, so this is browser work and cannot be scripted.
+
+### The one remaining secret
+
+`scripts/dist-tags.mjs` still needs a real token, in the repository secret
+**`NPM_TOKEN`**: the credential npm mints from the OIDC exchange is valid for
+`publish` and `stage publish` and nothing else, and moving a dist-tag is neither.
+Use a granular token scoped to `@openleaf-editor` with read and write on
+packages, and nothing else.
+
+Two things make that acceptable. It cannot answer a 2FA prompt either, which is
+why the script reads the registry first and writes only the tags that are
+actually wrong. And it is a pre-1.0 artifact: once `latest` tracks a stable line
+instead of the newest prerelease, publishes set `latest` implicitly, and this
+step and its secret both go away.
+
+Also check once, before trusting the first unattended run: that `main` accepts a
+push from `GITHUB_TOKEN`. If branch protection rejects it, the publish will have
+already succeeded and the bump commit will be stranded on the runner — either
+allow the release bot through, or move the workflow to opening a release pull
+request instead.
+
+### Proving it works
+
+`--dry-run` does not exercise the trust exchange end to end, so the first real
+Monday run is the first full test of it. A trust misconfiguration fails the
+publish step with a 404 or an authentication error and leaves `main` untouched
+(nothing is pushed until after the publish), so the cost of getting it wrong is
+a red run, not a broken release.
+
+If it fails on a placeholder-token error rather than a trust error, check
+`packageManager` in the root `package.json`: pnpm 11 briefly passed
+`actions/setup-node`'s unresolved `${NODE_AUTH_TOKEN}` placeholder to the
+registry as a literal token, masking OIDC behind a 404. Fixed 2026-05-15
+([pnpm#11513](https://github.com/pnpm/pnpm/issues/11513)); pnpm 11.13.1 and
+later carry it.
 
 ## If a release half-happened
 
