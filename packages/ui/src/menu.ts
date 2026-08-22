@@ -126,6 +126,16 @@ function enabled(spec: ToolbarItemSpec, state: EditorState, host: HTMLElement): 
 
 /** Menus are named after the trigger that opened them, which needs an id. */
 let menuCounter = 0
+/**
+ * Separate from `menuCounter`, because one menu is opened by MANY triggers.
+ *
+ * A menubar shares a single `PopupMenu` across every menu on it, so an id
+ * derived from the popup's own name was the same string for every trigger:
+ * open Edit, then Insert, and two buttons carried one DOM id. `aria-labelledby`
+ * resolves to the first match in tree order, so every menu after the first was
+ * announced under the first one's name.
+ */
+let triggerCounter = 0
 
 export interface PopupMenuOptions {
   /** The control that opened this menu. Owns the name and the focus return. */
@@ -186,7 +196,7 @@ export class PopupMenu {
     const trigger = options.trigger ?? null
     this.#trigger = trigger
     if (trigger) {
-      if (!trigger.id) trigger.id = `${this.el.id}-trigger`
+      if (!trigger.id) trigger.id = `${this.el.id}-trigger-${(triggerCounter += 1)}`
       this.el.setAttribute('aria-labelledby', trigger.id)
       this.el.removeAttribute('aria-label')
       trigger.setAttribute('aria-controls', this.el.id)
