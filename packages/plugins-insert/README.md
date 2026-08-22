@@ -6,6 +6,8 @@ The matching **schema nodes live in `@openleaf-editor/core`**, so stored `<video
 
 Iframes are stored only when their `src` is an `https:` URL on a known player host (`youtube.com/embed`, `player.vimeo.com/video`, and the rest of the allowlist). Arbitrary iframes are still dropped.
 
+A `<video>` renders as an inert preview in the editor — no control bar, and no pointer events — because native media chrome takes those events for itself, and in Firefox it takes them for the whole element: nothing in the editor would ever see the click, so ProseMirror would never select the node and the player could be inserted once and never edited again. Selecting a video puts a play button of this package's own over the frame; pressing it hands that one element its controls and its pointer events back for as long as it stays selected, and moving the selection away or pressing Escape returns it to a preview. Stored HTML is serialized from the node rather than from the editing DOM, so `controls` round-trips untouched in every state and the player is fully interactive on the published page.
+
 > **Editor output is untrusted input.** Whatever the editor produces — and
 > whatever a user pasted into it — must be sanitized **on your server** before it
 > is stored or rendered as HTML. Client-side sanitization is a user-experience

@@ -9,9 +9,10 @@
  */
 
 import { coreSchema, parseHtml } from '@openleaf-editor/core'
-import { EditorState } from 'prosemirror-state'
-import { EditorView } from 'prosemirror-view'
-import { afterEach, describe, expect, it } from 'vitest'
+import type { Node as PMNode } from 'prosemirror-model'
+import { EditorState, NodeSelection, TextSelection } from 'prosemirror-state'
+import { EditorView, type NodeView } from 'prosemirror-view'
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { mediaResizePlugin } from '../src/resize.js'
 
 let view: EditorView | undefined
@@ -39,6 +40,53 @@ function handleFor(html: string): HTMLButtonElement {
   const handle = view?.dom.querySelector('.ol-img-handle')
   if (!(handle instanceof HTMLButtonElement)) throw new Error('no resize handle rendered')
   return handle
+}
+
+/** Where the video sits, rather than a hand-counted offset that a fixture edit breaks. */
+function videoPos(): number {
+  let found: number | null = null
+  view!.state.doc.descendants((node, pos) => {
+    if (found === null && node.type.name === 'video') found = pos
+    return true
+  })
+  if (found === null) throw new Error('no video in the document')
+  return found
+}
+
+/** Select the video as a node, the way a click on it would. */
+function selectTheVideo(): void {
+  view!.dispatch(view!.state.tr.setSelection(NodeSelection.create(view!.state.doc, videoPos())))
+}
+
+/** Move the selection off the media node, the way a click elsewhere would. */
+function selectTextAt(pos: number): void {
+  view!.dispatch(view!.state.tr.setSelection(TextSelection.create(view!.state.doc, pos)))
+}
+
+function playButton(): HTMLButtonElement {
+  const el = view?.dom.querySelector('.ol-media-play')
+  if (!(el instanceof HTMLButtonElement)) throw new Error(`no play control: ${view?.dom.innerHTML}`)
+  return el
+}
+
+/**
+ * Stand in for playback, which jsdom does not have.
+ *
+ * Calling play() or pause() on a jsdom media element logs a "not implemented"
+ * error through the virtual console, so stubbing keeps the output honest -- and
+ * it makes the calls assertable, which is the part that matters: releasing a
+ * live player has to pause it, because once the element is inert again there is
+ * no control left to stop it with.
+ */
+function stubPlayback(el: HTMLVideoElement): { play: Mock; pause: Mock } {
+  const play = vi.fn(() => Promise.resolve())
+  const pause = vi.fn()
+  Object.assign(el, { play, pause })
+  return { play, pause }
+}
+
+function click(target: Element): void {
+  target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 }
 
 function press(target: Element, key: string, shiftKey = false): KeyboardEvent {
@@ -158,6 +206,172 @@ describe('video resize node view', () => {
     })
     press(handle, 'ArrowRight')
     expect(reachedEditor).toBe(false)
+  })
+})
+
+/**
+ * Click-to-activate.
+ *
+ * The inert preview is what makes a video selectable, so it has to stay the
+ * default -- but an author still has to be able to play a clip without leaving
+ * the editor. One explicit gesture hands a single element its own pointer events
+ * back, for as long as it stays selected.
+ *
+ * jsdom has no playback, which is exactly why these tests are about the DOM
+ * state rather than about whether anything plays: what the engines disagree
+ * about is pointer routing, and `media.spec.ts` covers that in real browsers.
+ */
+describe('activating the player', () => {
+  /*
+   * A paragraph in front of the player, deliberately.
+   *
+   * ProseMirror calls `selectNode` when the selection *changes* to the node, and
+   * `Selection.atStart` of a document whose first block is an atom is already a
+   * `NodeSelection` on it -- so in that shape nothing ever changes, and
+   * ProseMirror draws no selection ring of its own either. Following its
+   * contract rather than second-guessing it keeps the two consistent.
+   */
+  const CLIP = '<p>Alpha.</p><video src="/v.mp4" width="640" controls></video>'
+
+  it('offers no play control until the node is selected', () => {
+    render(CLIP)
+    expect(playButton().hidden).toBe(true)
+  })
+
+  it('offers one once the node is selected, and still shows a preview', () => {
+    const el = renderedVideo(CLIP)
+    const playback = stubPlayback(el)
+    selectTheVideo()
+    expect(playButton().hidden).toBe(false)
+    // Selecting is not activating: the first click has to be able to select.
+    expect(el.controls).toBe(false)
+    expect(el.parentElement?.classList.contains('ol-media-live')).toBe(false)
+  })
+
+  it('hands the element its controls and its pointer events on the gesture', () => {
+    const el = renderedVideo(CLIP)
+    const playback = stubPlayback(el)
+    selectTheVideo()
+    click(playButton())
+    expect(el.controls).toBe(true)
+    expect(playback.play).toHaveBeenCalled()
+    // The CSS that lifts `pointer-events: none` keys off this class.
+    expect(el.parentElement?.classList.contains('ol-media-live')).toBe(true)
+    // Nothing left to click: the native control bar is the interface now.
+    expect(playButton().hidden).toBe(true)
+  })
+
+  it('takes them back when the selection moves away', () => {
+    const el = renderedVideo(CLIP)
+    const playback = stubPlayback(el)
+    selectTheVideo()
+    click(playButton())
+    expect(el.controls).toBe(true)
+    selectTextAt(1)
+    expect(el.controls).toBe(false)
+    expect(playback.pause).toHaveBeenCalled()
+    expect(el.parentElement?.classList.contains('ol-media-live')).toBe(false)
+    expect(playButton().hidden).toBe(true)
+  })
+
+  it('takes them back on Escape, and keeps the node selected', () => {
+    const el = renderedVideo(CLIP)
+    const playback = stubPlayback(el)
+    selectTheVideo()
+    click(playButton())
+    press(el, 'Escape')
+    expect(el.controls).toBe(false)
+    // Still selected, so the toolbar can still edit it -- and the gesture is
+    // there to be repeated.
+    expect(view!.state.selection).toBeInstanceOf(NodeSelection)
+    expect(playButton().hidden).toBe(false)
+  })
+
+  it('can be activated again after being released', () => {
+    const el = renderedVideo(CLIP)
+    const playback = stubPlayback(el)
+    selectTheVideo()
+    click(playButton())
+    press(el, 'Escape')
+    click(playButton())
+    expect(el.controls).toBe(true)
+  })
+
+  it('keeps the resize handle working while the player is live', () => {
+    // The handle is a sibling of the element rather than a child, which is what
+    // lets it keep working in both states.
+    const el = renderedVideo(CLIP)
+    const playback = stubPlayback(el)
+    selectTheVideo()
+    click(playButton())
+    const handle = view!.dom.querySelector('.ol-img-handle')!
+    press(handle, 'ArrowRight')
+    expect(storedAttr('video', 'width')).toBe('650')
+    // And the resize did not quietly put the preview back.
+    expect(el.controls).toBe(true)
+  })
+
+  it('does not rewrite the address on an unrelated update, which would rewind it', () => {
+    const el = renderedVideo(CLIP)
+    const playback = stubPlayback(el)
+    selectTheVideo()
+    click(playButton())
+    // Setting `src` runs the media load algorithm even for the same value, so a
+    // resize would restart the clip the author is watching.
+    const setAttribute = vi.spyOn(el, 'setAttribute')
+    press(view!.dom.querySelector('.ol-img-handle')!, 'ArrowRight')
+    expect(setAttribute.mock.calls.map(([name]) => name)).not.toContain('src')
+  })
+
+  it('keeps ProseMirror out of the live player events, and only then', () => {
+    // ProseMirror's own mousedown handling calls preventDefault() on a selectable
+    // atom, which stops a native control bar responding at all -- the seek bar
+    // would not drag. Built from the plugin's factory directly, because a node
+    // view object is not reachable through the view it belongs to.
+    render(CLIP)
+    const factory = view!.someProp('nodeViews')!['video'] as unknown as (
+      node: PMNode,
+      editor: EditorView,
+      getPos: () => number,
+    ) => NodeView
+    const nodeView = factory(view!.state.doc.child(1), view!, () => videoPos())
+    const dom = nodeView.dom as HTMLElement
+    const el = dom.querySelector('video')!
+    stubPlayback(el)
+    const at = (target: Element): Event => {
+      const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+      // `target` is only set by dispatch, and stopEvent is called by the view
+      // rather than by an event path we can produce here.
+      Object.defineProperty(event, 'target', { value: target })
+      return event
+    }
+
+    // Inert: ProseMirror must see the gesture, or the node is never selected.
+    expect(nodeView.stopEvent!(at(el))).toBe(false)
+    nodeView.selectNode!()
+    const play = dom.querySelector('.ol-media-play')!
+    // Ours either way -- a click on it is an activation, not a selection change.
+    expect(nodeView.stopEvent!(at(play))).toBe(true)
+    play.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(nodeView.stopEvent!(at(el))).toBe(true)
+    nodeView.deselectNode!()
+    expect(nodeView.stopEvent!(at(el))).toBe(false)
+    nodeView.destroy?.()
+  })
+
+  it('gives an image no play control at all', () => {
+    const dom = render('<p><img src="/a.png" alt="x"></p>')
+    expect(dom.querySelector('.ol-media-play')).toBeNull()
+  })
+
+  it('keeps the selection ring an image would have got', () => {
+    // A node view that defines selectNode replaces ProseMirror's default rather
+    // than extending it, and adding that class is all the default did.
+    render(CLIP)
+    selectTheVideo()
+    expect(view!.dom.querySelector('.ol-img-resize')?.classList.contains('ProseMirror-selectednode')).toBe(
+      true,
+    )
   })
 })
 

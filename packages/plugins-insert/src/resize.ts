@@ -103,19 +103,31 @@ function applyImageAttrs(img: HTMLImageElement, node: PMNode): void {
  * be inserted and then never edited again. Chromium and WebKit let a click on
  * the picture area through, which is exactly the sort of difference that ships.
  *
+ * This is the *default* state, not the only one: `mediaView` adds a play button
+ * of its own to a selected video, and activating it hands that one element its
+ * controls and its pointer events back for as long as it stays selected. The
+ * preview has to remain the default because it is what makes the node
+ * selectable, and being selectable is what makes it editable.
+ *
  * Neither `controls` nor the stored markup is affected: stored HTML is
  * serialized from the node, not from this DOM, so what the document says about
  * controls is untouched and the player is fully interactive on the page.
  */
 function applyVideoAttrs(el: HTMLVideoElement, node: PMNode): void {
+  // Written only when it changes. Setting the `src` attribute runs the media
+  // load algorithm even for an identical value, which rewinds a clip the author
+  // is watching in the activated state -- and this function runs on every node
+  // update, so a resize would otherwise restart playback.
   const src = node.attrs['src'] as string | null
-  if (src !== null) el.setAttribute('src', src)
-  else el.removeAttribute('src')
+  if (src === null) el.removeAttribute('src')
+  else if (el.getAttribute('src') !== src) el.setAttribute('src', src)
   const poster = node.attrs['poster'] as string | null
-  if (poster !== null) el.setAttribute('poster', poster)
-  else el.removeAttribute('poster')
+  if (poster === null) el.removeAttribute('poster')
+  else if (el.getAttribute('poster') !== poster) el.setAttribute('poster', poster)
   // Not `controls = true`: see the note above. The element also must not
-  // advertise a control bar it will not honour.
+  // advertise a control bar it will not honour. `mediaView` puts them back when
+  // the author activates the player, which is why this runs before that sync
+  // rather than instead of it.
   el.controls = false
   // Enough to paint a first frame for a player with no poster, without
   // fetching the whole file into an editor nobody is watching it in.
@@ -157,6 +169,18 @@ const BIG_STEP = 50
 /** Below this an image is a dot, and the handle cannot be hit again by pointer. */
 const MIN_WIDTH = 16
 
+/** On the wrapper while one video has been handed back its own pointer events. */
+const LIVE_CLASS = 'ol-media-live'
+/**
+ * ProseMirror's own selection ring class.
+ *
+ * A node view that defines `selectNode` replaces the default implementation
+ * rather than extending it, and adding this class is all the default did for an
+ * atom with no `contentDOM`. So it is added here, or a selected video would lose
+ * the outline every other selected node gets.
+ */
+const SELECTED_CLASS = 'ProseMirror-selectednode'
+
 /**
  * The resize handle.
  *
@@ -188,7 +212,108 @@ function mediaView(
   handle.setAttribute('aria-label', kind === 'video' ? 'Video width' : 'Image width')
   handle.setAttribute('aria-orientation', 'horizontal')
   handle.setAttribute('aria-valuemin', String(MIN_WIDTH))
-  wrap.append(img, handle)
+
+  /**
+   * Click-to-activate.
+   *
+   * The inert preview above is what makes a video selectable, and that must not
+   * regress -- but it also means an author cannot play or scrub a clip without
+   * leaving the editor. So one explicit gesture hands a single element its own
+   * pointer events back, and only for as long as it stays selected.
+   *
+   * The gesture is *our* button rather than a listener on the element, because a
+   * listener on the element cannot work: Firefox routes pointer events for the
+   * whole of a `<video controls>` into its native chrome, and the `pointerdown`
+   * never arrives. It was tried first.
+   *
+   * The button appears only once the node is selected, so the first click on a
+   * video is still the one that selects it. That makes the activation gesture a
+   * second click in practice, while being a real, labelled, focusable control
+   * rather than a click count nobody can see.
+   *
+   * `null` for an image: it has nothing to play, and giving it a `selectNode` of
+   * our own would mean reimplementing the selection ring for no reason.
+   */
+  const media = isVideo(img) ? img : null
+  const play = media === null ? null : view.dom.ownerDocument.createElement('button')
+  if (play !== null) {
+    play.type = 'button'
+    play.className = 'ol-media-play'
+    play.setAttribute('aria-label', 'Play video')
+    play.hidden = true
+  }
+
+  // The handle goes last so it paints over the play button, which is centred and
+  // could otherwise cover a handle on a small video.
+  wrap.append(img, ...(play === null ? [] : [play]), handle)
+
+  let selected = false
+  let live = false
+
+  /** Put `live` and `selected` onto the DOM. The single place either is read. */
+  const syncLive = (): void => {
+    if (media === null || play === null) return
+    media.controls = live
+    wrap.classList.toggle(LIVE_CLASS, live)
+    play.hidden = live || !selected
+  }
+
+  const activate = (): void => {
+    if (media === null || live) return
+    live = true
+    syncLive()
+    // The button that was just pressed is hidden now, so focus cannot stay on
+    // it. It belongs on the player: the native control bar is reachable from
+    // there with the keyboard, and the Escape handler below needs a focused
+    // element inside the wrapper to hear the key at all. ProseMirror keeps the
+    // node selection across a blur, so this does not deselect the node.
+    media.focus()
+    // Best effort. The click that got here is a user activation, so an engine
+    // should allow it; if one does not, the author is left looking at working
+    // controls and can press play themselves. jsdom has no playback at all.
+    try {
+      void media.play()?.catch(() => undefined)
+    } catch {
+      /* No playback here. Activation is the part that matters. */
+    }
+  }
+
+  /**
+   * Hand the element back to the preview state.
+   *
+   * The pause is not tidiness. Once the element is inert again there is no
+   * control left to stop it with, so a clip left playing could not be silenced
+   * without hunting it down and selecting it a second time.
+   */
+  const release = (): void => {
+    if (media === null) return
+    if (live) {
+      live = false
+      try {
+        media.pause()
+      } catch {
+        /* No playback here either. */
+      }
+    }
+    syncLive()
+  }
+
+  play?.addEventListener('click', (event) => {
+    event.preventDefault()
+    activate()
+  })
+
+  // Escape is the way out for a keyboard author: the native control bar is
+  // focusable, and leaving focus inside one that is about to stop taking
+  // pointer events is a dead end. The node stays selected, so the toolbar can
+  // still edit it.
+  wrap.addEventListener('keydown', (event) => {
+    if (!live || event.key !== 'Escape') return
+    event.preventDefault()
+    event.stopPropagation()
+    release()
+    view.focus()
+  })
 
   /** How wide the author may go: the line the image sits on, or its natural size. */
   const maxWidth = (): number => {
@@ -386,12 +511,16 @@ function mediaView(
 
   sync(node)
 
-  return {
+  const nodeView: NodeView = {
     dom: wrap,
     update(updated) {
       if (updated.type.name !== kind) return false
       applyAttrs(img, updated)
       sync(updated)
+      // `applyAttrs` restores the preview -- controls off -- because that is the
+      // default state. An activated player has to survive its own resize, so the
+      // live state is reasserted here.
+      syncLive()
       return true
     },
     destroy() {
@@ -399,8 +528,42 @@ function mediaView(
       // into a view that is being dismantled, and the size the author was
       // dragging towards is not one they ever committed to.
       stop()
+      // A detached media element keeps playing. Nothing would be able to stop it.
+      release()
     },
   }
+
+  if (media !== null) {
+    nodeView.selectNode = (): void => {
+      wrap.classList.add(SELECTED_CLASS)
+      selected = true
+      syncLive()
+    }
+    nodeView.deselectNode = (): void => {
+      wrap.classList.remove(SELECTED_CLASS)
+      selected = false
+      // At most one live player: the selection moving on is what ends this one.
+      release()
+    }
+    /**
+     * Keep ProseMirror out of the activated player's events.
+     *
+     * Not a nicety. ProseMirror's own `mousedown` handling calls
+     * `preventDefault()` when the gesture lands on a selectable atom, which
+     * stops a native control bar responding at all -- the seek bar would not
+     * drag. While the element is inert this never comes up, because the CSS
+     * means it receives no pointer events in the first place.
+     */
+    nodeView.stopEvent = (event: Event): boolean => {
+      const target = event.target
+      if (target === null || !(typeof target === 'object') || !('nodeType' in target)) return false
+      const node = target as Node
+      if (play !== null && (play === node || play.contains(node))) return true
+      return live && (media === node || media.contains(node))
+    }
+  }
+
+  return nodeView
 }
 
 /**
