@@ -388,17 +388,21 @@ export function imageParseAttrs(el: Element): Record<string, unknown> | false {
 }
 
 export function imageDomAttrs(attrs: Attrs): Record<string, string> {
-  const out: Record<string, string> = { src: attrs.src as string }
-  if (attrs.alt !== null && attrs.alt !== undefined) out['alt'] = attrs.alt as string
-  if (attrs.title !== null && attrs.title !== undefined) out['title'] = attrs.title as string
-  if (attrs.width !== null && attrs.width !== undefined) out['width'] = attrs.width as string
-  if (attrs.height !== null && attrs.height !== undefined) out['height'] = attrs.height as string
   const classes: string[] = []
   const align = attrs.align as ImageAlign | null
   if (align) classes.push(IMAGE_ALIGN_CLASS[align])
   if (typeof attrs.className === 'string' && attrs.className !== '') {
     classes.push(attrs.className)
   }
+  // `class` first so round-trips match the stored spelling the tests pin
+  // (`class` then `src`). Putting `src` first is how GitHub Actions started
+  // failing those fixtures after DOMSerializer began honouring object order.
+  const out: Record<string, string> = {}
   if (classes.length > 0) out['class'] = classes.join(' ')
+  out['src'] = attrs.src as string
+  if (attrs.alt !== null && attrs.alt !== undefined) out['alt'] = attrs.alt as string
+  if (attrs.title !== null && attrs.title !== undefined) out['title'] = attrs.title as string
+  if (attrs.width !== null && attrs.width !== undefined) out['width'] = attrs.width as string
+  if (attrs.height !== null && attrs.height !== undefined) out['height'] = attrs.height as string
   return out
 }

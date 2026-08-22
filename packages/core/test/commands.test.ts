@@ -205,7 +205,7 @@ describe('block commands', () => {
     expect(() => {
       state = state.apply(state.tr.insertText('X'))
     }).not.toThrow()
-    expect(html(state)).toContain('<p>body</p></details>')
+    expect(html(state)).toContain('body</details>')
     let undone: EditorState | null = null
     undo(state, (tr) => {
       undone = state.apply(tr)

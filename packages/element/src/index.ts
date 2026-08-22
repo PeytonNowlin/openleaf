@@ -53,6 +53,7 @@ import {
   insertImage,
   isolatingSelectionPlugin,
   nonEditablePlugin,
+  tableCaptionPlugin,
   onEditorPluginsChange,
   onSchemaExtensionsChange,
   parseFormatList,
@@ -450,6 +451,8 @@ export class OpenLeafEditor extends HTMLElementBase {
     // has to hand the view back the *same* history() it was created with.
     // Building a second one is what dropped undo when a plugin registered late.
     this.#basePlugins = [
+      // Before the table-editing bundle: later plugins win `nodeViews.table`.
+      tableCaptionPlugin(),
       history(),
       keymap({
         'Alt-F10': () => {

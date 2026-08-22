@@ -202,7 +202,7 @@ export {
 // @openleaf-editor/plugins-table share it with the parse path, so a dialog
 // writing attributes directly cannot disagree with the schema about an
 // acceptable padding -- which is how `padding: 0;position:fixed;inset:0` got in.
-export { safeTableStyleValue } from './tables.js'
+export { safeTableStyleValue, tableCaptionPlugin } from './tables.js'
 // `CARRIED_ATTR` is no longer exported. Its own docstring said "it is not for
 // plugin authors", and it names an internal attribute slot whose contents the
 // carry mechanism owns; a plugin writing to it corrupts the residue that keeps

@@ -92,6 +92,7 @@ const EXPECTED_EXPORTS = [
   // the clamp that Chromium already does natively.
   'isolatingSelectionPlugin', 'clampIsolatingTextSelection', 'innermostIsolatingDepth',
   'textSelectionCrossesIsolating',
+  'tableCaptionPlugin',
   // `formatParts` splits a format token into the element and the class it names.
   // The element half used to be parsed and discarded, so `h2=Section` set
   // class="h2" on a paragraph rather than making it a heading.
