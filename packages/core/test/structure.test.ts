@@ -91,6 +91,16 @@ describe('an orphaned figcaption does not grow the document', () => {
     for (let i = 0; i < 6; i++) html = roundTrip(html)
     expect(html).toBe(afterFirst)
   })
+
+  it('keeps a figcaption inside summary as inline rather than escaping details', () => {
+    const html = '<details><summary><figcaption>Label</figcaption></summary><p>Body</p></details>'
+    const once = roundTrip(html)
+    const twice = roundTrip(once)
+    expect(twice).toBe(once)
+    expect(once).toContain('Label')
+    expect(once).toContain('<details>')
+    expect(once).toContain('<summary>')
+  })
 })
 
 describe('unsafe media is dropped', () => {

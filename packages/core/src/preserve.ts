@@ -537,11 +537,17 @@ export const unknownInline: NodeSpec = {
         const el = dom as Element
         if (isLosslesslyUnwrappable(el)) return false
         // `figcaption` closes an open `<p>` on the next parse. Claiming it
-        // here would serialize it inside a paragraph and grow the document
-        // by two empty paragraphs on every save. Decline so unknownBlock
-        // takes it as a block atom -- the same answer as an orphaned caption
-        // at the top of the document. See figcaption in structure.ts.
-        if (el.nodeName.toLowerCase() === 'figcaption') return false
+        // here as inline would serialize it inside a paragraph and grow the
+        // document by two empty paragraphs on every save. Decline only in a
+        // paragraph so unknownBlock can take it; in summary/heading/list
+        // item, declining would send it to unknownBlock, which those
+        // containers cannot hold. See figcaption in structure.ts.
+        if (
+          el.nodeName.toLowerCase() === 'figcaption' &&
+          el.parentElement?.nodeName.toLowerCase() === 'p'
+        ) {
+          return false
+        }
         return { html: scrub(el), tag: el.nodeName.toLowerCase() }
       },
     },
