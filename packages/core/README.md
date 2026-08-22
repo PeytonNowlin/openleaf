@@ -70,6 +70,16 @@ A predicate returns `null` for a mixed selection rather than the first value it
 finds -- a dropdown showing "Georgia" for a range that is half Georgia would be
 worse than showing nothing.
 
+## Isolating selections
+
+If you construct a ProseMirror editor yourself, install
+`isolatingSelectionPlugin()` next to `history()` and the keymap. A
+`TextSelection` that starts in a `<blockquote>` and ends inside a following
+`<details>` otherwise throws on the next keystroke (`Cannot join details onto
+blockquote`), and the recovery rewrites the document with no undo entry.
+`<openleaf-editor>` already installs the plugin. Details are in
+[authoring-plugins.md §4.11](../../docs/authoring-plugins.md#411-isolating-nodes-clamp-the-selection-at-their-boundary).
+
 ## Safety
 
 URL, CSS and embed rules come from
