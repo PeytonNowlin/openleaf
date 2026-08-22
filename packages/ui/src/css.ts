@@ -200,7 +200,12 @@ export const CSS = `
    after it -- a stranded line floating at the end of a row. Wrapping begins
    around 690-740px, well inside ordinary desktop widths (a CMS sidebar, a
    half-width split pane), so this was not a 360px-only edge case.
-   border-inline-start rather than border-left, so it flips under RTL. */
+   border-inline-start rather than border-left, so it flips under RTL.
+
+   This selector is why the renderer emits NO element between groups. It used to
+   emit an .ol-sep div, which made the two groups non-adjacent and stopped this
+   rule from ever matching -- so no divider rendered in any theme, and every bar
+   carried inert empty divs. Adding a separator element back here breaks this. */
 .ol-editor .ol-group + .ol-group {
   border-inline-start: 1px solid var(--ol-border);
   padding-inline-start: 5px;

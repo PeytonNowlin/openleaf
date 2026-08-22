@@ -401,6 +401,22 @@ test.describe('styling delivery', () => {
     expect(height).toBeGreaterThanOrEqual(24)
   })
 
+  test('draws a rule between toolbar groups', async ({ page }) => {
+    // The divider is a border on the group, not a standalone element. The bar
+    // used to emit an `.ol-sep` div between groups, which made
+    // `.ol-group + .ol-group` unmatchable, so no divider rendered in any theme
+    // -- invisible to every jsdom test, because jsdom does not cascade.
+    const widths = await toolbar(page).evaluate((bar) =>
+      [...bar.querySelectorAll(':scope > .ol-group')].map((group) =>
+        Number.parseFloat(getComputedStyle(group).borderInlineStartWidth),
+      ),
+    )
+    expect(widths.length).toBeGreaterThan(1)
+    // The first group opens the bar and must not draw a rule against its edge.
+    expect(widths[0]).toBe(0)
+    for (const width of widths.slice(1)) expect(width).toBeGreaterThan(0)
+  })
+
   test('respects a themed custom property', async ({ page }) => {
     await page.evaluate(() => {
       document.documentElement.style.setProperty('--openleaf-button-size', '48px')

@@ -190,13 +190,9 @@ export class ToolbarOverflow {
     }
 
     this.#more.hidden = false
-    // A separator whose group left would otherwise sit at the end of the bar
-    // as a rule with nothing on either side of it.
-    let prev = this.#more.previousElementSibling
-    while (prev instanceof HTMLElement && prev.classList.contains('ol-sep')) {
-      prev.hidden = true
-      prev = prev.previousElementSibling
-    }
+    // No separator elements to hide. The divider is a border on the group, so a
+    // group that moved into the panel takes its own rule with it and cannot
+    // leave one stranded at the end of the bar.
     this.#onLayout?.()
     void this.#host
   }
@@ -299,9 +295,6 @@ export class ToolbarOverflow {
     // Overflow always takes a suffix of the groups, so appending in panel order
     // puts them back where they were. The trigger stays last.
     if (this.#more.isConnected) this.#toolbar.appendChild(this.#more)
-    for (const sep of this.#toolbar.querySelectorAll<HTMLElement>(':scope > .ol-sep')) {
-      sep.hidden = false
-    }
   }
 
   #groups(): HTMLElement[] {

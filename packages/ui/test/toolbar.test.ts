@@ -656,6 +656,64 @@ describe('source mode', () => {
   })
 })
 
+describe('group dividers', () => {
+  /*
+   * The divider is a border on the group -- `.ol-group + .ol-group` in css.ts --
+   * so the two groups have to be ADJACENT siblings for it to draw. The renderer
+   * used to put an `.ol-sep` div between them, which made the selector
+   * unmatchable: no divider rendered in any theme, and each bar carried inert
+   * empty divs. These tests pin the adjacency rather than the appearance,
+   * because the appearance is what a jsdom test cannot see.
+   */
+  it('puts nothing between two groups, so the divider selector can match', () => {
+    const { toolbar } = mount('bold | italic')
+    const groups = [...toolbar.el.querySelectorAll(':scope > .ol-group')]
+    expect(groups).toHaveLength(2)
+    expect(groups[1]!.matches('.ol-group + .ol-group')).toBe(true)
+  })
+
+  it('leaves no separator elements in the bar at all', () => {
+    const { toolbar } = mount('bold | italic | underline')
+    expect(toolbar.el.querySelectorAll('.ol-sep')).toHaveLength(0)
+    // Every child is a group. An unstyled 0x0 flex item is not free: it is a
+    // thing a theme author has to discover is inert.
+    for (const child of toolbar.el.children) {
+      expect(child.classList.contains('ol-group')).toBe(true)
+    }
+  })
+
+  it('collapses a doubled bar to one divider rather than two', () => {
+    const { toolbar } = mount('bold | | italic')
+    expect(toolbar.el.querySelectorAll(':scope > .ol-group')).toHaveLength(2)
+  })
+
+  it('does not open the bar with a stray divider', () => {
+    const { toolbar } = mount('| bold')
+    const groups = [...toolbar.el.querySelectorAll(':scope > .ol-group')]
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.matches('.ol-group + .ol-group')).toBe(false)
+  })
+
+  it('keeps the remaining groups adjacent when one moves into the More panel', () => {
+    const { toolbar, host } = mount('bold | italic | blockType fontFamily')
+    Object.defineProperty(toolbar.el, 'clientWidth', { get: () => 250, configurable: true })
+    Object.defineProperty(toolbar.el, 'scrollWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.querySelectorAll(':scope > .ol-group').length * 200
+      },
+    })
+    const overflow = new ToolbarOverflow(toolbar.el, host, document)
+    const groups = [...toolbar.el.querySelectorAll(':scope > .ol-group')]
+    // Whatever is left in the bar is still contiguous, so a group whose
+    // neighbour left cannot be left drawing a rule against nothing.
+    for (const [index, group] of groups.entries()) {
+      expect(group.matches('.ol-group + .ol-group')).toBe(index > 0)
+    }
+    overflow.destroy()
+  })
+})
+
 describe('registry reset', () => {
   it('can repopulate defaults after tests clear the registry', () => {
     for (const toolbar of mounted.splice(0)) toolbar.destroy()
