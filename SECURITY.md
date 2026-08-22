@@ -50,6 +50,14 @@ generates configuration for DOMPurify, Python's `bleach` and PHP's
 HTMLPurifier from it. Using the editor's output as trusted HTML is a
 vulnerability in your application, and no configuration of OpenLeaf can fix it.
 
+**Word `.docx` import is bounded before it is parsed.** A `.docx` is a ZIP.
+`@openleaf-editor/plugins-import-docx` refuses a file whose central directory
+cannot be read, whose ZIP64 sentinels are not corroborated by a ZIP64 EOCD
+locator immediately before the EOCD, or whose declared or actually inflated
+size exceeds 256 MB (25 MB compressed). Forging a ZIP64 sentinel used to skip
+the expansion ceiling; that path now fails closed. The check lives in
+`packages/plugins-import-docx/src/guards.ts`.
+
 **We do not ship a novel sanitizer, on purpose.** Sanitizers are defeated by
 mutation XSS, by parser differentials between the sanitizer and the renderer,
 and by SVG and MathML namespace confusion -- bug classes that take years of
@@ -245,6 +253,10 @@ colour to stop applying live, and test it.
   because bounding one attribute does not bound their sum: 5,000 cells at the
   per-cell ceiling would otherwise reach the same five-million-column table by
   addition. A table ends up as wide as its markup, never wider.
+- Resource exhaustion reachable from a dropped `.docx`. The Word importer
+  measures expansion from the ZIP central directory *and* from inflate, and
+  fails closed when the directory cannot be read -- including ZIP64 sentinels
+  that are not backed by a real ZIP64 EOCD locator.
 
 ### Out of scope
 

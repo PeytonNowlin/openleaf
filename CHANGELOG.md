@@ -12,6 +12,16 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Security
+
+- **`.docx` zip-bomb guard fails closed on forged ZIP64 sentinels.** Writing
+  `0xffff` into the EOCD entry count, or `0xffffffff` into the directory offset,
+  used to make `declaredUncompressedBytes` return `null`, which
+  `assertImportableDocx` treated as allowed. Those sentinels are now honoured
+  only when a ZIP64 EOCD locator sits immediately before the EOCD, an unreadable
+  directory is refused, and inflated bytes are bounded independently of what the
+  archive declares.
+
 ### Added
 
 - **Typography toolbar controls in `@openleaf-editor/ui`** — font family, font
