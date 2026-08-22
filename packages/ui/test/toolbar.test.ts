@@ -542,6 +542,99 @@ describe('source mode', () => {
     expect(select.disabled).toBe(true)
   })
 
+  /*
+   * Suspension can only take a control AWAY. A control's own `update` is the
+   * authority on whether its command applies to this selection -- the table
+   * grid disables its trigger when `canInsert` is false -- so a toolbar that
+   * wrote "available" over that would show an enabled trigger for a command
+   * that does nothing. Reported by Codex on #92; the first version of this fix
+   * had exactly that regression.
+   */
+  it('does not re-enable a trigger the control itself disabled', () => {
+    let enabled = false
+    registerToolbarItem({
+      id: 'stateful',
+      type: 'custom',
+      label: 'Stateful',
+      render: () => {
+        const el = document.createElement('div')
+        const trigger = document.createElement('button')
+        trigger.className = 'ol-btn'
+        trigger.dataset['olId'] = 'stateful'
+        el.appendChild(trigger)
+        return {
+          el,
+          update: () => trigger.setAttribute('aria-disabled', enabled ? 'false' : 'true'),
+        }
+      },
+    })
+    const { toolbar } = mount('stateful')
+    const trigger = toolbar.el.querySelector<HTMLElement>('[data-ol-id="stateful"]')!
+
+    toolbar.update(fakeView().state)
+    expect(trigger.getAttribute('aria-disabled')).toBe('true')
+
+    // Source mode and back: the control still says unavailable, so it must
+    // still read unavailable.
+    toolbar.setSourceMode(true)
+    expect(trigger.getAttribute('aria-disabled')).toBe('true')
+    toolbar.setSourceMode(false)
+    expect(trigger.getAttribute('aria-disabled')).toBe('true')
+
+    // And when the control changes its mind, the toolbar is not in the way.
+    enabled = true
+    toolbar.update(fakeView().state)
+    expect(trigger.getAttribute('aria-disabled')).toBe('false')
+  })
+
+  it('does not re-enable a select the control itself disabled', () => {
+    let usable = false
+    registerToolbarItem({
+      id: 'statefulSelect',
+      type: 'custom',
+      label: 'Stateful select',
+      render: () => {
+        const el = document.createElement('select')
+        el.dataset['olId'] = 'statefulSelect'
+        return { el, update: () => { el.disabled = !usable } }
+      },
+    })
+    const { toolbar } = mount('statefulSelect')
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="statefulSelect"]')!
+
+    toolbar.setSourceMode(true)
+    expect(select.disabled).toBe(true)
+    toolbar.setSourceMode(false)
+    // The control's own answer, not the toolbar's release.
+    expect(select.disabled).toBe(true)
+
+    usable = true
+    toolbar.update(fakeView().state)
+    expect(select.disabled).toBe(false)
+  })
+
+  it('restores a control that has no update of its own', () => {
+    registerToolbarItem({
+      id: 'staticSelect',
+      type: 'custom',
+      label: 'Static select',
+      render: () => {
+        const el = document.createElement('select')
+        el.dataset['olId'] = 'staticSelect'
+        // No `update`: nothing will put `disabled` back but the toolbar itself.
+        return { el }
+      },
+    })
+    const { toolbar } = mount('staticSelect')
+    const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="staticSelect"]')!
+
+    toolbar.setSourceMode(true)
+    expect(select.disabled).toBe(true)
+    toolbar.setSourceMode(false)
+    expect(select.disabled).toBe(false)
+    expect(select.getAttribute('aria-disabled')).toBe('false')
+  })
+
   it('disables a native custom select under readonly too', () => {
     const host = document.createElement('div')
     host.setAttribute('readonly', '')

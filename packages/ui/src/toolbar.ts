@@ -218,6 +218,12 @@ export class Toolbar {
    * back afterwards". A mode is one flag, and clearing it is one assignment.
    */
   #sourceMode = false
+  /**
+   * Controls this bar disabled for readonly or source view, so releasing hands
+   * back only what it took. Without it, leaving source view would re-enable a
+   * control its own `update` had disabled for the current selection.
+   */
+  #suspendedByToolbar = new WeakSet<Element>()
   #overflow: ToolbarOverflow | null = null
   #unsubscribe: (() => void) | undefined
   #unlocale: (() => void) | undefined
@@ -763,11 +769,22 @@ export class Toolbar {
     }
 
     for (const { id, control } of this.#customs) {
-      // The control refreshes itself FIRST and availability is written after,
-      // so the toolbar has the last word. The other order let a control that
-      // tracks readonly on its own -- block type does, deliberately -- reset
-      // `disabled` from its own narrower idea of when it is usable and undo
-      // this.
+      // Readonly is the toolbar's business, not each control's: reflecting it
+      // here means a custom control gets the same disabled treatment as a button
+      // without every plugin author having to remember the attribute exists.
+      const unavailable = this.#host.hasAttribute('readonly') || this.#sourceMode
+
+      // Suspension is an OVERRIDE, not an opinion: it can only ever take a
+      // control away, and it restores exactly what it took. A control's own
+      // `update` is the authority on whether its command applies to this
+      // selection -- the table grid disables its trigger when `canInsert` is
+      // false -- so writing "available" over that would show an enabled trigger
+      // for a command that does nothing.
+      //
+      // Released BEFORE `update`, forced AFTER it, so whichever of the two is
+      // entitled to the answer gets the last word.
+      if (!unavailable) this.#releaseSuspended(control.el)
+
       if (control.update) {
         guarded(id, 'update', () => {
           control.update?.(state)
@@ -775,25 +792,7 @@ export class Toolbar {
         })
       }
 
-      // Readonly is the toolbar's business, not each control's: reflecting it
-      // here means a custom control gets the same disabled treatment as a button
-      // without every plugin author having to remember the attribute exists.
-      const unavailable = this.#host.hasAttribute('readonly') || this.#sourceMode
-      const trigger = control.el.querySelector<HTMLButtonElement>('button.ol-btn')
-      trigger?.setAttribute('aria-disabled', unavailable ? 'true' : 'false')
-
-      // Native selects too, and `control.el` itself may BE one -- block type's
-      // is (packages/ui/src/block-type.ts), which is how a `<select>` with no
-      // `button.ol-btn` inside it stayed fully operable in source mode: the
-      // author could pick "Heading 3" against the hidden document, and leaving
-      // source view reparsed the textarea over the result and discarded it.
-      //
-      // The real `disabled`, not just aria: with aria alone the select still
-      // opens, still changes its own displayed value, and still fires `change`.
-      for (const select of this.#nativeSelects(control.el)) {
-        select.setAttribute('aria-disabled', unavailable ? 'true' : 'false')
-        select.disabled = unavailable
-      }
+      if (unavailable) this.#suspend(control.el)
     }
 
     if (this.#selects.size > 0) {
@@ -819,6 +818,51 @@ export class Toolbar {
     // where that document's HTMLSelectElement is a different constructor.
     if (el.localName === 'select') found.unshift(el as HTMLSelectElement)
     return found
+  }
+
+  /**
+   * Take a custom control away while the editor is readonly or in source view.
+   *
+   * The trigger and every native select inside the control, plus the control
+   * element itself when that IS a select -- block type's is
+   * (packages/ui/src/block-type.ts), which is how a `<select>` with no
+   * `button.ol-btn` inside it stayed fully operable in source mode: the author
+   * could pick "Heading 3" against the hidden document, and leaving source view
+   * reparsed the textarea over the result and discarded it.
+   *
+   * Selects get the real `disabled` as well as aria. With aria alone the select
+   * still opens, still changes its own displayed value, and still fires
+   * `change`, which is the whole failure.
+   *
+   * Anything already unavailable by the control's own reckoning is left alone
+   * and NOT recorded, so releasing cannot hand back something the control
+   * itself was refusing.
+   */
+  #suspend(el: HTMLElement): void {
+    const trigger = el.querySelector<HTMLButtonElement>('button.ol-btn')
+    if (trigger && trigger.getAttribute('aria-disabled') !== 'true') {
+      this.#suspendedByToolbar.add(trigger)
+      trigger.setAttribute('aria-disabled', 'true')
+    }
+    for (const select of this.#nativeSelects(el)) {
+      if (select.disabled) continue
+      this.#suspendedByToolbar.add(select)
+      select.setAttribute('aria-disabled', 'true')
+      select.disabled = true
+    }
+  }
+
+  /** Give back exactly what `#suspend` took, and nothing else. */
+  #releaseSuspended(el: HTMLElement): void {
+    const trigger = el.querySelector<HTMLButtonElement>('button.ol-btn')
+    if (trigger && this.#suspendedByToolbar.delete(trigger)) {
+      trigger.setAttribute('aria-disabled', 'false')
+    }
+    for (const select of this.#nativeSelects(el)) {
+      if (!this.#suspendedByToolbar.delete(select)) continue
+      select.setAttribute('aria-disabled', 'false')
+      select.disabled = false
+    }
   }
 
   #syncRegisteredSelect(
