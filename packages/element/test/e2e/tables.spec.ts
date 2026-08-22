@@ -305,3 +305,63 @@ test.describe('with the table bundle loaded', () => {
     await expect(editor(page).locator('table table')).toHaveCount(1)
   })
 })
+
+
+/**
+ * `readonly`, for the paths that are not behind ProseMirror's `editable` gate.
+ *
+ * Typing, paste, drop and the keymaps are gated by `editable`, and the toolbar
+ * and the element's own menus check the attribute themselves. The table context
+ * menu is bound directly on `view.dom` -- deliberately, so cell-selection
+ * handling in `prosemirror-tables` cannot swallow the event first -- and that is
+ * exactly what took it out of the gate. It opened with all fourteen entries live
+ * on a read-only table, and Delete row worked. Shift+F10 fires `contextmenu`
+ * too, so it was reachable from the keyboard.
+ *
+ * In a real browser rather than only in jsdom, because the whole question is
+ * whether a real secondary click reaches a real listener.
+ */
+test.describe('a read-only table', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(WITH_TABLES)
+    await expect(editor(page)).toBeVisible()
+    await page.evaluate(() => {
+      document.querySelector('openleaf-editor')!.setAttribute('readonly', '')
+    })
+  })
+
+  test('opens no context menu on a secondary click', async ({ page }) => {
+    await editor(page).getByText('North').click({ button: 'right' })
+    await expect(page.getByRole('menu', { name: 'Table' })).toBeHidden()
+  })
+
+  test('opens none from the keyboard either', async ({ page }) => {
+    await editor(page).getByText('North').click()
+    await page.keyboard.press('Shift+F10')
+    await expect(page.getByRole('menu', { name: 'Table' })).toBeHidden()
+  })
+
+  test('keeps every row, which Delete row used to take', async ({ page }) => {
+    const before = await value(page)
+    await editor(page).getByText('North').click({ button: 'right' })
+    const menu = page.getByRole('menu', { name: 'Table' })
+    if (await menu.isVisible()) {
+      await menu.getByRole('menuitem', { name: 'Delete row' }).click()
+    }
+    expect(await value(page)).toBe(before)
+    expect(await value(page)).toContain('North')
+  })
+
+  test('dismisses a menu that was open when readonly arrived', async ({ page }) => {
+    await page.evaluate(() => {
+      document.querySelector('openleaf-editor')!.removeAttribute('readonly')
+    })
+    await editor(page).getByText('North').click({ button: 'right' })
+    const menu = page.getByRole('menu', { name: 'Table' })
+    await expect(menu).toBeVisible()
+    await page.evaluate(() => {
+      document.querySelector('openleaf-editor')!.setAttribute('readonly', '')
+    })
+    await expect(menu).toBeHidden()
+  })
+})

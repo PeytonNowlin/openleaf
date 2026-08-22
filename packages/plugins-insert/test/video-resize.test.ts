@@ -207,3 +207,78 @@ describe('a video built in another document', () => {
     }
   })
 })
+
+/**
+ * The resize handle under `readonly`.
+ *
+ * The handle is a real button inside a node view, so it is outside ProseMirror's
+ * `editable` gate for the same reason the table context menu is -- and a
+ * read-only document could be resized with the arrow keys. Confirmed before it
+ * was fixed: an ArrowRight on a `width="640"` image stored 650.
+ */
+describe('readonly', () => {
+  function renderReadonly(html: string): EditorView {
+    const place = document.createElement('div')
+    document.body.append(place)
+    view = new EditorView(place, {
+      editable: () => false,
+      state: EditorState.create({
+        doc: parseHtml(html, { schema: coreSchema() }),
+        plugins: [mediaResizePlugin()],
+      }),
+    })
+    return view
+  }
+
+  const IMAGE = '<p>a</p><img src="/a.png" alt="x" width="640">'
+
+  it('refuses an arrow press', () => {
+    const editor = renderReadonly(IMAGE)
+    const handle = editor.dom.querySelector('.ol-img-handle')!
+    press(handle, 'ArrowRight')
+    expect(storedAttr('image', 'width')).toBe('640')
+  })
+
+  it('refuses to start a drag', () => {
+    const editor = renderReadonly(IMAGE)
+    const handle = editor.dom.querySelector('.ol-img-handle')!
+    const down = new MouseEvent('pointerdown', { bubbles: true, cancelable: true })
+    handle.dispatchEvent(down)
+    // Not even a preview: the drag never begins, so there is nothing to commit.
+    expect(down.defaultPrevented).toBe(false)
+    expect(storedAttr('image', 'width')).toBe('640')
+  })
+
+  it('says so, rather than being a control that silently does nothing', () => {
+    const editor = renderReadonly(IMAGE)
+    expect(editor.dom.querySelector('.ol-img-handle')?.getAttribute('aria-disabled')).toBe('true')
+  })
+
+  it('is available again when readonly is lifted after mount', () => {
+    // A node view's `update` runs when its NODE changes, and editability
+    // changing is not that -- so the plugin watches for the transition.
+    const editor = renderReadonly(IMAGE)
+    const handle = editor.dom.querySelector('.ol-img-handle')!
+    editor.setProps({ editable: () => true })
+    expect(handle.getAttribute('aria-disabled')).toBe('false')
+    press(handle, 'ArrowRight')
+    expect(storedAttr('image', 'width')).toBe('650')
+  })
+
+  it('goes unavailable when readonly arrives after mount', () => {
+    const place = document.createElement('div')
+    document.body.append(place)
+    view = new EditorView(place, {
+      state: EditorState.create({
+        doc: parseHtml(IMAGE, { schema: coreSchema() }),
+        plugins: [mediaResizePlugin()],
+      }),
+    })
+    const handle = view.dom.querySelector('.ol-img-handle')!
+    expect(handle.getAttribute('aria-disabled')).toBe('false')
+    view.setProps({ editable: () => false })
+    expect(handle.getAttribute('aria-disabled')).toBe('true')
+    press(handle, 'ArrowRight')
+    expect(storedAttr('image', 'width')).toBe('640')
+  })
+})
