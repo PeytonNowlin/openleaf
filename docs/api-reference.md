@@ -182,7 +182,8 @@ with no build step and no second install.
 | `registerToolbarItem(spec)` | Add or replace a toolbar control. |
 | `registerIcons(paths)` | Register icon paths for your controls. |
 | `registerStyles(css)` | Adopt a stylesheet for your controls. |
-| `t(source)` | Translate a string. See [authoring-plugins.md §4.10](authoring-plugins.md#410-every-string-you-ship-is-a-translatable-string). |
+| `t(source)` | Translate a string. Missing keys, and names that only exist on `Object.prototype` (`constructor`, `toString`, …), fall back to `source`. See [authoring-plugins.md §4.10](authoring-plugins.md#410-every-string-you-ship-is-a-translatable-string). |
+| `fill(template, values)` | Replace `{name}` placeholders from own properties of `values`. |
 | `registerTranslations(locale, messages)` | Overlay a locale catalog. |
 | `setUiLocale(locale)` | Set the document-wide UI locale. |
 | `registerImageUploader(fn)` | Handle image uploads. `element.imageUploader` overrides it for one editor. |

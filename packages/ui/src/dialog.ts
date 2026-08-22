@@ -21,7 +21,7 @@
  */
 
 import { embedSrcFor, isSafeUrl } from '@openleaf-editor/core'
-import { t, withLocale } from './i18n.js'
+import { fill, t, withLocale } from './i18n.js'
 import { ensureStyles, registerStyles } from './styles.js'
 import { IMAGE_ACCEPT, dimension, type ImageUploadResult } from './upload.js'
 import {
@@ -793,7 +793,7 @@ export async function promptForImage(
   // this is the only place that has the value.
   const inLocale = (source: string, values: Record<string, string> = {}): string =>
     withLocale(locale, () =>
-      t(source).replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole),
+      fill(t(source), values),
     )
 
   const describe: FieldSpec = {

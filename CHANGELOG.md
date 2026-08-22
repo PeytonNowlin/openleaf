@@ -101,6 +101,12 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **`t()` no longer returns `Object.prototype` members as translations.** Catalog
+  lookup is a Map, so a `formats="p.lead=constructor"` label (or `toString`,
+  `__proto__`, …) stays the source string instead of rendering
+  `function Object() { [native code] }` in the dropdown the moment a locale
+  catalog is registered. `{placeholder}` substitution uses `Object.hasOwn`, so
+  `{constructor}` in a template is the same class of miss.
 - **`clearFormatting` keeps per-run language marks.** Links and `dir` already
   survived because they are content, not appearance; `lang` is the same fact
   modelled as a mark, so stripping it silently broke WCAG 3.1.2 and lost
