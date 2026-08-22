@@ -41,7 +41,7 @@
 
 import { isAllowedEmbedSrc, safeAllowList } from './embed.js'
 import { filterStyle } from './css.js'
-import { isEventHandlerAttribute } from './url.js'
+import { isNeverAllowedAttribute } from './url.js'
 import {
   DEFAULT_POLICY,
   allowedAttributes,
@@ -65,12 +65,23 @@ import {
  * So the check is now independent of the policy, matching what the DOMPurify
  * adapter already forbids. A denial that only holds while the allowlist happens
  * to stay narrow is not a security property.
+ *
+ * The list lives in `url.ts` as `isNeverAllowedAttribute`, spread from
+ * content-policy's `NEVER_CARRY_ATTRIBUTES` rather than written out again, for
+ * the reason `urlAttributes` gives: two hand-maintained copies is the divergence
+ * that package was written to stop, and this one HAD diverged --
+ * content-policy refuses `srcset` and `imagesrcset` everywhere ("comma-separated
+ * URL lists no single-URL check reads"), core's security suite pins that the
+ * editor strips them, and this set did not name them. `DEFAULT_POLICY` permitted
+ * `srcset` on `<source>` and no checker read it, so an attacker-chosen URL list
+ * rode through sanitization with nothing validating it.
+ *
+ * It is one predicate rather than a local set because the generated adapter
+ * configs have to refuse the same attributes. A denial this function honours and
+ * `toDOMPurifyConfig` does not is not a guarantee, it is a coin toss on which
+ * runtime the integrator deployed.
  */
-const NEVER_ALLOWED = new Set(['srcdoc', 'formaction', 'ping', 'xlink:href'])
-
-function isNeverAllowed(name: string): boolean {
-  return isEventHandlerAttribute(name) || NEVER_ALLOWED.has(name)
-}
+const isNeverAllowed = isNeverAllowedAttribute
 
 export interface SanitizeOptions {
   policy?: Policy

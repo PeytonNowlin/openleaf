@@ -67,6 +67,7 @@
 
 import { DROP_WITH_CONTENT } from '@openleaf-editor/content-policy/elements'
 import { deepFreeze } from './freeze.js'
+import { isNeverAllowedAttribute } from './url.js'
 
 export interface ElementPolicy {
   /** Attribute names permitted on this element, beyond the global ones. */
@@ -215,7 +216,15 @@ export const DEFAULT_POLICY: Policy = deepFreeze({
      * of its own. Without them here a server-side pass would unwrap the sources
      * out of every such player and then delete the player for having no source.
      */
-    source: { attributes: ['src', 'type', 'media', 'srcset', 'sizes'] },
+    /*
+     * No `srcset`. content-policy classifies it as never-carryable -- "comma-
+     * separated URL lists no single-URL check reads" -- and nothing here reads
+     * one either: it is not in `urlAttributes`, so permitting it was permitting
+     * an attacker-chosen URL list blind. The editor never emits one; source-only
+     * media carries its address in `src`. `sizes` and `media` stay: a length
+     * list and a media query, neither of which is a URL.
+     */
+    source: { attributes: ['src', 'type', 'media', 'sizes'] },
     track: { attributes: ['src', 'kind', 'srclang', 'label', 'default'] },
     /*
      * Iframes are allowlisted by host in sanitize.ts, not by being listed here.
@@ -433,11 +442,41 @@ export function policyForCarriedAttributes(
   return policyForPreserved(base, additions)
 }
 
-/** Every attribute permitted on an element under a policy. */
+/**
+ * Every attribute an element may CARRY under a policy, with the never-allowed
+ * ones removed.
+ *
+ * The filter is here, at the one accessor both the enforcer and the adapter
+ * generators read, rather than in each of them. A policy is data an integrator
+ * is invited to widen -- `policyForCarriedAttributes(DEFAULT_POLICY, { img:
+ * ['srcset'] })` is a supported call -- and a widening that `sanitizeHtml`
+ * refuses while `toDOMPurifyConfig` copies into `ALLOWED_ATTR` is the
+ * cross-runtime divergence this package exists to prevent.
+ */
 export function allowedAttributes(policy: Policy, tag: string): Set<string> {
   const element = policy.elements[tag.toLowerCase()]
   if (!element) return new Set()
-  return new Set([...policy.globalAttributes, ...(element.attributes ?? [])])
+  return new Set(
+    [...policy.globalAttributes, ...(element.attributes ?? [])].filter(
+      (name) => !isNeverAllowedAttribute(name),
+    ),
+  )
+}
+
+/**
+ * One element's carryable attributes, in the policy's own order.
+ *
+ * `allowedAttributes` folds in the globals and returns a Set; the generators
+ * need the per-element list on its own, and need it ordered, because their
+ * output is a file a human reads and re-reads in diffs.
+ */
+export function carriedAttributes(element: ElementPolicy): string[] {
+  return (element.attributes ?? []).filter((name) => !isNeverAllowedAttribute(name))
+}
+
+/** The global attributes a policy may really apply to every element. */
+export function carriedGlobalAttributes(policy: Policy): string[] {
+  return policy.globalAttributes.filter((name) => !isNeverAllowedAttribute(name))
 }
 
 /** Every CSS property permitted inside `style` on an element. */
