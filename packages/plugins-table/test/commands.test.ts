@@ -140,8 +140,6 @@ describe('caption, alignment and nested tables', () => {
   })
 })
 
-<<<<<<< HEAD
-
 const THREE_COL =
   '<table><colgroup><col width="100" class="c1"><col width="200" class="c2"><col width="300" class="c3"></colgroup>' +
   '<tr><td>a</td><td>b</td><td>c</td></tr></table>'
@@ -258,7 +256,9 @@ describe('colgroup tracks column insert and delete', () => {
     expect(html).toContain('width="140"')
     expect(html).toContain('width="60"')
     expectColgroupMatchesTable(state.doc)
-=======
+  })
+})
+
 describe('table section row counts', () => {
   // headerRows/footerRows are how serialize rebuilds thead/tfoot. The row
   // commands have to keep those counts attached to the rows that are still
@@ -309,6 +309,5 @@ describe('table section row counts', () => {
     expect(html).toMatch(/<thead>[\s\S]*h1[\s\S]*<\/thead>/)
     expect(html).toContain('<td>a</td>')
     expect(html).not.toContain('<td>c</td>')
->>>>>>> origin/main
   })
 })

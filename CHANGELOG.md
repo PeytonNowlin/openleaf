@@ -19,8 +19,7 @@ entries below say so explicitly when they do.
   save.** `text_color`, `font_family` and `font_size` now decline when
   preservation is going to keep the element, the same bargain `background_color`
   already struck. `#127`
-<<<<<<< HEAD
-=======
+
 ### Security
 
 - **`.docx` zip-bomb guard fails closed on forged ZIP64 sentinels.** Writing
@@ -31,6 +30,7 @@ entries below say so explicitly when they do.
   directory is refused, inflated bytes are bounded independently of what the
   archive declares, and local records that are not packed immediately before the
   central directory are refused so a partial inflate walk cannot undercount.
+
 ### Fixed
 
 - **Selecting an image and opening the Image dialog no longer wipes alt text,
@@ -69,7 +69,6 @@ entries below say so explicitly when they do.
   as an empty heading. Contentful `<a id>` is now a `link` mark carrying only
   `id`; empty and whitespace-only `<a id="jump"></a>` is still the atom;
   `<a id href>` is still a link;   `<a name>` is still unmatched.
->>>>>>> origin/main
 
 ### Added
 
