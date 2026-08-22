@@ -171,20 +171,25 @@ function registry(): Map<string, Skin> {
   return skins
 }
 
-let installedSheet = ''
-
 function css(): string {
   return [...registry().values()]
     .map((skin) => `.ol-editor[data-ol-skin="${skin.name}"] {${skin.tokens}}`)
     .join('\n')
 }
 
-/** Install the skin stylesheet. Re-run when a skin is added. */
+/**
+ * Install the skin stylesheet. Re-run when a skin is added.
+ *
+ * No module-global "already installed" flag here. There used to be one, holding
+ * the last sheet text, and it made every call for a SECOND document a no-op: an
+ * editor in an iframe or a print view got the built-in tokens and none of the
+ * skin palette, because the flag short-circuited before `registerStyles` was
+ * reached. `registerStyles` already dedupes per *document* by the CSS text
+ * (a WeakMap<Document, Set<string>> in styles.ts), which is the same saving
+ * without the bug -- and is exactly what dialog.ts moved to for this reason.
+ */
 function sync(doc?: Document): void {
-  const next = css()
-  if (next === installedSheet) return
-  installedSheet = next
-  registerStyles(next, doc)
+  registerStyles(css(), doc)
 }
 
 /**

@@ -26,6 +26,9 @@
  *   1. A constructable `CSSStyleSheet` added to `document.adoptedStyleSheets`.
  *      CSP gates resources *parsed as style*; a CSSOM object attached this way
  *      never passes through that gate, by design rather than by loophole.
+ *      Constructed through the TARGET document's window, never this module's:
+ *      a constructed sheet belongs to the document it was built for, and
+ *      adopting it elsewhere throws NotAllowedError.
  *   2. The integrator links `@openleaf-editor/ui/openleaf.css` themselves and calls
  *      `markStylesExternal()`.
  *
@@ -139,9 +142,19 @@ export function registerStyles(css: string, target?: Document): 'adopted' | 'una
   // CSP gates resources *parsed as style* -- <style> elements, style attributes,
   // linked stylesheets. A CSSOM object attached through adoptedStyleSheets never
   // passes through that gate, by design rather than by loophole.
-  if (typeof CSSStyleSheet !== 'undefined' && 'adoptedStyleSheets' in Document.prototype) {
+  //
+  // The constructor comes from the TARGET document's own window, and the
+  // capability is probed on the target rather than on this module's realm. A
+  // constructed sheet carries the document it was constructed for, and
+  // `adoptedStyleSheets` throws NotAllowedError for a sheet belonging to another
+  // one -- so `new CSSStyleSheet()` here, resolved from whichever realm this
+  // module happens to be loaded in, could never style an iframe or a print view.
+  // Confirmed in all three engines: top-realm sheet -> NotAllowedError, sheet
+  // built through the frame's own window -> adopted and applied.
+  const view = doc.defaultView as (Window & typeof globalThis) | null
+  if (view?.CSSStyleSheet && 'adoptedStyleSheets' in doc) {
     try {
-      const sheet = new CSSStyleSheet()
+      const sheet = new view.CSSStyleSheet()
       sheet.replaceSync(css)
       doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
       seen.add(css)
