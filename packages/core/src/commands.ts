@@ -15,14 +15,26 @@
 
 import { redo, undo } from 'prosemirror-history'
 import { toggleMark, wrapIn } from 'prosemirror-commands'
-import { type Attrs, type MarkType, type Node as PMNode, type NodeType } from 'prosemirror-model'
+import {
+  Fragment,
+  type Attrs,
+  type MarkType,
+  type Node as PMNode,
+  type NodeType,
+} from 'prosemirror-model'
 import {
   liftListItem,
   sinkListItem,
   splitListItem,
   wrapInList,
 } from 'prosemirror-schema-list'
-import type { Command, EditorState, SelectionRange, Transaction } from 'prosemirror-state'
+import {
+  Selection,
+  type Command,
+  type EditorState,
+  type SelectionRange,
+  type Transaction,
+} from 'prosemirror-state'
 import {
   MAX_INDENT,
   safeColor,
@@ -467,7 +479,78 @@ function toggleList(target: 'bullet_list' | 'ordered_list'): Command {
   }
 }
 
-export const splitListItemCommand: Command = nodeCommand('list_item', (t) => splitListItem(t))
+/**
+ * Split a list item, including items that hold extra `block*` after the
+ * paragraph.
+ *
+ * Stock `splitListItem` already splits a non-empty item at depth 2, so
+ * following blocks travel with the new item -- Word and Google Docs. Its empty
+ * handling only runs when the empty textblock is the *last* child. Extra
+ * `block*` after the paragraph skips that branch, and Enter either creates a
+ * sibling `<li>` (never leaves) or the chained base keymap inserts a sibling
+ * `<p>` inside the same item.
+ *
+ * Enter on an empty bullet is how authors leave a list. Extra children are
+ * promoted to siblings of the list and the empty paragraph is dropped so we
+ * do not store `<p></p>` next to a callout. Nested empty last inner items
+ * (no extra children) still go through stock, which outdents one level.
+ */
+function splitListItemAllowingExtraBlocks(itemType: NodeType): Command {
+  const split = splitListItem(itemType)
+  return (state, dispatch) => {
+    const { $from, $to } = state.selection
+    if ($from.depth >= 3 && $from.sameParent($to) && $from.node(-1).type === itemType) {
+      if ($from.parent.content.size === 0 && $from.node(-1).childCount > $from.indexAfter(-1)) {
+        return leaveListPromotingExtra(state, dispatch)
+      }
+    }
+    return split(state, dispatch)
+  }
+}
+
+function leaveListPromotingExtra(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
+  const { $from } = state.selection
+  const item = $from.node(-1)
+  const emptyIndex = $from.index(-1)
+  const kept: PMNode[] = []
+  for (let i = 0; i < item.childCount; i++) {
+    if (i !== emptyIndex) kept.push(item.child(i))
+  }
+
+  const list = $from.node(-2)
+  const itemIndex = $from.index(-2)
+  const before: PMNode[] = []
+  const after: PMNode[] = []
+  for (let i = 0; i < list.childCount; i++) {
+    if (i < itemIndex) before.push(list.child(i))
+    else if (i > itemIndex) after.push(list.child(i))
+  }
+
+  const beforeList = before.length > 0 ? list.copy(Fragment.from(before)) : null
+  const afterList = after.length > 0 ? list.copy(Fragment.from(after)) : null
+  const replacement: PMNode[] = []
+  if (beforeList) replacement.push(beforeList)
+  replacement.push(...kept)
+  if (afterList) replacement.push(afterList)
+
+  const parent = $from.node(-3)
+  const listIndex = $from.index(-3)
+  const replaceFrag = Fragment.from(replacement)
+  if (!parent.canReplace(listIndex, listIndex + 1, replaceFrag)) return false
+  if (dispatch) {
+    const listPos = $from.before(-2)
+    const tr = state.tr.replaceWith(listPos, listPos + list.nodeSize, replaceFrag)
+    const beforeSize = beforeList ? beforeList.nodeSize : 0
+    tr.setSelection(Selection.near(tr.doc.resolve(listPos + beforeSize)))
+    dispatch(tr.scrollIntoView())
+  }
+  return true
+}
+
+export const splitListItemCommand: Command = nodeCommand('list_item', splitListItemAllowingExtraBlocks)
 export const indentListItem: Command = nodeCommand('list_item', (t) => sinkListItem(t))
 export const outdentListItem: Command = nodeCommand('list_item', (t) => liftListItem(t))
 
