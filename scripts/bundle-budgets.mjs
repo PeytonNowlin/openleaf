@@ -105,7 +105,11 @@ export const BUDGETS_KB = {
   // measuring this project's growth and starts failing on whatever unrelated
   // patch happens to arrive next, which is how a budget teaches people to raise
   // it without reading it.
-  'openleaf.min.js': 121,
+  //
+  // Raised to 122 for empty-type image drops and HEIC refusal (#170). CI's zlib
+  // weighed 121.0 against a 121 ceiling — already over once rounding is applied.
+  // The extra kilobyte restores the headroom this file argues for.
+  'openleaf.min.js': 122,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
