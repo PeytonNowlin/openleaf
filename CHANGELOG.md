@@ -12,6 +12,10 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Dropped or pasted image files with an empty MIME type, or a `.jfif` name, now reach the uploader.** `isUploadableImage` used to look only at `file.type`, so iOS and some file managers handing over `type === ""` with a name like `IMG_1234.PNG` never opened the dialog, and the drop fell through to the browser. `.jfif` is treated as JPEG. **HEIC/HEIF is refused with a live-region message**, not converted and not passed through: OpenLeaf has no decoder and no server. A mixed PNG + HEIC drop still uploads the PNG. `#170`
+
 ## 0.1.0-beta.3 - 2026-08-23
 
 ### Fixed

@@ -87,6 +87,7 @@ export {
   canUploadImages,
   imageFilesFrom,
   imageUploaderFor,
+  isHeicImage,
   isUploadableImage,
   isUploadableImageType,
   registerImageUploader,

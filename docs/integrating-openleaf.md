@@ -304,7 +304,9 @@ registerImageUploader(async (file) => {
 
 Validate file type, size, authorization, and the returned URL on the server. The
 result may be a URL string or an object with `src` and optional `alt`, `title`,
-`width`, and `height`. OpenLeaf deliberately has no `data:` URL fallback.
+`width`, and `height`. OpenLeaf deliberately has no `data:` URL fallback. The
+picker and drop path accept JPEG (including `.jfif`), PNG, GIF, WebP and AVIF;
+HEIC/HEIF is refused with a live-region message rather than converted.
 
 ## No-build applications
 

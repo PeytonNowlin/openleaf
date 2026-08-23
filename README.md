@@ -374,7 +374,9 @@ registerImageUploader(async (file) => {
 ```
 
 The uploader may return a URL string or an object containing `src` and optional
-`alt`, `title`, `width`, and `height` values.
+`alt`, `title`, `width`, and `height` values. The picker and drop path accept
+JPEG (including `.jfif`), PNG, GIF, WebP and AVIF. HEIC/HEIF is refused with a
+message rather than converted: OpenLeaf has no decoder and no server.
 
 ## Security
 
