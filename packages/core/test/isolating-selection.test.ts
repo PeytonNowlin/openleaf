@@ -242,4 +242,30 @@ describe('isolatingSelectionPlugin beforeinput', () => {
     expect(event.defaultPrevented).toBe(false)
     expect(serializeHtml(v.state.doc)).not.toContain('X')
   })
+
+  it('does not intercept uncancelable composition input over a crossing DOM range', () => {
+    // insertCompositionText is not cancelable. preventDefault is a no-op, and
+    // inserting event.data (the whole composition, every update) would commit
+    // each IME candidate as real document text on top of the UA mutation.
+    const v = mount(QUOTE_THEN_DETAILS)
+    const quoteText = v.dom.querySelector('blockquote p')?.firstChild
+    const bodyText = v.dom.querySelector('details p')?.firstChild
+    const range = document.createRange()
+    range.setStart(quoteText as Text, 1)
+    range.setEnd(bodyText as Text, 2)
+    const selection = v.dom.ownerDocument.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    const before = serializeHtml(v.state.doc)
+    const event = new InputEvent('beforeinput', {
+      bubbles: true,
+      cancelable: false,
+      inputType: 'insertCompositionText',
+      data: 'に',
+    })
+    v.dom.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(serializeHtml(v.state.doc)).toBe(before)
+  })
 })

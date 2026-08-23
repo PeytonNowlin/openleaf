@@ -150,9 +150,12 @@ function textSelectionFromDOM(view: EditorView): TextSelection | null {
 
 function handleIsolatingBeforeInput(view: EditorView, event: Event): boolean {
   if (!view.editable || !(event instanceof InputEvent)) return false
+  // insertCompositionText is not cancelable. preventDefault is a no-op, and
+  // event.data is the whole composition on every update — committing that as
+  // document text duplicates IME candidates on top of the UA mutation.
+  if (!event.cancelable) return false
   const type = event.inputType
-  const inserting =
-    type === 'insertText' || type === 'insertReplacementText' || type === 'insertCompositionText'
+  const inserting = type === 'insertText'
   if (!inserting && type !== 'insertParagraph' && !type.startsWith('delete')) return false
 
   const domSel = textSelectionFromDOM(view)
@@ -171,9 +174,9 @@ function handleIsolatingBeforeInput(view: EditorView, event: Event): boolean {
       view.dispatch(view.state.tr.insertText(text, from, to).scrollIntoView())
       return true
     }
-    // delete* and insertParagraph: drop the clamped span. That is enough to
-    // stop the DOM repair; handleKeyDown still splits when the model selection
-    // is already a range.
+    // delete* and insertParagraph: drop the clamped span so Chromium cannot
+    // parse-from-DOM across the isolating node. Desktop Enter is usually eaten
+    // by the keymap before beforeinput; Android virtual Enter is this path.
     view.dispatch(view.state.tr.delete(from, to).scrollIntoView())
     return true
   } catch {
