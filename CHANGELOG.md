@@ -12,6 +12,14 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Find, Replace All, and the word count skip `contenteditable="false"`
+  regions.** Hits inside a lock were indexed and counted, so Replace All of a
+  word that also appeared in body copy wrote those ranges into one transaction
+  and `nonEditablePlugin` rejected the whole thing -- including the unlocked
+  matches. The search index and the count walk now omit locked subtrees. `#169`
+
 ## 0.1.0-beta.3 - 2026-08-23
 
 ### Fixed

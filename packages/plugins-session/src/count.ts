@@ -7,6 +7,7 @@
  * documents already expect.
  */
 
+import { isNonEditableNode } from '@openleaf-editor/core'
 import { t, uiLocale, withLocale } from '@openleaf-editor/ui'
 import type { Node as PMNode } from 'prosemirror-model'
 
@@ -61,9 +62,43 @@ export function countWords(text: string): number {
   return trimmed.split(/\s+/).length
 }
 
-/** Plain text of a document, with block breaks as spaces so words do not join. */
+/**
+ * Plain text of a document, with block breaks as spaces so words do not join.
+ *
+ * Locked (`contenteditable="false"`) subtrees are omitted: they are not
+ * editable, so they are not part of the count. `textBetween` cannot skip them.
+ */
 export function documentText(doc: PMNode): string {
-  return doc.textBetween(0, doc.content.size, ' ', ' ')
+  const parts: string[] = []
+  let separated = true
+  doc.nodesBetween(0, doc.content.size, (node) => {
+    if (isNonEditableNode(node)) {
+      if (node.isInline) {
+        parts.push(' ')
+        separated = false
+      } else if (!separated) {
+        parts.push(' ')
+        separated = true
+      }
+      return false
+    }
+    if (node.isText) {
+      parts.push(node.text ?? '')
+      separated = false
+      return true
+    }
+    if (node.isLeaf) {
+      parts.push(' ')
+      separated = false
+      return true
+    }
+    if (!separated && node.isBlock) {
+      parts.push(' ')
+      separated = true
+    }
+    return true
+  })
+  return parts.join('')
 }
 
 /** Matches what `\s` matches, consulted only for the characters that need it. */
@@ -94,6 +129,7 @@ export function documentStats(doc: PMNode): DocumentStats {
   const text = documentText(doc)
   let paragraphs = 0
   doc.descendants((node) => {
+    if (isNonEditableNode(node)) return false
     if (node.type.name === 'paragraph' || node.type.name === 'heading') paragraphs += 1
     return true
   })
