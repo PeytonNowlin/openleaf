@@ -65,40 +65,32 @@ export function countWords(text: string): number {
 /**
  * Plain text of a document, with block breaks as spaces so words do not join.
  *
- * Locked (`contenteditable="false"`) subtrees are omitted: they are not
- * editable, so they are not part of the count. `textBetween` cannot skip them.
+ * Same loop as `Fragment.textBetween`: the separator is inserted only before a
+ * textblock or a block leaf, and an empty textblock still emits one. Locked
+ * (`contenteditable="false"`) subtrees contribute no child text; they still
+ * take part in that separator rule so unlocked words either side do not join.
  */
 export function documentText(doc: PMNode): string {
-  const parts: string[] = []
-  let separated = true
+  const blockSeparator = ' '
+  const leafText = ' '
+  let text = ''
+  let first = true
   doc.nodesBetween(0, doc.content.size, (node) => {
-    if (isNonEditableNode(node)) {
-      if (node.isInline) {
-        parts.push(' ')
-        separated = false
-      } else if (!separated) {
-        parts.push(' ')
-        separated = true
-      }
-      return false
+    const skip = isNonEditableNode(node)
+    const nodeText =
+      node.isText && !skip
+        ? (node.text ?? '')
+        : !node.isLeaf
+          ? ''
+          : leafText
+    if (node.isBlock && ((node.isLeaf && nodeText) || node.isTextblock) && blockSeparator) {
+      if (first) first = false
+      else text += blockSeparator
     }
-    if (node.isText) {
-      parts.push(node.text ?? '')
-      separated = false
-      return true
-    }
-    if (node.isLeaf) {
-      parts.push(' ')
-      separated = false
-      return true
-    }
-    if (!separated && node.isBlock) {
-      parts.push(' ')
-      separated = true
-    }
-    return true
+    text += nodeText
+    return !skip
   })
-  return parts.join('')
+  return text
 }
 
 /** Matches what `\s` matches, consulted only for the characters that need it. */
