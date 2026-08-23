@@ -24,6 +24,28 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6">
 </p>
 
+<p align="center">
+  <!-- GitHub only plays <video> from an absolute raw URL, and rewrites nothing
+       inside an HTML block, so both URLs here are absolute. If a renderer strips
+       the element, its children survive: the poster stays, linking to the file. -->
+  <video src="https://github.com/PeytonNowlin/openleaf/raw/main/assets/openleaf-promo.mp4"
+    poster="https://github.com/PeytonNowlin/openleaf/raw/main/assets/openleaf-promo-poster.png"
+    width="880" controls muted loop playsinline>
+    <a href="https://github.com/PeytonNowlin/openleaf/raw/main/assets/openleaf-promo.mp4">
+      <img width="880" alt="OpenLeaf turning a pasted Word document into clean semantic HTML"
+        src="https://github.com/PeytonNowlin/openleaf/raw/main/assets/openleaf-promo-poster.png">
+    </a>
+  </video>
+</p>
+
+<p align="center">
+  <sub>
+    A minute of the real editor: pasting from Word, the bound
+    <code>&lt;textarea&gt;</code>, and tables. Every frame is the built bundle
+    running in a browser.
+  </sub>
+</p>
+
 > [!WARNING]
 > OpenLeaf is currently in beta. Its APIs may change, it has not yet been proven
 > in production, and it has not completed testing with real screen readers. Review

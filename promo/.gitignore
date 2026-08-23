@@ -1,0 +1,4 @@
+# Build artifacts of the capture. The committed video lives in ../assets.
+shots/
+out/
+.frames/
