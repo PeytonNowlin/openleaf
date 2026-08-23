@@ -1,10 +1,13 @@
 /**
  * Turn a typed URL into a link when the author finishes it.
  *
- * Space and Enter are the commit keys, matching the behaviour authors already
- * have in mail clients and office software. The plugin never rewrites a range
- * that is already a link, and it refuses anything `isSafeUrl` would drop, so
- * typing `javascript:` cannot become a mark the serializer would then emit.
+ * Space, Enter, and the end of an IME composition are the commit points,
+ * matching the behaviour authors already have in mail clients and office
+ * software. The plugin never rewrites a range that is already a link, and it
+ * refuses anything `isSafeUrl` would drop, so typing `javascript:` cannot
+ * become a mark the serializer would then emit. It also never `addMark`s
+ * while `view.composing` is true: rewriting the document under an open IME
+ * is how keyboards start duplicating or dropping characters.
  */
 
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state'
@@ -111,12 +114,25 @@ export function autolinkPlugin(): Plugin {
       return tr ? tr.setMeta(key, true) : null
     },
     props: {
+      handleDOMEvents: {
+        compositionend(view) {
+          // This prop runs *before* PM's compositionend (which sets composing=false,
+          // then flushes pending records on a microtask). Never return true.
+          setTimeout(() => {
+            if (view.isDestroyed || view.composing) return
+            maybeAutolink(view, view.state.selection.from)
+          }, 0)
+          return false
+        },
+      },
       handleTextInput(view, from, _to, text) {
+        if (view.composing) return false
         if (text !== ' ' && text !== '\u00a0') return false
         maybeAutolink(view, from)
         return false
       },
       handleKeyDown(view, event) {
+        if (view.composing) return false
         if (event.key !== 'Enter' || event.shiftKey) return false
         maybeAutolink(view, view.state.selection.from)
         return false

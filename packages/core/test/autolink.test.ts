@@ -3,7 +3,7 @@ import type { EditorView } from 'prosemirror-view'
 import { describe, expect, it } from 'vitest'
 import { autolinkPlugin, coreSchema, hrefFromTypedUrl, parseHtml, serializeHtml } from '../src/index.js'
 
-function htmlAfterAutolinkSpace(html: string): string {
+function editorAtEnd(html: string, composing = false) {
   const schema = coreSchema()
   let state = EditorState.create({
     doc: parseHtml(html, { schema }),
@@ -19,15 +19,33 @@ function htmlAfterAutolinkSpace(html: string): string {
     dispatch(tr: Parameters<EditorView['dispatch']>[0]) {
       state = state.apply(tr)
     },
+    composing,
+    isDestroyed: false,
   } as unknown as EditorView
 
-  const plugin = autolinkPlugin()
+  return {
+    view,
+    plugin: autolinkPlugin(),
+    get html() {
+      return serializeHtml(state.doc)
+    },
+  }
+}
+
+function htmlAfterAutolinkSpace(html: string): string {
+  const { view, plugin } = editorAtEnd(html)
   const handle = plugin.props.handleTextInput
+  const from = view.state.selection.from
   // Called on the plugin the handler belongs to, which is what it declares as
   // its `this`. The fifth argument is ProseMirror's default action; the plugin
   // ignores it and returns false so the space is still inserted normally.
-  handle?.call(plugin, view, end, end, ' ', () => state.tr)
-  return serializeHtml(state.doc)
+  handle?.call(plugin, view, from, from, ' ', () => view.state.tr)
+  return serializeHtml(view.state.doc)
+}
+
+function fireCompositionEnd(plugin: ReturnType<typeof autolinkPlugin>, view: EditorView) {
+  const handle = plugin.props.handleDOMEvents?.compositionend
+  return handle?.call(plugin, view, new CompositionEvent('compositionend'))
 }
 
 describe('hrefFromTypedUrl', () => {
@@ -86,5 +104,25 @@ describe('autolinkPlugin', () => {
     expect(htmlAfterAutolinkSpace('<p>https://en.wikipedia.org/wiki/Foo_(bar)</p>')).toBe(
       '<p><a href="https://en.wikipedia.org/wiki/Foo_(bar)">https://en.wikipedia.org/wiki/Foo_(bar)</a></p>',
     )
+  })
+
+  it('does not autolink a URL that has no trailing space', () => {
+    const editor = editorAtEnd('<p>https://example.org</p>')
+    expect(editor.html).not.toContain('<a href="https://example.org">')
+  })
+
+  it('turns a composed URL into a link when composition ends', async () => {
+    const editor = editorAtEnd('<p>https://example.org</p>')
+    expect(editor.html).not.toContain('<a href="https://example.org">')
+    fireCompositionEnd(editor.plugin, editor.view)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(editor.html).toContain('<a href="https://example.org">')
+  })
+
+  it('does not add a link mark while an IME composition is still open', async () => {
+    const editor = editorAtEnd('<p>https://example.org</p>', true)
+    fireCompositionEnd(editor.plugin, editor.view)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(editor.html).not.toContain('<a href="https://example.org">')
   })
 })

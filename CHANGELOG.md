@@ -12,6 +12,14 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Autolink now commits a typed URL when an IME composition ends**, not only
+  after a physical Space or Enter. CJK and mobile keyboards that accept a
+  candidate without inserting ASCII whitespace used to leave `https://…` as
+  plain text. The mark is applied on `compositionend` after ProseMirror
+  flushes, and never while `view.composing` is still true. `#165`
+
 ## 0.1.0-beta.3 - 2026-08-23
 
 ### Fixed
