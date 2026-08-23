@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OpenLeaf promo stage</title>
+<link rel="icon" href="/demo/assets/openleaf-mark.png" type="image/png">
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #0b0f14;
+    --leaf: #2f7d32;
+    --leaf-lit: #7ee787;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--ink);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #e6edf3;
+    display: grid;
+    place-items: center;
+  }
+  /* A soft leaf-green wash so the frame is not a flat black rectangle next to
+     the generated b-roll, which has depth of its own. */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(1100px 700px at 50% 18%, rgba(47,125,50,.30), transparent 65%),
+      radial-gradient(900px 600px at 82% 92%, rgba(126,231,135,.12), transparent 60%);
+    pointer-events: none;
+  }
+
+  /* ---- the app window ------------------------------------------------ */
+  #frame {
+    position: relative;
+    width: 1520px;
+    display: grid;
+    gap: 34px;
+    justify-items: center;
+  }
+  #window {
+    width: 100%;
+    background: #ffffff;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 40px 90px -20px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.08);
+    color: #1f2328;
+  }
+  #chrome {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px;
+    background: #f6f8fa;
+    border-bottom: 1px solid #d1d9e0;
+  }
+  #chrome i { width: 12px; height: 12px; border-radius: 50%; background: #d1d9e0; }
+  #chrome b {
+    font: 500 14px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #59636e; margin-inline-start: 10px;
+  }
+  #panes { display: grid; grid-template-columns: 1fr; }
+  body.split #panes { grid-template-columns: 1fr 1fr; }
+  #editorPane { padding: 22px 26px 26px; }
+  #htmlPane {
+    display: none;
+    border-inline-start: 1px solid #d1d9e0;
+    background: #0d1117;
+    padding: 18px 20px;
+    min-width: 0;
+  }
+  body.split #htmlPane { display: block; }
+  #htmlPane h4 {
+    margin: 0 0 10px;
+    font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .04em; text-transform: uppercase; color: #7ee787;
+  }
+  #htmlOut {
+    margin: 0;
+    font: 15px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #c9d1d9; white-space: pre-wrap; word-break: break-word;
+    max-height: 600px; overflow: hidden;
+  }
+
+  /* The editor is the subject: scale it up so a toolbar button is readable at
+     1080p on a phone, which is where most of this will actually be watched. */
+  openleaf-editor { font-size: 19px; }
+  /* Stretch the content area, not the host: the host's min-height left the
+     editable box short with dead white space under it. */
+  .ol-content { min-height: 430px; max-height: 430px; overflow: auto; }
+  /* The word count sits under the editor; keep it off the window's bottom edge. */
+  .ol-session-status { margin-bottom: 4px; }
+
+  /* ---- caption ------------------------------------------------------- */
+  #caption {
+    min-height: 54px;
+    font: 600 34px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: -.01em;
+    text-align: center;
+    color: #e6edf3;
+    opacity: 0;
+    text-shadow: 0 2px 20px rgba(0,0,0,.6);
+  }
+  #caption em { color: var(--leaf-lit); font-style: normal; }
+
+  /* ---- title cards --------------------------------------------------- */
+  #card {
+    position: fixed; inset: 0;
+    display: none;
+    place-content: center;
+    text-align: center;
+    background: var(--ink);
+    padding: 0 8rem;
+  }
+  body.card #card { display: grid; }
+  body.card #frame { display: none; }
+  #card img { width: 620px; margin: 0 auto 28px; }
+  #card h1 {
+    margin: 0;
+    font: 700 76px/1.1 system-ui, -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: -.03em;
+  }
+  #card h1 em { color: var(--leaf-lit); font-style: normal; }
+  #card p {
+    margin: 24px auto 0; max-width: 46ch;
+    font: 400 32px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #9198a1;
+  }
+  #card code {
+    display: inline-block; margin-top: 34px;
+    font: 500 30px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--leaf-lit);
+    border: 1px solid rgba(126,231,135,.35);
+    border-radius: 10px; padding: 16px 22px;
+  }
+  /* The UA stylesheet gives popovers a centred box with a border; strip all of
+     it so this is just an arrow whose tip sits exactly on the target. */
+  #pointer {
+    position: fixed; inset: auto; margin: 0; padding: 0; border: 0;
+    background: none; overflow: visible; width: 24px; height: 28px;
+    pointer-events: none;
+    filter: drop-shadow(0 3px 6px rgba(0,0,0,.55)) drop-shadow(0 0 9px rgba(126,231,135,.45));
+  }
+
+  #card ul {
+    list-style: none; margin: 34px 0 0; padding: 0;
+    display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+  }
+  #card li {
+    font: 500 26px/1 system-ui, sans-serif; color: #e6edf3;
+    border: 1px solid #3d444d; border-radius: 999px; padding: 14px 22px;
+  }
+</style>
+</head>
+<body>
+
+<div id="frame">
+  <div id="window">
+    <div id="chrome"><i></i><i></i><i></i><b id="chromeTitle">CMS — edit post</b></div>
+    <div id="panes">
+      <div id="editorPane">
+        <openleaf-editor for="body" aria-label="Post body"
+          toolbar="undo redo | blockType | bold italic underline | textColour highlightColour | bulletList orderedList blockquote | link image | insertTable addRowAfter addColumnAfter | importFile | source"></openleaf-editor>
+        <textarea id="body" name="body" hidden><p>Start of the announcement post.</p></textarea>
+      </div>
+      <div id="htmlPane">
+        <h4>textarea#body — what the form submits</h4>
+        <pre id="htmlOut"></pre>
+      </div>
+    </div>
+  </div>
+  <div id="caption"></div>
+</div>
+
+<!-- A popover, not a z-indexed div: the table size grid is a real popover and
+     renders in the top layer, which no z-index can sit above. -->
+<div id="pointer" popover="manual">
+  <svg width="24" height="28" viewBox="0 0 24 28" aria-hidden="true">
+    <path d="M2 1.5 L2 21 L7.4 16.2 L11.2 25.5 L14.8 24 L11 14.8 L18.8 14.6 Z"
+      fill="#ffffff" stroke="rgba(0,0,0,.6)" stroke-width="1.6" stroke-linejoin="round"/>
+  </svg>
+</div>
+
+<div id="card"></div>
+
+<script src="/demo/openleaf.min.js"></script>
+<script src="/demo/openleaf-tables.min.js"></script>
+<script src="/demo/openleaf-colour.min.js"></script>
+<script src="/demo/openleaf-import.min.js"></script>
+<script src="/demo/openleaf-session.min.js"></script>
+<script>
+(function () {
+  'use strict'
+  var editor = document.querySelector('openleaf-editor')
+  var bound = document.getElementById('body')
+  var out = document.getElementById('htmlOut')
+
+  /* Same path the demo uses: the change event carries the serialized value, so
+     the panel shows the real submitted HTML rather than a re-serialization. */
+  function render(event) {
+    var d = event && event.detail
+    out.textContent = d && typeof d.value === 'string' ? d.value : bound.value
+  }
+  render()
+  editor.addEventListener('openleaf:change', render)
+
+  OpenLeaf.registerImageUploader(function () {
+    return Promise.resolve({ src: '/demo/assets/openleaf-mark.png', width: 96, height: 96 })
+  })
+
+  /* The capture script's remote control. Everything the recording needs to
+     change on the page goes through here, so the shot list stays in one file. */
+  window.stage = {
+    /* Set the text and its opacity separately: the renderer fades it in over a
+       known number of frames instead of leaving it to a CSS transition. */
+    caption: function (html) { document.getElementById('caption').innerHTML = html || '' },
+    captionAt: function (t) {
+      var c = document.getElementById('caption')
+      c.style.opacity = String(t)
+      c.style.transform = 'translateY(' + ((1 - t) * 10).toFixed(2) + 'px)'
+    },
+    pointer: function (x, y) {
+      var p = document.getElementById('pointer')
+      try { p.hidePopover() } catch (e) { /* not open */ }
+      if (x === null) return
+      // The arrow's tip is its top-left corner, so no centring offset.
+      p.style.left = x + 'px'
+      p.style.top = y + 'px'
+      /* Re-shown on every move: the top layer stacks in show order, so a
+         popover opened after the pointer would otherwise cover it. */
+      p.showPopover()
+    },
+    split: function (on) { document.body.classList.toggle('split', !!on) },
+    title: function (text) { document.getElementById('chromeTitle').textContent = text },
+    card: function (html) {
+      document.getElementById('card').innerHTML = html
+      document.body.classList.add('card')
+    },
+    uncard: function () { document.body.classList.remove('card') },
+    ready: function () { return !!document.querySelector('openleaf-editor .ol-toolbar') },
+  }
+})()
+</script>
+</body>
+</html>
