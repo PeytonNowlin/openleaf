@@ -416,6 +416,38 @@ test.describe('the demo page', () => {
     await expect(narrow.locator('.ol-overflow-menu')).toBeVisible()
   })
 
+  /*
+   * The promo video is served from `demo/assets/`, which is gitignored and
+   * populated by `demo/build.mjs` copying out of `/assets`. So the failure mode
+   * is a page that looks fine in the diff and ships a dead player: the element
+   * is in the HTML, the file was never copied. Loading the metadata is what
+   * proves the bytes are really there and really decodable.
+   */
+  test('serves a promo video the browser can actually decode', async ({ page }) => {
+    await page.goto(DEMO)
+    const video = page.locator('video.promo')
+    await expect(video).toHaveCount(1)
+
+    const poster = await video.getAttribute('poster')
+    const posterResponse = await page.request.get(new URL(poster!, page.url()).href)
+    expect(posterResponse.status()).toBe(200)
+
+    const metadata = await video.evaluate(
+      (el: HTMLVideoElement) =>
+        new Promise<{ duration: number; width: number }>((resolve, reject) => {
+          el.addEventListener('loadedmetadata', () =>
+            resolve({ duration: el.duration, width: el.videoWidth }),
+          )
+          el.addEventListener('error', () => reject(new Error('the video failed to load')))
+          // The page ships `preload="none"`, so nothing is fetched until asked.
+          el.preload = 'metadata'
+          el.load()
+        }),
+    )
+    expect(metadata.width).toBe(1920)
+    expect(metadata.duration).toBeGreaterThan(30)
+  })
+
   test('imports both sample files', async ({ page }) => {
     await page.goto(DEMO)
     await expect(page.getByRole('textbox', { name: 'Post body' })).toBeVisible({ timeout: 15000 })

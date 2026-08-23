@@ -25,24 +25,23 @@
 </p>
 
 <p align="center">
-  <!-- GitHub only plays <video> from an absolute raw URL, and rewrites nothing
-       inside an HTML block, so both URLs here are absolute. If a renderer strips
-       the element, its children survive: the poster stays, linking to the file. -->
-  <video src="https://github.com/PeytonNowlin/openleaf/raw/main/assets/openleaf-promo.mp4"
-    poster="https://github.com/PeytonNowlin/openleaf/raw/main/assets/openleaf-promo-poster.png"
-    width="880" controls muted loop playsinline>
-    <a href="https://github.com/PeytonNowlin/openleaf/raw/main/assets/openleaf-promo.mp4">
-      <img width="880" alt="OpenLeaf turning a pasted Word document into clean semantic HTML"
-        src="https://github.com/PeytonNowlin/openleaf/raw/main/assets/openleaf-promo-poster.png">
-    </a>
-  </video>
+  <!-- An <img>, not a <video>: GitHub's README renderer strips <video> outright,
+       element and children alike, so a video tag here shows nothing at all. The
+       GIF is the Word-paste shot; the link is the full cut, which GitHub plays
+       in its own file view. -->
+  <a href="https://github.com/PeytonNowlin/openleaf/blob/main/assets/openleaf-promo.mp4">
+    <img width="880" src="assets/openleaf-promo-loop.gif"
+      alt="A Word document pasted into OpenLeaf, arriving as clean semantic HTML with its nested list and table intact">
+  </a>
 </p>
 
 <p align="center">
   <sub>
-    A minute of the real editor: pasting from Word, the bound
-    <code>&lt;textarea&gt;</code>, and tables. Every frame is the built bundle
-    running in a browser.
+    Pasting from Word, with the submitted HTML alongside.
+    <a href="https://github.com/PeytonNowlin/openleaf/blob/main/assets/openleaf-promo.mp4">Watch
+    the full minute</a> for the bound <code>&lt;textarea&gt;</code> and tables, or
+    <a href="https://peytonnowlin.github.io/openleaf/">try the editor yourself</a>.
+    Every frame is the built bundle running in a browser.
   </sub>
 </p>
 
