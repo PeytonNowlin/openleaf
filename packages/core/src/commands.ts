@@ -22,7 +22,7 @@ import {
   splitListItem,
   wrapInList,
 } from 'prosemirror-schema-list'
-import type { Command, EditorState, SelectionRange, Transaction } from 'prosemirror-state'
+import { NodeSelection, type Command, type EditorState, type SelectionRange, type Transaction } from 'prosemirror-state'
 import {
   MAX_INDENT,
   safeColor,
@@ -38,6 +38,8 @@ import {
 } from './css.js'
 import { canInsertNode, markCommand, markIn, nodeCommand, nodeIn } from './command-helpers.js'
 import { CARRIED_ATTR } from './extensions.js'
+import { selectedImage } from './insert-commands.js'
+import { IMAGE_ALIGNMENTS } from './tokens.js'
 
 /**
  * Types are resolved from the state's schema, never from a captured singleton.
@@ -570,8 +572,58 @@ function uniformBlockAttr<T>(state: EditorState, attr: string): T | null {
   return blocks.every((b) => (b.node.attrs[attr] ?? null) === value) ? value : null
 }
 
+/**
+ * True when this alignment is one an image can store.
+ *
+ * `image.attrs.align` is `left` / `right` / `center` (a float or a block
+ * centre). Justify is a text-block value only: writing it onto an image
+ * would serialize as the class `undefined`.
+ */
+function isImageAlign(align: Align | null): boolean {
+  return align === null || (IMAGE_ALIGNMENTS as readonly string[]).includes(align)
+}
+
+/**
+ * The nodes in the selection that can carry an alignment.
+ *
+ * Textblocks that declare `align`, and `image` nodes whose alignment is a
+ * float/centre class rather than `text-align`. A NodeSelection on an image
+ * -- or on the figure wrapping one -- is only that image: walking the parent
+ * paragraph as well would float the picture AND centre the paragraph, which
+ * is not what Align right means when the author has clicked the picture.
+ *
+ * `blocksWithAttr` stops inside a textblock, so it never sees an inline
+ * image. Alignment has to look inside, but only for a non-empty range: a
+ * caret beside an image must not retarget it, the same trap `selectedImage`
+ * refuses.
+ */
 function alignableBlocks(state: EditorState): Array<{ pos: number; node: PMNode }> {
-  return blocksWithAttr(state, 'align')
+  const selected = selectedImage(state)
+  if (selected) {
+    const node = state.doc.nodeAt(selected.pos)
+    return node && node.type.name === 'image' ? [{ pos: selected.pos, node }] : []
+  }
+
+  const found: Array<{ pos: number; node: PMNode }> = []
+  const seen = new Set<number>()
+  for (const range of selectedRanges(state)) {
+    const from = range.$from.pos
+    const to = range.$to.pos
+    const coverImages = from !== to
+    state.doc.nodesBetween(from, to, (node, pos) => {
+      if (coverImages && node.type.name === 'image' && Object.hasOwn(node.attrs, 'align') && !seen.has(pos)) {
+        seen.add(pos)
+        found.push({ pos, node })
+      }
+      if (!node.isTextblock) return true
+      if (Object.hasOwn(node.attrs, 'align') && !seen.has(pos)) {
+        seen.add(pos)
+        found.push({ pos, node })
+      }
+      return coverImages
+    })
+  }
+  return found
 }
 
 /**
@@ -598,7 +650,11 @@ export function activeTextAlign(state: EditorState): Align | null {
 }
 
 /**
- * Set the alignment of every alignable block in the selection. `null` clears it.
+ * Set the alignment of every alignable node in the selection. `null` clears it.
+ *
+ * Images store `left` / `right` / `center` on `image.attrs.align`; serialization
+ * maps those to the `ol-*` classes. Justify is skipped on images, because it
+ * is not an image alignment.
  *
  * Reports true whenever there is something to align, even if it already carries
  * this value. The alternative -- returning false because the work is already
@@ -607,15 +663,24 @@ export function activeTextAlign(state: EditorState): Align | null {
  */
 export function setTextAlign(align: Align | null): Command {
   return (state, dispatch) => {
-    const blocks = alignableBlocks(state)
+    const blocks = alignableBlocks(state).filter(
+      ({ node }) => node.type.name !== 'image' || isImageAlign(align),
+    )
     if (blocks.length === 0) return false
     if (dispatch) {
       const tr = state.tr
+      const selected = selectedImage(state)
       for (const { pos, node } of blocks) {
         // No position mapping needed: an attribute-only change replaces a node
         // with one of identical size, so earlier edits cannot shift later
         // positions in this loop.
         tr.setNodeMarkup(pos, undefined, { ...node.attrs, align })
+      }
+      // Keep a clicked image selected. `setNodeMarkup` replaces the node, and
+      // without this the selection collapses beside it -- `activeTextAlign`
+      // would then read the parent paragraph and the toolbar would go dark.
+      if (selected) {
+        tr.setSelection(NodeSelection.create(tr.doc, tr.mapping.map(selected.pos)))
       }
       dispatch(tr.scrollIntoView())
     }

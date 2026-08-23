@@ -12,6 +12,7 @@ import {
   activeFontSize,
   activeLineHeight,
   activeLink,
+  activeTextAlign,
   FONT_FAMILIES,
   FONT_SIZE_PRESETS,
   indent,
@@ -28,6 +29,7 @@ import {
   setFontSize,
   setLineHeight,
   setLink,
+  setTextAlign,
   toggleBlockquote,
   toggleBold,
   toggleBulletList,
@@ -73,32 +75,17 @@ const alignCache = new WeakMap<EditorState, AlignFacts>()
  * that was ~48,000 wasted node visits inside `dispatchTransaction`.
  *
  * Keyed on the state, so the second, third and fourth toolbar reading the same
- * transaction pay nothing. Membership is "carries an align attribute", exactly
- * as core decides it, so a plugin block that opts in still works.
+ * transaction pay nothing. Answers come from core (`setTextAlign` /
+ * `activeTextAlign`) so a selected image lights the same button the command
+ * will write, rather than a second walk that only saw textblocks.
  */
 function alignFacts(state: EditorState): AlignFacts {
   const hit = alignCache.get(state)
   if (hit) return hit
-  let any = false
-  let mixed = false
-  let align: Align | null = null
-  const { from, to } = state.selection
-  state.doc.nodesBetween(from, to, (node) => {
-    if (!node.isTextblock) return true
-    if (Object.hasOwn(node.attrs, 'align')) {
-      const value = (node.attrs['align'] as Align | null) ?? null
-      if (!any) {
-        any = true
-        align = value
-      } else if (value !== align) {
-        // Mixed reports null, like core: showing the first block's value as the
-        // state of all of them is a lie the author acts on.
-        mixed = true
-      }
-    }
-    return false
-  })
-  const facts: AlignFacts = { any, align: mixed ? null : align }
+  const facts: AlignFacts = {
+    any: setTextAlign('left')(state),
+    align: activeTextAlign(state),
+  }
   alignCache.set(state, facts)
   return facts
 }

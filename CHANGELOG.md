@@ -12,6 +12,18 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Align left/centre/right now applies to a selected image or figure.** The
+  toolbar only walked textblocks that declare `align`, so a clicked picture
+  either did nothing (a figure has no such attribute) or centred its parent
+  paragraph instead of writing `image.attrs.align`. A NodeSelection on the
+  image or the figure wrapping it stores `left` / `right` / `center` on the
+  image -- the same values the dialog already wrote, serialized as
+  `ol-float-left` / `ol-float-right` / `ol-align-center`. Mixed text and
+  image ranges still align both; a click on the picture does not also
+  `text-align` the paragraph around it. `#183`
+
 ## 0.1.0-beta.3 - 2026-08-23
 
 ### Fixed
