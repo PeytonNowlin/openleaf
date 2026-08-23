@@ -12,6 +12,8 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+## 0.1.0-beta.3 - 2026-08-23
+
 ### Fixed
 
 - **Tab now leaves the emoji and character-map pickers in Firefox, which used to
