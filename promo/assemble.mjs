@@ -74,5 +74,21 @@ execFileSync('ffmpeg', [
 const web = join(OUT, 'openleaf-promo.webm')
 execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', final, '-c:v', 'libvpx-vp9', '-crf', '34', '-b:v', '0', '-an', web], { stdio: 'inherit' })
 
+/* The README loop. GitHub's README renderer strips <video> outright -- element
+   and children -- so the only way to show motion there is an <img>. This is the
+   Word-paste shot alone, cropped to the window and caption so the bytes go on
+   the part anyone looks at, and it is the same footage as the corresponding
+   stretch of the full cut rather than a separate take. */
+const hero = norm.find((n) => n.name.includes('word-paste'))
+if (hero) {
+  const gif = join(OUT, 'openleaf-promo-loop.gif')
+  execFileSync('ffmpeg', [
+    '-v', 'error', '-y', '-i', hero.path,
+    '-vf', 'crop=1920:820:0:130,fps=12,scale=1200:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=192[p];[b][p]paletteuse=dither=bayer:bayer_scale=3',
+    gif,
+  ], { stdio: 'inherit' })
+  console.log(`loop: ${gif}`)
+}
+
 for (const n of norm) execFileSync('rm', ['-f', n.path])
 console.log(`\n${final}\n${web}\ntotal ${elapsed.toFixed(2)}s from ${norm.length} clips`)

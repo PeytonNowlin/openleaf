@@ -64,6 +64,18 @@
   h2 + .lede { margin-top: 0; color: var(--page-muted); }
   h3 { margin: 2rem 0 .5rem; font-size: 1.05rem; }
 
+  /* Full width of the prose column, and 16:9 without a wrapper: the intrinsic
+     aspect ratio of the file is what reserves the space, so nothing reflows
+     when the poster loads. */
+  .promo {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--page-border);
+    border-radius: 8px;
+    background: #0b0f14;
+  }
+
   .panel {
     border: 1px solid var(--page-border);
     border-radius: 8px;
@@ -162,6 +174,24 @@
     most valuable thing anyone can do for this project right now.
   </p>
 </div>
+
+<h2 id="watch">Watch it work</h2>
+<p class="lede">
+  A minute of the editor: pasting a Word document, the bound
+  <code>&lt;textarea&gt;</code> updating as the document changes, and tables from
+  the opt-in plugin. Every frame is this page's own bundle running in a browser —
+  the shots are screen captures of the editor below, not a mockup.
+</p>
+
+<video class="promo" controls muted playsinline loop preload="none"
+  poster="./assets/openleaf-promo-poster.png"
+  aria-label="OpenLeaf demonstration: pasting from Word, the bound textarea, and tables">
+  <source src="./assets/openleaf-promo.mp4" type="video/mp4">
+  <p>
+    Your browser cannot play this video.
+    <a href="./assets/openleaf-promo.mp4">Download it</a> instead.
+  </p>
+</video>
 
 <h2 id="try">Try it</h2>
 <p class="lede">

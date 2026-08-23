@@ -39,6 +39,10 @@ for (const asset of [
   'sample-clip.webm',
   'sample-clip.mp4',
   'sample-poster.png',
+  // The promo video, played by the "Watch it work" section. 1.4 MB, and the
+  // page loads only its poster until someone presses play.
+  'openleaf-promo.mp4',
+  'openleaf-promo-poster.png',
 ]) {
   cpSync(src(`../assets/${asset}`), src(`./assets/${asset}`))
 }
