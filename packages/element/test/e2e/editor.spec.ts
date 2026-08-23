@@ -720,4 +720,33 @@ test.describe('gap cursor (#164)', () => {
     expect(after).toContain('before')
     expect(after.indexOf('before')).toBeLessThan(after.indexOf('<details'))
   })
+
+  test('typing before a lone video does not replace it', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & {
+        value: string
+        view: {
+          state: { doc: unknown; tr: { setSelection: (sel: unknown) => unknown } }
+          dispatch(tr: unknown): void
+          focus(): void
+        } | null
+      }
+      el.value = '<video src="https://example.org/clip.mp4" controls=""></video>'
+      const view = el.view
+      if (!view) throw new Error('no view')
+      const { NodeSelection } = (
+        window as unknown as {
+          OpenLeaf: { __runtime: { 'prosemirror-state': { NodeSelection: { create(doc: unknown, pos: number): unknown } } } }
+        }
+      ).OpenLeaf.__runtime['prosemirror-state']
+      view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, 0)))
+      view.focus()
+    })
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.type('before')
+    const after = await submittedValue(page)
+    expect(after).toMatch(/<video/)
+    expect(after).toContain('before')
+    expect(after.indexOf('before')).toBeLessThan(after.indexOf('<video'))
+  })
 })
