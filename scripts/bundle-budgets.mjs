@@ -105,7 +105,12 @@ export const BUDGETS_KB = {
   // measuring this project's growth and starts failing on whatever unrelated
   // patch happens to arrive next, which is how a budget teaches people to raise
   // it without reading it.
-  'openleaf.min.js': 121,
+  //
+  // Raised to 122 for figure-unit drag (#185). CI's zlib weighed 121.1 against
+  // a 121 ceiling that a local Node build reported as 120.9 — the Node 22 vs 26
+  // gzip mismatch this file already documents. The extra kilobyte is that
+  // headroom restored, not a new feature's full weight.
+  'openleaf.min.js': 122,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
