@@ -8,7 +8,8 @@
 
 import { history, undo } from 'prosemirror-history'
 import { EditorState, TextSelection } from 'prosemirror-state'
-import { describe, expect, it } from 'vitest'
+import { EditorView } from 'prosemirror-view'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   clampIsolatingTextSelection,
   coreSchema,
@@ -17,6 +18,7 @@ import {
   serializeHtml,
   textSelectionCrossesIsolating,
 } from '../src/index.js'
+import { clampIsolatingReplaceRange } from '../src/isolating-selection.js'
 
 const QUOTE_THEN_DETAILS =
   '<blockquote><p>quote</p></blockquote><details open><summary>s</summary><p>body</p></details>'
@@ -130,5 +132,114 @@ describe('clampIsolatingTextSelection', () => {
     expect(clamped.anchor).toBe(3)
     expect(textSelectionCrossesIsolating(clamped)).toBe(false)
     expect(clamped.head).toBeLessThan(crossing.head)
+  })
+})
+
+describe('clampIsolatingReplaceRange', () => {
+  it('returns null when the range does not cross an isolating boundary', () => {
+    const doc = parseHtml(QUOTE_THEN_DETAILS, { schema: coreSchema() })
+    expect(clampIsolatingReplaceRange(doc, 2, 7)).toBeNull()
+  })
+
+  it('clamps a DOM-derived crossing range even when the model selection is collapsed', () => {
+    // #163: at keystroke time `state.selection` is often still the caret, while
+    // the DOM range already straddles details. The replace range must come from
+    // those positions, not from the stale selection.
+    const state = stateFor(QUOTE_THEN_DETAILS)
+    expect(state.selection.empty).toBe(true)
+    const range = clampIsolatingReplaceRange(state.doc, 3, 12)
+    expect(range).not.toBeNull()
+    expect(range!.from).toBeGreaterThanOrEqual(2)
+    expect(range!.to).toBeLessThan(9)
+
+    let next = state
+    expect(() => {
+      next = state.apply(state.tr.insertText('X', range!.from, range!.to))
+    }).not.toThrow()
+    const after = serializeHtml(next.doc)
+    expect(after).toContain('X')
+    expect(after).toContain('<summary>s</summary>')
+    expect(after).toContain('body</details>')
+    expect(after).not.toMatch(/<\/details><p>body<\/p>/)
+  })
+})
+
+describe('isolatingSelectionPlugin beforeinput', () => {
+  let view: EditorView | undefined
+
+  function mount(html: string): EditorView {
+    const place = document.createElement('div')
+    document.body.append(place)
+    view = new EditorView(place, {
+      state: EditorState.create({
+        doc: parseHtml(html, { schema: coreSchema() }),
+        plugins: [history(), isolatingSelectionPlugin()],
+      }),
+    })
+    return view
+  }
+
+  afterEach(() => {
+    view?.destroy()
+    view = undefined
+    document.body.innerHTML = ''
+  })
+
+  it('types into the anchor side when the DOM range crosses details and the model caret has not moved', () => {
+    const v = mount(QUOTE_THEN_DETAILS)
+    expect(v.state.selection.empty).toBe(true)
+
+    const quoteText = v.dom.querySelector('blockquote p')?.firstChild
+    const bodyText = v.dom.querySelector('details p')?.firstChild
+    expect(quoteText?.nodeType).toBe(3)
+    expect(bodyText?.nodeType).toBe(3)
+
+    const range = document.createRange()
+    range.setStart(quoteText as Text, 1)
+    range.setEnd(bodyText as Text, 2)
+    const selection = v.dom.ownerDocument.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    const event = new InputEvent('beforeinput', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: 'X',
+    })
+    v.dom.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    const after = serializeHtml(v.state.doc)
+    expect(after).toContain('X')
+    expect(after).toContain('<summary>s</summary>')
+    expect(after).toContain('body</details>')
+    expect(after).not.toMatch(/<\/details><p>body<\/p>/)
+
+    let undone: EditorState | null = null
+    expect(undo(v.state, (tr) => { undone = v.state.apply(tr) })).toBe(true)
+    expect(serializeHtml(undone!.doc)).toBe(serializeHtml(parseHtml(QUOTE_THEN_DETAILS)))
+  })
+
+  it('does not intercept a beforeinput whose DOM range stays on one side', () => {
+    const v = mount(QUOTE_THEN_DETAILS)
+    const quoteText = v.dom.querySelector('blockquote p')?.firstChild
+    expect(quoteText?.nodeType).toBe(3)
+    const range = document.createRange()
+    range.setStart(quoteText as Text, 0)
+    range.setEnd(quoteText as Text, 2)
+    const selection = v.dom.ownerDocument.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    const event = new InputEvent('beforeinput', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: 'X',
+    })
+    v.dom.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(serializeHtml(v.state.doc)).not.toContain('X')
   })
 })

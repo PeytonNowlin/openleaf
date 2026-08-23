@@ -1174,7 +1174,10 @@ a selection contract. `TextSelection.between` will still build a range whose
 endpoints sit on opposite sides of that node, and Firefox and WebKit will
 report one from Shift+Arrow. Core installs `isolatingSelectionPlugin` in the
 element so that range is narrowed to the anchor's side before the next replace
-— the same clamp Chromium already does natively.
+— the same clamp Chromium already does natively. The plugin also listens for
+`beforeinput`: when the model selection is still a caret, ProseMirror skips
+`handleTextInput`, and the browser would otherwise mutate a DOM range that
+still straddles the isolating node (GitHub issue #163).
 
 If you add an isolating node, you do **not** need to reimplement that clamp.
 You do need the plugin if you embed ProseMirror yourself rather than using

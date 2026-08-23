@@ -610,6 +610,56 @@ test.describe('isolating selections (#130)', () => {
     expect(errors.filter((message) => /TransformError|Cannot join/.test(message))).toEqual([])
     const after = await submittedValue(page)
     expect(after).toContain('X')
+    expect(after).toContain('<summary>s</summary>')
     expect(after).toMatch(/<details[^>]*>[\s\S]*body<\/details>/)
+    expect(after).not.toMatch(/<\/details><p>body<\/p>/)
+  })
+
+  test('beforeinput clamps a DOM range that crosses details while the model caret is still collapsed', async ({
+    page,
+  }) => {
+    // #163: handleTextInput never fires when state.selection is still a caret.
+    // The browser then mutates the DOM range. This test is that path, without
+    // depending on Shift+ArrowDown to race the model selection into place.
+    const after = await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & {
+        value: string
+        view: {
+          dom: HTMLElement
+          state: { selection: { empty: boolean }; tr: { insertText: (text: string) => unknown } }
+          dispatch(tr: unknown): void
+        } | null
+      }
+      el.value =
+        '<blockquote><p>one<br>two<br>three<br>four</p></blockquote><details open><summary>s</summary><p>body</p></details>'
+      const view = el.view
+      if (!view) throw new Error('no view')
+      if (!view.state.selection.empty) throw new Error('model selection was not collapsed')
+
+      const quoteText = view.dom.querySelector('blockquote')?.querySelector('p')?.firstChild
+      const bodyText = view.dom.querySelector('details p')?.firstChild
+      if (!quoteText || !bodyText) throw new Error('missing text nodes')
+      const range = document.createRange()
+      range.setStart(quoteText, 0)
+      range.setEnd(bodyText, (bodyText.textContent ?? '').length)
+      const selection = document.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+
+      view.dom.dispatchEvent(
+        new InputEvent('beforeinput', {
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: 'X',
+        }),
+      )
+      return el.value
+    })
+
+    expect(after).toContain('X')
+    expect(after).toContain('<summary>s</summary>')
+    expect(after).toMatch(/<details[^>]*>[\s\S]*body<\/details>/)
+    expect(after).not.toMatch(/<\/details><p>body<\/p>/)
   })
 })
