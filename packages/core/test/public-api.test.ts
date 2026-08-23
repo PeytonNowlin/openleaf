@@ -87,6 +87,10 @@ const EXPECTED_EXPORTS = [
   // click on placing a caret, so the browser's own disclosure toggle never fires
   // and a collapsed <details> had no gesture that could open it.
   'disclosurePlugin',
+  // A document that is only a block atom has no textblock for the caret.
+  // gapCursorPlugin is what lets ArrowLeft land beside it instead of typing
+  // replacing the atom.
+  'gapCursorPlugin',
   // A TextSelection that straddles an isolating node (blockquote into details)
   // makes replace throw and the DOM-derived repair cannot be undone. This is
   // the clamp that Chromium already does natively.

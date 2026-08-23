@@ -93,14 +93,17 @@ inserting an `<hr>` cannot split a figure.
 
 ## Isolating selections
 
-If you construct a ProseMirror editor yourself, install
-`isolatingSelectionPlugin()` next to `history()` and the keymap. A
-`TextSelection` that starts in a `<blockquote>` and ends inside a following
-`<details>` otherwise throws on the next keystroke (`Cannot join details onto
-blockquote`), and the recovery rewrites the document with no undo entry. The
-plugin also handles `beforeinput` so a keystroke cannot skip the clamp when the
-model caret is still collapsed and only the DOM range crosses the boundary.
-`<openleaf-editor>` already installs the plugin. Details are in
+If you construct a ProseMirror editor yourself, install `gapCursorPlugin()`
+and `isolatingSelectionPlugin()` next to `history()` and the keymap.
+
+Without the gap cursor, a document that is only a page-break or a `<details>`
+has no legal caret beside it, and typing replaces the atom. Without the
+isolating clamp, a `TextSelection` that starts in a `<blockquote>` and ends
+inside a following `<details>` throws on the next keystroke (`Cannot join
+details onto blockquote`), and the recovery rewrites the document with no undo
+entry. The isolating plugin also handles `beforeinput` so a keystroke cannot
+skip the clamp when the model caret is still collapsed and only the DOM range
+crosses the boundary. `<openleaf-editor>` already installs both. Details are in
 [authoring-plugins.md §4.11](../../docs/authoring-plugins.md#411-isolating-nodes-clamp-the-selection-at-their-boundary).
 
 ## Safety

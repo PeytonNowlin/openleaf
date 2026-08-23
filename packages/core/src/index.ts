@@ -172,6 +172,7 @@ export {
 export { autolinkPlugin, hrefFromTypedUrl } from './autolink.js'
 export { visualAidsPlugin } from './visual-aids.js'
 export { disclosurePlugin } from './disclosure.js'
+export { gapCursorPlugin } from './gapcursor.js'
 export {
   clampIsolatingTextSelection,
   innermostIsolatingDepth,

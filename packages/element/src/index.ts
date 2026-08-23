@@ -51,6 +51,7 @@ import {
   coreSchema,
   createRegisteredPlugins,
   insertImage,
+  gapCursorPlugin,
   isolatingSelectionPlugin,
   nonEditablePlugin,
   tableCaptionPlugin,
@@ -467,6 +468,7 @@ export class OpenLeafEditor extends HTMLElementBase {
       keymap(buildKeymap()),
       keymap(baseKeymap),
       nonEditablePlugin(),
+      gapCursorPlugin(),
       isolatingSelectionPlugin(),
       disclosurePlugin(),
     ]

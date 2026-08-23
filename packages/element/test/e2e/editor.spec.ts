@@ -663,3 +663,61 @@ test.describe('isolating selections (#130)', () => {
     expect(after).not.toMatch(/<\/details><p>body<\/p>/)
   })
 })
+
+test.describe('gap cursor (#164)', () => {
+  test('typing before a lone page-break does not replace it', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<hr class="ol-pagebreak">'
+    })
+    await page.locator('hr.ol-pagebreak').click()
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.type('before')
+    const after = await submittedValue(page)
+    expect(after).toMatch(/ol-pagebreak/)
+    expect(after).toContain('before')
+  })
+
+  test('typing after a lone page-break does not replace it', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & {
+        value: string
+        view: {
+          state: { doc: unknown; tr: { setSelection: (sel: unknown) => unknown } }
+          dispatch(tr: unknown): void
+          focus(): void
+        } | null
+      }
+      el.value = '<hr class="ol-pagebreak">'
+      const view = el.view
+      if (!view) throw new Error('no view')
+      const { NodeSelection } = (
+        window as unknown as {
+          OpenLeaf: { __runtime: { 'prosemirror-state': { NodeSelection: { create(doc: unknown, pos: number): unknown } } } }
+        }
+      ).OpenLeaf.__runtime['prosemirror-state']
+      view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, 0)))
+      view.focus()
+    })
+    await page.keyboard.press('ArrowRight')
+    await page.keyboard.type('after')
+    const after = await submittedValue(page)
+    expect(after).toMatch(/ol-pagebreak/)
+    expect(after).toContain('after')
+  })
+
+  test('ArrowUp at the start of a lone details inserts a paragraph before it', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value = '<details open><summary>s</summary><p>body</p></details>'
+    })
+    await editor(page).getByText('s', { exact: true }).click()
+    await page.keyboard.press('Home')
+    await page.keyboard.press('ArrowUp')
+    await page.keyboard.type('before')
+    const after = await submittedValue(page)
+    expect(after).toContain('<details')
+    expect(after).toContain('before')
+    expect(after.indexOf('before')).toBeLessThan(after.indexOf('<details'))
+  })
+})
