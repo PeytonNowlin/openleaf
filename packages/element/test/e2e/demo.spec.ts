@@ -43,16 +43,17 @@ test.describe('the demo page', () => {
     expect(problems).toEqual([])
   })
 
-  // The bug this file exists for: both grids are popovers appended to <body>, and
-  // a closed popover that is nonetheless laid out sits in the middle of the page.
+  // The bug this file exists for: both grids used to be popovers appended to
+  // <body>, and a closed popover that is nonetheless laid out sits in the
+  // middle of the page. They now mount on the editor host when opened, so
+  // they are not in the document at all until then.
   test('opens with no glyph picker showing, and keeps them shut while scrolling', async ({ page }) => {
     await page.goto(DEMO)
     await expect(page.getByRole('textbox', { name: 'Post body' })).toBeVisible({ timeout: 15000 })
     const grids = page.locator('.ol-insert-grid')
-    await expect(grids).not.toHaveCount(0)
-    expect(await grids.evaluateAll((els) => els.every((e) => getComputedStyle(e).display === 'none'))).toBe(true)
+    await expect(grids).toHaveCount(0)
     await page.mouse.wheel(0, 1500)
-    expect(await grids.evaluateAll((els) => els.every((e) => getComputedStyle(e).display === 'none'))).toBe(true)
+    await expect(grids).toHaveCount(0)
   })
 
   /*

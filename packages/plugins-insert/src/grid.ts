@@ -6,6 +6,29 @@ import { GLYPH_COLUMNS } from './glyphs.js'
 const SUPPORTS_POPOVER =
   typeof HTMLElement !== 'undefined' && 'popover' in HTMLElement.prototype
 
+/**
+ * True when focus is moving into one of `roots`, including across shadow trees.
+ *
+ * `document.activeElement` is the shadow host from outside the tree, so a
+ * deferred check against it closes the panel the moment a glyph is focused.
+ * `relatedTarget` is the node that actually received focus; walking its
+ * composed ancestors covers a retargeted event the same way.
+ */
+function relatedInside(event: FocusEvent, ...roots: Node[]): boolean {
+  let node: Node | null = event.relatedTarget instanceof Node ? event.relatedTarget : null
+  while (node) {
+    const current = node
+    if (roots.some((root) => current === root || root.contains(current))) return true
+    if (current.parentNode) {
+      node = current.parentNode
+      continue
+    }
+    const tree = current.getRootNode()
+    node = tree instanceof ShadowRoot ? tree.host : null
+  }
+  return false
+}
+
 export function buildGlyphPicker(
   ctx: ToolbarContext,
   options: {
@@ -66,8 +89,6 @@ export function buildGlyphPicker(
   })
 
   wrap.appendChild(trigger)
-  if (!SUPPORTS_POPOVER) wrap.appendChild(grid)
-  else doc.body.appendChild(grid)
 
   const isOpen = (): boolean =>
     SUPPORTS_POPOVER ? grid.matches(':popover-open') : !grid.hidden
@@ -115,6 +136,14 @@ export function buildGlyphPicker(
   }
 
   const open = (): void => {
+    if (!grid.isConnected) {
+      // On the host, not document.body. A body-mounted popover leaves a
+      // shadow-root editor, so document.activeElement is the host and a 0ms
+      // focusout timeout closes the panel as it opens. Same reason the colour
+      // picker and table grid append here -- and so skin tokens scoped to
+      // `.ol-editor` actually reach the panel.
+      host.appendChild(grid)
+    }
     trigger.setAttribute('aria-expanded', 'true')
     if (!SUPPORTS_POPOVER) grid.hidden = false
     else if (!grid.matches(':popover-open')) {
@@ -151,13 +180,12 @@ export function buildGlyphPicker(
     /*
      * Tab is handled, and that reverses the note below about leaving it alone.
      *
-     * Leaving it to the engine is correct in Chromium: the popover sits at the
-     * end of <body>, so Tab walks off the end of the document, and the focusout
-     * handler closes the panel. Firefox does not move focus at all -- measured,
-     * not inferred: after Tab, `document.activeElement` is still the cell and
-     * the popover is still open. That is a keyboard trap (WCAG 2.1.2 No
-     * Keyboard Trap), and Escape being the only way out is exactly the failure
-     * the arrow-key model was added to prevent.
+     * Leaving it to the engine is correct in Chromium: Tab walks off the
+     * grid's single tab stop and the focusout handler closes the panel.
+     * Firefox does not move focus at all -- measured, not inferred: after
+     * Tab, focus is still the cell and the popover is still open. That is a
+     * keyboard trap (WCAG 2.1.2 No Keyboard Trap), and Escape being the only
+     * way out is exactly the failure the arrow-key model was added to prevent.
      *
      * So the widget decides instead of the engine, the same way it decides for
      * Escape: close, return focus to the trigger, and do NOT preventDefault, so
@@ -211,13 +239,10 @@ export function buildGlyphPicker(
   // once closed the panel while focus sat on the first glyph, which left one of
   // forty characters reachable from the keyboard; moving focus first and letting
   // the default action run is the part that makes it safe.
-  grid.addEventListener('focusout', () => {
-    setTimeout(() => {
-      if (!isOpen()) return
-      const active = doc.activeElement
-      if (active && (grid.contains(active) || trigger.contains(active))) return
-      close()
-    }, 0)
+  grid.addEventListener('focusout', (event: FocusEvent) => {
+    if (!isOpen()) return
+    if (relatedInside(event, grid, trigger)) return
+    close()
   })
 
   /*
@@ -252,7 +277,7 @@ export function buildGlyphPicker(
       doc.removeEventListener('pointerdown', onPointerDown, true)
       doc.defaultView?.removeEventListener('scroll', onViewportChange, true)
       doc.defaultView?.removeEventListener('resize', onViewportChange)
-      if (SUPPORTS_POPOVER) grid.remove()
+      grid.remove()
     },
   }
 }

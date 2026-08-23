@@ -20,22 +20,30 @@ test.describe('the glyph pickers', () => {
     await expect(toolbar(page).getByRole('button', { name: 'Emoji' })).toBeVisible()
   })
 
-  // The grids are appended to document.body as popovers. `display: grid` in the
-  // plugin's own stylesheet is an author declaration, so it overrode the UA rule
-  // that keeps a closed popover hidden -- and UA popover styles are
-  // `position: fixed; inset: 0; margin: auto`, so both panels sat in the middle
-  // of the page from page load and followed the scroll.
+  // Mounted on the editor host when opened, not parked on document.body from
+  // construction. A closed popover used to sit in the middle of the page
+  // because `display: grid` overrode the UA's `[popover]` hiding rule, and UA
+  // popover styles are `position: fixed; inset: 0; margin: auto`.
   test('are closed on load', async ({ page }) => {
-    await expect(emojiGrid(page)).toHaveCount(1)
-    await expect(charmapGrid(page)).toHaveCount(1)
-    await expect(emojiGrid(page)).toBeHidden()
-    await expect(charmapGrid(page)).toBeHidden()
+    await expect(emojiGrid(page)).toHaveCount(0)
+    await expect(charmapGrid(page)).toHaveCount(0)
   })
 
   test('stay closed while the page scrolls', async ({ page }) => {
     await page.mouse.wheel(0, 600)
-    await expect(emojiGrid(page)).toBeHidden()
-    await expect(charmapGrid(page)).toBeHidden()
+    await expect(emojiGrid(page)).toHaveCount(0)
+    await expect(charmapGrid(page)).toHaveCount(0)
+  })
+
+  test('open as a child of the editor, not of document.body', async ({ page }) => {
+    await toolbar(page).getByRole('button', { name: 'Emoji' }).click()
+    await expect(emojiGrid(page)).toBeVisible()
+    const placement = await emojiGrid(page).evaluate((el) => ({
+      parentIsBody: el.parentElement === document.body,
+      insideEditor: Boolean(el.closest('openleaf-editor')),
+    }))
+    expect(placement.parentIsBody).toBe(false)
+    expect(placement.insideEditor).toBe(true)
   })
 
   test('open from the toolbar and insert a character', async ({ page }) => {
