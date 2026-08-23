@@ -12,6 +12,15 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Find treats a non-breaking space as a space.** A query typed as
+  `hello world` missed Word-pasted `hello\u00a0world` because the search
+  index only case-folded. Both the document and the query now fold U+00A0
+  to U+0020, so the two spellings find each other. Other Unicode spaces
+  are left alone. Replace writes whatever was typed, which converts those
+  NBSPs when the replacement uses ordinary spaces. `#205`
+
 ## 0.1.0-beta.3 - 2026-08-23
 
 ### Fixed
