@@ -12,6 +12,15 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Dropping or pasting an image no longer inserts (or throws) after the
+  editor has been torn down.** `#uploadImages` awaited the describe-and-upload
+  dialog, then called `insertImage` and `view.focus()` on the `EditorView`
+  captured at drop time. A navigation or custom-element unmount during the
+  dialog left a destroyed view; import already refused that, the image path
+  did not. `#171`
+
 ## 0.1.0-beta.3 - 2026-08-23
 
 ### Fixed
