@@ -12,6 +12,14 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Dragging a captioned image moves the whole figure, not just the `<img>`.** A
+  bare image already moved; dragging the photo inside a `<figure>` ripped it
+  out of the caption and left an illegal `<figure><figcaption>` behind. The
+  figure and caption now move (or copy, with Alt/Ctrl) as one history step.
+  `#185`
+
 ## 0.1.0-beta.3 - 2026-08-23
 
 ### Fixed

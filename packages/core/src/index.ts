@@ -178,6 +178,7 @@ export {
   isolatingSelectionPlugin,
   textSelectionCrossesIsolating,
 } from './isolating-selection.js'
+export { figureDragPlugin } from './figure-drag.js'
 export { isNonEditableNode, nonEditablePlugin } from './noneditable.js'
 export {
   activeBlockClass,
