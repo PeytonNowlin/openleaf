@@ -85,18 +85,49 @@ test.describe('the glyph pickers', () => {
     await expect(cell('Ellipsis')).toBeFocused()
   })
 
-  test('let Tab leave the grid instead of closing it from the first glyph', async ({ page }) => {
+  /*
+   * Tab must get out, and it must get out the same way in every engine.
+   *
+   * This asserted only that the first cell was no longer focused, which two
+   * quite different behaviours satisfied: Chromium walked focus off the end of
+   * the document (the popover is the last thing in <body>), while Firefox moved
+   * focus nowhere at all and left the panel open -- a keyboard trap, WCAG 2.1.2,
+   * with Escape the only way out. Neither was the intent, and the weaker
+   * assertion could not tell them apart.
+   *
+   * So the destination is named. The grid now handles Tab itself: close, return
+   * focus to the trigger, let the browser's own Tab run from there. All three
+   * engines land on the editor, which is also better than Chromium's old
+   * behaviour of dumping focus into the browser chrome.
+   */
+  test('Tab leaves the grid for the editor, and closes it, in every engine', async ({ page }) => {
     const button = toolbar(page).getByRole('button', { name: 'Character map' })
     await button.click()
     await expect(charmapGrid(page).getByRole('gridcell', { name: 'Copyright' })).toBeFocused()
+
     await page.keyboard.press('Tab')
-    // By attribute, not by role -- the same reason the grid locators above are
-    // by class. Tab moves focus out, and `focusout` then closes the panel on
-    // purpose ("leaving by any route closes"), which takes the cell out of the
-    // accessibility tree. A role query raced that close and reported
-    // "element(s) not found" on the runs where the close landed first, which is
-    // what made this test flake rather than anything about Tab.
+
+    // By attribute, not by role: a closed popover is out of the accessibility
+    // tree, so a role query here races the close and reports "element(s) not
+    // found" rather than a focus verdict.
     await expect(charmapGrid(page).locator('[aria-label="Copyright"]')).not.toBeFocused()
+    await expect(charmapGrid(page)).toBeHidden()
+    await expect(editor(page)).toBeFocused()
+  })
+
+  test('Shift+Tab also leaves, backwards', async ({ page }) => {
+    const button = toolbar(page).getByRole('button', { name: 'Character map' })
+    await button.click()
+    await expect(charmapGrid(page).getByRole('gridcell', { name: 'Copyright' })).toBeFocused()
+
+    await page.keyboard.press('Shift+Tab')
+
+    // Where backwards lands is toolbar order, which this file does not own; that
+    // it lands outside a closed panel is the contract. Tab is not intercepted
+    // with preventDefault precisely so this direction needs no separate
+    // implementation.
+    await expect(charmapGrid(page).locator('[aria-label="Copyright"]')).not.toBeFocused()
+    await expect(charmapGrid(page)).toBeHidden()
   })
 
   test('close on Escape and return focus to the trigger', async ({ page }) => {

@@ -125,12 +125,27 @@ describe('the control', () => {
     expect(ellipsis?.getAttribute('aria-label')).toBe('Ellipsis')
   })
 
-  it('does not swallow Tab, which used to close the panel on the first glyph', () => {
+  /*
+   * This asserted the panel was still open after Tab, and that was a jsdom
+   * artifact standing in for a browser behaviour. Nothing here moves focus, so
+   * the `focusout` close never fired and the panel stayed open in this
+   * environment only -- in a real engine Tab moves focus, focus leaves, and the
+   * panel closes. Firefox was the exception, and not in a good way: it moved
+   * focus nowhere at all, so the panel stayed open with focus trapped on the
+   * first glyph (WCAG 2.1.2).
+   *
+   * The contract is now explicit rather than emergent: Tab closes the panel and
+   * hands focus back to the trigger, and it does NOT preventDefault, so the
+   * browser's own Tab then carries on from the trigger. That last part is why
+   * Shift+Tab needs no separate implementation.
+   */
+  it('closes on Tab and returns focus to the trigger, without swallowing the key', () => {
     const { host } = picker()
     trigger(host).click()
     const event = press(cells(host)[0]!, 'Tab')
     expect(event.defaultPrevented).toBe(false)
-    expect(trigger(host).getAttribute('aria-expanded')).toBe('true')
+    expect(trigger(host).getAttribute('aria-expanded')).toBe('false')
+    expect(host.shadowRoot?.activeElement ?? document.activeElement).toBe(trigger(host))
   })
 
   it('closes on Escape', () => {
