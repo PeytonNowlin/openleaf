@@ -100,6 +100,55 @@ test.describe('the toolbar overflow panel', () => {
     await expect(more(page)).toHaveAttribute('aria-expanded', 'true')
   })
 
+  /*
+   * The other half of the same race. A layout pass has to put every group back
+   * in the bar to measure it, which closed the panel the author had just
+   * opened and took the focus inside it with it. On CI this landed between the
+   * Enter that opened the panel and the assertions about it.
+   */
+  test('an open panel survives a layout pass, and keeps its focus', async ({ page }) => {
+    await more(page).focus()
+    await page.keyboard.press('Enter')
+    await expect(panel(page)).toBeVisible()
+    const focused = await focusedName(page)
+
+    await host(page).evaluate((el) => {
+      ;(el.parentElement as HTMLElement).style.width = '120px'
+    })
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    )
+
+    await expect(panel(page)).toBeVisible()
+    await expect(more(page)).toHaveAttribute('aria-expanded', 'true')
+    expect(await focusedName(page)).toBe(focused)
+    const inside = await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor[for="body-narrow"] .ol-overflow-menu')
+      return !!el && el.contains(document.activeElement)
+    })
+    expect(inside).toBe(true)
+  })
+
+  /* And the deferred layout is not dropped -- closing the panel runs it. */
+  test('the layout it deferred runs when the panel closes', async ({ page }) => {
+    await more(page).click()
+    await expect(panel(page)).toBeVisible()
+
+    // Wide enough that the bar fits, so the pending layout has to retire the
+    // trigger entirely -- an unmistakable sign it really ran.
+    await host(page).evaluate((el) => {
+      ;(el.parentElement as HTMLElement).style.width = '900px'
+    })
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    )
+    await expect(more(page)).toBeVisible()
+
+    await page.keyboard.press('Escape')
+    await expect(panel(page)).toBeHidden()
+    await expect(more(page)).toBeHidden()
+  })
+
   test('moves between its controls on the arrow keys', async ({ page }) => {
     await more(page).click()
     const first = await focusedName(page)

@@ -58,6 +58,12 @@ export class ToolbarOverflow {
    * cancelled on destroy so a queued layout cannot run against a torn-down bar.
    */
   #frame: number | null = null
+  /**
+   * A layout that arrived while the panel was open, and the guard that keeps
+   * `#close` from re-entering the reflow that called it.
+   */
+  #deferred = false
+  #reflowing = false
 
   constructor(toolbar: HTMLElement, host: HTMLElement, doc: Document, onLayout?: () => void) {
     this.#toolbar = toolbar
@@ -108,6 +114,10 @@ export class ToolbarOverflow {
 
   /** Re-home the trigger after the toolbar rebuilt its children. */
   reattach(): void {
+    // Closed first: the panel is about to be emptied, and an open panel would
+    // both defer the layout below and leave the author holding an empty one.
+    this.#deferred = false
+    this.#close()
     // The groups in the panel belong to the render that was just thrown away.
     // Restoring them would put two of every control in the bar.
     this.#panel.replaceChildren()
@@ -143,6 +153,8 @@ export class ToolbarOverflow {
       this.#frame = null
     }
     this.#observer?.disconnect()
+    // Dropped before the close, or the close would lay out a bar being torn down.
+    this.#deferred = false
     this.#close()
     this.#restore()
     this.#more.remove()
@@ -167,6 +179,18 @@ export class ToolbarOverflow {
    * So the layout records what it is about to move focus off, and puts it back.
    */
   layout(): void {
+    // Never reflow under an open panel. Measuring means putting every group
+    // back in the bar, which means closing the panel the author is reading --
+    // so a ResizeObserver pass that lands just after they opened it took it
+    // away again, along with the focus inside it. A real viewport resize still
+    // closes the panel through `#onViewportChange`, and that close runs the
+    // deferred layout immediately; a font or a density change simply waits
+    // until the author is done with the panel.
+    if (!this.#panel.hidden) {
+      this.#deferred = true
+      return
+    }
+
     const active = this.#doc.activeElement
     const held =
       active instanceof HTMLElement &&
@@ -174,7 +198,12 @@ export class ToolbarOverflow {
         ? active
         : null
 
-    this.#reflow()
+    this.#reflowing = true
+    try {
+      this.#reflow()
+    } finally {
+      this.#reflowing = false
+    }
 
     if (!held || this.#doc.activeElement === held) return
     // A control the reflow pushed into the panel cannot hold focus: the panel is
@@ -288,6 +317,11 @@ export class ToolbarOverflow {
     this.#doc.defaultView?.removeEventListener('scroll', this.#onViewportChange, true)
     this.#doc.defaultView?.removeEventListener('resize', this.#onViewportChange)
     if (returnFocus) this.#more.focus()
+    // The reflow's own `#close` must not turn round and call it again.
+    if (this.#deferred && !this.#reflowing) {
+      this.#deferred = false
+      this.layout()
+    }
   }
 
   /**

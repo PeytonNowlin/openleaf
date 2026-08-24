@@ -643,6 +643,15 @@ export const CSS = `
   opacity: 0.55;
   cursor: default;
 }
+/* Third time for the same specificity trap, after the floating bar and the
+   overflow panel below: \`.ol-editor .ol-btn\` is (0,2,0) and its
+   \`display: inline-flex\` outranks the UA's \`[hidden]\` rule, so
+   \`button.hidden = true\` set the attribute and painted the button anyway. A bar
+   wide enough to need no overflow still showed its More trigger, and pressing
+   it opened an empty panel. */
+.ol-editor .ol-btn[hidden] {
+  display: none;
+}
 .ol-editor .ol-menu-sep {
   height: 1px;
   margin: 4px 0;
