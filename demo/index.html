@@ -806,7 +806,10 @@ paragraph below. Both are marked while visual aids are on.</p>
   narrow:
 </p>
 
-<div style="margin-top:1rem; max-width:20rem">
+<!-- 15rem, not 20: at 20rem this bar fitted (the block-type select shrinks to
+     absorb the difference), so the section documented a More menu the layout
+     had correctly decided not to show. -->
+<div style="margin-top:1rem; max-width:15rem">
   <label for="narrow-body" class="visually-hidden">Narrow sample</label>
   <openleaf-editor for="narrow-body" aria-label="Narrow sample"
     toolbar-overflow
