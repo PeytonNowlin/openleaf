@@ -14,6 +14,11 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Autolink now commits a typed URL when an IME composition ends**, not only
+  after a physical Space or Enter. CJK and mobile keyboards that accept a
+  candidate without inserting ASCII whitespace used to leave `https://…` as
+  plain text. The mark is applied on `compositionend` after ProseMirror
+  flushes, and never while `view.composing` is still true. `#165`
 - **Find, Replace All, and the word count skip `contenteditable="false"`
   regions.** Hits inside a lock were indexed and counted, so Replace All of a
   word that also appeared in body copy wrote those ranges into one transaction
