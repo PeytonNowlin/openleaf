@@ -14,6 +14,21 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **An open More panel survives a toolbar layout.** Measuring the bar means
+  putting every group back into it, so a `ResizeObserver` pass that arrived
+  just after the author opened the panel closed it again and dropped the focus
+  inside it. A layout is now deferred while the panel is open and runs when it
+  closes; a viewport resize still closes the panel first, so that case reflows
+  immediately.
+- **The demo's narrow-toolbar sample really does overflow.** At `20rem` that bar
+  fitted -- the block-type select shrinks to absorb the difference -- so the
+  section documenting the More menu showed none, and its tests passed only
+  because a `hidden` button still painted. It is `15rem` now.
+- **A hidden `.ol-btn` is really hidden.** `.ol-editor .ol-btn`'s
+  `display: inline-flex` outranks the user agent's `[hidden]` rule on
+  specificity, so a bar wide enough to need no overflow set `hidden` on its More
+  trigger and painted it anyway -- and pressing it opened an empty panel. This
+  is the same trap already fixed for the floating bar and the panel itself.
 - **The toolbar's More button keeps focus when the bar lays itself out.** Every
   overflow layout re-appended the trigger, and re-inserting an already-connected
   node drops focus to the document in every engine -- so a `ResizeObserver` pass
