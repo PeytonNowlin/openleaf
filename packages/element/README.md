@@ -96,7 +96,8 @@ registerImageUploader(async (file) => {
 
 Whatever that function throws is shown to the author verbatim, so write the
 message for them. For one editor with its own endpoint, set
-`element.imageUploader` instead.
+`element.imageUploader` instead. JPEG (including `.jfif`), PNG, GIF, WebP and
+AVIF are accepted; HEIC/HEIF is refused with a message rather than converted.
 
 ## Sanitizing submitted HTML
 

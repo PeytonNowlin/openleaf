@@ -380,4 +380,64 @@ test.describe('image upload', () => {
 
     expect(await stored(page)).toContain('src="/uploads/dropped.png"')
   })
+
+  test('refuses a dropped HEIC and announces why', async ({ page }) => {
+    await caretIn(page, 'Plain paragraph')
+
+    const handle = await page.evaluateHandle(() => {
+      const transfer = new DataTransfer()
+      transfer.items.add(
+        new File([new Uint8Array([1, 2, 3])], 'IMG_1234.HEIC', { type: 'image/heic' }),
+      )
+      return transfer
+    })
+
+    const box = await editor(page).boundingBox()
+    await editor(page).dispatchEvent('drop', {
+      dataTransfer: handle,
+      clientX: Math.round((box?.x ?? 0) + 20),
+      clientY: Math.round((box?.y ?? 0) + 20),
+    })
+
+    await expect(page.locator('.ol-live-region')).toContainText(
+      'HEIC images are not supported. Use JPEG, PNG, or WebP.',
+    )
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    const received = await page.evaluate(() => (window as unknown as { uploaded: unknown[] }).uploaded)
+    expect(received).toEqual([])
+  })
+
+  test('uploads a PNG dropped with a HEIC, and still announces the refusal', async ({ page }) => {
+    await caretIn(page, 'Plain paragraph')
+
+    const handle = await page.evaluateHandle(async () => {
+      const transfer = new DataTransfer()
+      const response = await fetch(
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      )
+      transfer.items.add(new File([await response.blob()], 'kept.png', { type: 'image/png' }))
+      transfer.items.add(
+        new File([new Uint8Array([1, 2, 3])], 'IMG_1234.HEIC', { type: 'image/heic' }),
+      )
+      return transfer
+    })
+
+    const box = await editor(page).boundingBox()
+    await editor(page).dispatchEvent('drop', {
+      dataTransfer: handle,
+      clientX: Math.round((box?.x ?? 0) + 20),
+      clientY: Math.round((box?.y ?? 0) + 20),
+    })
+
+    await expect(page.locator('.ol-live-region')).toContainText(
+      'HEIC images are not supported. Use JPEG, PNG, or WebP.',
+    )
+    const dialog = page.getByRole('dialog', { name: 'Describe this image' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('kept.png')
+    await dialog.getByLabel('Alternative text').fill('Kept')
+    await dialog.getByRole('button', { name: 'Save' }).click()
+
+    expect(await stored(page)).toContain('src="/uploads/kept.png"')
+  })
 })

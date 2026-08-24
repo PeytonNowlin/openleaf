@@ -9,10 +9,12 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  IMAGE_ACCEPT,
   canUploadImages,
   dimension,
   imageFilesFrom,
   imageUploaderFor,
+  isHeicImage,
   isUploadableImage,
   isUploadableImageType,
   registerImageUploader,
@@ -69,6 +71,37 @@ describe('which files are claimed', () => {
     expect(isUploadableImage(file('a.docx', 'application/vnd.openxmlformats'))).toBe(false)
   })
 
+  it('falls back to a filename when the type is empty', () => {
+    // iOS and some file managers hand over type === "" with a name like
+    // IMG_1234.PNG. Looking at type alone used to drop those on the floor, and
+    // the browser then navigated to the file.
+    expect(file('IMG_1234.PNG', '').type).toBe('')
+    expect(isUploadableImage(file('IMG_1234.PNG', ''))).toBe(true)
+    expect(isUploadableImage(file('photo.jpg', ''))).toBe(true)
+    expect(isUploadableImage(file('scan.jfif', ''))).toBe(true)
+    expect(isUploadableImage(file('shot.webp', ''))).toBe(true)
+    // An extension is not a decoder. SVG stays refused even with no type, and
+    // HEIC is refused rather than converted: OpenLeaf has no decoder and no
+    // server.
+    expect(isUploadableImage(file('icon.svg', ''))).toBe(false)
+    expect(isUploadableImage(file('IMG_1234.HEIC', ''))).toBe(false)
+    expect(isUploadableImage(file('notes.txt', ''))).toBe(false)
+  })
+
+  it('refuses HEIC and HEIF even when the type says they are images', () => {
+    // image/heic is image/*, so the old type-only check passed these through
+    // to the uploader. IMAGE_ACCEPT never offered HEIC in the picker, so the
+    // two paths disagreed, and a CMS that only stores jpeg/png then failed
+    // after the author had already described the file.
+    expect(isUploadableImage(file('IMG_1234.HEIC', 'image/heic'))).toBe(false)
+    expect(isUploadableImage(file('IMG_1234.HEIF', 'image/heif'))).toBe(false)
+    expect(isUploadableImage(file('burst.heic', 'image/heic-sequence'))).toBe(false)
+    expect(isHeicImage(file('IMG_1234.HEIC', 'image/heic'))).toBe(true)
+    expect(isHeicImage(file('IMG_1234.HEIF', 'image/heif'))).toBe(true)
+    expect(isHeicImage(file('IMG_1234.HEIC', ''))).toBe(true)
+    expect(isHeicImage(file('photo.png', 'image/png'))).toBe(false)
+  })
+
   it('gives the same answer for a media type with no file attached', () => {
     // The .docx importer asks this about images inside the ZIP, where there is
     // no File at all and the content type comes from whoever sent the document.
@@ -79,6 +112,17 @@ describe('which files are claimed', () => {
     expect(isUploadableImageType('image/svg+xml; charset=utf-8')).toBe(false)
     expect(isUploadableImageType('')).toBe(false)
     expect(isUploadableImageType(null)).toBe(false)
+    // Type-only: a missing filename cannot promote HEIC, and an empty type
+    // still cannot match. HEIC is refused here too so a .docx image with that
+    // content type is dropped the same way a dropped file is.
+    expect(isUploadableImageType('image/heic')).toBe(false)
+    expect(isUploadableImageType('image/heif')).toBe(false)
+  })
+
+  it('offers JPEG in the picker, including the .jfif spelling', () => {
+    expect(IMAGE_ACCEPT).toContain('image/jpeg')
+    expect(IMAGE_ACCEPT).toContain('.jfif')
+    expect(IMAGE_ACCEPT).not.toMatch(/heic/i)
   })
 
   it('picks the images out of a mixed drop, in order', () => {
@@ -90,10 +134,12 @@ describe('which files are claimed', () => {
         file('a.docx', 'application/msword'),
         file('b.png', 'image/png'),
         file('c.gif', 'image/gif'),
+        file('d.heic', 'image/heic'),
+        file('IMG_1234.PNG', ''),
       ],
     } as unknown as DataTransfer
 
-    expect(imageFilesFrom(transfer).map((f) => f.name)).toEqual(['b.png', 'c.gif'])
+    expect(imageFilesFrom(transfer).map((f) => f.name)).toEqual(['b.png', 'c.gif', 'IMG_1234.PNG'])
     expect(imageFilesFrom(null)).toEqual([])
   })
 })

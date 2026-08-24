@@ -14,6 +14,7 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Dropped or pasted image files with an empty MIME type, or a `.jfif` name, now reach the uploader.** `isUploadableImage` used to look only at `file.type`, so iOS and some file managers handing over `type === ""` with a name like `IMG_1234.PNG` never opened the dialog, and the drop fell through to the browser. `.jfif` is treated as JPEG. **HEIC/HEIF is refused with a live-region message**, not converted and not passed through: OpenLeaf has no decoder and no server. A mixed PNG + HEIC drop still uploads the PNG. `#170`
 - **Enter on an empty list item that still holds extra blocks now leaves the
   list.** Stock `splitListItem` only lifted when the empty paragraph was the
   last child, so a callout or nested list after it stuck the author in the

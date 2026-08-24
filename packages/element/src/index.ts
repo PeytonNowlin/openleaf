@@ -90,6 +90,7 @@ import {
   imageFilesFrom,
   announce,
   imageUploaderFor,
+  isHeicImage,
   disposeLiveRegion,
   liveRegion,
   loadContentCss,
@@ -1233,6 +1234,12 @@ export class OpenLeafEditor extends HTMLElementBase {
    * intercepted and then silently does nothing is worse than one that falls
    * through to the browser.
    *
+   * HEIC is the exception that still has to be claimed. It is not uploadable
+   * (OpenLeaf has no decoder and will not convert), but it is image-like: if we
+   * return false the drop falls through and the browser may navigate to the
+   * file. Claim it, say so, and if the same transfer also has a PNG, upload
+   * that.
+   *
    * `stopPropagation` is not tidiness. The import bundle listens for file drops
    * at the DOCUMENT level and claims any drop over an editor, so without it a
    * dropped PNG would be handled here AND handed to the import converters, which
@@ -1250,10 +1257,20 @@ export class OpenLeafEditor extends HTMLElementBase {
     if (view.dragging) return false
     if (!canUploadImages(this)) return false
     const files = imageFilesFrom(transfer)
-    if (files.length === 0) return false
+    const refusedHeic = [...(transfer?.files ?? [])].some(isHeicImage)
+    if (files.length === 0 && !refusedHeic) return false
 
     event.preventDefault()
     event.stopPropagation()
+
+    if (refusedHeic) {
+      announce(
+        this,
+        this.#localised('HEIC images are not supported. Use JPEG, PNG, or WebP.'),
+      )
+    }
+
+    if (files.length === 0) return true
 
     // Insert where the author dropped, not where the caret happens to be. The
     // position is resolved now, while the coordinates are still meaningful: the

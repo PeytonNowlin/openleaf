@@ -89,20 +89,58 @@ export function canUploadImages(host: HTMLElement | null | undefined): boolean {
 }
 
 /** What the file picker offers. Advisory: a picker's accept list is not a check. */
-export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/avif'
+export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/avif,.jfif'
+
+/**
+ * Bitmap names we will trust when the browser left `file.type` empty.
+ *
+ * `.jfif` is JPEG. SVG is deliberately absent: an extension is not a decoder.
+ * HEIC is absent because it is refused, not converted -- OpenLeaf has no
+ * decoder and no server.
+ */
+const IMAGE_NAME = /\.(png|jpe?g|jfif|gif|webp|avif)$/i
+
+const HEIC_TYPE = /^image\/hei[cf](?:-sequence)?$/
+const HEIC_NAME = /\.hei[cf]$/i
+
+function mediaType(type: string | null | undefined): string {
+  return (type ?? '').split(';')[0]!.trim().toLowerCase()
+}
+
+/**
+ * HEIC/HEIF, including the live-photo sequence types, or an empty type with
+ * a `.heic` / `.heif` name.
+ *
+ * Refused rather than converted or passed through. `image/heic` is `image/*`,
+ * so a type-only check used to send it to the uploader even though the picker
+ * never offered it.
+ */
+export function isHeicImage(file: File): boolean {
+  const media = mediaType(file.type)
+  if (HEIC_TYPE.test(media)) return true
+  if (media) return false
+  return HEIC_NAME.test(file.name)
+}
 
 /**
  * Is this a file the image flow will accept?
  *
- * Any `image/*` except SVG, which is deliberately excluded. An SVG is a document,
- * not a bitmap: it can carry `<script>` and event handlers, and while those do
- * not execute in an `<img>`, the same file opened directly -- or embedded with
- * `<object>` by some other part of the CMS -- is a stored XSS. Deciding an SVG is
- * safe requires sanitizing its interior, which is a job for the server that
- * accepts the upload, not for a drop handler.
+ * Any `image/*` except SVG and HEIC. An SVG is a document, not a bitmap: it can
+ * carry `<script>` and event handlers, and while those do not execute in an
+ * `<img>`, the same file opened directly -- or embedded with `<object>` by some
+ * other part of the CMS -- is a stored XSS. Deciding an SVG is safe requires
+ * sanitizing its interior, which is a job for the server that accepts the
+ * upload, not for a drop handler.
+ *
+ * HEIC is refused because this editor has no decoder and no server; converting
+ * it would be a lie about what the host can store. When `type` is empty -- iOS
+ * and some file managers -- the filename is the fallback, still never for SVG.
  */
 export function isUploadableImage(file: File): boolean {
-  return isUploadableImageType(file.type)
+  if (isHeicImage(file)) return false
+  if (isUploadableImageType(file.type)) return true
+  if (file.type) return false
+  return IMAGE_NAME.test(file.name)
 }
 
 /**
@@ -113,10 +151,12 @@ export function isUploadableImage(file: File): boolean {
  * and that content type comes from the document, which is to say from whoever
  * sent it. The import path has to make the same decision about it that the drop
  * handler makes about a dropped file, and two copies of "except SVG" is how one
- * of them ends up missing.
+ * of them ends up missing. Filename fallback does not apply here: there is no
+ * name. Empty and null still return false.
  */
 export function isUploadableImageType(type: string | null | undefined): boolean {
-  const media = (type ?? '').split(';')[0]!.trim().toLowerCase()
+  const media = mediaType(type)
+  if (HEIC_TYPE.test(media)) return false
   return media.startsWith('image/') && media !== 'image/svg+xml'
 }
 
