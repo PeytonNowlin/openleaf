@@ -43,6 +43,27 @@ function htmlAfterAutolinkSpace(html: string): string {
   return serializeHtml(view.state.doc)
 }
 
+/**
+ * The `appendTransaction` path, which is the one a typed space actually takes.
+ * `handleTextInput` is belt to this braces: the space arrives as a transaction
+ * whichever way it was produced, so this is where a composing IME's own
+ * `readDOMChange` transactions land too. Installing the view the way PM does
+ * is what lets that path see `composing` at all.
+ */
+function htmlAfterSpaceTransaction(html: string, composing: boolean): string {
+  const schema = coreSchema()
+  const plugin = autolinkPlugin()
+  let state = EditorState.create({
+    doc: parseHtml(html, { schema }),
+    plugins: [plugin],
+  })
+  const end = state.doc.content.size - 1
+  state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, end)))
+  plugin.spec.view?.({ composing, isDestroyed: false } as unknown as EditorView)
+  state = state.apply(state.tr.insertText(' ', state.selection.from))
+  return serializeHtml(state.doc)
+}
+
 function fireCompositionEnd(plugin: ReturnType<typeof autolinkPlugin>, view: EditorView) {
   const handle = plugin.props.handleDOMEvents?.compositionend
   return handle?.call(plugin, view, new CompositionEvent('compositionend'))
@@ -124,5 +145,17 @@ describe('autolinkPlugin', () => {
     fireCompositionEnd(editor.plugin, editor.view)
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(editor.html).not.toContain('<a href="https://example.org">')
+  })
+
+  it('autolinks on the space transaction, not only on handleTextInput', () => {
+    expect(htmlAfterSpaceTransaction('<p>See https://example.org</p>', false)).toContain(
+      '<a href="https://example.org">',
+    )
+  })
+
+  it('leaves the space transaction alone while a composition is open', () => {
+    expect(htmlAfterSpaceTransaction('<p>See https://example.org</p>', true)).not.toContain(
+      '<a href="https://example.org">',
+    )
   })
 })

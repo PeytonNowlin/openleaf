@@ -11,6 +11,7 @@
  */
 
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state'
+import type { EditorView } from 'prosemirror-view'
 import { isSafeUrl } from './url.js'
 
 const key = new PluginKey('openleaf-autolink')
@@ -101,9 +102,31 @@ function maybeAutolink(view: { state: EditorState; dispatch: (tr: Transaction) =
 }
 
 export function autolinkPlugin(): Plugin {
+  // `appendTransaction` is handed states, not the view, and the composing
+  // guard is a property of the view. The `view` prop is the supported way to
+  // reach one: PM calls it once per editor this plugin is installed in, and
+  // `autolinkPlugin()` mints a fresh plugin per editor, so this holds the view
+  // that owns the transactions `appendTransaction` sees.
+  let host: EditorView | null = null
+
   return new Plugin({
     key,
+    view(editorView) {
+      host = editorView
+      return {
+        destroy() {
+          host = null
+        },
+      }
+    },
     appendTransaction(transactions, _oldState, newState) {
+      // The same guard the three props carry, and the one this path was
+      // missing: a composing IME reaches here through `readDOMChange`, which
+      // dispatches a doc-changing transaction per composition update. A
+      // composition buffer that happens to hold a space after a URL would
+      // otherwise get an `addMark` under the open IME -- the exact rewrite the
+      // header comment says never happens.
+      if (host?.composing) return null
       if (!transactions.some((tr) => tr.docChanged)) return null
       if (transactions.some((tr) => tr.getMeta(key))) return null
       const $from = newState.selection.$from

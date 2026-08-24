@@ -53,7 +53,12 @@ entries below say so explicitly when they do.
   after a physical Space or Enter. CJK and mobile keyboards that accept a
   candidate without inserting ASCII whitespace used to leave `https://…` as
   plain text. The mark is applied on `compositionend` after ProseMirror
-  flushes, and never while `view.composing` is still true. `#165`
+  flushes, and never while `view.composing` is still true -- including the
+  space path, which reaches the plugin as a transaction rather than through
+  `handleTextInput` and so was not covered by that guard. A composing IME
+  dispatches a transaction per composition update via `readDOMChange`, so a
+  buffer holding a space after a URL could take an `addMark` under the open
+  IME. `#165`
 - **Find, Replace All, and the word count skip `contenteditable="false"`
   regions.** Hits inside a lock were indexed and counted, so Replace All of a
   word that also appeared in body copy wrote those ranges into one transaction
