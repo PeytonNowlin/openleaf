@@ -67,6 +67,39 @@ test.describe('the toolbar overflow panel', () => {
     expect(inside).toBe(true)
   })
 
+  /*
+   * A layout pass used to steal focus. `layout` moves the real controls between
+   * the bar and the panel, and re-inserting a connected node drops focus to the
+   * body in every engine -- so a ResizeObserver firing between focusing More
+   * and pressing Enter sent the Enter to the document. It reached CI as a
+   * WebKit-only flake on this suite's own `opens with the keyboard` test, but
+   * the cause is engine-independent and a real resize hits a real user.
+   */
+  test('keeps focus on More when the bar lays out underneath it', async ({ page }) => {
+    await more(page).focus()
+    expect(await focusedName(page)).toBe('More')
+
+    // Force a real ResizeObserver pass, then let its coalescing frame run. The
+    // harness wraps this editor in a 150px box; 120px keeps the bar overflowing,
+    // so More is still a control focus can legitimately be on. Widening it
+    // instead would make the bar fit and retire the trigger, which is a
+    // different (and correct) behaviour.
+    await host(page).evaluate((el) => {
+      ;(el.parentElement as HTMLElement).style.width = '120px'
+    })
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    )
+    await expect(more(page)).toBeVisible()
+
+    expect(await focusedName(page)).toBe('More')
+
+    // And it is still the live trigger, not a stranded node.
+    await page.keyboard.press('Enter')
+    await expect(panel(page)).toBeVisible()
+    await expect(more(page)).toHaveAttribute('aria-expanded', 'true')
+  })
+
   test('moves between its controls on the arrow keys', async ({ page }) => {
     await more(page).click()
     const first = await focusedName(page)
