@@ -22,7 +22,7 @@ export const INSERT_CSS = `
  * emoji panel floating in the middle of the page on load, following the scroll.
  *
  * The attribute selector on the second rule matters: on a browser without
- * popover support the grid carries no such attribute and lives in the toolbar,
+ * popover support the grid carries no such attribute and lives on the host,
  * where a bare :not(:popover-open) would match forever and hide it for good.
  */
 .ol-insert-grid[hidden] { display: none; }

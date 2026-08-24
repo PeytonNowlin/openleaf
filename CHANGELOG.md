@@ -14,6 +14,13 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **The character map and emoji grid now mount on the editor host, not
+  `document.body`.** A body-mounted popover left the shadow tree of any CMS
+  that nests `<openleaf-editor>` in a web component, so `document.activeElement`
+  was the host and a 0ms `focusout` timeout closed the panel the moment it
+  opened -- and IME composition never saw `compositionend`. The colour picker
+  already appended to the host for this reason; the glyph pickers follow it,
+  and `focusout` now trusts `relatedTarget` rather than `activeElement`. `#173`
 - **Autolink now commits a typed URL when an IME composition ends**, not only
   after a physical Space or Enter. CJK and mobile keyboards that accept a
   candidate without inserting ASCII whitespace used to leave `https://…` as

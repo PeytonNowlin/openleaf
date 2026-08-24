@@ -1,11 +1,14 @@
 /**
- * The glyph picker's construction: ARIA shape and keyboard model.
+ * The glyph picker's construction: ARIA shape, keyboard model, and where
+ * the panel is mounted.
  *
  * Focus movement against a real layout is asserted in
  * packages/element/test/e2e/insert.spec.ts -- jsdom has no layout, so a
  * popover's position is not something it can tell you about. What is worth
- * checking here is the wiring: a grid with rows, a roving tabindex, and
- * arrows that move by one and by a row.
+ * checking here is the wiring: a grid with rows, a roving tabindex, arrows
+ * that move by one and by a row, and a panel that lives on the editor host
+ * rather than document.body (the colour picker's mount, which keeps focus
+ * and IME inside a shadow-root editor).
  */
 
 import { coreSchema, parseHtml, serializeHtml } from '@openleaf-editor/core'
@@ -17,11 +20,11 @@ import { buildGlyphPicker } from '../src/grid.js'
 
 let lastControl: { destroy?: () => void } | undefined
 
-function picker(items = CHARACTERS, label = 'Character map') {
+function picker(items = CHARACTERS, label = 'Character map', parent: ParentNode = document.body) {
   let state = EditorState.create({ doc: parseHtml('<p>hello</p>', { schema: coreSchema() }) })
 
   const host = document.createElement('div')
-  document.body.appendChild(host)
+  parent.appendChild(host)
 
   const view = {
     get state() {
@@ -52,10 +55,9 @@ function trigger(host: HTMLElement): HTMLButtonElement {
 }
 
 function grid(host: HTMLElement): HTMLElement {
-  // On engines with popover, the panel is appended to document.body so the
-  // toolbar's roving tabindex cannot find its buttons.
-  return (host.querySelector('[role="grid"]') ??
-    host.ownerDocument.querySelector('.ol-insert-grid[role="grid"]')) as HTMLElement
+  // On the host, not document.body -- same mount as the colour picker. A
+  // body-mounted popover left the editor's shadow tree.
+  return host.querySelector('[role="grid"]') as HTMLElement
 }
 
 function cells(host: HTMLElement): HTMLButtonElement[] {
@@ -168,5 +170,70 @@ describe('the control', () => {
     host.setAttribute('readonly', '')
     trigger(host).click()
     expect(trigger(host).getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('opens as a descendant of the editor host, not of document.body', () => {
+    // Colour swatches already mount on the host so they stay in the editor's
+    // tree. The character map used document.body, which is the wrong root in
+    // any CMS that puts <openleaf-editor> in a shadow tree, and the wrong
+    // palette: skin tokens are scoped to .ol-editor.
+    const { host } = picker()
+    trigger(host).click()
+    const panel = grid(host)
+    expect(host.contains(panel)).toBe(true)
+    expect(panel.parentElement).toBe(host)
+    if (host !== document.body) expect(panel.parentElement).not.toBe(document.body)
+  })
+
+  it('opens inside a shadow-root host rather than leaking onto document.body', () => {
+    const shell = document.createElement('div')
+    document.body.appendChild(shell)
+    const { host } = picker(CHARACTERS, 'Character map', shell.attachShadow({ mode: 'open' }))
+    trigger(host).click()
+    const panel = host.querySelector('.ol-insert-grid')
+    expect(panel).not.toBeNull()
+    expect(panel?.parentElement).toBe(host)
+    expect(document.body.querySelector(':scope > .ol-insert-grid')).toBeNull()
+  })
+
+  it('stays open when focusout relatedTarget is a glyph in the grid', async () => {
+    // In a shadow tree document.activeElement is the host, not the focused
+    // glyph, so the 0ms timeout that trusted activeElement closed the panel
+    // the moment focus moved between cells. relatedTarget is the node that
+    // actually received focus.
+    const shell = document.createElement('div')
+    document.body.appendChild(shell)
+    const { host } = picker(CHARACTERS, 'Character map', shell.attachShadow({ mode: 'open' }))
+    trigger(host).click()
+    const panel = grid(host)
+    const [first, second] = cells(host)
+    expect(first).toBeTruthy()
+    expect(second).toBeTruthy()
+    first!.dispatchEvent(
+      new FocusEvent('focusout', { bubbles: true, relatedTarget: second ?? null }),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(trigger(host).getAttribute('aria-expanded')).toBe('true')
+    expect(panel.isConnected).toBe(true)
+  })
+
+  it('closes when focusout relatedTarget is outside the grid', async () => {
+    const { host } = picker()
+    trigger(host).click()
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    grid(host).dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: outside }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(trigger(host).getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('takes the grid with it when destroyed', () => {
+    const { host, control } = picker()
+    trigger(host).click()
+    expect(grid(host).isConnected).toBe(true)
+    control.destroy?.()
+    lastControl = undefined
+    expect(host.querySelector('.ol-insert-grid')).toBeNull()
+    expect(document.querySelector('.ol-insert-grid')).toBeNull()
   })
 })
