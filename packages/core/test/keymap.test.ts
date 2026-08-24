@@ -7,6 +7,19 @@ function stateFrom(html: string, pos = 3): EditorState {
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)))
 }
 
+/** Caret inside the first empty textblock in `html`. */
+function stateInEmptyTextblock(html: string): EditorState {
+  const doc = parseHtml(html)
+  let pos = -1
+  doc.descendants((node, nodePos) => {
+    if (pos >= 0) return false
+    if (node.isTextblock && node.content.size === 0) pos = nodePos + 1
+    return pos < 0
+  })
+  if (pos < 0) throw new Error(`no empty textblock in ${html}`)
+  return stateFrom(html, pos)
+}
+
 /** Fire a binding by key string and return the resulting HTML. */
 function press(state: EditorState, keys: string): string | null {
   const command = buildKeymap()[keys]
@@ -68,6 +81,10 @@ describe('bindings actually work', () => {
     expect(press(stateFrom('<p>item</p>'), 'Mod-Shift-8')).toBe('<ul><li>item</li></ul>')
   })
 
+  it('Mod-Shift-8 unwraps a bulleted list', () => {
+    expect(press(stateFrom('<ul><li><p>item</p></li></ul>'), 'Mod-Shift-8')).toBe('<p>item</p>')
+  })
+
   it('Mod-Shift-7 makes a numbered list', () => {
     expect(press(stateFrom('<p>item</p>'), 'Mod-Shift-7')).toBe('<ol><li>item</li></ol>')
   })
@@ -89,6 +106,61 @@ describe('bindings actually work', () => {
     // correct behaviour but not what this test is about.
     const out = press(stateFrom('<ul><li><p>one</p></li></ul>', 6), 'Enter')
     expect(out).toBe('<ul><li>one</li><li></li></ul>')
+  })
+
+  it('Enter in a mixed list item puts following blocks on the new item', () => {
+    // `list_item` is `paragraph block*`. Stock splitListItem already splits at
+    // depth 2, so the callout travels with the new item -- Word and Google Docs.
+    // Position 6 is the end of "one", same as the simple-item test above.
+    const mixed = '<ul><li><p>one</p><div class="callout">note</div></li></ul>'
+    expect(press(stateFrom(mixed, 6), 'Enter')).toBe(
+      '<ul><li>one</li><li><p></p><div class="callout">note</div></li></ul>',
+    )
+  })
+
+  it('Enter mid-paragraph in a mixed list item keeps the prefix on the old item', () => {
+    const mixed = '<ul><li><p>one</p><div class="callout">note</div></li></ul>'
+    expect(press(stateFrom(mixed, 4), 'Enter')).toBe(
+      '<ul><li>o</li><li><p>ne</p><div class="callout">note</div></li></ul>',
+    )
+  })
+
+  it('Enter in a mixed list item carries a nested list with the new item', () => {
+    const nested = '<ul><li><p>one</p><ul><li>nested</li></ul></li></ul>'
+    expect(press(stateFrom(nested, 6), 'Enter')).toBe(
+      '<ul><li>one</li><li><p></p><ul><li>nested</li></ul></li></ul>',
+    )
+  })
+
+  it('Enter on an empty mixed last item leaves the list and drops the empty paragraph', () => {
+    // Stock only lifts when the empty textblock is the last child, so extra
+    // `block*` skipped that branch and Enter created a sibling <li> instead of
+    // leaving. Following blocks become siblings of the list; the empty <p>
+    // is dropped so we do not store <p></p> next to a callout.
+    const mixed = '<ul><li><p></p><div class="callout">note</div></li></ul>'
+    expect(press(stateInEmptyTextblock(mixed), 'Enter')).toBe(
+      '<div class="callout">note</div>',
+    )
+  })
+
+  it('Enter on an empty mixed item after a sibling leaves the remaining list intact', () => {
+    const mixed = '<ul><li>one</li><li><p></p><div class="callout">note</div></li></ul>'
+    expect(press(stateInEmptyTextblock(mixed), 'Enter')).toBe(
+      '<ul><li>one</li></ul><div class="callout">note</div>',
+    )
+  })
+
+  it('Enter on an empty simple last item still leaves the list', () => {
+    expect(press(stateInEmptyTextblock('<ul><li>one</li><li></li></ul>'), 'Enter')).toBe(
+      '<ul><li>one</li></ul><p></p>',
+    )
+  })
+
+  it('Enter on a nested empty last inner item still outdents one level', () => {
+    const nested = '<ul><li><p>outer</p><ul><li><p></p></li></ul></li></ul>'
+    expect(press(stateInEmptyTextblock(nested), 'Enter')).toBe(
+      '<ul><li>outer</li><li></li></ul>',
+    )
   })
 
   it('Enter still splits an ordinary paragraph', () => {

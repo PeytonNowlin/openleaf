@@ -14,6 +14,13 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Enter on an empty list item that still holds extra blocks now leaves the
+  list.** Stock `splitListItem` only lifted when the empty paragraph was the
+  last child, so a callout or nested list after it stuck the author in the
+  item -- Enter created another `<li>` instead of promoting those children to
+  siblings of the list. The empty paragraph is dropped so a save does not
+  store `<p></p>` next to a callout. Non-empty Enter is unchanged: following
+  blocks still travel with the new item. `#178`
 - **Dragging a captioned image moves the whole figure, not just the `<img>`.** A
   bare image already moved; dragging the photo inside a `<figure>` ripped it
   out of the caption and left an illegal `<figure><figcaption>` behind. The
