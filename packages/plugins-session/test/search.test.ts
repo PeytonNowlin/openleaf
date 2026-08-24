@@ -1,8 +1,8 @@
-import { coreSchema, parseHtml, serializeHtml } from '@openleaf-editor/core'
+import { coreSchema, isNonEditableNode, nonEditablePlugin, parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { EditorState, TextSelection } from 'prosemirror-state'
 import type { Decoration, DecorationSet } from 'prosemirror-view'
 import { describe, expect, it } from 'vitest'
-import { countWords, documentStats } from '../src/count.js'
+import { countWords, documentStats, documentText } from '../src/count.js'
 import {
   findMatches,
   findNext,
@@ -21,6 +21,13 @@ function stateFrom(html: string) {
   })
 }
 
+function stateFromLocked(html: string) {
+  return EditorState.create({
+    doc: parseHtml(html, { schema: coreSchema() }),
+    plugins: [searchPlugin(), nonEditablePlugin()],
+  })
+}
+
 describe('countWords', () => {
   it('counts zero for empty or whitespace', () => {
     expect(countWords('')).toBe(0)
@@ -32,6 +39,10 @@ describe('countWords', () => {
   })
 })
 
+function between(doc: ReturnType<typeof parseHtml>): string {
+  return doc.textBetween(0, doc.content.size, ' ', ' ')
+}
+
 describe('documentStats', () => {
   it('counts words and paragraphs in a document', () => {
     const doc = parseHtml('<h2>Title</h2><p>One two three.</p>', { schema: coreSchema() })
@@ -39,6 +50,21 @@ describe('documentStats', () => {
     expect(stats.paragraphs).toBe(2)
     expect(stats.words).toBeGreaterThanOrEqual(4)
     expect(stats.characters).toBeGreaterThan(0)
+  })
+
+  // `textBetween` inserts the block separator before every textblock and block
+  // leaf after the first, including empty paragraphs. A walk that treats every
+  // `isBlock` the same drops those spaces and mis-reports `characters`.
+  it('matches textBetween for empty paragraphs', () => {
+    const doc = parseHtml('<p></p><p>hi</p>', { schema: coreSchema() })
+    expect(documentText(doc)).toBe(between(doc))
+    expect(documentStats(doc).characters).toBe(between(doc).length)
+  })
+
+  it('matches textBetween across a page break', () => {
+    const doc = parseHtml('<p>a</p><hr class="ol-pagebreak"><p>b</p>', { schema: coreSchema() })
+    expect(documentText(doc)).toBe(between(doc))
+    expect(documentStats(doc).characters).toBe(between(doc).length)
   })
 })
 
@@ -446,5 +472,103 @@ describe('match geometry', () => {
       state = state.apply(tr)
     })
     expect(searchKey.getState(state)?.index).toBe(1)
+  })
+})
+
+/**
+ * A claimed node carrying `contenteditable="false"` as residue. A preserved
+ * `<div>` or `<span>` is an unknown atom whose inner HTML is not `node.text`
+ * and which `isNonEditableNode` does not see (`SKIP_CARRY`), so these tests
+ * use modelled carriers: `blockquote` for a locked block, `figcaption` for a
+ * locked inline with children.
+ */
+const LOCKED =
+  '<p>alpha</p><blockquote contenteditable="false"><p>alpha secret</p></blockquote><p>alpha</p>'
+const LOCKED_INLINE =
+  '<figure><img src="x.png" alt="">hello<figcaption contenteditable="false">secret</figcaption>world</figure>'
+const LOCKED_SPANNING = '<p>hel</p><blockquote contenteditable="false"><p>X</p></blockquote><p>lo</p>'
+
+function lockedText(doc: ReturnType<typeof parseHtml>): string[] {
+  const locked: string[] = []
+  doc.descendants((node) => {
+    if (isNonEditableNode(node)) locked.push(node.textContent)
+    return true
+  })
+  return locked
+}
+
+describe('contenteditable=false regions', () => {
+  it('does not find matches inside a contenteditable=false region', () => {
+    const doc = parseHtml(LOCKED, { schema: coreSchema() })
+    expect(findMatches(doc, 'alpha')).toHaveLength(2)
+    expect(findMatches(doc, 'secret')).toEqual([])
+  })
+
+  it('does not find matches inside an inline contenteditable=false figcaption', () => {
+    const doc = parseHtml(LOCKED_INLINE, { schema: coreSchema() })
+    // The fixture is a modelled inline with children, not a preserved atom:
+    // `secret` lives in `node.text`, and `isNonEditableNode` is true.
+    expect(lockedText(doc)).toEqual(['secret'])
+    expect(findMatches(doc, 'secret')).toEqual([])
+    expect(findMatches(doc, 'hello')).toHaveLength(1)
+    expect(findMatches(doc, 'world')).toHaveLength(1)
+    // Skipping the caption must not concatenate the text either side of it.
+    expect(findMatches(doc, 'helloworld')).toEqual([])
+  })
+
+  it('does not match across a locked block', () => {
+    const doc = parseHtml(LOCKED_SPANNING, { schema: coreSchema() })
+    expect(findMatches(doc, 'hello')).toEqual([])
+    expect(findMatches(doc, 'helXlo')).toEqual([])
+    expect(findMatches(doc, 'hel')).toHaveLength(1)
+    expect(findMatches(doc, 'lo')).toHaveLength(1)
+  })
+
+  it('replace all skips locked text and still replaces unlocked matches', () => {
+    let state = stateFromLocked(LOCKED)
+    setSearch('alpha')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(searchKey.getState(state)?.matches).toHaveLength(2)
+    replaceAll('beta')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    const html = serializeHtml(state.doc)
+    expect(html).toContain('beta')
+    expect(html).toContain('alpha secret')
+    expect(html).toContain('contenteditable="false"')
+    expect(html.match(/beta/g)?.length).toBe(2)
+    expect(searchKey.getState(state)?.replaced).toBe(2)
+  })
+
+  it('replaces the current unlocked match and leaves the lock standing', () => {
+    let state = stateFromLocked(LOCKED)
+    setSearch('alpha')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(searchKey.getState(state)?.matches).toHaveLength(2)
+    replaceCurrent('beta')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    const html = serializeHtml(state.doc)
+    expect(html).toContain('beta')
+    expect(html).toContain('alpha secret')
+    expect(searchKey.getState(state)?.replaced).toBe(1)
+    expect(searchKey.getState(state)?.matches).toHaveLength(1)
+  })
+
+  it('word count excludes text inside a contenteditable=false region', () => {
+    const locked = parseHtml(LOCKED, { schema: coreSchema() })
+    const unlocked = parseHtml(LOCKED.replace(' contenteditable="false"', ''), { schema: coreSchema() })
+    const lockedStats = documentStats(locked)
+    const unlockedStats = documentStats(unlocked)
+    expect(documentText(locked)).not.toMatch(/secret/)
+    expect(lockedStats.words).toBeLessThan(unlockedStats.words)
+    expect(lockedStats.characters).toBeLessThan(unlockedStats.characters)
+    expect(lockedStats.paragraphs).toBeLessThan(unlockedStats.paragraphs)
+    expect(lockedStats.words).toBe(2)
+    expect(lockedStats.paragraphs).toBe(2)
+    expect(documentText(unlocked)).toBe(between(unlocked))
+    expect(unlockedStats.characters).toBe(between(unlocked).length)
   })
 })

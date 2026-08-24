@@ -6,7 +6,10 @@
  * "hello"). They do not span block boundaries: joining paragraphs would make
  * "end.start" match across a break the author cannot see as one string. Nor do
  * they span an inline leaf -- an image, a hard break -- because a match that
- * covered one would take it with it on Replace.
+ * covered one would take it with it on Replace. Locked interiors
+ * (`contenteditable="false"`) are omitted: they are not editable, and a hit
+ * inside one would make Replace All write a transaction that the lock filter
+ * then rejects wholesale, including the unlocked matches.
  *
  * Every offset in that concatenated text has to name a document position, so the
  * index carries a parallel `pos` table with one entry per UTF-16 code unit. That
@@ -14,6 +17,7 @@
  * built rather than with one `toLowerCase()` at the end: see `foldText`.
  */
 
+import { isNonEditableNode } from '@openleaf-editor/core'
 import type { Mark, Node as PMNode } from 'prosemirror-model'
 import { Plugin, PluginKey, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
@@ -181,6 +185,20 @@ function indexText(doc: PMNode, fold: boolean): TextIndex {
       parts.push('\n')
       pos.push(-1)
       lastWasSeparator = true
+    }
+
+    // Locked interiors are not searchable. Skipping them without a boundary
+    // would let a query run from the paragraph before into the one after, or
+    // through a locked span, and Replace All would then write those ranges
+    // into a transaction that `nonEditablePlugin` rejects wholesale.
+    if (isNonEditableNode(node)) {
+      if (node.isInline) {
+        parts.push(ATOM)
+        pos.push(-1)
+        emitted = true
+        lastWasSeparator = false
+      }
+      return false
     }
 
     const text = node.isText ? node.text : undefined

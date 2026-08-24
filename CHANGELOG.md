@@ -14,6 +14,11 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Find, Replace All, and the word count skip `contenteditable="false"`
+  regions.** Hits inside a lock were indexed and counted, so Replace All of a
+  word that also appeared in body copy wrote those ranges into one transaction
+  and `nonEditablePlugin` rejected the whole thing -- including the unlocked
+  matches. The search index and the count walk now omit locked subtrees. `#169`
 - **Dropping or pasting an image no longer inserts (or throws) after the
   editor has been torn down.** `#uploadImages` awaited the describe-and-upload
   dialog, then called `insertImage` and `view.focus()` on the `EditorView`

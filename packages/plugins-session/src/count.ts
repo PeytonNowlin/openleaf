@@ -7,6 +7,7 @@
  * documents already expect.
  */
 
+import { isNonEditableNode } from '@openleaf-editor/core'
 import { t, uiLocale, withLocale } from '@openleaf-editor/ui'
 import type { Node as PMNode } from 'prosemirror-model'
 
@@ -61,9 +62,35 @@ export function countWords(text: string): number {
   return trimmed.split(/\s+/).length
 }
 
-/** Plain text of a document, with block breaks as spaces so words do not join. */
+/**
+ * Plain text of a document, with block breaks as spaces so words do not join.
+ *
+ * Same loop as `Fragment.textBetween`: the separator is inserted only before a
+ * textblock or a block leaf, and an empty textblock still emits one. Locked
+ * (`contenteditable="false"`) subtrees contribute no child text; they still
+ * take part in that separator rule so unlocked words either side do not join.
+ */
 export function documentText(doc: PMNode): string {
-  return doc.textBetween(0, doc.content.size, ' ', ' ')
+  const blockSeparator = ' '
+  const leafText = ' '
+  let text = ''
+  let first = true
+  doc.nodesBetween(0, doc.content.size, (node) => {
+    const skip = isNonEditableNode(node)
+    const nodeText =
+      node.isText && !skip
+        ? (node.text ?? '')
+        : !node.isLeaf
+          ? ''
+          : leafText
+    if (node.isBlock && ((node.isLeaf && nodeText) || node.isTextblock) && blockSeparator) {
+      if (first) first = false
+      else text += blockSeparator
+    }
+    text += nodeText
+    return !skip
+  })
+  return text
 }
 
 /** Matches what `\s` matches, consulted only for the characters that need it. */
@@ -94,6 +121,7 @@ export function documentStats(doc: PMNode): DocumentStats {
   const text = documentText(doc)
   let paragraphs = 0
   doc.descendants((node) => {
+    if (isNonEditableNode(node)) return false
     if (node.type.name === 'paragraph' || node.type.name === 'heading') paragraphs += 1
     return true
   })
