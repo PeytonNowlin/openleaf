@@ -1252,7 +1252,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     // Insert where the author dropped, not where the caret happens to be. The
     // position is resolved now, while the coordinates are still meaningful: the
     // dialog that follows is modal and the pointer will have moved.
-    if (event instanceof DragEvent) {
+    if (typeof DragEvent !== 'undefined' && event instanceof DragEvent) {
       const at = view.posAtCoords({ left: event.clientX, top: event.clientY })
       if (at) {
         view.dispatch(
@@ -1286,6 +1286,16 @@ export class OpenLeafEditor extends HTMLElementBase {
         upload: (chosen) => runUploader(uploader, chosen, this),
         host: this,
       })
+      // The dialog is modal and slow. A route change, a live custom-element
+      // move, or a v-if unmount during it leaves a destroyed EditorView;
+      // insertImage / focus then throw (or write into a document the host no
+      // longer owns). Import already refuses this; the image path did not.
+      if (this.#view !== view || view.isDestroyed) {
+        console.warn(
+          `@openleaf-editor/element: ${file.name} was not inserted: the editor closed while it was uploading.`,
+        )
+        return
+      }
       // A cancelled description skips this file and moves to the next, rather
       // than abandoning the rest of a multi-file drop.
       if (!result) continue
@@ -1300,6 +1310,7 @@ export class OpenLeafEditor extends HTMLElementBase {
         ...(result.caption ? { caption: result.caption } : {}),
       })(view.state, view.dispatch, view)
     }
+    if (this.#view !== view || view.isDestroyed) return
     view.focus()
   }
 

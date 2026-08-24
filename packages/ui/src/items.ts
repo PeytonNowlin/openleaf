@@ -454,6 +454,7 @@ export function registerDefaultItems(): void {
       }
 
       void promptForImage(host.ownerDocument, options).then((result) => {
+        if (view.isDestroyed) return
         if (!result) {
           view.focus()
           return

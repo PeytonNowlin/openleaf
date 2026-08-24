@@ -14,6 +14,12 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Dropping or pasting an image no longer inserts (or throws) after the
+  editor has been torn down.** `#uploadImages` awaited the describe-and-upload
+  dialog, then called `insertImage` and `view.focus()` on the `EditorView`
+  captured at drop time. A navigation or custom-element unmount during the
+  dialog left a destroyed view; import already refused that, the image path
+  did not. `#171`
 - **A document that is only a page-break, video, or `<details>` can take a
   caret on either side, and typing no longer replaces the atom.** The editor
   never installed a gap cursor, so ArrowLeft on a selected page-break stayed a
