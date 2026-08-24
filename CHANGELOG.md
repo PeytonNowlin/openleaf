@@ -12,6 +12,16 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Typing over a selection that crosses into `<details>` no longer empties
+  the summary or lifts the body out of the element.** `handleTextInput` only
+  runs when ProseMirror already believes the selection is a range; on a subset
+  of Shift+ArrowDown runs the model caret was still collapsed, so Chromium
+  applied the keystroke to the DOM range and the isolating clamp never saw it.
+  The plugin now handles `beforeinput` from the live DOM selection and applies
+  the clamped edit itself. Undo restores the pre-keystroke document. `#163`
+
 ## 0.1.0-beta.3 - 2026-08-23
 
 ### Fixed

@@ -18,12 +18,20 @@
  * handlers also refuse to let a throwing replace run, so even a race with the
  * native selection cannot rewrite the document outside history.
  *
+ * `handleTextInput` is not enough on its own. When the model selection is still
+ * a collapsed caret, ProseMirror never calls it, and Chromium applies the
+ * keystroke to the *DOM* range — which can still straddle `details`. That path
+ * emptied `<summary>` and lifted the body out of `<details>` on a subset of
+ * Shift+ArrowDown runs (#163). `beforeinput` fires for every input type before
+ * any mutation, so it can read the DOM range (via `posAtDOM`; `state.selection`
+ * is untrustworthy in that tick) and apply the clamped edit itself.
+ *
  * `CellSelection` / `AllSelection` / `NodeSelection` are left alone. Select-all
  * is an `AllSelection` in the base keymap; a `TextSelection` that merely
  * contains a whole isolating node (both endpoints outside it) is not crossing.
  */
 
-import type { ResolvedPos } from 'prosemirror-model'
+import type { Node as PMNode, ResolvedPos } from 'prosemirror-model'
 import { Plugin, PluginKey, TextSelection, type Selection } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 
@@ -89,12 +97,90 @@ export function clampIsolatingTextSelection(selection: TextSelection): TextSelec
   return selection
 }
 
+/**
+ * Given a DOM-derived (anchor, head) pair — not necessarily `state.selection` —
+ * return the range a keystroke must replace so the edit stays on one side of an
+ * isolating boundary. `null` means the range does not cross and the default
+ * editor path should run.
+ */
+export function clampIsolatingReplaceRange(
+  doc: PMNode,
+  anchor: number,
+  head: number,
+): { from: number; to: number } | null {
+  const size = doc.content.size
+  const a = Math.max(0, Math.min(anchor, size))
+  const h = Math.max(0, Math.min(head, size))
+  if (a === h) return null
+  let oriented: TextSelection
+  try {
+    oriented = TextSelection.create(doc, a, h)
+  } catch {
+    return null
+  }
+  if (!textSelectionCrossesIsolating(oriented)) return null
+  const clamped = clampIsolatingTextSelection(oriented)
+  return {
+    from: Math.min(clamped.from, clamped.to),
+    to: Math.max(clamped.from, clamped.to),
+  }
+}
+
 function tryInsertText(view: EditorView, from: number, to: number, text: string): boolean {
   try {
     view.state.tr.insertText(text, from, to)
     return true
   } catch {
     return false
+  }
+}
+
+function textSelectionFromDOM(view: EditorView): TextSelection | null {
+  const sel = view.dom.ownerDocument.getSelection()
+  if (!sel || sel.rangeCount === 0 || !sel.anchorNode || !sel.focusNode) return null
+  if (!view.dom.contains(sel.anchorNode) || !view.dom.contains(sel.focusNode)) return null
+  try {
+    const anchor = view.posAtDOM(sel.anchorNode, sel.anchorOffset)
+    const head = view.posAtDOM(sel.focusNode, sel.focusOffset)
+    return TextSelection.create(view.state.doc, anchor, head)
+  } catch {
+    return null
+  }
+}
+
+function handleIsolatingBeforeInput(view: EditorView, event: Event): boolean {
+  if (!view.editable || !(event instanceof InputEvent)) return false
+  // insertCompositionText is not cancelable. preventDefault is a no-op, and
+  // event.data is the whole composition on every update — committing that as
+  // document text duplicates IME candidates on top of the UA mutation.
+  if (!event.cancelable) return false
+  const type = event.inputType
+  const inserting = type === 'insertText'
+  if (!inserting && type !== 'insertParagraph' && !type.startsWith('delete')) return false
+
+  const domSel = textSelectionFromDOM(view)
+  if (!domSel || domSel.empty) return false
+  const clamped = clampIsolatingReplaceRange(view.state.doc, domSel.anchor, domSel.head)
+  if (!clamped) return false
+
+  // Swallow the default. A crossing DOM range that reaches the browser becomes
+  // a parse-from-DOM repair, which is the #163 corruption.
+  event.preventDefault()
+  const { from, to } = clamped
+  try {
+    if (inserting) {
+      const text = event.data ?? ''
+      if (!tryInsertText(view, from, to, text)) return true
+      view.dispatch(view.state.tr.insertText(text, from, to).scrollIntoView())
+      return true
+    }
+    // delete* and insertParagraph: drop the clamped span so Chromium cannot
+    // parse-from-DOM across the isolating node. Desktop Enter is usually eaten
+    // by the keymap before beforeinput; Android virtual Enter is this path.
+    view.dispatch(view.state.tr.delete(from, to).scrollIntoView())
+    return true
+  } catch {
+    return true
   }
 }
 
@@ -124,23 +210,22 @@ export function isolatingSelectionPlugin(): Plugin {
         const size = doc.content.size
         const start = Math.max(0, Math.min(from, size))
         const end = Math.max(start, Math.min(to, size))
-        let replaceFrom = start
-        let replaceTo = end
-        if (start !== end) {
-          const probe = TextSelection.create(doc, start, end)
-          const oriented =
-            selection instanceof TextSelection && selection.anchor === end
-              ? new TextSelection(probe.$to, probe.$from)
-              : probe
-          const clamped = clampIsolatingTextSelection(oriented)
-          replaceFrom = Math.min(clamped.from, clamped.to)
-          replaceTo = Math.max(clamped.from, clamped.to)
-        }
+        const anchor =
+          selection instanceof TextSelection && selection.anchor === end ? end : start
+        const head = anchor === end ? start : end
+        const clamped = start === end ? null : clampIsolatingReplaceRange(doc, anchor, head)
+        const replaceFrom = clamped?.from ?? start
+        const replaceTo = clamped?.to ?? end
 
         if (!tryInsertText(view, replaceFrom, replaceTo, text)) return true
         if (replaceFrom === start && replaceTo === end) return false
         view.dispatch(view.state.tr.insertText(text, replaceFrom, replaceTo).scrollIntoView())
         return true
+      },
+      handleDOMEvents: {
+        beforeinput(view, event) {
+          return handleIsolatingBeforeInput(view, event)
+        },
       },
       handleKeyDown(view, event) {
         if (event.key !== 'Backspace' && event.key !== 'Delete' && event.key !== 'Enter') {

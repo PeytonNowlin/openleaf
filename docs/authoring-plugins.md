@@ -918,7 +918,7 @@ Every bundle carries a budget in `BUDGETS_KB` in `scripts/bundle-budgets.mjs`,
 and the gate fails on the first one over. Gzipped, measured against budget:
 
 ```
-openleaf.min.js            120.6 / 121
+openleaf.min.js            120.6 / 122
 openleaf-import-docx.min.js 124.5 / 140
 openleaf-tables.min.js       19.1 /  25
 openleaf-session.min.js       9.2 /  10
@@ -1174,7 +1174,10 @@ a selection contract. `TextSelection.between` will still build a range whose
 endpoints sit on opposite sides of that node, and Firefox and WebKit will
 report one from Shift+Arrow. Core installs `isolatingSelectionPlugin` in the
 element so that range is narrowed to the anchor's side before the next replace
-— the same clamp Chromium already does natively.
+— the same clamp Chromium already does natively. The plugin also listens for
+`beforeinput`: when the model selection is still a caret, ProseMirror skips
+`handleTextInput`, and the browser would otherwise mutate a DOM range that
+still straddles the isolating node (GitHub issue #163).
 
 If you add an isolating node, you do **not** need to reimplement that clamp.
 You do need the plugin if you embed ProseMirror yourself rather than using
