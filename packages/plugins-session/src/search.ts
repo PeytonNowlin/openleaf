@@ -102,9 +102,17 @@ interface TextIndex {
  * that is most of the language. Folding both forms to `σ` -- which is what
  * Unicode's own simple case folding does, `03C2; C; 03C3` -- settles it in one
  * code unit, so the position table is untouched.
+ *
+ * NBSP (U+00A0) folds to a plain space. Word, Docs, and Insert → NBSP store
+ * that character; a query typed with a normal space otherwise misses the
+ * phrase. Both sides of the search go through this, so the two spellings find
+ * each other. Other Unicode spaces are left alone -- they are a word-count
+ * problem, not a find one. The two characters occupy one UTF-16 unit each, so
+ * the position table is untouched.
  */
 function foldCodePoint(raw: string, units: number): string {
   if (raw === 'ς') return 'σ'
+  if (raw === '\u00a0') return ' '
   const lower = raw.toLowerCase()
   if (lower.length === units) return lower
   if (lower.length > units) return lower.slice(0, units)

@@ -102,6 +102,44 @@ describe('findMatches', () => {
   })
 })
 
+/**
+ * Word, Docs, and Insert → NBSP store U+00A0. The search index used to keep
+ * that character as itself, so a query typed with a normal space missed the
+ * phrase the author can see. Folding NBSP to U+0020 on both sides -- and only
+ * that character; other Unicode spaces are a different problem -- makes the
+ * two spellings find each other. Replace writes whatever was typed, so
+ * replacing an NBSP run with a normal-space query converts those NBSPs.
+ */
+describe('non-breaking space', () => {
+  it('finds a query typed with a space in a document that stores NBSP', () => {
+    const doc = parseHtml('<p>hello\u00a0world</p>', { schema: coreSchema() })
+    const matches = findMatches(doc, 'hello world')
+    expect(matches).toHaveLength(1)
+    expect(doc.textBetween(matches[0]!.from, matches[0]!.to)).toBe('hello\u00a0world')
+  })
+
+  it('finds a query containing a literal NBSP in a document with ordinary spaces', () => {
+    const doc = parseHtml('<p>hello world</p>', { schema: coreSchema() })
+    expect(findMatches(doc, 'hello\u00a0world')).toHaveLength(1)
+  })
+
+  it('still finds an ordinary-space query in an ordinary-space document', () => {
+    const doc = parseHtml('<p>hello world</p>', { schema: coreSchema() })
+    expect(findMatches(doc, 'hello world')).toHaveLength(1)
+  })
+
+  it('replaces an NBSP phrase with whatever was typed', () => {
+    let state = stateFrom('<p>hello\u00a0world</p>')
+    setSearch('hello world')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    replaceAll('hola mundo')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(serializeHtml(state.doc)).toBe('<p>hola mundo</p>')
+  })
+})
+
 describe('find and replace commands', () => {
   it('selects the next match', () => {
     let state = stateFrom('<p>one two one</p>')
