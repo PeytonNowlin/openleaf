@@ -150,7 +150,41 @@ export class ToolbarOverflow {
     this.#toolbar.classList.remove('ol-toolbar--overflow')
   }
 
+  /**
+   * Lay the bar out without stealing focus.
+   *
+   * `#reflow` moves real controls -- the trigger included -- between the bar and
+   * the panel, and `appendChild` of an already-connected node is a removal
+   * followed by an insertion. Every engine resets focus to the body when a
+   * focused element is moved that way (chromium, firefox and webkit alike; it is
+   * not a WebKit quirk, WebKit just loses the race more often on a loaded
+   * machine). A ResizeObserver fires whenever the bar changes size -- a font
+   * finishing, `--openleaf-button-size` changing density, a CMS sidebar
+   * animating open -- so a keyboard user standing on More could have the button
+   * pulled out from under them between focusing it and pressing Enter, and the
+   * Enter went to the document.
+   *
+   * So the layout records what it is about to move focus off, and puts it back.
+   */
   layout(): void {
+    const active = this.#doc.activeElement
+    const held =
+      active instanceof HTMLElement &&
+      (this.#toolbar.contains(active) || this.#panel.contains(active))
+        ? active
+        : null
+
+    this.#reflow()
+
+    if (!held || this.#doc.activeElement === held) return
+    // A control the reflow pushed into the panel cannot hold focus: the panel is
+    // hidden by now. The trigger is where the panel's own Escape sends focus, so
+    // it is the honest destination for a control that just went behind it.
+    const target = held.isConnected && !this.#panel.contains(held) ? held : this.#more
+    if (!target.hidden && target.isConnected) target.focus()
+  }
+
+  #reflow(): void {
     this.#restore()
     // Revealed BEFORE the reads, not after the compute. The trigger takes a
     // width and a gap in the row the moment it is shown, and it cannot be
@@ -328,8 +362,13 @@ export class ToolbarOverflow {
   #restore(): void {
     for (const group of [...this.#panel.children]) this.#toolbar.appendChild(group)
     // Overflow always takes a suffix of the groups, so appending in panel order
-    // puts them back where they were. The trigger stays last.
-    if (this.#more.isConnected) this.#toolbar.appendChild(this.#more)
+    // puts them back where they were. The trigger stays last -- but only if it
+    // is not already there. An unconditional `appendChild` re-inserts it on
+    // every pass, and a re-insertion is what drops focus, so the steady-state
+    // layout of a bar that fits now moves nothing at all.
+    if (this.#more.isConnected && this.#toolbar.lastElementChild !== this.#more) {
+      this.#toolbar.appendChild(this.#more)
+    }
   }
 
   #groups(): HTMLElement[] {

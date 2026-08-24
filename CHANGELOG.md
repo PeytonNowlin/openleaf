@@ -14,6 +14,15 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **The toolbar's More button keeps focus when the bar lays itself out.** Every
+  overflow layout re-appended the trigger, and re-inserting an already-connected
+  node drops focus to the document in every engine -- so a `ResizeObserver` pass
+  landing while a keyboard user stood on More (a font finishing, a density
+  change, a CMS sidebar animating open) sent their next Enter to the page
+  instead of opening the panel. A layout that changes nothing now moves nothing,
+  and one that does move controls puts focus back -- on the trigger, if the
+  control it was on went into the panel. This reached CI as a WebKit-only flake;
+  the cause was never WebKit-specific.
 - **Align left/centre/right now applies to a selected image or figure.** The
   toolbar only walked textblocks that declare `align`, so a clicked picture
   either did nothing (a figure has no such attribute) or centred its parent
