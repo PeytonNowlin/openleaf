@@ -110,7 +110,13 @@ export const BUDGETS_KB = {
   // the same bytes at 121.1 against a 121 ceiling that a local Node build
   // reported as 121.0 -- the Node 22 vs 26 gzip mismatch this file already
   // documents. The extra kilobyte is that headroom restored, not a new feature.
-  'openleaf.min.js': 122,
+  //
+  // Raised to 123 for the gap cursor (#164). A document that is only a block
+  // atom had no legal caret beside it, and typing replaced the atom.
+  // `prosemirror-gapcursor` is the plugin that schema shape exists for; the
+  // alternative is authors losing a video or a page-break because they pressed
+  // a key.
+  'openleaf.min.js': 123,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,

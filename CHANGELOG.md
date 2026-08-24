@@ -14,6 +14,12 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **A document that is only a page-break, video, or `<details>` can take a
+  caret on either side, and typing no longer replaces the atom.** The editor
+  never installed a gap cursor, so ArrowLeft on a selected page-break stayed a
+  node selection and the next keystroke deleted it. `gapCursorPlugin()` is now
+  installed next to the isolating-selection clamp. Tab is still unbound.
+  `#164`
 - **Typing over a selection that crosses into `<details>` no longer empties
   the summary or lifts the body out of the element.** `handleTextInput` only
   runs when ProseMirror already believes the selection is a range; on a subset

@@ -918,7 +918,7 @@ Every bundle carries a budget in `BUDGETS_KB` in `scripts/bundle-budgets.mjs`,
 and the gate fails on the first one over. Gzipped, measured against budget:
 
 ```
-openleaf.min.js            120.6 / 122
+openleaf.min.js            121.9 / 123
 openleaf-import-docx.min.js 124.5 / 140
 openleaf-tables.min.js       19.1 /  25
 openleaf-session.min.js       9.2 /  10
@@ -1185,6 +1185,11 @@ You do need the plugin if you embed ProseMirror yourself rather than using
 (which can contain `group: 'block'`) and ends inside your node will throw
 `TransformError` on the next keystroke, and the recovery is a DOM-derived
 document with no undo entry. See GitHub issue #130.
+
+A document that is *only* an isolating node or a block atom also has no
+textblock for the caret. Install `gapCursorPlugin()` next to the clamp so
+ArrowLeft lands beside the node instead of typing replacing it. Tab is still
+unbound. See GitHub issue #164.
 
 Mark a node isolating when joining across it is illegal (`details`, `figure`,
 table cells). Do not use it as a substitute for `group` restrictions.
