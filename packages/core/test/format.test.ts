@@ -22,7 +22,7 @@
  * that is only tested in jsdom is not worth much.
  */
 
-import { TextSelection, type Command, EditorState } from 'prosemirror-state'
+import { NodeSelection, TextSelection, type Command, EditorState } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import {
   activeBackgroundColor,
@@ -56,6 +56,18 @@ function selectAll(state: EditorState): EditorState {
 
 function cursorAt(state: EditorState, pos: number): EditorState {
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)))
+}
+
+/** A document holding one image, with that image selected. */
+function selectingImage(html: string): EditorState {
+  const state = stateFrom(html)
+  let pos: number | null = null
+  state.doc.descendants((node, at) => {
+    if (pos === null && node.type.name === 'image') pos = at
+    return pos === null
+  })
+  if (pos === null) throw new Error(`no image node in ${html}`)
+  return state.apply(state.tr.setSelection(NodeSelection.create(state.doc, pos)))
 }
 
 function run(state: EditorState, command: Command): EditorState | null {
@@ -260,6 +272,57 @@ describe('alignment commands', () => {
     // because a command's no-dispatch call is what drives enabled state.
     const state = cursorAt(stateFrom('<p style="text-align:center">hi</p>'), 2)
     expect(setTextAlign('center')(state)).toBe(true)
+  })
+
+  it('floats a selected image without aligning its parent paragraph', () => {
+    const state = selectingImage('<p><img src="/a.png" alt="x"></p>')
+    const out = html(run(state, setTextAlign('right')))
+    expect(out).toContain('ol-float-right')
+    expect(out).not.toMatch(/text-align:\s*right/)
+    expect(out).not.toMatch(/\balign="right"/)
+  })
+
+  it('centres a figure\'s image and leaves the caption intact', () => {
+    const state = selectingImage(
+      '<figure><img src="/a.png" alt="x"><figcaption>cap</figcaption></figure>',
+    )
+    const out = html(run(state, setTextAlign('center')))
+    expect(out).toContain('ol-align-center')
+    expect(out).toContain('<figure>')
+    expect(out).toContain('<figcaption>cap</figcaption>')
+  })
+
+  it('still aligns a paragraph that has no image', () => {
+    const state = cursorAt(stateFrom('<p>hi</p>'), 2)
+    expect(styleOf(html(run(state, setTextAlign('center')))).get('text-align')).toBe('center')
+  })
+
+  it('reports true for a selected image even without dispatch', () => {
+    expect(setTextAlign('right')(selectingImage('<p><img src="/a.png" alt="x"></p>'))).toBe(true)
+    expect(
+      setTextAlign('right')(
+        selectingImage('<figure><img src="/a.png" alt="x"><figcaption>cap</figcaption></figure>'),
+      ),
+    ).toBe(true)
+  })
+
+  it('reports a selected image\'s alignment and toggling it clears the class', () => {
+    const selected = selectingImage('<p><img src="/a.png" alt="x"></p>')
+    const right = run(selected, setTextAlign('right'))
+    expect(activeTextAlign(right!)).toBe('right')
+    expect(html(right)).toContain('ol-float-right')
+
+    const cleared = run(right!, toggleTextAlign('right'))
+    expect(activeTextAlign(cleared!)).toBeNull()
+    expect(html(cleared)).not.toContain('ol-float-right')
+    expect(html(cleared)).not.toMatch(/text-align:\s*right/)
+  })
+
+  it('aligns text and images together when the range covers both', () => {
+    const state = selectAll(stateFrom('<p>hello <img src="/a.png" alt="x"> there</p>'))
+    const out = html(run(state, setTextAlign('right')))
+    expect(styleOf(out).get('text-align')).toBe('right')
+    expect(out).toContain('ol-float-right')
   })
 })
 

@@ -14,6 +14,15 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Align left/centre/right now applies to a selected image or figure.** The
+  toolbar only walked textblocks that declare `align`, so a clicked picture
+  either did nothing (a figure has no such attribute) or centred its parent
+  paragraph instead of writing `image.attrs.align`. A NodeSelection on the
+  image or the figure wrapping it stores `left` / `right` / `center` on the
+  image -- the same values the dialog already wrote, serialized as
+  `ol-float-left` / `ol-float-right` / `ol-align-center`. Mixed text and
+  image ranges still align both; a click on the picture does not also
+  `text-align` the paragraph around it. `#183`
 - **Dropped or pasted image files with an empty MIME type, or a `.jfif` name, now reach the uploader.** `isUploadableImage` used to look only at `file.type`, so iOS and some file managers handing over `type === ""` with a name like `IMG_1234.PNG` never opened the dialog, and the drop fell through to the browser. `.jfif` is treated as JPEG. **HEIC/HEIF is refused with a live-region message**, not converted and not passed through: OpenLeaf has no decoder and no server. A mixed PNG + HEIC drop still uploads the PNG. `#170`
 - **Enter on an empty list item that still holds extra blocks now leaves the
   list.** Stock `splitListItem` only lifted when the empty paragraph was the
