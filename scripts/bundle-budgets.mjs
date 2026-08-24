@@ -115,7 +115,7 @@ export const BUDGETS_KB = {
   // atom had no legal caret beside it, and typing replaced the atom.
   // `prosemirror-gapcursor` is the plugin that schema shape exists for; the
   // alternative is authors losing a video or a page-break because they pressed
-  // a key.
+  // a key. Figure-unit drag (#185) sits inside that ceiling.
   'openleaf.min.js': 123,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,

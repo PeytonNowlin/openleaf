@@ -52,6 +52,7 @@ import {
   createRegisteredPlugins,
   insertImage,
   gapCursorPlugin,
+  figureDragPlugin,
   isolatingSelectionPlugin,
   nonEditablePlugin,
   tableCaptionPlugin,
@@ -470,6 +471,7 @@ export class OpenLeafEditor extends HTMLElementBase {
       nonEditablePlugin(),
       gapCursorPlugin(),
       isolatingSelectionPlugin(),
+      figureDragPlugin(),
       disclosurePlugin(),
     ]
     if (this.getAttribute('autolink') !== 'false') {
@@ -1242,6 +1244,10 @@ export class OpenLeafEditor extends HTMLElementBase {
     transfer: DataTransfer | null,
   ): boolean {
     if (this.hasAttribute('readonly')) return false
+    // An in-editor image drag often carries a native File. View-level
+    // handleDrop runs before plugins, so claiming it would open the uploader
+    // and never give figureDragPlugin the drop.
+    if (view.dragging) return false
     if (!canUploadImages(this)) return false
     const files = imageFilesFrom(transfer)
     if (files.length === 0) return false

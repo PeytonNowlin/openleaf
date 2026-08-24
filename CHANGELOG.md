@@ -14,6 +14,11 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Dragging a captioned image moves the whole figure, not just the `<img>`.** A
+  bare image already moved; dragging the photo inside a `<figure>` ripped it
+  out of the caption and left an illegal `<figure><figcaption>` behind. The
+  figure and caption now move (or copy, with Alt/Ctrl) as one history step.
+  `#185`
 - **Find treats a non-breaking space as a space.** A query typed as
   `hello world` missed Word-pasted `hello\u00a0world` because the search
   index only case-folded. Both the document and the query now fold U+00A0

@@ -106,6 +106,13 @@ skip the clamp when the model caret is still collapsed and only the DOM range
 crosses the boundary. `<openleaf-editor>` already installs both. Details are in
 [authoring-plugins.md §4.11](../../docs/authoring-plugins.md#411-isolating-nodes-clamp-the-selection-at-their-boundary).
 
+## Captioned figures
+
+If you construct a ProseMirror editor yourself, install `figureDragPlugin()`
+next to `isolatingSelectionPlugin()`. Dragging the `<img>` inside a captioned
+`<figure>` otherwise moves only the image and leaves the caption behind.
+`<openleaf-editor>` already installs the plugin.
+
 ## Safety
 
 URL, CSS and embed rules come from
