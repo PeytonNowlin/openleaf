@@ -12,6 +12,8 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+## 0.1.0-beta.4 - 2026-08-24
+
 ### Fixed
 
 - **An open More panel survives a toolbar layout.** Measuring the bar means

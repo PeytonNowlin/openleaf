@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/plugins-insert",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.4",
   "description": "Opt-in insert tools for OpenLeaf: media embeds, collapsible sections, anchors, character map, emoji, snippets, page breaks, and image resize handles. The matching schema nodes live in @openleaf-editor/core so stored documents round-trip whether or not this package is loaded.",
   "license": "Apache-2.0",
   "publishConfig": {

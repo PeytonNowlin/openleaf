@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/sanitize",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.4",
   "description": "The canonical OpenLeaf sanitization policy as data, plus configuration for DOMPurify, bleach and HTMLPurifier so client and server enforce the same rules.",
   "license": "Apache-2.0",
   "publishConfig": {

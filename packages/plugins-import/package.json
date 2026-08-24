@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/plugins-import",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.4",
   "description": "Opt-in file import for OpenLeaf: HTML and plain text with no dependency, plus a seam for .docx and other formats.",
   "license": "Apache-2.0",
   "publishConfig": {
