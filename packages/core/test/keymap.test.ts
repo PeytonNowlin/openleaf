@@ -115,13 +115,28 @@ describe('the shortcut table', () => {
   })
 
   it('does not treat Indent as a code-block indent command', () => {
-    // Mod-] walks the `indent` attribute. `code_block` has only `language`,
-    // so the chord is a no-op there. Indentation in <pre> is typed spaces.
+    // A top-level code_block has no `indent` attr, so Mod-] does not insert
+    // spaces. List items are a different path: enclosingList runs first.
     const before = '<pre><code>line</code></pre>'
     const result = tryPress(stateInCodeBlock(before), 'Mod-]')
     expect(result.bound).toBe(true)
     expect(result.handled).toBe(false)
     expect(result.html).toBe(before)
+  })
+
+  it('still nests a list item when Indent is pressed inside a code block in it', () => {
+    // indent asks enclosingList first, so a caret in a code_block inside a
+    // non-first list item sinks the whole item. The <pre> text is unchanged
+    // — this is list indent, not source indent. Help therefore does not
+    // claim Mod-] is a no-op in a code block.
+    const before =
+      '<ul><li>one</li><li><p>two</p><pre><code>line</code></pre></li></ul>'
+    const result = tryPress(stateInCodeBlock(before), 'Mod-]')
+    expect(result.bound).toBe(true)
+    expect(result.handled).toBe(true)
+    expect(result.html).toBe(
+      '<ul><li><p>one</p><ul><li><p>two</p><pre><code>line</code></pre></li></ul></li></ul>',
+    )
   })
 
   it('binds every shortcut it advertises', () => {

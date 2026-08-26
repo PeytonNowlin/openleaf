@@ -54,12 +54,16 @@ describe('the help dialog', () => {
     expect(toolbar?.label.toLowerCase()).not.toMatch(/^tab\b/)
   })
 
-  it('says code-block indentation is typed spaces, and points at Indent', () => {
+  it('says code-block indentation is typed spaces, without claiming Indent is a no-op', () => {
     const form = openHelp()
     const hint = form.querySelector('.ol-hint')?.textContent ?? ''
     expect(hint.toLowerCase()).toMatch(/spaces/)
     expect(hint.toLowerCase()).toMatch(/code/)
-    expect(hint).toMatch(/Ctrl\+\]|⌘\]/)
+    // indent asks enclosingList first, so Mod-] in a listed code block still
+    // nests the item. Help must not call that a no-op, and must not spend a
+    // subordinate clause explaining it — Indent is already in the table.
+    expect(hint.toLowerCase()).not.toMatch(/not code/)
+    expect(hint).not.toMatch(/Ctrl\+\]|⌘\]/)
     const indent = rows(form).find((row) => row.label === 'Indent')
     expect(indent).toBeDefined()
   })

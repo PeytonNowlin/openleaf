@@ -18,10 +18,12 @@
  *
  * That includes `code_block`. A `<pre>` can hold spaces and `\t` because
  * `preserveWhitespace` is `'full'`, but nothing inserts them on a key: Tab
- * stays the way out. `Mod-]` walks the `indent` attribute that a paragraph
- * or list item declares; `code_block` has only `language`, so that chord is
- * a no-op there. Indentation in a code sample is typed spaces. Help and the
- * demo shortcut table say so.
+ * stays the way out. `Mod-]` is still paragraph and list indent. It asks
+ * `enclosingList` first, so a caret in a code block inside a non-first
+ * list item nests the item rather than inserting spaces. A top-level
+ * `code_block` has no `indent` attr, so that chord is a no-op there.
+ * Indentation in a code sample is typed spaces. Help says so without
+ * claiming the chord never fires.
  *
  * Indentation of paragraphs and lists uses `Mod-[` and `Mod-]`, matching
  * Google Docs and VS Code. If Tab is ever added it must come with a

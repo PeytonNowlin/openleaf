@@ -237,7 +237,9 @@ export const coreNodes: Record<string, NodeSpec> = {
     // bytes. Tab is not a binding -- it is how a keyboard user leaves the
     // editor (see keymap.ts). A command that inserted `\t` or two spaces on
     // Tab would trap them in the `<pre>`. There is also no `indent` attr:
-    // CSS padding is not source indentation, and `Mod-]` stays a no-op.
+    // CSS padding is not source indentation. `Mod-]` still nests a
+    // surrounding list item (`enclosingList` runs first); it does not
+    // insert spaces into this node.
     attrs: { language: { default: null } },
     content: 'text*',
     marks: '',

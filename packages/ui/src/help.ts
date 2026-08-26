@@ -8,7 +8,7 @@
 
 import { shortcutFor, shortcuts } from '@openleaf-editor/core'
 import { ensureDialogStyles } from './dialog.js'
-import { fill, t, withLocale } from './i18n.js'
+import { t, withLocale } from './i18n.js'
 import { ensureStyles } from './styles.js'
 
 const HELP_CHROME: Array<[string, string]> = [
@@ -23,7 +23,7 @@ const HELP_CHROME: Array<[string, string]> = [
 ]
 
 const CODE_BLOCK_HINT =
-  'In a code block, indent by typing spaces. Tab is never captured, including there. {indent} indents paragraphs and lists, not code.'
+  'In a code block, indent by typing spaces. Tab is never captured, including there.'
 
 /**
  * Unique per dialog.
@@ -91,9 +91,11 @@ function buildHelp(doc: Document, host?: HTMLElement): void {
 
   const hint = doc.createElement('p')
   hint.className = 'ol-hint'
-  hint.textContent = fill(t(CODE_BLOCK_HINT), {
-    indent: shortcutFor('Indent') ?? 'Mod-]',
-  })
+  // Do not mention Mod-] here. indent asks enclosingList first, so a caret
+  // in a code block inside a list item still nests that item — claiming the
+  // chord is a no-op would be a lie, and a subordinate clause about list
+  // nesting does not belong in F1. Indent is already in the shortcut table.
+  hint.textContent = t(CODE_BLOCK_HINT)
   form.appendChild(hint)
 
   const actions = doc.createElement('div')
