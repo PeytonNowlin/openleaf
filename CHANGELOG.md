@@ -14,6 +14,13 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **A whole-number size claim is checked with the same zlib-survival
+  tolerance as a decimal one.** The demo badge `123 KB gzipped` took an
+  exact-round path that the 1% band never reached, so CI's Node 22 at
+  123.6 KB failed a claim that a Node 26 workstation at 123.25 KB accepted
+  -- and writing 124 inverted which machine was red. The `BUDGETS_KB`
+  ceilings remain the regression gate.
+
 - **Merging or splitting table cells keeps `colwidth` and `scope` in step.**
   Stock `mergeCells` grew `colwidth` with zeros for the newly covered columns,
   so the colgroup sync then blanked those `<col>`s and the next resize fought
