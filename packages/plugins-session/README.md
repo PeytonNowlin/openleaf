@@ -55,8 +55,8 @@ Installing does **not** rearrange your toolbar. Name the items you want:
 | `find` | Opens the find and replace bar (`Mod-F`). Next and previous are `Mod-G` / `Shift-Mod-G`. |
 | `wordCount` | Opens a dialog with words, characters, and paragraphs. A status line under the editor shows the word count continuously, without announcing it on every keystroke. Zero-width space, soft hyphen, and BOM are omitted from both character totals and from the word count. |
 | `save` | Submits the bound form, or calls `registerSaveHandler`, or fires a cancelable `openleaf:save` event (`Mod-S`). |
-| `preview` | A read-only, published-looking view of the current HTML in a sandboxed iframe. |
-| `print` | Prints the current document. |
+| `preview` | A read-only, published-looking view of the current HTML in a sandboxed iframe. The frame loads the editor's `content-css` (unscoped, as the published page does), copies the canvas `dir` / `lang` and the active skin's tokens, and does not invent table borders. Per-block `dir` in the document is left intact. |
+| `print` | Prints the current document with the same `content-css` and direction. A dark skin is not printed as a dark page — light skins still apply. Page breaks (`hr.ol-pagebreak`) are honoured. |
 | `newDocument` | Clears the editor, after confirming if there are unsaved changes. |
 
 ## Autosave, restore, and leaving

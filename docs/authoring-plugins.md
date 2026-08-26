@@ -925,6 +925,8 @@ openleaf-session.min.js       9.4 /  10
 
 openleaf-tables.min.js       19.8 /  25
 openleaf-session.min.js       9.2 /  10
+
+openleaf-session.min.js       9.7 /  10
 openleaf-highlight.min.js     6.7 /  15
 openleaf-insert.min.js        8.4 /  20
 openleaf-colour.min.js        5.3 /  15

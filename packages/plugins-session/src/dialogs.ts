@@ -1,3 +1,5 @@
+import { availableSkins, contentCssUrls, type Skin } from '@openleaf-editor/ui'
+
 /**
  * Small native `<dialog>` prompts used by session tools.
  *
@@ -28,14 +30,148 @@ function nextId(kind: string): string {
 }
 
 /**
- * The language a generated document should declare.
+ * What the canvas actually looks like, and why preview cannot inherit it.
  *
- * A preview or a print-out with no `lang` is read by a screen reader in whatever
- * voice it happened to be using -- English prose in a French voice, or the other
- * way round. The host page already knows the answer.
+ * The live editor is assembled in this order:
+ *
+ *   1. Host typography, inherited (no Shadow DOM on the content area).
+ *   2. Skin tokens on `.ol-editor[data-ol-skin]`, plus `data-ol-scheme`.
+ *   3. `content-css`, fetched and *scoped* under
+ *      `.ol-editor .ol-content .ProseMirror` so a published `p.lead` cannot
+ *      restyle the admin page. The scoper is a scanner, not a regex, because a
+ *      rule inside `@media` used to ship unscoped; we do not touch it here.
+ *   4. `dir` / `lang` on the host or `<html>`, plus any per-block `dir` in the
+ *      document itself.
+ *
+ * Preview and print are a *different document* (an iframe `srcdoc`). The scoped
+ * sheet lives on the host and cannot match inside the frame, wrapping the
+ * markup in `.ol-editor .ol-content .ProseMirror` would make a "published
+ * preview" lie about its DOM, and copying the scoped text verbatim would leave
+ * every selector pointing at a wrapper the frame does not have. The published
+ * URLs go in as `<link>` tags instead -- unscoped, the way the live site loads
+ * them, and a `<link>` rather than a `<style>` so `style-src 'self'` still
+ * holds. Skin tokens are copied onto the preview root because they do not
+ * inherit across documents either.
+ *
+ * Print is not preview. A dark skin printed literally is a rectangle of toner
+ * (and browsers already strip backgrounds unless asked not to). Light skins
+ * still apply; a `scheme: 'dark'` skin is dropped. Page-break rules belong on
+ * print only.
  */
-function documentLang(doc: Document): string {
-  return doc.documentElement.getAttribute('lang')?.trim() || 'en'
+interface CanvasAppearance {
+  lang: string
+  dir: string
+  skinName: string | null
+  scheme: string | null
+  tokens: string
+  contentCss: readonly string[]
+}
+
+function canvasLang(doc: Document, host?: HTMLElement): string {
+  // The host `lang` is the UI locale, but the canvas content inherits it, so
+  // a preview that only reads `<html lang>` (and falls back to English) is
+  // announced in the wrong voice -- the failure that shipped.
+  return host?.getAttribute('lang')?.trim()
+    || doc.documentElement.getAttribute('lang')?.trim()
+    || 'en'
+}
+
+function canvasDir(doc: Document, host?: HTMLElement): string {
+  for (const el of [host, doc.documentElement]) {
+    if (!el) continue
+    const value = el.getAttribute('dir')?.trim()
+    if (value === 'rtl' || value === 'ltr' || value === 'auto') return value
+  }
+  const target = host ?? doc.documentElement
+  return target.ownerDocument.defaultView?.getComputedStyle(target).direction === 'rtl'
+    ? 'rtl'
+    : ''
+}
+
+function namedSkin(host?: HTMLElement): Skin | null {
+  const name = host?.getAttribute('data-ol-skin')?.trim()
+    || host?.getAttribute('skin')?.trim()
+    || ''
+  if (!name || name === 'default') return null
+  return availableSkins().find((skin) => skin.name === name) ?? null
+}
+
+function flattenTokens(tokens: string): string {
+  return tokens.replace(/\s+/g, ' ').trim()
+}
+
+function canvasAppearance(
+  doc: Document,
+  host: HTMLElement | undefined,
+  kind: 'preview' | 'print',
+): CanvasAppearance {
+  const skin = namedSkin(host)
+  // Print a midnight (or any dark) skin as a light page. Preview keeps it: the
+  // author asked to see that canvas, and a screen can show black. Paper cannot
+  // undo a rectangle of toner.
+  const printDark = kind === 'print' && skin?.scheme === 'dark'
+  const useSkin = skin !== null && !printDark
+  return {
+    lang: canvasLang(doc, host),
+    dir: canvasDir(doc, host),
+    skinName: useSkin ? skin.name : null,
+    scheme: useSkin ? skin.scheme ?? null : null,
+    tokens: useSkin ? flattenTokens(skin.tokens) : '',
+    contentCss: contentCssUrls(host?.getAttribute('content-css') ?? null),
+  }
+}
+
+function htmlOpen(appearance: CanvasAppearance): string {
+  const attrs = [`lang="${attr(appearance.lang)}"`]
+  if (appearance.dir) attrs.push(`dir="${attr(appearance.dir)}"`)
+  if (appearance.skinName) attrs.push(`data-ol-skin="${attr(appearance.skinName)}"`)
+  if (appearance.scheme) attrs.push(`data-ol-scheme="${attr(appearance.scheme)}"`)
+  if (appearance.tokens) attrs.push(`style="${attr(appearance.tokens)}"`)
+  return `<html ${attrs.join(' ')}>`
+}
+
+function contentCssLinks(urls: readonly string[]): string {
+  return urls.map((url) => `<link rel="stylesheet" href="${attr(url)}">`).join('')
+}
+
+function chromeCss(kind: 'preview' | 'print'): string {
+  // No `td, th { border }` on purpose. The canvas draws those as authoring
+  // chrome so an unstyled table is still editable; the published page may not
+  // have them, and inventing them here is how preview lied. `content-css`
+  // supplies the borders the document actually ships with.
+  const margin = kind === 'print' ? '1.5rem' : '1.25rem'
+  const pagebreak = kind === 'print'
+    ? 'hr.ol-pagebreak{break-after:page;page-break-after:always;border:0}'
+    : ''
+  return (
+    `body{margin:${margin};font:16px/1.6 system-ui,sans-serif;` +
+    'color:var(--openleaf-color-text,#1f2328);background:var(--openleaf-color-surface,#fff)}' +
+    'img{max-width:100%;height:auto}table{border-collapse:collapse}' +
+    pagebreak
+  )
+}
+
+function generatedMarkup(
+  title: string,
+  html: string,
+  appearance: CanvasAppearance,
+  kind: 'preview' | 'print',
+): string {
+  // Concatenation, not a template literal wrapping `html`: author content that
+  // happened to contain `${...}` would interpolate in *this* scope.
+  return (
+    '<!doctype html>' +
+    htmlOpen(appearance) +
+    '<head><meta charset="utf-8"><title>' +
+    attr(title) +
+    '</title>' +
+    contentCssLinks(appearance.contentCss) +
+    '<style>' +
+    chromeCss(kind) +
+    '</style></head><body>' +
+    html +
+    '</body></html>'
+  )
 }
 
 /** Escaped for an attribute value, since it goes into generated markup. */
@@ -135,16 +271,14 @@ export function showPreview(doc: Document, html: string, host?: HTMLElement): vo
   frame.sandbox = ''
   // srcdoc rather than innerHTML on the host: the preview must not run script
   // from stored markup, and an iframe without allow-scripts is that boundary.
-  // `lang` and a `<title>`: the frame is a whole document, and one with neither
-  // is announced as an untitled page in whatever voice the reader was already
-  // using.
-  frame.srcdoc = `<!doctype html><html lang="${attr(documentLang(doc))}"><head><meta charset="utf-8">\
-<title>Preview</title><style>
-    body { margin: 1.25rem; font: 16px/1.6 system-ui, sans-serif; color: #1f2328; }
-    img { max-width: 100%; height: auto; }
-    table { border-collapse: collapse; }
-    td, th { border: 1px solid #d1d9e0; padding: .3rem .5rem; }
-  </style></head><body>${html}</body></html>`
+  // Appearance (content-css, skin, dir, lang) is copied in -- the frame is a
+  // whole document and none of those inherit across the iframe boundary.
+  frame.srcdoc = generatedMarkup(
+    'Preview',
+    html,
+    canvasAppearance(doc, host, 'preview'),
+    'preview',
+  )
 
   const close = doc.createElement('button')
   close.type = 'button'
@@ -173,29 +307,42 @@ export function showPreview(doc: Document, html: string, host?: HTMLElement): vo
   close.focus()
 }
 
-export function printHtml(doc: Document, html: string, title: string): void {
+export function printHtml(doc: Document, html: string, title: string, host?: HTMLElement): void {
   const frame = doc.createElement('iframe')
   frame.setAttribute('aria-hidden', 'true')
   frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
-  doc.body.appendChild(frame)
-  const win = frame.contentWindow
-  if (!win) {
-    frame.remove()
-    return
-  }
-  const safeTitle = title.replace(/[<>&"]/g, '')
-  win.document.open()
-  win.document.write(`<!doctype html><html lang="${attr(documentLang(doc))}"><head><meta charset="utf-8"><title>${safeTitle}</title>
-<style>body{margin:1.5rem;font:16px/1.6 system-ui,sans-serif} img{max-width:100%} table{border-collapse:collapse} td,th{border:1px solid #333;padding:.3rem .5rem}</style>
-</head><body>${html}</body></html>`)
-  win.document.close()
+  // srcdoc, same as preview, so the generated document is inspectable and so
+  // `<link>` content-css has a chance to load before we call print. The frame
+  // is not sandboxed: `window.print()` from here is what the browser's dialog
+  // is, and unique-origin would take that away.
+  let timer: ReturnType<typeof setTimeout> | undefined
   const cleanup = (): void => {
+    if (timer !== undefined) globalThis.clearTimeout(timer)
     frame.remove()
   }
-  win.addEventListener('afterprint', cleanup)
-  win.focus()
-  win.print()
-  globalThis.setTimeout(cleanup, 60_000)
+  const run = (): void => {
+    const win = frame.contentWindow
+    if (!win) {
+      cleanup()
+      return
+    }
+    win.addEventListener('afterprint', cleanup)
+    timer = globalThis.setTimeout(cleanup, 60_000)
+    // jsdom implements both as "not implemented" throws that also log; there
+    // is no printer to drive, and the document is already in the frame for
+    // tests. Playwright covers the real `print()` call.
+    if (win.navigator.userAgent.includes('jsdom')) return
+    win.focus()
+    win.print()
+  }
+  frame.addEventListener('load', run)
+  doc.body.appendChild(frame)
+  frame.srcdoc = generatedMarkup(
+    title,
+    html,
+    canvasAppearance(doc, host, 'print'),
+    'print',
+  )
 }
 
 export function showStats(
