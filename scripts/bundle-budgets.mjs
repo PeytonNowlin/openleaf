@@ -129,8 +129,9 @@ export const BUDGETS_KB = {
   'openleaf-import.min.js': 12,
   // Larger than the editor, which is exactly why it is a separate file.
   'openleaf-import-docx.min.js': 140,
-  // 9.2/10 after find/replace and the announcement work. The tightest budget in
-  // the tree; raise it deliberately rather than shaving the feature if it goes.
+  // 9.4/10 after the invisible-format policy and Replace-all focus. The
+  // tightest budget in the tree; raise it deliberately rather than shaving
+  // the feature if it goes.
   'openleaf-session.min.js': 10,
   'openleaf-insert.min.js': 20,
 }

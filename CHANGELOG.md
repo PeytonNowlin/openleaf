@@ -12,6 +12,21 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Replace all returns focus to the find field.** The click handler never
+  moved focus, and after a successful replace the button disables, which
+  dumps focus to `<body>` in every engine. Focus now goes back through the
+  same path `open()` uses, before the replace runs, so the "{n} replaced"
+  live-region announcement is not interrupted by a later focus move. `#204`
+- **Word count and find skip the same invisible format characters.**
+  Zero-width space, soft hyphen, and BOM inflated `characters` (and ZWSP
+  split words), while BOM was `\s` and dropped from
+  `charactersExcludingSpaces` only. Both totals, the word count, and the
+  find index now omit U+200B, U+00AD, and U+FEFF. Find treats them as a
+  match barrier so Replace cannot swallow them. Non-breaking spaces are
+  unchanged. `#191`
+
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed
