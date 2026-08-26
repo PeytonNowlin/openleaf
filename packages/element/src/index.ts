@@ -31,9 +31,12 @@
  *   insert-toolbar    floating bar for an empty block; `none` disables
  *   formats          `p.lead=Lead|h2=Section` entries for the formats dropdown
  *   content-css      comma-separated URLs scoped onto the canvas
- *   lang             UI locale, matched against registerTranslations()
+ *   lang             UI locale AND canvas language (spellcheck). Host, then
+ *                    the bound textarea, then the page. See #regionAttributes.
+ *   placeholder      prompt on an empty document; never stored in `value`
+ *   spellcheck       copied onto the canvas; `false` turns checking off
  *   inline           hide chrome until the editor is focused
- *   autoresize       grow the canvas with the document
+ *   autoresize       grow the canvas with the document (CSS, not a pixel height)
  *   toolbar-overflow collapse overflowing groups into a More menu
  *   readonly         render but do not allow editing
  *   autolink         `false` to stop URLs becoming links on space or Enter.
@@ -51,6 +54,7 @@ import {
   coreSchema,
   createRegisteredPlugins,
   insertImage,
+  isSafeUrl,
   gapCursorPlugin,
   figureDragPlugin,
   isolatingSelectionPlugin,
@@ -97,6 +101,7 @@ import {
   promptForImage,
   promptHelp,
   registerDefaultItems,
+  registerStyles,
   runUploader,
   t,
   withLocale,
@@ -106,7 +111,7 @@ import {
 import { baseKeymap } from 'prosemirror-commands'
 import { history } from 'prosemirror-history'
 import { keymap } from 'prosemirror-keymap'
-import type { Schema } from 'prosemirror-model'
+import type { Node as PMNode, Schema } from 'prosemirror-model'
 import { EditorState, NodeSelection, Plugin, TextSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import { FormBridge } from './form-bridge.js'
@@ -149,6 +154,53 @@ function pointerIdOf(event: Event): number | null {
  */
 export const SOURCE_OPEN_EVENT = 'openleaf:source-open'
 export const SOURCE_CLOSE_EVENT = 'openleaf:source-close'
+/**
+ * A left-click (or keyboard activation) on a link in a read-only editor.
+ *
+ * Native navigation is always suppressed so a CMS preview cannot dump the
+ * author onto another origin. The event is not cancelable: there is no
+ * default follow to opt out of. An integrator who wants a new tab listens
+ * and calls `window.open(event.detail.href)` themselves.
+ */
+export const LINK_EVENT = 'openleaf:link'
+
+export interface OpenLeafLinkDetail {
+  /** The authored `href`, not the browser-resolved absolute URL. */
+  href: string
+}
+
+/**
+ * Prompt for an empty canvas. A CSS `::before` rather than a text node, so
+ * the prompt cannot serialize into `value` and cannot submit with the form.
+ *
+ * `:empty` does not work here: ProseMirror's empty document is a paragraph
+ * containing a trailing break, not an empty element. The class is toggled
+ * from `#regionAttributes` via `#isEmptyDocument`, which is the same
+ * emptiness the wrappers already treat as "not yet filled".
+ *
+ * Registered through `registerStyles` rather than `packages/ui/src/css.ts`
+ * so this package does not have to own the shared sheet.
+ */
+const PLACEHOLDER_CSS = `
+.ol-editor .ProseMirror.ol-placeholder::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--ol-text-muted, var(--openleaf-color-text-muted, #9198a1));
+}
+`
+
+/**
+ * Path suffixes we will treat as "this URL is an image" on paste.
+ *
+ * Same set `isUploadableImage` trusts for a filename, minus SVG (a
+ * document) and HEIC (no decoder). A URL with no matching suffix is
+ * never promoted: an extensionless CDN address that happens to serve a
+ * bitmap stays a link, because guessing wrong turns a URL the author
+ * wanted into a broken `<img>`.
+ */
+const PASTED_IMAGE_PATH = /\.(png|jpe?g|jfif|gif|webp|avif)$/i
 
 // Evaluating a custom-element module must be safe during SSR. Registration and
 // construction still happen only in a browser, but framework servers routinely
@@ -175,6 +227,8 @@ export class OpenLeafEditor extends HTMLElementBase {
       'skin',
       'theme',
       'lang',
+      'placeholder',
+      'spellcheck',
       'aria-label',
       'inline',
       'autoresize',
@@ -210,6 +264,13 @@ export class OpenLeafEditor extends HTMLElementBase {
         return
       case 'lang':
         this.#applyLocale()
+        return
+      case 'placeholder':
+      case 'spellcheck':
+        // Both are copied onto the region in `#regionAttributes`. A function
+        // attributes prop is re-read on setProps; without this, adding
+        // `placeholder` after mount never paints.
+        this.#view?.setProps({})
         return
       case 'aria-label':
         this.#applyHostRole()
@@ -428,6 +489,7 @@ export class OpenLeafEditor extends HTMLElementBase {
   #build(): void {
     registerDefaultItems()
     ensureStyles(this.ownerDocument)
+    registerStyles(PLACEHOLDER_CSS, this.ownerDocument)
     ensureSkins(this.ownerDocument)
     applySkin(this, this.getAttribute('skin'))
     applyColourScheme(this, this.#colourScheme())
@@ -529,15 +591,30 @@ export class OpenLeafEditor extends HTMLElementBase {
       // construction, so `readonly` added later never reached the region and a
       // label changed later never reached it either -- both of which are the
       // ordinary case, not an edge one.
-      attributes: () => this.#regionAttributes(),
+      attributes: (state) => this.#regionAttributes(state.doc),
       // Normalize before ProseMirror parses. Word and Google Docs express
       // structure as proprietary CSS, so without this a pasted list arrives as
       // a wall of paragraphs with stray bullet characters in the text.
       transformPastedHTML: (html) => normalizePastedHtml(html),
       // Dropping or pasting an image file is the way most people expect to add
-      // one, and both arrive as a File rather than as markup.
+      // one, and both arrive as a File rather than as markup. A paste whose
+      // plain text is a single image URL is the keyboard equivalent of the
+      // image dialog's address field and is claimed here, before autolink or
+      // the default text parser can turn it into a link.
       handleDrop: (view, event) => this.#handleImageFiles(view, event, event.dataTransfer),
-      handlePaste: (view, event) => this.#handleImageFiles(view, event, event.clipboardData),
+      handlePaste: (view, event) =>
+        this.#handleImageFiles(view, event, event.clipboardData) ||
+        this.#handleImageUrlPaste(view, event),
+      handleDOMEvents: {
+        // A DOM listener rather than `handleClickOn`: the latter walks nodes
+        // from the inside out and misses a click on the link's padding the
+        // same way disclosure used to miss a `<summary>`. `closest('a')`
+        // is the node, never a selector built from the href -- there is no
+        // `querySelector(href)` path in this repository, and this must not
+        // become one. An href containing `;`, `:`, `[` or `.` is a syntax
+        // error in a selector and a perfectly legal URL.
+        click: (view, event) => this.#onReadonlyLinkClick(view, event),
+      },
       dispatchTransaction: (tr) => {
         const view = this.#view
         if (!view) return
@@ -820,7 +897,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#mountChrome()
     this.#toolbar?.update(this.#view.state)
     this.#toolbar2?.update(this.#view.state)
-    this.#view.setProps({ attributes: () => this.#regionAttributes() })
+    this.#view.setProps({ attributes: (state) => this.#regionAttributes(state.doc) })
   }
 
 
@@ -1011,11 +1088,11 @@ export class OpenLeafEditor extends HTMLElementBase {
   }
 
   /** An untouched editor holds one empty text block -- what a wrapper mounts. */
-  #isEmptyDocument(): boolean {
-    const doc = this.#view?.state.doc
-    if (!doc) return true
-    const first = doc.firstChild
-    return doc.childCount <= 1 && (!first || (first.isTextblock && first.content.size === 0))
+  #isEmptyDocument(doc?: PMNode | null): boolean {
+    const node = doc ?? this.#view?.state.doc
+    if (!node) return true
+    const first = node.firstChild
+    return node.childCount <= 1 && (!first || (first.isTextblock && first.content.size === 0))
   }
 
   /**
@@ -1093,6 +1170,19 @@ export class OpenLeafEditor extends HTMLElementBase {
 
   set readOnly(value: boolean) {
     this.#reflect('readonly', value ? '' : null)
+  }
+
+  /**
+   * Prompt shown on an empty document. Assigning reflects the attribute.
+   *
+   * Never written into `value`: it is a CSS `::before` on the region.
+   */
+  get placeholder(): string | null {
+    return this.getAttribute('placeholder')
+  }
+
+  set placeholder(text: string | null) {
+    this.#reflect('placeholder', text)
   }
 
   #reflect(name: string, value: string | null): void {
@@ -1252,6 +1342,31 @@ export class OpenLeafEditor extends HTMLElementBase {
    * -------------------------------------------------------------- */
 
   /**
+   * Claim a paste whose plain text is a single safe image URL.
+   *
+   * File pastes stay on `#handleImageFiles` (and require an uploader). This
+   * path is the URL field in the image dialog, for a clipboard that has no
+   * file -- a CDN address, a DAM permalink, another tab's location bar.
+   * It does not depend on an uploader: there is nothing to upload.
+   *
+   * Returning false leaves the paste to ProseMirror, which is today's
+   * link-or-plain behaviour. Autolink does not run on paste (it commits
+   * on Space/Enter/IME), so we do not need to race it; claiming here is
+   * still the only way to win if that ever changes.
+   */
+  #handleImageUrlPaste(view: EditorView, event: ClipboardEvent): boolean {
+    if (this.hasAttribute('readonly')) return false
+    const data = event.clipboardData
+    const text = typeof data?.getData === 'function' ? data.getData('text/plain') : ''
+    const src = imageSrcFromPastedText(text)
+    if (!src) return false
+    const inserted = insertImage({ src })(view.state, view.dispatch, view)
+    if (!inserted) return false
+    event.preventDefault()
+    return true
+  }
+
+  /**
    * Claim a drop or paste that carries image files.
    *
    * Returns false -- declining, so ProseMirror and anything listening further up
@@ -1372,7 +1487,7 @@ export class OpenLeafEditor extends HTMLElementBase {
    * Recomputed on every update rather than frozen at construction, which is
    * what makes `readonly` and a changing name observable at all.
    */
-  #regionAttributes(): Record<string, string> {
+  #regionAttributes(doc?: PMNode | null): Record<string, string> {
     const attributes: Record<string, string> = {
       role: 'textbox',
       'aria-multiline': 'true',
@@ -1384,6 +1499,34 @@ export class OpenLeafEditor extends HTMLElementBase {
       'aria-label': this.#regionName(),
     }
     if (this.#hint) attributes['aria-describedby'] = this.#hint.id
+
+    // Canvas language, which is also the spellcheck language. Host `lang` is
+    // documented as the UI locale; using the same attribute for the document
+    // is the usual CMS case (a French article in a French chrome). A bound
+    // textarea may carry the article language when the chrome does not --
+    // that is the gap HTML inheritance cannot close, because the textarea
+    // is not an ancestor of the region. Page `<html lang>` is left to
+    // inherit; copying it would freeze a value the host can still change.
+    const lang =
+      this.getAttribute('lang')?.trim() ||
+      this.#formBridge.textarea?.getAttribute('lang')?.trim() ||
+      ''
+    if (lang) attributes['lang'] = lang
+
+    // The host already inherits `spellcheck` in HTML, but source view
+    // hard-codes `spellcheck = false` on its textarea and the canvas had
+    // no equivalent the integrator could name. Copying the attribute onto
+    // the region makes `spellcheck="false"` on `<openleaf-editor>` the
+    // documented off switch, not an accident of inheritance.
+    const spellcheck = this.getAttribute('spellcheck')
+    if (spellcheck !== null) attributes['spellcheck'] = spellcheck
+
+    const placeholder = this.getAttribute('placeholder')
+    if (placeholder && this.#isEmptyDocument(doc)) {
+      attributes['class'] = 'ol-placeholder'
+      attributes['data-placeholder'] = placeholder
+      attributes['aria-placeholder'] = placeholder
+    }
     return attributes
   }
 
@@ -1625,6 +1768,38 @@ export class OpenLeafEditor extends HTMLElementBase {
     return null
   }
 
+  /**
+   * Stop a read-only canvas from navigating away, without making the
+   * anchor inert.
+   *
+   * `contenteditable="false"` restores native `<a href>` activation, so a
+   * CMS preview that set `readonly` still left the page on a left-click.
+   * `preventDefault` covers mouse, keyboard (Enter on a focused link
+   * fires `click`), and modified clicks. The href stays on the node, so
+   * Tab still reaches it and the browser's own menu -- which `#onContextMenu`
+   * deliberately does not take over under `readonly` -- can still copy it.
+   *
+   * `#227`'s pointer bookkeeping (`#contextGestureIds`, `#contextPointersDown`)
+   * is a different event (`pointerdown` / `contextmenu`) and is not involved.
+   */
+  #onReadonlyLinkClick(view: EditorView, event: Event): boolean {
+    if (view.editable) return false
+    const target = event.target
+    if (!(target instanceof Element)) return false
+    const anchor = target.closest('a')
+    if (!(anchor instanceof HTMLAnchorElement) || !anchor.hasAttribute('href')) return false
+    if (!view.dom.contains(anchor)) return false
+    event.preventDefault()
+    this.dispatchEvent(
+      new CustomEvent<OpenLeafLinkDetail>(LINK_EVENT, {
+        bubbles: true,
+        composed: true,
+        detail: { href: anchor.getAttribute('href') ?? '' },
+      }),
+    )
+    return true
+  }
+
   #onContextMenu = (event: MouseEvent): void => {
     const view = this.#view
     if (!view) return
@@ -1670,38 +1845,27 @@ export class OpenLeafEditor extends HTMLElementBase {
   /**
    * Grow the canvas with the document.
    *
-   * `height: auto` followed by a `scrollHeight` read is a forced synchronous
-   * layout of the entire content, and it happens inside a `ResizeObserver`
-   * watching the element the write resizes -- so an unbatched version relaid
-   * out the document on every observation, and each write invited the next
-   * observation. Coalescing into one animation frame collapses a burst into a
-   * single relayout, and skipping an unchanged height stops the write that
-   * would re-notify the observer for nothing.
+   * Used to write `height: auto`, read `scrollHeight`, then write a pixel
+   * height. That is a synchronous reflow of the whole document, and the
+   * skip-unchanged-height guard made it worse: on a no-op pass it set
+   * `height: auto` and returned without restoring the pixel, so the canvas
+   * collapsed for a frame and invited the next observation.
+   *
+   * The pixel write is not needed. `.ProseMirror` is `min-height: 8rem` with
+   * `height: auto`; `ol-autoresize` only sets `overflow: hidden`, which
+   * clips rather than constrains. Clearing any leftover inline height lets
+   * the block size to its content, which does not fight `min-height` or the
+   * mobile `visualViewport`, and does not shrink the page under the caret.
+   *
+   * A sticky toolbar (PR #231) changes what "under the toolbar" means; this
+   * path no longer writes a height the caret then has to scroll out from
+   * under.
    */
   #mountAutoresize(): void {
     const host = this.#contentHost
-    const view = this.#view
-    if (!host || !view || !this.hasAttribute('autoresize')) return
-    // Cached: `querySelector` on every observation walks the whole canvas.
-    let pm: HTMLElement | null = null
-    let last = ''
-    const apply = (): void => {
-      this.#resizeFrame = 0
-      if (!pm?.isConnected) pm = host.querySelector<HTMLElement>('.ProseMirror')
-      if (!pm) return
-      pm.style.height = 'auto'
-      const height = `${pm.scrollHeight}px`
-      if (height === last) return
-      last = height
-      pm.style.height = height
-    }
-    apply()
-    if (typeof ResizeObserver === 'undefined') return
-    this.#resizeObserver = new ResizeObserver(() => {
-      if (this.#resizeFrame) return
-      this.#resizeFrame = requestAnimationFrame(apply)
-    })
-    this.#resizeObserver.observe(host)
+    if (!host || !this.hasAttribute('autoresize')) return
+    const pm = host.querySelector<HTMLElement>('.ProseMirror')
+    if (pm) pm.style.height = ''
   }
 
   async #mountContentCss(): Promise<void> {
@@ -1889,9 +2053,10 @@ declare global {
     'openleaf:change': CustomEvent<OpenLeafChangeDetail>
     'openleaf:source-open': CustomEvent<OpenLeafSourceDetail>
     'openleaf:source-close': CustomEvent<OpenLeafSourceDetail>
+    'openleaf:link': CustomEvent<OpenLeafLinkDetail>
   }
   /**
-   * The same three on `document` and `window`.
+   * The same four on `document` and `window`.
    *
    * `document.addEventListener` resolves against `DocumentEventMap`, not
    * `HTMLElementEventMap`, so without these a delegated listener -- the ordinary
@@ -1903,12 +2068,41 @@ declare global {
     'openleaf:change': CustomEvent<OpenLeafChangeDetail>
     'openleaf:source-open': CustomEvent<OpenLeafSourceDetail>
     'openleaf:source-close': CustomEvent<OpenLeafSourceDetail>
+    'openleaf:link': CustomEvent<OpenLeafLinkDetail>
   }
   interface WindowEventMap {
     'openleaf:change': CustomEvent<OpenLeafChangeDetail>
     'openleaf:source-open': CustomEvent<OpenLeafSourceDetail>
     'openleaf:source-close': CustomEvent<OpenLeafSourceDetail>
+    'openleaf:link': CustomEvent<OpenLeafLinkDetail>
   }
+}
+
+/**
+ * A paste whose entire plain text is one http(s) URL with an image suffix.
+ *
+ * Query strings and fragments are ignored when looking at the path, so
+ * `hero.png?w=800` still counts. A URL with no image suffix does not --
+ * including extensionless CDN addresses. Relative URLs are declined: they
+ * pass `isSafeUrl` (no scheme) but are not what an author pastes from a
+ * media library, and `new URL` without a base would throw.
+ *
+ * `isSafeUrl` is the same gate `insertImage` uses. A second, laxer path
+ * to `src` is how `javascript:` gets into the document.
+ */
+function imageSrcFromPastedText(text: string): string | null {
+  const trimmed = text.trim()
+  if (!trimmed || /\s/.test(trimmed)) return null
+  if (!isSafeUrl(trimmed)) return null
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return null
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+  if (!PASTED_IMAGE_PATH.test(parsed.pathname)) return null
+  return trimmed
 }
 
 /** Idempotent: safe to import twice, or alongside a bundled copy. */

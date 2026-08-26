@@ -32,10 +32,12 @@ SSR does not throw.
 | Attribute | Values | Effect |
 | --- | --- | --- |
 | `for` | a textarea's `id` | Binds to that textarea. Rebinding only happens once the view exists. |
-| `readonly` | present / absent | Renders but does not allow editing. Mirrors onto the source textarea, and covers the context menus, the media resize handle, and clicking a `<summary>` as well as typing, paste and drop. |
+| `readonly` | present / absent | Renders but does not allow editing. Mirrors onto the source textarea, and covers the context menus, the media resize handle, and clicking a `<summary>` as well as typing, paste and drop. Left-click (and keyboard activation) on an `<a href>` does not navigate; the element fires `openleaf:link` instead. The href stays on the node, so Tab and the browser's own menu can still copy it. |
 | `skin` | `midnight`, `paper`, `contrast`, `compact` | Named appearance. |
 | `theme` | `light`, `dark`, `auto` | Anything that is not `light` or `dark` is treated as `auto`, which follows the visitor's system setting. |
-| `lang` | a BCP-47 tag | UI locale, matched against `registerTranslations()`. Relabels the **toolbars only** — not the menubar, floating toolbars or context menu. |
+| `lang` | a BCP-47 tag | UI locale, matched against `registerTranslations()`, **and** the canvas / spellcheck language copied onto the editable region. Precedence: host `lang` → bound textarea `lang` → inherit from the page (`<html lang>`). Relabels the **toolbars only** for chrome — not the menubar, floating toolbars or context menu. |
+| `placeholder` | string | Prompt shown on an empty document (the schema's lone empty `<p>` counts as empty). Painted as a CSS `::before`, never stored in `value`. |
+| `spellcheck` | `true` / `false` | Copied onto the editable region. `spellcheck="false"` is the canvas equivalent of source view's off switch. |
 
 ### Read once, when the editor is built
 
@@ -52,7 +54,7 @@ Changing any of these later has no effect without recreating the element.
 | `formats` | `p.lead=Lead\|h2=Section` | Entries for the formats dropdown. |
 | `content-css` | comma-separated URLs | Stylesheets scoped onto the canvas. **Trusted configuration** — the URL is fetched and adopted document-wide with no origin check, so it must never be attacker-controlled. |
 | `inline` | present / absent | Hide chrome until the editor is focused. |
-| `autoresize` | present / absent | Grow the canvas with the document. |
+| `autoresize` | present / absent | Grow the canvas with the document. Sizes with CSS (`height: auto`); does not write a pixel height. |
 | `toolbar-overflow` | present / absent | Collapse overflowing groups into a More menu. |
 | `autolink` | `false` to disable | URLs become links on space, Enter, or the end of an IME composition; nothing is marked while a composition is still open. The mark covers the URL after trailing prose punctuation is stripped, so a full stop or a wrapping `]` is not part of the href. Any value other than exactly `"false"` enables it. |
 | `visualaids` | `false` to disable | Guides for invisible structure. Same `"false"`-exactly rule. At runtime the `openleaf:toggle-visual-aids` event toggles the *styling* only; whether the plugin is loaded is decided at build. |
@@ -69,6 +71,7 @@ Changing any of these later has no effect without recreating the element.
 | `schema` | `Schema` | The schema this editor was built with. Fixed for the instance's lifetime — see the timing rule in [authoring-plugins.md §1.1](authoring-plugins.md#11-schema-extensions). |
 | `toolbar` | `Toolbar \| null` | The primary toolbar. `null` when `toolbar="none"`, or before the build. There is no getter for `toolbar2`. |
 | `sourceMode` | `boolean` | True while the HTML source textarea is showing. |
+| `placeholder` | `string \| null` | Reflects the `placeholder` attribute. |
 
 ### `value`
 
@@ -105,6 +108,7 @@ events are not composed and remain inside one.
 | `openleaf:change` | `{ value: string }` | No | After any transaction where `docChanged` is true. `value` is a lazy getter for the current HTML, so listeners that do not read it avoid serialization work. The bound textarea may still be waiting for its short deferred sync. |
 | `openleaf:source-open` | `{ textarea }` | No | When source view opens, before the textarea is focused. |
 | `openleaf:source-close` | `{ textarea }` | No | When source view closes, before the textarea is removed and before any write-back. Also fires on disconnect. |
+| `openleaf:link` | `{ href: string }` | No | A link was activated in a **read-only** editor. Native navigation has already been suppressed. `href` is the authored attribute, not the browser-resolved absolute URL. Listen and call `window.open(event.detail.href)` if a preview should open in a new tab. |
 
 `openleaf:change` is the one every integration needs: it is what the React, Vue
 and Angular wrappers listen to, and what you would listen to yourself.

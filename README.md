@@ -217,6 +217,7 @@ and attribute-driven:
   formats="p.lead=Lead paragraph|.note=Note"
   content-css="/css/article.css"
   lang="fr"
+  placeholder="Write the article…"
   inline
   autoresize
 ></openleaf-editor>
@@ -228,11 +229,12 @@ and attribute-driven:
   `contextmenu="none"` to disable.
 - **Floating toolbars** — `selection-toolbar` and `insert-toolbar`.
 - **Fullscreen, help, visual aids** — toolbar ids `fullscreen`, `help`, `visualAids`. F1 opens help.
-- **Autoresize / inline** — grow with content, or hide chrome until focus.
+- **Autoresize / inline** — grow with content (CSS, not a pixel height), or hide chrome until focus.
+- **Placeholder** — `placeholder="Write the article…"` on an empty document; never stored in `value`.
 - **Autolink** — URLs become links on space, Enter, or the end of an IME composition, so a CJK or mobile keyboard that accepts a candidate without typing ASCII whitespace still gets a link. Nothing is marked while a composition is still open. Trailing sentence punctuation and unmatched `)]}'"` stay outside the mark; a balanced `)` in the path (Wikipedia-style) stays in. Set `autolink="false"` to disable.
 - **Formats** — class names from the host’s content CSS, applied to the current block.
-- **Translations** — `lang` plus `registerTranslations('fr', { Bold: 'Gras' })`.
-- **Non-editable regions** — `contenteditable="false"` in stored HTML is honoured while editing and still round-trips.
+- **Translations** — `lang` plus `registerTranslations('fr', { Bold: 'Gras' })`. The same `lang` is the canvas / spellcheck language; a bound textarea's `lang` is used when the host has none. `spellcheck="false"` turns checking off.
+- **Non-editable regions** — `contenteditable="false"` in stored HTML is honoured while editing and still round-trips. A `readonly` editor does not follow links; it fires `openleaf:link` instead.
 
 First-party wrappers keep the same element underneath:
 
