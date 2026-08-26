@@ -67,9 +67,20 @@ describe('main toolbar sticky positioning', () => {
   it('leaves a second toolbar in flow, so two bars do not stack at the same top', () => {
     const { host, toolbar } = mainToolbar()
     const second = document.createElement('div')
-    second.className = 'ol-toolbar'
+    second.className = 'ol-toolbar ol-toolbar--secondary'
     host.appendChild(second)
     expect(getComputedStyle(toolbar).position).toBe('sticky')
+    expect(getComputedStyle(second).position).toBe('relative')
+  })
+
+  it('does not stick a lone secondary bar (toolbar="none" toolbar2="...")', () => {
+    // Sibling order cannot identify toolbar2: with the primary bar omitted it
+    // is the first .ol-toolbar, so a `~` rule never matches it.
+    const { host } = mainToolbar()
+    host.firstElementChild?.remove()
+    const second = document.createElement('div')
+    second.className = 'ol-toolbar ol-toolbar--secondary'
+    host.appendChild(second)
     expect(getComputedStyle(second).position).toBe('relative')
   })
 

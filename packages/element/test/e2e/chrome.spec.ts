@@ -145,6 +145,33 @@ test.describe('sticky main toolbar', () => {
     expect(hostBox).not.toBeNull()
     expect(hostBox!.y + hostBox!.height).toBeGreaterThan(0)
   })
+
+  test('does not stick a lone toolbar2 when the primary bar is omitted', async ({ page }) => {
+    await page.evaluate(() => {
+      const wrap = document.createElement('div')
+      wrap.id = 't2-only-wrap'
+      wrap.innerHTML =
+        '<openleaf-editor id="t2-only" toolbar="none" toolbar2="bold italic" aria-label="Secondary only"></openleaf-editor>'
+      document.body.prepend(wrap)
+    })
+    const host = page.locator('#t2-only')
+    const bar = host.locator('> .ol-toolbar').first()
+    await expect(bar).toBeVisible()
+    expect(await bar.evaluate((el) => el.classList.contains('ol-toolbar--secondary'))).toBe(true)
+    expect(await bar.evaluate((el) => getComputedStyle(el).position)).toBe('relative')
+
+    await host.locator('.ProseMirror').evaluate((el) => {
+      ;(el as HTMLElement).style.minHeight = '3000px'
+    })
+    await bar.scrollIntoViewIfNeeded()
+    const before = await bar.boundingBox()
+    expect(before).not.toBeNull()
+    await page.evaluate(() => window.scrollBy(0, 900))
+    const after = await bar.boundingBox()
+    // In flow: the bar travels with the page. Sticky would pin it near y=0.
+    expect(after).not.toBeNull()
+    expect(after!.y).toBeLessThan(before!.y - 400)
+  })
 })
 
 test.describe('floating selection toolbar guards', () => {

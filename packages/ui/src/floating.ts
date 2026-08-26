@@ -231,20 +231,36 @@ export class FloatingToolbars {
 }
 
 /**
- * True when the selection is *inside* a locked region, or *is* a preserved
- * atom.
+ * True when the selection covers no unlocked content.
  *
- * `isNonEditableNode` is the same predicate the transaction filter uses, so
- * a bar that offers Bold cannot appear over a range the filter would refuse.
- * Preserved atoms (`unknown_block` / `unknown_inline`) are already uneditable
- * as a whole -- their interior is opaque markup -- and a NodeSelection on one
- * is not "unlocked content" either. Other atoms (an image, a rule) are not
- * locked in that sense and keep the selection bar.
+ * Hide the bar over a caret or a range that lives entirely inside a locked
+ * node (or *is* a preserved atom): Bold would no-op, and offering it on text
+ * the author cannot change is the original bug. Do not hide it merely because
+ * the range *contains* a locked node. Select All, and a drag that starts
+ * before a `contenteditable="false"` block and ends after it, still have
+ * unlocked text the author can format -- `filterTransaction` already refuses
+ * the locked interior. Walking only `[from, to]` (and stopping at the first
+ * unlocked text) keeps this off the empty-caret keystroke path.
+ *
+ * `isNonEditableNode` is the same predicate the transaction filter uses.
+ * Preserved atoms (`unknown_block` / `unknown_inline`) are uneditable as a
+ * whole. Other atoms (an image, a rule) are not locked in that sense.
  */
 function selectionInLockedContent(state: EditorState): boolean {
   const sel = state.selection
+  if (sel.empty) return lockedAncestor(sel.$from)
   if (sel instanceof NodeSelection) return isLockedNode(sel.node)
-  return lockedAncestor(sel.$from) || lockedAncestor(sel.$to)
+  let unlocked = false
+  state.doc.nodesBetween(sel.from, sel.to, (node) => {
+    if (unlocked) return false
+    if (isLockedNode(node)) return false
+    if (node.isText && (node.text?.length ?? 0) > 0) {
+      unlocked = true
+      return false
+    }
+    return true
+  })
+  return !unlocked
 }
 
 function lockedAncestor($pos: EditorState['selection']['$from']): boolean {

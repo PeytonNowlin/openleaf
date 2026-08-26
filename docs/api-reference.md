@@ -47,7 +47,7 @@ Changing any of these later has no effect without recreating the element.
 | `toolbar2` | same grammar | A second toolbar. |
 | `menubar` | space-separated menu ids, or `none` | Omit the attribute to hide it. |
 | `contextmenu` | `none` to disable | Default is the link, image and table menus. |
-| `selection-toolbar` | `none` to disable | Floating bar for a non-empty selection. Shown only while the view is focused, the editor is editable, and the selection is in unlocked content. A drag-select still shows it: some engines have not focused the view yet while the range is being established. |
+| `selection-toolbar` | `none` to disable | Floating bar for a non-empty selection. Shown only while the view is focused, the editor is editable, and the selection covers some unlocked content. A range entirely inside a locked node hides it; Select All over a document that merely contains one does not. A drag-select still shows it: some engines have not focused the view yet while the range is being established. |
 | `insert-toolbar` | `none` to disable | Floating bar for an empty block. Same visibility rule as `selection-toolbar`, including on mount of a new empty editor. |
 | `formats` | `p.lead=Lead\|h2=Section` | Entries for the formats dropdown. |
 | `content-css` | comma-separated URLs | Stylesheets scoped onto the canvas. **Trusted configuration** — the URL is fetched and adopted document-wide with no origin check, so it must never be attacker-controlled. |

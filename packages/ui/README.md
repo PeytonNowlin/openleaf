@@ -94,7 +94,8 @@ left. Integrators with a fixed site header set `--openleaf-toolbar-sticky-offset
 to that header's height (default `0px`) on `.ol-editor` or an ancestor. The
 menubar is not sticky: stacking it with the toolbar needs a height the
 stylesheet cannot know, and two bars at the same `top` would overlap. A second
-toolbar (`toolbar2`) stays in flow for the same reason.
+toolbar (`toolbar2`) stays in flow for the same reason, including when it is
+the only bar (`toolbar="none"`).
 
 The overflow "More" panel is `position: fixed` from the trigger's viewport box,
 so an open panel still lands under the button when the bar is stuck.
@@ -103,8 +104,11 @@ so an open panel still lands under the button when the bar is stuck.
 
 `selection-toolbar` and `insert-toolbar` on the element create the two floating
 bars. They are shown only while the view is focused, the editor is editable,
-and the selection is not inside a `contenteditable="false"` region or a
-preserved atom. A pointer-down inside the canvas still counts as focused: some
+and the selection covers some unlocked content. A range that lives entirely
+inside `contenteditable="false"` or *is* a preserved atom hides the bar; a
+Select All that merely *contains* a locked block does not, because the
+unlocked text is still formattable. A pointer-down inside the canvas still
+counts as focused: some
 engines have not moved focus into the view yet while a drag-select is
 establishing the range, and a naive `hasFocus()` guard would hide the selection
 bar for that gesture. Placement itself stays pointer-driven — a keyboard user

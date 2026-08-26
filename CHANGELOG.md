@@ -22,7 +22,9 @@ entries below say so explicitly when they do.
   with a fixed site header set `--openleaf-toolbar-sticky-offset` (default
   `0px`). The menubar and a second toolbar stay in flow: two sticky bars at
   the same `top` would overlap, and stacking them needs a height the
-  stylesheet cannot know. Floating bars stay `position: absolute`. The overflow
+  stylesheet cannot know. `toolbar2` is marked `.ol-toolbar--secondary` so
+  that holds when it is the only bar (`toolbar="none"`). Floating bars stay
+  `position: absolute`. The overflow
   More panel is already `position: fixed` from the trigger's viewport box, so
   it still tracks the button when the bar is stuck. `#203`
 
@@ -44,7 +46,9 @@ entries below say so explicitly when they do.
   Pointer-down inside the canvas still counts as focused: some engines have
   not moved focus into the view yet while a drag-select is establishing the
   range, and a naive `hasFocus()` guard would hide the bar for that gesture.
-  `#186`
+  A Select All (or a drag that merely *contains* a locked block) still shows
+  the bar: the unlocked text is formattable, and the transaction filter
+  already refuses the locked interior. `#186`
 
 ## 0.1.0-beta.4 - 2026-08-24
 
