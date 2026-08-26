@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { safeColor } from '../src/css.js'
+import { isFullyModelledStyle, safeColor, safeFontFamily } from '../src/css.js'
 
 /**
  * The colour patterns are ambiguous about whitespace and go quadratic on a raw
@@ -53,5 +53,75 @@ describe('safeColor is linear in the length of its input', () => {
     expect(safeColor('rgba(255,\n0,\t0, 0.5)')).toBe('rgba(255, 0, 0, 0.5)')
     expect(safeColor('#AABBCC')).toBe('#aabbcc')
     expect(safeColor('rebeccapurple')).toBe('rebeccapurple')
+  })
+})
+
+/**
+ * `oneFontFamily` is an allowlist. These tests fail if it is deleted, swapped
+ * for a denylist of "dangerous" substrings, or widened to a character that
+ * can leave the declaration -- verified by reverting the charset and watching
+ * the named faces stay rejected, and by deleting the charset and watching
+ * `url(`, `expression(`, a comment, an unbalanced quote, a newline and a
+ * `;` start to pass.
+ */
+describe('safeFontFamily', () => {
+  it('accepts the faces the previous charset dropped', () => {
+    expect(safeFontFamily("Goudy's Old Style")).toBe('"Goudy\'s Old Style"')
+    expect(safeFontFamily('"Goudy\'s Old Style"')).toBe('"Goudy\'s Old Style"')
+    expect(safeFontFamily("'21st Century'")).toBe('"21st Century"')
+    expect(safeFontFamily('"21st Century"')).toBe('"21st Century"')
+    expect(safeFontFamily('21st Century')).toBe('"21st Century"')
+    expect(safeFontFamily('"C++ Sans"')).toBe('"C++ Sans"')
+    expect(safeFontFamily('C++ Sans')).toBe('"C++ Sans"')
+    // Letters and spaces only -- a control that already passed, named in the
+    // issue as wrongly rejected. It was not; this pins that it still is not.
+    expect(safeFontFamily('Gill Sans MT Extra Condensed')).toBe('"Gill Sans MT Extra Condensed"')
+    expect(safeFontFamily('"Gill Sans MT Extra Condensed"')).toBe('"Gill Sans MT Extra Condensed"')
+  })
+
+  it('rewrites every quoting style to one canonical spelling', () => {
+    // Generic families stay keywords. A quoted "serif" would name a font
+    // called serif rather than the generic, so the fold is load-bearing.
+    expect(safeFontFamily('Georgia')).toBe('Georgia')
+    expect(safeFontFamily("'Georgia'")).toBe('Georgia')
+    expect(safeFontFamily('"Georgia"')).toBe('Georgia')
+    expect(safeFontFamily('serif')).toBe('serif')
+    expect(safeFontFamily('"serif"')).toBe('serif')
+    expect(safeFontFamily("'Times New Roman'")).toBe('"Times New Roman"')
+    expect(safeFontFamily('"Times New Roman"')).toBe('"Times New Roman"')
+    expect(safeFontFamily('Times New Roman')).toBe('"Times New Roman"')
+    expect(safeFontFamily('"Source Code Pro"')).toBe('"Source Code Pro"')
+    expect(safeFontFamily('"Goudy\'s Old Style", Georgia, serif')).toBe(
+      '"Goudy\'s Old Style",Georgia,serif',
+    )
+  })
+
+  it('refuses every shape that can reach outside the declaration', () => {
+    for (const value of [
+      'url(https://evil.example/x)',
+      'url("https://evil.example/x")',
+      'expression(alert(1))',
+      'var(--x)',
+      'Georgia /* comment */',
+      '"/*"',
+      "'Times New Roman",
+      '"Times New Roman',
+      '"Times New Roman\'',
+      'Georgia;\ncolor:red',
+      'Georgia;position:fixed',
+      'foo(bar)',
+      'Foo "Bar"',
+      '"Foo "Bar""',
+      'Georgia\\9',
+      '@import',
+      'foo<>bar',
+    ]) {
+      expect(safeFontFamily(value), value).toBeNull()
+    }
+  })
+
+  it('still models a span that carries only an apostrophe family', () => {
+    expect(isFullyModelledStyle('font-family:"Goudy\'s Old Style"')).toBe(true)
+    expect(isFullyModelledStyle('font-family:url(https://evil.example)')).toBe(false)
   })
 })

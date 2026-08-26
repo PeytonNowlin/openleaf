@@ -12,6 +12,18 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Font-family names with apostrophes, plus signs, or a leading digit now
+  round-trip.** `oneFontFamily` only allowed `[a-zA-Z0-9 -]` starting with a
+  letter, so `Goudy's Old Style`, `21st Century` and `C++ Sans` were dropped
+  at the policy layer, the span was not modelled as a mark, and the toolbar
+  showed Default over text that was visibly in that face. The allowlist now
+  admits apostrophes, plus and a leading digit; names that are not a single
+  CSS identifier are re-emitted in double quotes so a stored single-quoted
+  family matches the dropdown. `url()`, `expression()`, `var()`, comments,
+  unbalanced quotes, backslash, `;` and newlines are still refused. `#202`
+
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed
