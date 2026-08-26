@@ -125,6 +125,16 @@ const CHROME_ATTRIBUTES = [
 let hintCounter = 0
 
 /**
+ * `pointerId` when the event carries one -- a PointerEvent, or a
+ * `contextmenu` that the engine implemented as one. MouseEvent has none.
+ */
+function pointerIdOf(event: Event): number | null {
+  if (!('pointerId' in event)) return null
+  const id = (event as PointerEvent).pointerId
+  return typeof id === 'number' ? id : null
+}
+
+/**
  * Emitted when the HTML source view opens and closes, carrying the textarea.
  *
  * The extension point exists so an opt-in bundle can enhance the source box --
@@ -280,6 +290,21 @@ export class OpenLeafEditor extends HTMLElementBase {
    * document for exactly this reason.
    */
   #contextDoc: Document | null = null
+  /**
+   * Pointer ids whose sequence opened the context menu.
+   *
+   * The capture-phase closer used to treat every outside `pointerdown` as a
+   * dismissal. Hybrid and long-press engines fire `contextmenu` and then a
+   * follow-up `pointerdown` for the SAME pointer, so the menu opened and the
+   * closer hid it in the same gesture -- and `preventDefault` had already
+   * eaten the browser's own menu. These ids are the opening sequence; they
+   * are ignored until each is released. A later down with a different id
+   * still dismisses. Not a timeout: a timeout loses on a slow device and
+   * swallows a genuinely fast second click.
+   */
+  #contextGestureIds = new Set<number>()
+  /** Pointers currently down, so an opening `contextmenu` can name the in-flight sequence. */
+  #contextPointersDown = new Set<number>()
   /**
    * The last document this editor knew about, as HTML.
    *
@@ -883,7 +908,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.removeEventListener(FULLSCREEN_TOGGLE_EVENT, this.#onToggleFullscreen)
     doc.removeEventListener('fullscreenchange', this.#onFullscreenChange)
     this.removeEventListener(VISUAL_AIDS_TOGGLE_EVENT, this.#onToggleVisualAids)
-    // The context menu's three listeners are not removed here: #destroyChrome
+    // The context menu's listeners are not removed here: #destroyChrome
     // below owns all of them, from the document it recorded at mount. Removing
     // them in two places is how the document-level one came to be removed from
     // `#boundDoc` in one and `ownerDocument` in the other, and leaked whenever
@@ -1463,7 +1488,11 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.removeEventListener('contextmenu', this.#onContextMenu)
     this.removeEventListener('keydown', this.#onContextKey, true)
     this.#contextDoc?.removeEventListener('pointerdown', this.#onContextPointer, true)
+    this.#contextDoc?.removeEventListener('pointerup', this.#onContextPointer, true)
+    this.#contextDoc?.removeEventListener('pointercancel', this.#onContextPointer, true)
     this.#contextDoc = null
+    this.#contextGestureIds.clear()
+    this.#contextPointersDown.clear()
   }
 
   #mountContextMenu(): void {
@@ -1475,14 +1504,45 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.addEventListener('keydown', this.#onContextKey, true)
     // Recorded, not re-derived at removal time. See #contextDoc.
     this.#contextDoc = this.ownerDocument
+    // `pointerup` / `pointercancel` end the opening sequence so a later
+    // down with the same id -- mouse is always id 1 -- still dismisses.
     this.#contextDoc.addEventListener('pointerdown', this.#onContextPointer, true)
+    this.#contextDoc.addEventListener('pointerup', this.#onContextPointer, true)
+    this.#contextDoc.addEventListener('pointercancel', this.#onContextPointer, true)
   }
 
   #onContextPointer = (event: PointerEvent): void => {
+    const id = event.pointerId
+    if (event.type === 'pointerdown') this.#contextPointersDown.add(id)
+    if (event.type === 'pointerup' || event.type === 'pointercancel') {
+      this.#contextPointersDown.delete(id)
+      this.#contextGestureIds.delete(id)
+      return
+    }
     const menu = this.#contextMenu
     if (!menu?.open) return
     if (event.target instanceof Node && menu.el.contains(event.target)) return
+    // Rest of the opening gesture, not a later outside click. See #contextGestureIds.
+    if (this.#contextGestureIds.has(id)) return
     menu.close()
+    this.#contextGestureIds.clear()
+  }
+
+  /**
+   * Remember the pointer sequence that produced this `contextmenu`.
+   *
+   * The event is a MouseEvent; some engines also implement it as a
+   * PointerEvent, and some fire a follow-up `pointerdown` with the same
+   * `pointerId` after the menu is already open. We take the opening event's
+   * id when it has one, plus every pointer that was already down -- the
+   * sequence in flight -- and ignore those until each is released.
+   * Keyboard open never calls this.
+   */
+  #armContextGesture(event: MouseEvent): void {
+    this.#contextGestureIds.clear()
+    const fromEvent = pointerIdOf(event)
+    if (fromEvent !== null) this.#contextGestureIds.add(fromEvent)
+    for (const down of this.#contextPointersDown) this.#contextGestureIds.add(down)
   }
 
   /**
@@ -1516,14 +1576,26 @@ export class OpenLeafEditor extends HTMLElementBase {
   ): boolean {
     const menu = this.#contextMenu
     if (!menu || !items) return false
-    let x = point?.x ?? 0
-    let y = point?.y ?? 0
-    // A synthesized event carries the focused element's corner at best and 0,0
-    // at worst; neither of them is where the caret is.
-    if (!point || x <= 0) {
+    // Keyboard is `point === null` -- see `#onContextKey`. A pointer event,
+    // including one whose `clientX` is 0 (the left edge of the viewport) or
+    // negative (an iframe, a transformed layout, a pointer just off the
+    // left), is a real location: `PopupMenu.#place` already clamps it onto
+    // the viewport. `x <= 0` used to mean "synthesized keyboard event at
+    // 0,0", from when Shift+F10 was assumed to arrive as a `contextmenu`
+    // carrying the focused element's corner at best and 0,0 at worst. That
+    // path now passes `null`, because neither the node nor the caret is
+    // recoverable from a synthesized mouse event. Treating 0 as synthesized
+    // put a genuine left-edge click at the caret, which is a different node
+    // whenever the click and the selection disagree.
+    let x: number
+    let y: number
+    if (!point) {
       const coords = view.coordsAtPos(view.state.selection.from)
       x = coords.left
       y = coords.bottom
+    } else {
+      x = point.x
+      y = point.y
     }
     menu.show(items, x, y, { label: 'Editor menu', onClose: () => view.focus() })
     return true
@@ -1574,6 +1646,7 @@ export class OpenLeafEditor extends HTMLElementBase {
           ? TABLE_CONTEXT_ITEMS
           : null
     if (this.#showContext(view, items, { x: event.clientX, y: event.clientY })) {
+      this.#armContextGesture(event)
       event.preventDefault()
     }
   }

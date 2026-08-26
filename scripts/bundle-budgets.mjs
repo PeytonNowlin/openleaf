@@ -33,6 +33,13 @@ import { gzipSync } from 'node:zlib'
  * Proportional, floored at the old rounding wobble. The exact ceilings in
  * BUDGETS_KB are what stop a real size regression; this check exists to keep
  * prose honest, and a percent is well inside what a reader would call accurate.
+ *
+ * Whole-number claims used to skip this. `check-docs.mjs` treated a badge
+ * without a decimal as `Math.round(measured) === claimed`, so the 1% band
+ * never applied: a `123 KB` claim passed at 123.25 KB on Node 26 and failed
+ * at 123.6 KB on CI's Node 22, and writing 124 just inverted which machine
+ * was red -- the same "no edit to the docs could resolve" trap this comment
+ * was written for. The integer path now uses this function too.
  */
 export const sizeClaimToleranceKb = (measuredKb) => Math.max(0.1, measuredKb * 0.01)
 
