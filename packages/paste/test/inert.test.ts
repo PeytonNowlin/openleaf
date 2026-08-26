@@ -23,7 +23,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { parseFragment, serializeFragment } from '../src/dom.js'
-import { normalizeGeneric, normalizeGoogleDocs, normalizeWord } from '../src/index.js'
+import { normalizeExcel, normalizeGeneric, normalizeGoogleDocs, normalizeWord } from '../src/index.js'
 
 /** An `onerror` payload, reachable by three different code paths. */
 const PAYLOAD = '<img src="https://attacker.example/pixel.png" onerror="window.__pwned=1">'
@@ -51,6 +51,15 @@ const WORD =
   '<p class="MsoListParagraphCxSpFirst" style="text-indent:-.25in;mso-list:l0 level1 lfo1">' +
   '<!--[if !supportLists]--><span style="font-family:Symbol">·</span><!--[endif]-->' +
   `Revenue up 12%${PAYLOAD}<o:p></o:p></p>`
+
+/**
+ * Excel paste. `extractSemantics` wraps a bold cell the same way it wraps a
+ * Google Docs span, so this is the wrapChildren adoption hazard on the path
+ * that must not reconstruct lists.
+ */
+const EXCEL =
+  '<meta name=ProgId content=Excel.Sheet>' +
+  `<table><tr><td><span style="font-weight:700">${PAYLOAD}</span></td></tr></table>`
 
 function describeNode(node: Node): string {
   if (node.nodeType === 11) {
@@ -217,6 +226,7 @@ describe('normalizers never adopt a paste into the live document', () => {
     ['a generic paste', GENERIC, (html) => normalizeGeneric(html)],
     ['a Google Docs paste', GDOCS, (html) => normalizeGoogleDocs(html)],
     ['a Word paste', WORD, (html) => normalizeWord(html)],
+    ['an Excel paste', EXCEL, (html) => normalizeExcel(html)],
   ]
 
   for (const [name, payload, normalize] of cases) {
@@ -245,5 +255,8 @@ describe('normalizers never adopt a paste into the live document', () => {
     expect(normalizeGoogleDocs(GDOCS)).toContain('<strong>')
     expect(normalizeWord(WORD)).toContain('<ul>')
     expect(normalizeWord(WORD)).toContain('Revenue up 12%')
+    expect(normalizeExcel(EXCEL)).toContain('<strong>')
+    expect(normalizeExcel(EXCEL)).toContain('<table')
+    expect(normalizeExcel(EXCEL)).not.toContain('<ul')
   })
 })

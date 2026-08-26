@@ -190,7 +190,7 @@ with no build step and no second install.
 | `registerFilePicker(fn)` | Supply a file browser for link and image dialogs. The link dialog (`promptForLink`) keeps `rel` and `id` on Save: window-safety tokens are merged, author tokens are not replaced. |
 | `registerLinkList(items)` / `registerImageList(items)` | Preset lists for those dialogs. |
 | `registerImageClasses(items)` | Preset classes offered in the image dialog. The dialog prefills from a selected image (`promptForImage({ existing })`) and the `image` item updates in place via `updateImage`. |
-| `normalizePastedHtml(html)` | Word/Google Docs paste cleanup, usable outside the editor. |
+| `normalizePastedHtml(html)` | Word/Excel/Google Docs paste cleanup, usable outside the editor. Excel clipboard HTML is classified as `'excel'`, not Word, so spreadsheet grids are not run through Word list reconstruction. |
 
 ---
 

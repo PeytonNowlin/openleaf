@@ -329,7 +329,7 @@ An integration is complete only after these checks pass:
 - Reloading the saved value preserves supported and application-specific
   markup as intended.
 - The editor has an accessible name and can be reached by keyboard.
-- A paste from Word or Google Docs retains text and list structure.
+- A paste from Word or Google Docs retains text and list structure. A paste from Excel retains the copied grid as a table.
 - Server-side sanitization removes scripts, event-handler attributes, unsafe
   URLs, unapproved embeds, and disallowed CSS.
 - Every configured toolbar item is registered; OpenLeaf emits a console warning
