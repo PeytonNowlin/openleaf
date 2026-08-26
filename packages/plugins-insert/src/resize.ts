@@ -69,6 +69,12 @@ function intrinsic(el: MediaElement): { width: number; height: number } {
   return { width: el.naturalWidth, height: el.naturalHeight }
 }
 
+/** True once the element can supply a ratio, rather than 0×0 or a broken-image box. */
+function knownSize(el: MediaElement): boolean {
+  const { width, height } = intrinsic(el)
+  return width > 0 && height > 0
+}
+
 function applyImageAttrs(img: HTMLImageElement, node: PMNode): void {
   img.src = node.attrs['src'] as string
   const alt = node.attrs['alt']
@@ -187,6 +193,15 @@ const STEP = 10
 const BIG_STEP = 50
 /** Below this an image is a dot, and the handle cannot be hit again by pointer. */
 const MIN_WIDTH = 16
+/**
+ * `HTMLMediaElement.HAVE_METADATA`.
+ *
+ * The named constant lives on the constructor, and `instanceof` is already
+ * false across iframe realms -- see `isVideo`. The spec value is 1 in every
+ * window, so the number is what we compare; looking it up on this realm's
+ * constructor would be a second, quieter version of the same bug.
+ */
+const HAVE_METADATA = 1
 
 /** On the wrapper while one video has been handed back its own pointer events. */
 const LIVE_CLASS = 'ol-media-live'
@@ -232,6 +247,12 @@ function mediaView(
   handle.setAttribute('aria-label', kind === 'video' ? 'Video width' : 'Image width')
   handle.setAttribute('aria-orientation', 'horizontal')
   handle.setAttribute('aria-valuemin', String(MIN_WIDTH))
+  // Off until there is a real size to drag from. A handle sitting on the
+  // broken-image box (or a 0×0 frame) used to commit that box's ~16–40px width,
+  // which then stayed in the document after the bitmap arrived. Hidden rather
+  // than `aria-disabled`: a visible inert slider on a placeholder is the same
+  // class of lie this control already stopped being when it was a dead button.
+  handle.hidden = true
 
   /**
    * Click-to-activate.
@@ -365,6 +386,7 @@ function mediaView(
     handle.setAttribute('aria-valuenow', String(numeric ? value : currentWidth()))
     handle.setAttribute('aria-valuemax', String(maxWidth()))
     syncAvailability()
+    syncHandle()
     // A percentage width is legal in the storage format, and "50%" is a truer
     // thing to say than the pixel count it happens to render at right now.
     handle.setAttribute('aria-valuetext', shown === '' ? 'Automatic' : numeric ? `${shown} pixels` : shown)
@@ -395,6 +417,92 @@ function mediaView(
   availability.add(syncAvailability)
 
   /**
+   * A drag is safe when we would not be writing the placeholder box as a width.
+   *
+   * A stored numeric width is already a document value -- changing it does not
+   * need the ratio, and height stays unset until the file can supply one. That
+   * is the video special-case (`heightFor` returning null) applied to both
+   * kinds, and it is why a player that already stores `width="640"` can still
+   * be resized before `loadedmetadata`.
+   *
+   * Without that stored width, the only number `currentWidth()` has is
+   * `getBoundingClientRect()` of a 0×0 or broken-image box. Committing it is
+   * the bug: the real bitmap then arrives and the stored width is nonsense.
+   */
+  const canCommit = (): boolean => {
+    if (knownSize(img)) return true
+    const pos = getPos()
+    const stored = pos === undefined ? null : view.state.doc.nodeAt(pos)?.attrs['width']
+    const value = Number(stored)
+    return Number.isFinite(value) && value > 0
+  }
+
+  const syncHandle = (): void => {
+    handle.hidden = !canCommit()
+  }
+
+  let destroyed = false
+
+  const onImageLoad = (): void => {
+    if (destroyed) return
+    const image = img as HTMLImageElement
+    // `decode()` rejects for a broken image. An unhandled rejection here is a
+    // console error in every consumer; the handle stays off unless a stored
+    // width already gives us something other than the placeholder to drag.
+    if (typeof image.decode === 'function') {
+      void image.decode().catch(() => undefined)
+    }
+    onMediaReady()
+  }
+
+  const onMediaReady = (): void => {
+    if (destroyed) return
+    if (knownSize(img)) unwatch()
+    syncHandle()
+  }
+
+  const onMediaError = (): void => {
+    if (destroyed) return
+    syncHandle()
+  }
+
+  const unwatch = (): void => {
+    img.removeEventListener('load', onImageLoad)
+    img.removeEventListener('error', onMediaError)
+    img.removeEventListener('loadedmetadata', onMediaReady)
+  }
+
+  /**
+   * Cached media can be complete (or past HAVE_METADATA) before a listener
+   * attaches, so the ready state is checked synchronously as well as listened
+   * for. A listener-only watch would silently never fire for a cache hit.
+   *
+   * Listeners stay until the ratio is known or the node view is destroyed: a
+   * `complete && naturalWidth === 0` image in jsdom is the pending window, not
+   * a finished failure, and a test (or a late `load`) still has to be able to
+   * reveal the handle.
+   */
+  const watchMedia = (): void => {
+    unwatch()
+    if (knownSize(img)) {
+      if (!isVideo(img) && typeof (img as HTMLImageElement).decode === 'function') {
+        void (img as HTMLImageElement).decode().catch(() => undefined)
+      }
+      syncHandle()
+      return
+    }
+    if (isVideo(img)) {
+      img.addEventListener('loadedmetadata', onMediaReady)
+      img.addEventListener('error', onMediaError)
+      if (img.readyState >= HAVE_METADATA) onMediaReady()
+      return
+    }
+    img.addEventListener('load', onImageLoad)
+    img.addEventListener('error', onMediaError)
+    if ((img as HTMLImageElement).complete) onImageLoad()
+  }
+
+  /**
    * Pixel height that keeps the element's aspect ratio, or null if it is
    * unknown -- a video that has not loaded metadata yet reports 0x0, and
    * guessing a height for it would squash the frame once it arrives.
@@ -408,6 +516,8 @@ function mediaView(
   const resizeTo = (raw: number): void => {
     // See `syncAvailability`: this path is not behind ProseMirror's own gate.
     if (!view.editable) return
+    // See `canCommit`: refuse a width taken from the placeholder box.
+    if (!canCommit()) return
     const pos = getPos()
     if (pos === undefined) return
     const next = Math.max(MIN_WIDTH, Math.round(raw))
@@ -495,6 +605,7 @@ function mediaView(
     // above has already dropped the preview, so refusing here leaves the element
     // at the width the document actually says.
     if (!view.editable) return
+    if (!canCommit()) return
     const pos = getPos()
     if (pos === undefined) return
     view.dispatch(
@@ -510,6 +621,7 @@ function mediaView(
     // Guarded at the start of the drag rather than at its commit, so a read-only
     // document does not even show a resize preview.
     if (!view.editable) return
+    if (!canCommit()) return
     event.preventDefault()
     dragging = true
     moved = false
@@ -563,9 +675,11 @@ function mediaView(
     event.preventDefault()
     // The same arrow key moves the caret out of the image if the editor sees it.
     event.stopPropagation()
+    if (!canCommit()) return
     resizeTo(next)
   })
 
+  watchMedia()
   sync(node)
 
   const nodeView: NodeView = {
@@ -573,6 +687,9 @@ function mediaView(
     update(updated) {
       if (updated.type.name !== kind) return false
       applyAttrs(img, updated)
+      // `src` (or a video's furniture) can change on update and drop us back
+      // into the loading window. Re-arm rather than trusting the last reveal.
+      watchMedia()
       sync(updated)
       // `applyAttrs` restores the preview -- controls off -- because that is the
       // default state. An activated player has to survive its own resize, so the
@@ -581,6 +698,10 @@ function mediaView(
       return true
     },
     destroy() {
+      // Set before dropping listeners so a `load` that fires as we tear down
+      // cannot `setNodeMarkup` against a position that is already gone.
+      destroyed = true
+      unwatch()
       // `stop`, not `onUp`: a node view torn down mid-drag must not dispatch
       // into a view that is being dismantled, and the size the author was
       // dragging towards is not one they ever committed to.

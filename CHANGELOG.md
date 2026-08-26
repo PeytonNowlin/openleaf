@@ -12,6 +12,17 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **The media resize handle is withheld until the image has decoded or the
+  video has metadata**, and a drag or arrow key during that window does not
+  write a width. The handle used to sit on the broken-image box (or a 0×0
+  frame) and the first drag stored that placeholder's ~16–40px width, which
+  then survived once the real bitmap arrived. A stored numeric width is still
+  enough to offer the handle: height stays unset until the ratio is known,
+  matching the existing video path. A cached image that is already `complete`
+  is checked synchronously, so a listener-only wait cannot miss it. `#188`
+
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed
