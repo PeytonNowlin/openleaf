@@ -85,6 +85,41 @@
  * had no indicator at all: which menu is open, which menu item has focus, which
  * cells are selected, and every one of the visual aids -- whose entire output
  * is a colour.
+ *
+ * ### Sticky toolbar
+ *
+ * The main bar sticks to the nearest scrolling ancestor. Page scroll is the
+ * one that used to take it off-screen: autoresize grows the canvas
+ * (`overflow: hidden` on `.ProseMirror`, a descendant, so it is not a
+ * sticky-killing scrollport above the bar) and the page moves. The host
+ * itself has no overflow. Fullscreen is a column flex whose `.ol-content` /
+ * `.ol-source` scroll -- the bar is not in that scroller, so sticky is a
+ * no-op there and the bar already stays put. Do not "fix" fullscreen.
+ *
+ * Floating bars re-specify `position: absolute` at (0,3,0), so they are not
+ * stuck. A second toolbar (`toolbar2`) carries `.ol-toolbar--secondary` and
+ * is reset to `relative`: two sticky bars at the same `top` would paint on
+ * top of each other, and a sibling selector would miss the supported
+ * `toolbar="none" toolbar2="..."` layout, where this bar is the first
+ * `.ol-toolbar`. The menubar is not sticky for the same stacking reason.
+ * `--openleaf-toolbar-sticky-offset` is the host-header pad; 0px so a host
+ * that never heard of the token still gets a bar that stays on screen.
+ *
+ * ### Decoration colour
+ *
+ * CSS Text Decorations paint the line in the originating element's colour.
+ * Schema order wraps `<u>`/`<s>` around the colour span, so a rule on `u, s`
+ * that sets `text-decoration-color: currentColor` is a no-op -- that is
+ * already the initial value, and it is the paragraph colour, not the glyphs'.
+ * A descendant cannot retint an ancestor's already-painted line. The colour
+ * span therefore re-establishes the same line in *its* `currentColor`; the
+ * ancestor's line remains and is covered (measured in Chromium and WebKit).
+ * The opposite nest -- colour wrapping `<u>`/`<s>` -- already inherits, and
+ * the first rule is what that nest needs if an engine's UA default is not
+ * `currentColor`. Highlight is background only: the line should still match
+ * the foreground, which the first rule does. Combined underline+strike
+ * re-establishes both lines, because a later `line-through` rule would
+ * otherwise leave the underline in the paragraph colour.
  */
 
 const DARK_TOKENS = `
@@ -135,6 +170,7 @@ export const CSS = `
      Focus Appearance. */
   --ol-focus-width: var(--openleaf-focus-width, 2px);
   --ol-focus-offset: var(--openleaf-focus-offset, 1px);
+  --ol-toolbar-sticky-offset: var(--openleaf-toolbar-sticky-offset, 0px);
 
   display: block;
   position: relative;
@@ -184,8 +220,14 @@ export const CSS = `
   border-radius: var(--ol-radius) var(--ol-radius) 0 0;
   background: var(--ol-surface);
   font: inherit;
-  position: relative;
+  position: sticky;
+  top: var(--ol-toolbar-sticky-offset);
   z-index: var(--ol-z);
+}
+
+.ol-editor .ol-toolbar--secondary {
+  position: relative;
+  top: auto;
 }
 
 .ol-editor .ol-group {
@@ -365,6 +407,19 @@ export const CSS = `
   padding: 12px;
   min-height: 8rem;
   outline: none;
+}
+
+.ol-editor .ol-content .ProseMirror :is(u, s, del) {
+  text-decoration-color: currentColor;
+}
+.ol-editor .ol-content .ProseMirror u [style^="color:"] {
+  text-decoration: underline currentColor;
+}
+.ol-editor .ol-content .ProseMirror :is(s, del) [style^="color:"] {
+  text-decoration: line-through currentColor;
+}
+.ol-editor .ol-content .ProseMirror u :is(s, del) [style^="color:"] {
+  text-decoration: underline line-through currentColor;
 }
 
 .ol-editor .ol-content:focus-within {

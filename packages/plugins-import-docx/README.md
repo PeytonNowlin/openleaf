@@ -65,7 +65,7 @@ as under the limit. Override both ceilings through `installDocxImport({ limits }
 
 ## Its own bundle, for a reason
 
-mammoth is larger than the entire editor -- around 123 KB gzipped against core's
+mammoth is larger than the entire editor -- around 124 KB gzipped against core's
 108. A site that only imports HTML must not pay for it, which is why this is a
 separate package and a separate script tag rather than an option on the importer.
 

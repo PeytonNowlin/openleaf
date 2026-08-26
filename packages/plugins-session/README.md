@@ -53,7 +53,7 @@ Installing does **not** rearrange your toolbar. Name the items you want:
 | Id | What it does |
 | --- | --- |
 | `find` | Opens the find and replace bar (`Mod-F`). Next and previous are `Mod-G` / `Shift-Mod-G`. |
-| `wordCount` | Opens a dialog with words, characters, and paragraphs. A status line under the editor shows the word count continuously, without announcing it on every keystroke. |
+| `wordCount` | Opens a dialog with words, characters, and paragraphs. A status line under the editor shows the word count continuously, without announcing it on every keystroke. Zero-width space, soft hyphen, and BOM are omitted from both character totals and from the word count. |
 | `save` | Submits the bound form, or calls `registerSaveHandler`, or fires a cancelable `openleaf:save` event (`Mod-S`). |
 | `preview` | A read-only, published-looking view of the current HTML in a sandboxed iframe. The frame loads the editor's `content-css` (unscoped, as the published page does), copies the canvas `dir` / `lang` and the active skin's tokens, and does not invent table borders. Per-block `dir` in the document is left intact. |
 | `print` | Prints the current document with the same `content-css` and direction. A dark skin is not printed as a dark page — light skins still apply. Page breaks (`hr.ol-pagebreak`) are honoured. |
@@ -104,9 +104,13 @@ editor.addEventListener('openleaf:save', (event) => {
 
 From a script tag, `OpenLeaf.registerSaveHandler(fn)` is available after the session bundle loads.
 
+## Word count and find
+
+Character and word totals omit zero-width space (U+200B), soft hyphen (U+00AD), and BOM (U+FEFF): format characters with no glyph, which visual aids do not mark. Find skips the same set, as a match barrier rather than a hole, so a query of the visible spelling does not match across one and Replace cannot swallow it. Non-breaking spaces are real spaces: they count, visual aids mark them, and find treats them as ordinary spaces.
+
 ## Accessibility and CSP
 
-The find bar is outside the toolbar, so the toolbar stays one tab stop. Escape closes the bar and returns focus to the document. Match highlights use a class, not a colour-only signal, and have a `forced-colors` outline.
+The find bar is outside the toolbar, so the toolbar stays one tab stop. Escape closes the bar and returns focus to the document. After Replace all, focus returns to the find field so a keyboard or screen-reader user is not left on a disabled button (or on `<body>`). Match highlights use a class, not a colour-only signal, and have a `forced-colors` outline.
 
 Styles are a constructable stylesheet. On a browser without `adoptedStyleSheets`, link the file:
 

@@ -500,13 +500,28 @@ function buildFindBar(host: EditorHost, view: EditorView): { root: HTMLElement; 
     setSearch(findInput.value, caseBox.checked)(view.state, view.dispatch)
   }
 
+  /**
+   * The find field, focused and selected.
+   *
+   * Shared by `open()` and Replace all so the two cannot drift. After Replace
+   * all the button disables (`hits === 0`) and a disabled focused button dumps
+   * focus to `<body>` in every engine -- so the author who just rewrote the
+   * document is left on the page, not in the query they still have. The replace
+   * field is the other candidate; the find field is the one `open()` already
+   * uses, and with no matches left the next thing the author does is edit the
+   * query or close, not type a replacement.
+   */
+  const focusFind = (): void => {
+    findInput.focus()
+    findInput.select()
+  }
+
   const open = (): void => {
     root.hidden = false
     const selected = view.state.doc.textBetween(view.state.selection.from, view.state.selection.to, ' ')
     if (selected && selected !== findInput.value) findInput.value = selected
     applyQuery()
-    findInput.focus()
-    findInput.select()
+    focusFind()
   }
 
   const close = (): void => {
@@ -612,7 +627,18 @@ function buildFindBar(host: EditorHost, view: EditorView): { root: HTMLElement; 
   prev.addEventListener('click', () => findPrev(view.state, view.dispatch))
   next.addEventListener('click', () => findNext(view.state, view.dispatch))
   replace.addEventListener('click', () => replaceCurrent(replaceInput.value)(view.state, view.dispatch))
-  replaceAllBtn.addEventListener('click', () => replaceAll(replaceInput.value)(view.state, view.dispatch))
+  replaceAllBtn.addEventListener('click', () => {
+    // Focus before the replace, and only while the bar is open. `replaceAll`
+    // dispatches; `sync` disables this button (`hits === 0`) and announces
+    // "{n} replaced". A disabled focused button dumps focus to `<body>` in
+    // every engine, and a focus move *after* the announcement can interrupt
+    // a screen reader mid-utterance -- `announce` queues the live region on
+    // a 60 ms timer, but focusing first is the order that stays correct if
+    // that delay ever goes. Do not call `open()`: it would copy the current
+    // selection into the query.
+    if (!root.hidden) focusFind()
+    replaceAll(replaceInput.value)(view.state, view.dispatch)
+  })
   closeBtn.addEventListener('click', close)
 
   return { root, open, close, sync }

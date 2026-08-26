@@ -918,12 +918,17 @@ Every bundle carries a budget in `BUDGETS_KB` in `scripts/bundle-budgets.mjs`,
 and the gate fails on the first one over. Gzipped, measured against budget:
 
 ```
-openleaf.min.js            123.0 / 124
+openleaf.min.js            123.7 / 127
 openleaf-import-docx.min.js 124.5 / 140
 openleaf-tables.min.js       19.1 /  25
+openleaf-session.min.js       9.4 /  10
+
+openleaf-tables.min.js       19.8 /  25
+openleaf-session.min.js       9.2 /  10
+
 openleaf-session.min.js       9.7 /  10
 openleaf-highlight.min.js     6.7 /  15
-openleaf-insert.min.js        8.0 /  20
+openleaf-insert.min.js        8.4 /  20
 openleaf-colour.min.js        5.3 /  15
 openleaf-import.min.js        3.3 /  12
 ```
@@ -989,8 +994,11 @@ claims will never fire. Pick a free chord.
 negotiable: capturing Tab inside a `contenteditable` removes the only way a
 keyboard user has to leave the editor, which is a WCAG 2.1.2 keyboard-trap
 failure — "for the institutional users who most need a free editor, that is a
-procurement blocker rather than a rough edge". Core uses `Mod-[` and `Mod-]` for
-indentation instead.
+procurement blocker rather than a rough edge". That includes inside a
+`code_block`. Authors indent a code sample by typing spaces. `Mod-]` is
+paragraph and list indent; it does not insert spaces into a `<pre>`, but
+it still nests a surrounding list item. Core uses `Mod-[` and `Mod-]` for
+that indentation instead of Tab.
 
 ### 4.7 CSS goes through `registerStyles`, from your own bundle
 

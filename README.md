@@ -61,7 +61,7 @@ Its defining goal is content fidelity. Schema-based editors can silently discard
 markup they do not recognize. OpenLeaf instead preserves unknown markup as a
 selectable, movable atom that round-trips without modification. Stored content
 and pasted content use separate pipelines: existing documents favor lossless
-preservation, while Word and Google Docs paste is normalized into clean,
+preservation, while Word, Excel and Google Docs paste is normalized into clean,
 semantic HTML.
 
 ### Highlights
@@ -69,9 +69,10 @@ semantic HTML.
 - Framework-free `<openleaf-editor>` custom element
 - Ordinary HTML input and output—no proprietary document format
 - Content preservation for legacy and application-specific markup
-- Word and Google Docs paste cleanup, including nested list reconstruction from
+- Word, Excel and Google Docs paste cleanup, including nested list reconstruction from
   Word's flat, style-encoded list paragraphs (Google's clipboard HTML already
-  carries real `<ul>`/`<ol>` nesting and needs none)
+  carries real `<ul>`/`<ol>` nesting and needs none; Excel's clipboard is a
+  real table and is not routed through that reconstruction)
 - Configurable, themeable toolbar. The buttons are one tab stop with a roving
   tabindex; the preset `<select>` controls (block type, font, size, line height)
   are each their own tab stop, and image resize is pointer-only today
@@ -182,7 +183,7 @@ outdent also sit in the Format menu and keep their keyboard shortcuts.
 | Feature | How to reach it |
 | --- | --- |
 | Font family, font size, line height | Default toolbar selects |
-| Indent / outdent | Default toolbar, Format menu, `Mod+]` / `Mod+[`, F1 list |
+| Indent / outdent | Default toolbar, Format menu, `Mod+]` / `Mod+[`, F1 list. Paragraph padding and list nesting; in a code block, type spaces. Tab always leaves the editor. |
 | Subscript / superscript | `Mod+=` / `Mod+Shift+=`, and the F1 shortcut list |
 | Direction, language | `setDir`, `toggleDir`, `setLanguage` |
 | List style | `setListStyle` |
@@ -217,6 +218,7 @@ and attribute-driven:
   formats="p.lead=Lead paragraph|.note=Note"
   content-css="/css/article.css"
   lang="fr"
+  placeholder="Write the article…"
   inline
   autoresize
 ></openleaf-editor>
@@ -226,13 +228,14 @@ and attribute-driven:
 - **Context menus** — right-click a link, image, or table. An image offers
   **Edit image** and prefills the dialog from the selected picture. Set
   `contextmenu="none"` to disable.
-- **Floating toolbars** — `selection-toolbar` and `insert-toolbar`.
+- **Floating toolbars** — `selection-toolbar` and `insert-toolbar`. Shown only while the editor is focused, editable, and the selection covers some unlocked content.
 - **Fullscreen, help, visual aids** — toolbar ids `fullscreen`, `help`, `visualAids`. F1 opens help.
-- **Autoresize / inline** — grow with content, or hide chrome until focus.
+- **Autoresize / inline** — grow with content (CSS, not a pixel height), or hide chrome until focus.
+- **Placeholder** — `placeholder="Write the article…"` on an empty document; never stored in `value`.
 - **Autolink** — URLs become links on space, Enter, or the end of an IME composition, so a CJK or mobile keyboard that accepts a candidate without typing ASCII whitespace still gets a link. Nothing is marked while a composition is still open. Trailing sentence punctuation and unmatched `)]}'"` stay outside the mark; a balanced `)` in the path (Wikipedia-style) stays in. Set `autolink="false"` to disable.
 - **Formats** — class names from the host’s content CSS, applied to the current block.
-- **Translations** — `lang` plus `registerTranslations('fr', { Bold: 'Gras' })`.
-- **Non-editable regions** — `contenteditable="false"` in stored HTML is honoured while editing and still round-trips.
+- **Translations** — `lang` plus `registerTranslations('fr', { Bold: 'Gras' })`. The same `lang` is the canvas / spellcheck language; a bound textarea's `lang` is used when the host has none. `spellcheck="false"` turns checking off.
+- **Non-editable regions** — `contenteditable="false"` in stored HTML is honoured while editing and still round-trips. A `readonly` editor does not follow links; it fires `openleaf:link` instead.
 
 First-party wrappers keep the same element underneath:
 
@@ -307,7 +310,7 @@ package owns, so on its own there is no control to reach it through.
 | --- | --- |
 | [`@openleaf-editor/element`](packages/element) | Drop-in `<openleaf-editor>` custom element |
 | [`@openleaf-editor/core`](packages/core) | Schema, commands, HTML I/O, and content preservation |
-| [`@openleaf-editor/paste`](packages/paste) | Word and Google Docs paste normalization |
+| [`@openleaf-editor/paste`](packages/paste) | Word, Excel and Google Docs paste normalization |
 | [`@openleaf-editor/ui`](packages/ui) | Toolbar, menus, dialogs, icons, skins, and theme tokens |
 | [`@openleaf-editor/sanitize`](packages/sanitize) | Canonical allowlist and sanitizer adapters |
 | [`@openleaf-editor/content-policy`](packages/content-policy) | URL, CSS, and embed rules shared by the editor and the sanitizers |

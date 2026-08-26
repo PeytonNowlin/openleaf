@@ -126,3 +126,39 @@ describe('jumping to a match', () => {
     expect(message).toContain('quick brown fox jumps')
   })
 })
+
+describe('Replace all focus', () => {
+  function replaceAllButton(host: HTMLElement): HTMLButtonElement {
+    const found = [...findBar(host).querySelectorAll('button')].find(
+      (button) => button.textContent === 'Replace all',
+    )
+    if (!found) throw new Error('no Replace all button')
+    return found
+  }
+
+  it('returns focus to the find field and still announces the replacement', () => {
+    vi.useFakeTimers()
+    const { host } = editor('<p>alpha beta alpha</p>')
+    sessionFor(host)?.openFind()
+    const bar = findBar(host)
+    const findInput = bar.querySelector<HTMLInputElement>('input[name="find"]')
+    const replaceInput = bar.querySelector<HTMLInputElement>('input[name="replace"]')
+    findInput!.value = 'alpha'
+    findInput!.dispatchEvent(new Event('input', { bubbles: true }))
+
+    const button = replaceAllButton(host)
+    // The author who invoked Replace all is on the button. Without moving
+    // focus first, `sync` disables it (`hits === 0`) and every engine dumps
+    // focus to `<body>`. Focusing the button here is what makes this test
+    // fail against the unfixed handler, which never called `focusFind()`.
+    button.focus()
+    expect(document.activeElement).toBe(button)
+    button.click()
+    vi.advanceTimersByTime(200)
+
+    expect(document.activeElement).toBe(findInput)
+    expect(document.activeElement).not.toBe(replaceInput)
+    expect(findInput!.value).toBe('alpha')
+    expect(spoken(host)).toBe('2 replaced')
+  })
+})

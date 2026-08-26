@@ -7,6 +7,11 @@ export default defineConfig({
     // behaviour are NOT tested here -- those live in Playwright, in real
     // browsers, because jsdom does not model them faithfully.
     environment: 'jsdom',
-    include: ['packages/*/test/**/*.test.ts'],
+    include: [
+      'packages/*/test/**/*.test.ts',
+      // Docs-gate predicates live in scripts/*.mjs; the tests that pin them
+      // sit next to those files rather than inside a package.
+      'scripts/**/*.test.ts',
+    ],
   },
 })

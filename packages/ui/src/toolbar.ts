@@ -246,6 +246,11 @@ export class Toolbar {
 
     this.el = doc.createElement('div')
     this.el.className = 'ol-toolbar'
+    // toolbar2 is constructed with this source label (packages/element). A
+    // class, not a sibling selector: `toolbar="none" toolbar2="..."` is a
+    // supported layout, and then this bar is the first `.ol-toolbar`, so a
+    // positional rule would stick it.
+    if (this.#label === 'More formatting') this.el.classList.add('ol-toolbar--secondary')
     this.el.setAttribute('role', 'toolbar')
     this.el.setAttribute('aria-label', t(this.#label))
 
