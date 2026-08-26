@@ -50,7 +50,7 @@ Changing any of these later has no effect without recreating the element.
 | `selection-toolbar` | `none` to disable | Floating bar for a non-empty selection. |
 | `insert-toolbar` | `none` to disable | Floating bar for an empty block. |
 | `formats` | `p.lead=Lead\|h2=Section` | Entries for the formats dropdown. |
-| `content-css` | comma-separated URLs | Stylesheets scoped onto the canvas. **Trusted configuration** — the URL is fetched and adopted document-wide with no origin check, so it must never be attacker-controlled. |
+| `content-css` | comma-separated URLs | Stylesheets scoped onto the canvas. Session Preview and Print load the same URLs unscoped inside their iframe, because that document is not under the canvas scope root. **Trusted configuration** — the URL is fetched and adopted document-wide with no origin check, so it must never be attacker-controlled. |
 | `inline` | present / absent | Hide chrome until the editor is focused. |
 | `autoresize` | present / absent | Grow the canvas with the document. |
 | `toolbar-overflow` | present / absent | Collapse overflowing groups into a More menu. |

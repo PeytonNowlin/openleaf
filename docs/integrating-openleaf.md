@@ -211,7 +211,7 @@ chosen editor package when possible:
 | Syntax highlighting | `@openleaf-editor/plugins-highlight` | `installSyntaxHighlighting()` |
 | HTML and text file import | `@openleaf-editor/plugins-import` | `installImport()` |
 | Word `.docx` import | `@openleaf-editor/plugins-import-docx` | `installDocxImport()` |
-| Find, count, save, preview, print, and recovery | `@openleaf-editor/plugins-session` | `installSessionTools()` |
+| Find, count, save, preview, print, and recovery | `@openleaf-editor/plugins-session` | `installSessionTools()`. Preview and print reuse the editor's `content-css`, canvas `dir` / `lang`, and (for preview) the active skin. |
 | Media, details, symbols, snippets, and image resize | `@openleaf-editor/plugins-insert` | `installInsertTools()` |
 
 Example:

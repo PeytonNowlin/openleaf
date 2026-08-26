@@ -12,6 +12,17 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Preview and print now match the canvas.** Session Preview and Print built a
+  hardcoded light document (`system-ui`, invented table borders, no `dir`) and
+  ignored the editor's `content-css`, the active skin, and the host direction, so
+  a published stylesheet or an RTL canvas never reached either surface. Preview
+  now loads those `content-css` URLs unscoped (the iframe is not under the
+  canvas scope root), copies `dir` / `lang` and the skin's tokens onto the
+  preview root, and leaves per-block `dir` intact. Print does the same except a
+  dark skin is not printed as a dark page. `#172`
+
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed
