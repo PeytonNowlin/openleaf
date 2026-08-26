@@ -156,7 +156,7 @@
   </p>
   <p class="badges">
     <span class="badge">Apache-2.0</span>
-    <span class="badge" data-openleaf-size="core">123 KB gzipped</span>
+    <span class="badge" data-openleaf-size="core">124 KB gzipped</span>
     <span class="badge">No framework</span>
     <span class="badge">Built on ProseMirror</span>
     <span class="badge"><a href="https://github.com/PeytonNowlin/openleaf">Source on GitHub</a></span>
@@ -502,7 +502,8 @@ const ratio = width / height   // division, not a regex
   in the default layout. Subscript and superscript are
   <kbd>Mod</kbd>+<kbd>=</kbd> and <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>=</kbd>;
   indent and outdent also answer to <kbd>Mod</kbd>+<kbd>]</kbd> and
-  <kbd>Mod</kbd>+<kbd>[</kbd>. All four are in the <kbd>F1</kbd> list.
+  <kbd>Mod</kbd>+<kbd>[</kbd>, for paragraphs and lists. A code sample is
+  indented by typing spaces. All four are in the <kbd>F1</kbd> list.
 </p>
 
 <p>
@@ -719,10 +720,15 @@ over it to watch the clip without leaving the editor.</p>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>B</kbd> <kbd>I</kbd> <kbd>U</kbd></td><td>Bold, italic, underline</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>6</kbd></td><td>Headings</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>7</kbd> / <kbd>8</kbd></td><td>Numbered / bulleted list</td></tr>
-    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>[</kbd> <kbd>]</kbd></td><td>Outdent / indent a list item</td></tr>
-    <tr><td><kbd>Tab</kbd></td><td>Leaves the editor. Deliberately never captured.</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>[</kbd> <kbd>]</kbd></td><td>Outdent / indent a paragraph or list item</td></tr>
+    <tr><td><kbd>Tab</kbd></td><td>Leaves the editor, including from a code block. Deliberately never captured.</td></tr>
   </tbody>
 </table>
+<p>
+  In a code block, indent by typing spaces. <kbd>Tab</kbd> still leaves the
+  editor: capturing it there would trap a keyboard user in the
+  <code>&lt;pre&gt;</code>. The F1 list says the same.
+</p>
 
 <p>
   Formatting changes are announced through a polite live region — but only on a real
@@ -764,10 +770,13 @@ over it to watch the clip without leaving the editor.</p>
 
 <p>
   The editor below turns most of it on at once. Right-click a link, an image or a
-  table for a context menu; select some text for the floating toolbar; press
+  table for a context menu; select some text for the floating toolbar (it hides
+  again when the editor is not focused); press
   <kbd>F1</kbd> for the shortcut sheet. <strong>Visual aids</strong> marks empty
   blocks and non-breaking spaces, which is the difference between "there is a
-  stray nbsp in this paragraph" and an hour of squinting.
+  stray nbsp in this paragraph" and an hour of squinting. The main toolbar
+  sticks while this editor is in view; a host with a fixed header can pad that
+  with <code>--openleaf-toolbar-sticky-offset</code>.
 </p>
 
 <pre>&lt;openleaf-editor

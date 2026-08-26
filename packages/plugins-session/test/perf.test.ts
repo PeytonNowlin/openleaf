@@ -149,16 +149,21 @@ describe('word count cost', () => {
       'tabs\tand\nnewlines\r\nandvertical\u000b',
       'ideographic\u3000thin\u2009narrow\u202fem\u2003spaces',
       '   leading and trailing  ',
-      // A zero-width space is not `\s`, so it has to count as a character.
+      // Format characters are not content. This fixture used to require ZWSP
+      // to count because it is not `\s` -- that was the in-place walk agreeing
+      // with `replace(/\s+/g, '')`, not a product rule that authors should see
+      // extra characters. The walk still has to agree with a whitespace strip
+      // of what remains after they are removed.
       'zero\u200bwidth\u200bspace',
       '\ufeff byte order mark is whitespace to the regex',
+      'soft\u00adhyphenated',
     ]
     for (const sample of samples) {
       const doc = parseHtml(`<p>${sample}</p>`, { schema: coreSchema() })
-      const text = actual.documentText(doc)
-      expect(actual.documentStats(doc).charactersExcludingSpaces).toBe(
-        text.replace(/\s+/g, '').length,
-      )
+      const text = actual.documentText(doc).replace(/[\u200b\u00ad\ufeff]/g, '')
+      const stats = actual.documentStats(doc)
+      expect(stats.characters).toBe(text.length)
+      expect(stats.charactersExcludingSpaces).toBe(text.replace(/\s+/g, '').length)
     }
   })
 

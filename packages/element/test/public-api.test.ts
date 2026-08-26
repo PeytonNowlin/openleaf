@@ -242,4 +242,16 @@ describe('properties reflect their attributes', () => {
       el.remove()
     }
   })
+
+  it('reflects placeholder both ways', () => {
+    const el = mount()
+    try {
+      el.placeholder = 'Write the article…'
+      expect(el.getAttribute('placeholder')).toBe('Write the article…')
+      el.placeholder = null
+      expect(el.hasAttribute('placeholder')).toBe(false)
+    } finally {
+      el.remove()
+    }
+  })
 })
