@@ -75,7 +75,6 @@ entries below say so explicitly when they do.
   event coordinates, which the menu already clamps onto the viewport.
   Negative `clientX` is treated the same way -- a real coordinate, not a
   missing one. `#200`
-
 ### Changed
 
 - **The main toolbar stays on screen while the editor is in view.** `.ol-toolbar`
@@ -94,6 +93,13 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Underline and strikethrough follow the text colour**, including on a dark
+  skin and when a colour mark is nested inside `<u>`/`<s>` (the order the
+  schema serializes). CSS Text Decorations paint the line in the originating
+  element's colour, so `text-decoration-color: currentColor` on `u`/`s` is a
+  no-op for that nest; the colour span re-establishes the line in the glyphs'
+  colour. Highlight is background only — the line still matches the
+  foreground. Stored HTML is unchanged. `#190`
 - **Floating selection and insert bars hide when the editor is unfocused,
   readonly, or the selection sits inside a locked node.** Visibility was
   selection-shape only, so a click on the host page left the selection bar

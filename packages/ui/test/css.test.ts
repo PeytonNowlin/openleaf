@@ -91,3 +91,23 @@ describe('main toolbar sticky positioning', () => {
     expect(getComputedStyle(toolbar).position).toBe('sticky')
   })
 })
+describe('decoration colour follows the glyphs', () => {
+  /*
+   * jsdom does not compute `text-decoration-color`. The assertion is that the
+   * sheet contains the rules; Chromium in
+   * `packages/element/test/e2e/decoration-colour.spec.ts` is what proves they
+   * paint the line in the text colour for both mark nestings.
+   */
+  it('sets currentColor on u/s/del and re-establishes the line on a colour span', () => {
+    expect(CSS).toContain(
+      '.ol-editor .ol-content .ProseMirror :is(u, s, del) {\n  text-decoration-color: currentColor;\n}',
+    )
+    expect(CSS).toContain('.ol-editor .ol-content .ProseMirror u [style^="color:"]')
+    expect(CSS).toContain('text-decoration: underline currentColor')
+    expect(CSS).toContain('.ol-editor .ol-content .ProseMirror :is(s, del) [style^="color:"]')
+    expect(CSS).toContain('text-decoration: line-through currentColor')
+    expect(CSS).toContain(
+      '.ol-editor .ol-content .ProseMirror u :is(s, del) [style^="color:"]',
+    )
+  })
+})
