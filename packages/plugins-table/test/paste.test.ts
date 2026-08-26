@@ -14,8 +14,10 @@ import { Fragment, Slice } from 'prosemirror-model'
 import { EditorState, TextSelection } from 'prosemirror-state'
 import { CellSelection } from 'prosemirror-tables'
 import { EditorView } from 'prosemirror-view'
+import * as pmView from 'prosemirror-view'
 import { afterEach, describe, expect, it } from 'vitest'
 import { tableEditingPlugins } from '../src/index.js'
+import { wholeTableInSlice } from '../src/paste.js'
 
 const HOST =
   '<table><tbody>' +
@@ -116,6 +118,24 @@ function colspanOf(doc: Node, text: string): number {
   return found
 }
 
+const FURNISHED =
+  '<table border="1" class="results">' +
+  '<caption>Q1 results</caption>' +
+  '<colgroup><col width="120"><col width="80"></colgroup>' +
+  '<thead><tr><th scope="col">Region</th><th scope="col">Total</th></tr></thead>' +
+  '<tbody><tr><td>North</td><td>412</td></tr></tbody>' +
+  '</table>'
+
+function nestedTable(doc: Node): Node {
+  const tables: Node[] = []
+  doc.descendants((node) => {
+    if (node.type.name === 'table') tables.push(node)
+    return true
+  })
+  if (tables.length < 2) throw new Error(`expected a nested table, found ${tables.length}`)
+  return tables[1]!
+}
+
 describe('paste of a whole table at a text caret in a cell', () => {
   it('nests the table and keeps the host grid, including unrelated colspan', () => {
     const editor = mount(HOST, 'Target')
@@ -174,6 +194,98 @@ describe('paste onto a CellSelection', () => {
     expect(html).toContain('Corner')
     expect(html).not.toContain('Target')
     expect(html).not.toContain('Sibling')
+  })
+})
+
+function parseExternalHtml(view: EditorView, html: string): Slice {
+  const parse = (pmView as unknown as {
+    __parseFromClipboard: (
+      v: EditorView,
+      text: string,
+      html: string,
+      plainText: boolean,
+      $context: EditorView['state']['selection']['$from'],
+    ) => Slice | null
+  }).__parseFromClipboard
+  const slice = parse(view, '', html, false, view.state.selection.$from)
+  if (!slice) throw new Error('clipboard parser returned null')
+  return slice
+}
+
+function expectFurnished(node: Node): void {
+  expect(node.attrs['caption']).toContain('Q1 results')
+  expect(node.attrs['colgroup']).toContain('width="120"')
+  expect(node.attrs['colgroup']).toContain('width="80"')
+  expect(node.attrs['headerRows']).toBe(1)
+  expect(node.attrs['border']).toBe('1')
+  expect(node.attrs['class']).toBe('results')
+}
+
+describe('paste of a furnished table at a text caret', () => {
+  it('keeps caption, colgroup, header section and attributes from external HTML', () => {
+    // No data-pm-slice: this is the browser/Word/Excel path. parseFromClipboard
+    // closes isolating tables, so the slice is already a closed table with
+    // furniture on the node — the shape the first review claimed was open.
+    const editor = mount(HOST, 'Target')
+    const slice = parseExternalHtml(editor, FURNISHED)
+    expect(slice.openStart).toBe(0)
+    expect(slice.openEnd).toBe(0)
+    expect(wholeTableInSlice(slice)?.attrs['caption']).toContain('Q1 results')
+    expect(applyPaste(editor, slice)).toBe(true)
+
+    const { doc } = editor.state
+    expect(tableCount(doc)).toBe(2)
+    expect(colspanOf(doc, 'Wide')).toBe(2)
+    expectFurnished(nestedTable(doc))
+
+    const html = serializeHtml(doc)
+    expect(html).toContain('Sibling')
+    expect(html).toContain('<caption>Q1 results</caption>')
+    expect(html).toContain('width="120"')
+    expect(html).toContain('<thead>')
+    expect(html).toContain('class="results"')
+  })
+
+  it('keeps those attributes when the slice is an open whole table', () => {
+    // CellSelection.content() of every cell: Slice(table, 1, 1). pastedCells
+    // unwraps that and the fallback used to rebuild with null attrs.
+    const source = mount(FURNISHED, 'North')
+    const sel = CellSelection.create(
+      source.state.doc,
+      cellPosOfText(source.state.doc, 'Region'),
+      cellPosOfText(source.state.doc, '412'),
+    )
+    expect(sel.isColSelection() && sel.isRowSelection()).toBe(true)
+    const slice = sel.content()
+    source.destroy()
+    expect(slice.openStart).toBe(1)
+    expect(slice.openEnd).toBe(1)
+    const whole = wholeTableInSlice(slice)
+    expect(whole).not.toBeNull()
+    expect(whole!.attrs['caption']).toContain('Q1 results')
+
+    const editor = mount(HOST, 'Target')
+    expect(applyPaste(editor, slice)).toBe(true)
+
+    const { doc } = editor.state
+    expect(tableCount(doc)).toBe(2)
+    expect(colspanOf(doc, 'Wide')).toBe(2)
+    expectFurnished(nestedTable(doc))
+    expect(serializeHtml(doc)).toContain('Sibling')
+  })
+
+  it('does not treat an open fragment of rows as a whole table', () => {
+    const rows = new Slice(tableNode(FURNISHED).content, 1, 1)
+    expect(wholeTableInSlice(rows)).toBeNull()
+
+    const editor = mount(HOST, 'Target')
+    expect(applyPaste(editor, rows)).toBe(true)
+    expect(tableCount(editor.state.doc)).toBe(2)
+    expect(colspanOf(editor.state.doc, 'Wide')).toBe(2)
+    expect(nestedTable(editor.state.doc).attrs['caption']).toBeNull()
+    expect(nestedTable(editor.state.doc).attrs['headerRows']).toBe(0)
+    expect(serializeHtml(editor.state.doc)).toContain('Sibling')
+    expect(serializeHtml(editor.state.doc)).toContain('North')
   })
 })
 

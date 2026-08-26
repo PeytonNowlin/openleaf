@@ -19,7 +19,10 @@ entries below say so explicitly when they do.
   and ran `insertCells` from the caret, so a 2×2 pasted into a 2×2 replaced the
   host and a slice of loose cells rewrote `colspan` on cells the author had not
   selected. A whole table, or loose cells, pasted at a text caret now become a
-  nested table; a cell selection still maps onto the selected rectangle. `#176`
+  nested table; a cell selection still maps onto the selected rectangle. A whole
+  table keeps its caption, colgroup, header/footer counts and other table
+  attributes — including when the slice is open by one, which is how a copy of
+  every cell arrives. `#176`
 - **Column resize over a nested table grabs the table whose border the pointer
   is on.** `columnResizing` hit-tests the innermost `td`, so a pointer on an
   outer column edge that crossed a nested table resized the inner grid and left

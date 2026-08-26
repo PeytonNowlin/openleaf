@@ -77,10 +77,15 @@ cell is how you make one. Two editing rules follow from that:
   nested table, the outer grid wins, so parent column widths can be restored
   without first leaving the inner table.
 - **Paste.** A whole table pasted at a text caret inside a cell is inserted as a
-  nested table. Loose cells pasted at a text caret are wrapped in a new table and
-  nested the same way. A cell selection still maps pasted cells onto the selected
-  rectangle. In no case does a caret-paste rewrite `colspan` on cells the author
-  did not select.
+  nested table, and it keeps the table's own attributes — caption, colgroup,
+  header and footer row counts, `border`, `class`. That is true of external HTML
+  (a browser, Word, or Excel table, which arrives as a closed table) and of an
+  internal copy of every cell (which arrives as that same table node, open by
+  one). Loose cells pasted at a text caret are wrapped in a new table and nested
+  the same way; a copied rectangle is not a table, so it does not inherit a
+  caption it did not carry. A cell selection still maps pasted cells onto the
+  selected rectangle. In no case does a caret-paste rewrite `colspan` on cells
+  the author did not select.
 
 ## License
 
