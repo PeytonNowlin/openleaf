@@ -121,3 +121,80 @@ test.describe('the toolbar overflow menu', () => {
     await expect.poll(() => page.locator('#body-narrow').inputValue()).toContain('<h2>')
   })
 })
+
+test.describe('sticky main toolbar', () => {
+  // jsdom will report `position: sticky` and still let the bar scroll away.
+  // The page-scroll + tall canvas case is the one that actually lost the
+  // formatting controls; fullscreen is a column flex and is not this.
+  test('stays in the viewport after the page scrolls a long canvas', async ({ page }) => {
+    const host = page.locator('openleaf-editor[for="body"]')
+    await host.locator('.ProseMirror').evaluate((el) => {
+      ;(el as HTMLElement).style.minHeight = '3000px'
+    })
+    const toolbar = mainToolbar(page)
+    await expect(toolbar).toBeVisible()
+    expect(await toolbar.evaluate((el) => getComputedStyle(el).position)).toBe('sticky')
+
+    await page.evaluate(() => window.scrollTo(0, 900))
+    const box = await toolbar.boundingBox()
+    expect(box).not.toBeNull()
+    // Stuck at the top of the scrolling viewport, not 900px above it.
+    expect(box!.y).toBeGreaterThanOrEqual(-1)
+    expect(box!.y).toBeLessThan(80)
+    const hostBox = await host.boundingBox()
+    expect(hostBox).not.toBeNull()
+    expect(hostBox!.y + hostBox!.height).toBeGreaterThan(0)
+  })
+
+  test('does not stick a lone toolbar2 when the primary bar is omitted', async ({ page }) => {
+    await page.evaluate(() => {
+      const wrap = document.createElement('div')
+      wrap.id = 't2-only-wrap'
+      wrap.innerHTML =
+        '<openleaf-editor id="t2-only" toolbar="none" toolbar2="bold italic" aria-label="Secondary only"></openleaf-editor>'
+      document.body.prepend(wrap)
+    })
+    const host = page.locator('#t2-only')
+    const bar = host.locator('> .ol-toolbar').first()
+    await expect(bar).toBeVisible()
+    expect(await bar.evaluate((el) => el.classList.contains('ol-toolbar--secondary'))).toBe(true)
+    expect(await bar.evaluate((el) => getComputedStyle(el).position)).toBe('relative')
+
+    await host.locator('.ProseMirror').evaluate((el) => {
+      ;(el as HTMLElement).style.minHeight = '3000px'
+    })
+    await bar.scrollIntoViewIfNeeded()
+    const before = await bar.boundingBox()
+    expect(before).not.toBeNull()
+    await page.evaluate(() => window.scrollBy(0, 900))
+    const after = await bar.boundingBox()
+    // In flow: the bar travels with the page. Sticky would pin it near y=0.
+    expect(after).not.toBeNull()
+    expect(after!.y).toBeLessThan(before!.y - 400)
+  })
+})
+
+test.describe('floating selection toolbar guards', () => {
+  const floating = (page: Page) =>
+    page.locator('openleaf-editor[for="body"] > .ol-toolbar.ol-floating').first()
+
+  test('shows after a drag-select, and hides when the editor blurs', async ({ page }) => {
+    const bar = floating(page)
+    await expect(bar).toBeHidden()
+
+    const text = main(page).getByText('A stored paragraph.')
+    const box = await text.boundingBox()
+    expect(box).not.toBeNull()
+    // A real pointer sequence, not Shift+Arrow: `hasFocus()` is false in some
+    // engines while the drag is establishing the range, and a naive focus
+    // guard hides the bar for exactly this gesture.
+    await page.mouse.move(box!.x + 4, box!.y + box!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box!.x + box!.width - 4, box!.y + box!.height / 2)
+    await page.mouse.up()
+    await expect(bar).toBeVisible()
+
+    await page.mouse.click(5, 5)
+    await expect(bar).toBeHidden()
+  })
+})

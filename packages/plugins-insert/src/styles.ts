@@ -104,6 +104,10 @@ export const INSERT_CSS = `
   background: var(--openleaf-color-surface, #fff);
   cursor: nwse-resize;
 }
+/* Same trap as the play button: an author display would beat the UA's
+   [hidden] rule. Restated so withholding the handle until decode cannot be
+   undone by a later display:block on this class. */
+.ol-img-handle[hidden] { display: none; }
 @media print {
   .ol-pagebreak, hr.ol-pagebreak { break-after: page; page-break-after: always; border: 0; }
 }
