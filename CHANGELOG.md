@@ -21,6 +21,45 @@ entries below say so explicitly when they do.
   -- and writing 124 inverted which machine was red. The `BUDGETS_KB`
   ceilings remain the regression gate.
 
+### Added
+
+- **`placeholder` on `<openleaf-editor>`.** An empty document shows the prompt
+  as a CSS `::before` on the canvas, never as a text node, so it cannot
+  serialize into `value` or submit with the form. ProseMirror's empty
+  document is a paragraph containing a trailing break, not an empty
+  element; the class `ol-placeholder` is what actually gates the prompt.
+  `#175`
+- **Pasting a bare image URL inserts an `<img>`.** A clipboard whose entire
+  plain text is one `http(s)` URL whose path ends in `png`, `jpg`/`jpeg`/`jfif`,
+  `gif`, `webp`, or `avif` goes through `isSafeUrl` and `insertImage`, with
+  or without an uploader. Query strings and fragments are ignored when
+  looking at the path. An extensionless CDN address, an SVG, or any other
+  non-image URL keeps today's link/plain paste. `#168`
+- **`openleaf:link`.** A read-only editor never follows an `<a href>`
+  (mouse, keyboard, or modified click). It fires a bubbling, composed,
+  non-cancelable `openleaf:link` with `{ href }` set to the authored
+  attribute. Integrators who want a new tab listen and call
+  `window.open`. `#181`
+
+### Fixed
+
+- **Read-only left-click no longer navigates away.** `contenteditable="false"`
+  restores native link activation; the canvas now `preventDefault`s it
+  without making the anchor inert, so Tab and the browser's own menu can
+  still copy the URL. There is no `querySelector(href)` path in the
+  repository; the handler uses `closest('a')`, so an href containing
+  `;`, `:`, `[` or `.` cannot throw. `#181`
+- **`autoresize` no longer writes a pixel height.** The old `height: auto`
+  → `scrollHeight` → pixel write was a synchronous reflow, and a no-op
+  observer pass left the canvas at `height: auto` for a frame. The
+  canvas now sizes to its content; leftover inline heights are cleared.
+  `#180`
+- **Canvas `lang` and `spellcheck`.** Host `lang` is copied onto the
+  editable region (UI locale doubles as the spellcheck language). A bound
+  textarea's `lang` is used when the host has none. Page `<html lang>`
+  is left to inherit. `spellcheck="false"` on the host is copied onto
+  the region, matching the off switch source view already has. `#175`
+
 - **The editor context menu survives the pointer sequence that opened it.**
   Hybrid and long-press engines fire `contextmenu` and then a follow-up
   `pointerdown` for the same `pointerId`; the document capture closer treated
@@ -66,7 +105,6 @@ entries below say so explicitly when they do.
   A Select All (or a drag that merely *contains* a locked block) still shows
   the bar: the unlocked text is formattable, and the transaction filter
   already refuses the locked interior. `#186`
-
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed
