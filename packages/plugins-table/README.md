@@ -67,6 +67,21 @@ Without that, every remaining column inherited the previous `<col>`'s width and
 class. Column resize still patches widths onto the same elements, so the two
 paths do not fight.
 
+## Nested tables
+
+A cell may contain a table — `table_cell` is `block+`, and Insert table inside a
+cell is how you make one. Two editing rules follow from that:
+
+- **Column resize.** Dragging a column border targets the table whose border the
+  pointer is on. When the pointer sits on an outer column edge that crosses a
+  nested table, the outer grid wins, so parent column widths can be restored
+  without first leaving the inner table.
+- **Paste.** A whole table pasted at a text caret inside a cell is inserted as a
+  nested table. Loose cells pasted at a text caret are wrapped in a new table and
+  nested the same way. A cell selection still maps pasted cells onto the selected
+  rectangle. In no case does a caret-paste rewrite `colspan` on cells the author
+  did not select.
+
 ## License
 
 Apache-2.0.
