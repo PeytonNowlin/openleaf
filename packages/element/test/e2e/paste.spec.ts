@@ -42,6 +42,30 @@ function editor(page: Page) {
  * DOM; what these browser tests add is proof that `transformPastedHTML` is
  * actually wired into the live view, and two of three engines confirm that.
  */
+async function pasteText(page: Page, text: string): Promise<boolean> {
+  return page.evaluate((payload) => {
+    const region = document.querySelector<HTMLElement>('.ProseMirror')
+    if (!region) return false
+    region.focus()
+    let data: DataTransfer
+    try {
+      data = new DataTransfer()
+      data.setData('text/plain', payload)
+    } catch {
+      return false
+    }
+    if (data.getData('text/plain') !== payload) return false
+    const event = new ClipboardEvent('paste', {
+      clipboardData: data,
+      bubbles: true,
+      cancelable: true,
+    })
+    if (!event.clipboardData || event.clipboardData.getData('text/plain') !== payload) return false
+    region.dispatchEvent(event)
+    return true
+  }, text)
+}
+
 async function pasteHtml(page: Page, html: string): Promise<boolean> {
   return page.evaluate((payload) => {
     const region = document.querySelector<HTMLElement>('.ProseMirror')
@@ -204,4 +228,25 @@ test.describe('pasting attacker-controlled markup', () => {
       expect(await editor(page).locator('[onerror]').count()).toBe(0)
     })
   }
+})
+
+test.describe('pasting a bare image URL', () => {
+  test('inserts an image whose src is that URL', async ({ page }) => {
+    const src = 'https://cdn.example/hero.png'
+    const ok = await pasteText(page, src)
+    test.skip(!ok, 'this browser does not honour constructed clipboardData')
+
+    const value = await stored(page)
+    expect(value).toContain('<img')
+    expect(value).toContain(`src="${src}"`)
+  })
+
+  test('leaves a non-image URL as text, not an image', async ({ page }) => {
+    const ok = await pasteText(page, 'https://example.org/a')
+    test.skip(!ok, 'this browser does not honour constructed clipboardData')
+
+    const value = await stored(page)
+    expect(value).not.toContain('<img')
+    expect(value).toContain('https://example.org/a')
+  })
 })

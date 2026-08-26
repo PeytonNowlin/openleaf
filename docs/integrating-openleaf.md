@@ -75,6 +75,14 @@ textarea shortly after document changes and synchronously before submission.
 Set the textarea's initial value to load a document. The textarea may also be
 nested inside the element; OpenLeaf will discover and bind it automatically.
 
+`placeholder="Write the article…"` shows a prompt on an empty document without
+writing into `value`. `lang` on the host — or, if the host has none, on the
+bound textarea — is copied onto the canvas for spellcheck; `spellcheck="false"`
+turns checking off. A `readonly` editor does not follow links: listen for
+`openleaf:link` (`{ href }`) if a preview should open in a new tab. Pasting a
+bare `https://…/hero.png` inserts an image; a URL that is not an image keeps
+today's paste.
+
 For application-managed state, use the element's `value` property and listen to
 `openleaf:change`. Compare before assigning an external value so a synchronization
 loop does not create unnecessary transactions.

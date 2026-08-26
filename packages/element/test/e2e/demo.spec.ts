@@ -92,17 +92,24 @@ test.describe('the demo page', () => {
   test('shows the insert bar on an editor that opens on an empty block', async ({ page }) => {
     await page.goto(DEMO)
     await expect(page.locator('openleaf-editor[for="body"] .ProseMirror')).toBeVisible({ timeout: 15000 })
-    const shown = await page.evaluate(async () => {
+    const result = await page.evaluate(async () => {
       const wrap = document.createElement('div')
       document.body.appendChild(wrap)
       wrap.innerHTML = '<openleaf-editor id="probe" insert-toolbar="image"></openleaf-editor>'
       await new Promise((r) => setTimeout(r, 400))
-      const bar = document.querySelector('#probe .ol-toolbar.ol-floating') as HTMLElement | null
-      const visible = !!bar && getComputedStyle(bar).display !== 'none'
+      const bar = () => document.querySelector('#probe .ol-toolbar.ol-floating') as HTMLElement | null
+      const hiddenUnfocused = !!bar() && getComputedStyle(bar()!).display === 'none'
+      const pm = document.querySelector('#probe .ProseMirror') as HTMLElement | null
+      pm?.focus()
+      await new Promise((r) => setTimeout(r, 50))
+      const visibleFocused = !!bar() && getComputedStyle(bar()!).display !== 'none'
       wrap.remove()
-      return visible
+      return { hiddenUnfocused, visibleFocused }
     })
-    expect(shown).toBe(true)
+    // Mount still positions from initial state -- focusing is not a document
+    // transaction -- but the bar stays hidden until the view is focused.
+    expect(result.hiddenUnfocused).toBe(true)
+    expect(result.visibleFocused).toBe(true)
   })
 
   /*
@@ -128,6 +135,7 @@ test.describe('the demo page', () => {
       wrap.innerHTML =
         '<openleaf-editor id="shift" insert-toolbar="image" content-css="/probe-shift.css"></openleaf-editor>'
     })
+    await page.locator('#shift .ProseMirror').click()
     // Polled, not slept on. The stylesheet is fetched and adopted
     // asynchronously, and how long that takes is the engine's business.
     await expect
@@ -136,7 +144,7 @@ test.describe('the demo page', () => {
           page.evaluate(() => {
             const bar = document.querySelector('#shift .ol-toolbar.ol-floating') as HTMLElement | null
             const para = document.querySelector('#shift .ProseMirror p') as HTMLElement | null
-            if (!bar || !para) return Number.POSITIVE_INFINITY
+            if (!bar || !para || getComputedStyle(bar).display === 'none') return Number.POSITIVE_INFINITY
             return Math.round(Math.abs(bar.getBoundingClientRect().top - para.getBoundingClientRect().top))
           }),
         { timeout: 10000 },
@@ -169,13 +177,14 @@ test.describe('the demo page', () => {
         '<openleaf-editor id="sib" insert-toolbar="image"></openleaf-editor>' +
         '<openleaf-editor id="sib-loader" insert-toolbar="image" content-css="/probe-sibling.css"></openleaf-editor>'
     })
+    await page.locator('#sib .ProseMirror').click()
     await expect
       .poll(
         () =>
           page.evaluate(() => {
             const bar = document.querySelector('#sib .ol-toolbar.ol-floating') as HTMLElement | null
             const para = document.querySelector('#sib .ProseMirror p') as HTMLElement | null
-            if (!bar || !para) return Number.POSITIVE_INFINITY
+            if (!bar || !para || getComputedStyle(bar).display === 'none') return Number.POSITIVE_INFINITY
             return Math.round(Math.abs(bar.getBoundingClientRect().top - para.getBoundingClientRect().top))
           }),
         { timeout: 10000 },
@@ -276,6 +285,9 @@ test.describe('the demo page', () => {
       const hiddenWhileHidden = getComputedStyle(bar()).display === 'none'
       wrap.style.display = ''
       await new Promise((r) => setTimeout(r, 600))
+      const pm = document.querySelector('#tabbed .ProseMirror') as HTMLElement | null
+      pm?.focus()
+      await new Promise((r) => setTimeout(r, 50))
       const para = document.querySelector('#tabbed .ProseMirror p') as HTMLElement
       const gap = Math.round(Math.abs(bar().getBoundingClientRect().top - para.getBoundingClientRect().top))
       wrap.remove()
