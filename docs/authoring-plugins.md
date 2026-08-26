@@ -922,6 +922,9 @@ openleaf.min.js            123.7 / 127
 openleaf-import-docx.min.js 124.5 / 140
 openleaf-tables.min.js       19.1 /  25
 openleaf-session.min.js       9.4 /  10
+
+openleaf-tables.min.js       19.8 /  25
+openleaf-session.min.js       9.2 /  10
 openleaf-highlight.min.js     6.7 /  15
 openleaf-insert.min.js        8.4 /  20
 openleaf-colour.min.js        5.3 /  15

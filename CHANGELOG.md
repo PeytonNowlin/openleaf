@@ -152,6 +152,22 @@ entries below say so explicitly when they do.
   enough to offer the handle: height stays unset until the ratio is known,
   matching the existing video path. A cached image that is already `complete`
   is checked synchronously, so a listener-only wait cannot miss it. `#188`
+
+- **Pasting a table into a cell nests it instead of rewriting the host grid.**
+  `tableEditing.handlePaste` unwrapped any slice whose outer node was a table
+  and ran `insertCells` from the caret, so a 2×2 pasted into a 2×2 replaced the
+  host and a slice of loose cells rewrote `colspan` on cells the author had not
+  selected. A whole table, or loose cells, pasted at a text caret now become a
+  nested table; a cell selection still maps onto the selected rectangle. A whole
+  table keeps its caption, colgroup, header/footer counts and other table
+  attributes — including when the slice is open by one, which is how a copy of
+  every cell arrives. `#176`
+- **Column resize over a nested table grabs the table whose border the pointer
+  is on.** `columnResizing` hit-tests the innermost `td`, so a pointer on an
+  outer column edge that crossed a nested table resized the inner grid and left
+  no way to restore parent widths. A wrapping plugin prefers the outer border
+  when the pointer is on it; an inner border that is not also an outer one still
+  resizes the nested table. `#176`
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed
