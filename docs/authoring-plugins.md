@@ -923,7 +923,7 @@ openleaf-import-docx.min.js 124.5 / 140
 openleaf-tables.min.js       19.1 /  25
 openleaf-session.min.js       9.4 /  10
 openleaf-highlight.min.js     6.7 /  15
-openleaf-insert.min.js        8.0 /  20
+openleaf-insert.min.js        8.4 /  20
 openleaf-colour.min.js        5.3 /  15
 openleaf-import.min.js        3.3 /  12
 ```

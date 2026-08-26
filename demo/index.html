@@ -555,7 +555,10 @@ registerToolbarItem({
   allowlist accepts <code>youtube.com/embed/</code> and refuses
   <code>youtube.com/watch</code> — embedding a watch page would nest the whole
   site UI in your document. Video gets the same drag handle as an image; audio
-  does not, because its schema declares no box to drag.
+  does not, because its schema declares no box to drag. The handle is withheld
+  until the image has decoded or the video has metadata, so a drag cannot lock
+  in the broken-image box; a width already stored in the document is enough to
+  offer it, and height waits for the ratio.
 </p>
 
 <p>
@@ -574,14 +577,14 @@ registerToolbarItem({
 </p>
 
 <pre data-openleaf-size="insert">&lt;script src="/js/openleaf.min.js"&gt;&lt;/script&gt;
-&lt;script src="/js/openleaf-insert.min.js"&gt;&lt;/script&gt;   &lt;!-- 8.0 KB, optional --&gt;</pre>
+&lt;script src="/js/openleaf-insert.min.js"&gt;&lt;/script&gt;   &lt;!-- 8.4 KB, optional --&gt;</pre>
 
 <div style="margin-top:1rem">
   <label for="insert-body" class="visually-hidden">Insert sample</label>
   <openleaf-editor for="insert-body" aria-label="Insert sample"
     toolbar="undo redo | bold italic | image media details anchor | charmap emoji datetime pagebreak nbsp | source"></openleaf-editor>
   <textarea id="insert-body" hidden><details><summary>A collapsible section</summary><p>Its open state round-trips too.</p></details>
-<p>Drag the corner of the image or the video to resize it. Then try the character
+<p>Drag the corner of the image or the video to resize it once it has loaded. Then try the character
 map, the emoji grid, and Insert media — a poster frame and alternate sources are
 on the dialog. Click the video to select it, then press Insert media again to
 edit the player that is already there — or press the play button that appears
