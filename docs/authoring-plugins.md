@@ -989,8 +989,11 @@ claims will never fire. Pick a free chord.
 negotiable: capturing Tab inside a `contenteditable` removes the only way a
 keyboard user has to leave the editor, which is a WCAG 2.1.2 keyboard-trap
 failure — "for the institutional users who most need a free editor, that is a
-procurement blocker rather than a rough edge". Core uses `Mod-[` and `Mod-]` for
-indentation instead.
+procurement blocker rather than a rough edge". That includes inside a
+`code_block`. Authors indent a code sample by typing spaces. `Mod-]` is
+paragraph and list indent; it does not insert spaces into a `<pre>`, but
+it still nests a surrounding list item. Core uses `Mod-[` and `Mod-]` for
+that indentation instead of Tab.
 
 ### 4.7 CSS goes through `registerStyles`, from your own bundle
 

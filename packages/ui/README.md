@@ -68,6 +68,11 @@ custom-control contract is strict about focus: exactly one focusable element in
 what you return, and if it is not a `button.ol-btn` then name it as `focusable`.
 Two makes the bar two tab stops where the author expects one.
 
+Tab itself is never captured inside the editor, including in a code block —
+it is how a keyboard user leaves. Indent a code sample by typing spaces.
+The F1 dialog lists Tab as "leave the editor" and Alt+F10 as the toolbar
+shortcut.
+
 [Authoring OpenLeaf plugins](../../docs/authoring-plugins.md) documents the rest,
 including the `mousedown` `preventDefault` that keeps the selection alive and why
 `destroy` runs before every re-render rather than only on teardown.
