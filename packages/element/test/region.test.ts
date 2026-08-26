@@ -133,3 +133,77 @@ describe('the description of the editable region', () => {
     expect(region.hasAttribute('aria-describedby')).toBe(false)
   })
 })
+
+describe('placeholder', () => {
+  it('paints on an empty document without writing into value', () => {
+    // ProseMirror's empty document is a paragraph containing a trailing
+    // break, not an empty element, so a CSS `:empty` prompt would never
+    // show. The class is the real signal; the prompt is a `::before`.
+    const { host, region } = build(
+      '<openleaf-editor placeholder="Write the article…" toolbar="none"></openleaf-editor>',
+    )
+    expect(region.matches(':empty')).toBe(false)
+    expect(region.querySelector('p')).not.toBeNull()
+    expect(region.classList.contains('ol-placeholder')).toBe(true)
+    expect(region.getAttribute('data-placeholder')).toBe('Write the article…')
+    expect(region.getAttribute('aria-placeholder')).toBe('Write the article…')
+    expect(host.value).toBe('<p></p>')
+    expect(host.value).not.toContain('Write the article')
+  })
+
+  it('is gone after one character, and still not in value', () => {
+    const { host, region } = build(
+      '<openleaf-editor placeholder="Write the article…" toolbar="none"></openleaf-editor>',
+    )
+    host.value = '<p>x</p>'
+    expect(region.classList.contains('ol-placeholder')).toBe(false)
+    expect(region.hasAttribute('data-placeholder')).toBe(false)
+    expect(host.value).toBe('<p>x</p>')
+    expect(host.value).not.toContain('Write the article')
+  })
+})
+
+describe('canvas lang and spellcheck', () => {
+  it('copies host lang onto the editable region', () => {
+    const { region } = build(
+      '<openleaf-editor lang="fr" toolbar="none"><p>bonjour</p></openleaf-editor>',
+    )
+    expect(region.getAttribute('lang')).toBe('fr')
+  })
+
+  it('copies a bound textarea lang when the host has none', () => {
+    const { region } = build(`
+      <textarea id="body" lang="de"></textarea>
+      <openleaf-editor for="body" toolbar="none"></openleaf-editor>
+    `)
+    expect(region.getAttribute('lang')).toBe('de')
+  })
+
+  it('prefers the host lang over the textarea', () => {
+    const { region } = build(`
+      <textarea id="body" lang="de"></textarea>
+      <openleaf-editor for="body" lang="fr" toolbar="none"></openleaf-editor>
+    `)
+    expect(region.getAttribute('lang')).toBe('fr')
+  })
+
+  it('does not copy page lang onto the region, so it can still inherit', () => {
+    const previous = document.documentElement.getAttribute('lang')
+    document.documentElement.setAttribute('lang', 'it')
+    try {
+      const { region } = build('<openleaf-editor toolbar="none"></openleaf-editor>')
+      expect(region.hasAttribute('lang')).toBe(false)
+    } finally {
+      if (previous === null) document.documentElement.removeAttribute('lang')
+      else document.documentElement.setAttribute('lang', previous)
+    }
+  })
+
+  it('copies spellcheck="false" onto the canvas, which source view already has', () => {
+    const { region } = build(
+      '<openleaf-editor spellcheck="false" toolbar="none"><p>code</p></openleaf-editor>',
+    )
+    expect(region.getAttribute('spellcheck')).toBe('false')
+  })
+})
+

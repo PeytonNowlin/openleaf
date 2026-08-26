@@ -13,3 +13,21 @@ Two PR rules are worth repeating here:
   examples, demo copy, integration guides, and machine-readable indexes that
   describe the changed behavior. Summarize those updates in the PR body, or say
   why the change has no documentation impact.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `PeytonNowlin/openleaf`, driven by the `gh` CLI. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label string equal to its name. `wontfix` maps to
+the label already in use; the other four do not exist yet and have to be created
+once. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root, covering
+every package. See `docs/agents/domain.md`.

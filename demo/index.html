@@ -156,7 +156,7 @@
   </p>
   <p class="badges">
     <span class="badge">Apache-2.0</span>
-    <span class="badge" data-openleaf-size="core">123 KB gzipped</span>
+    <span class="badge" data-openleaf-size="core">124 KB gzipped</span>
     <span class="badge">No framework</span>
     <span class="badge">Built on ProseMirror</span>
     <span class="badge"><a href="https://github.com/PeytonNowlin/openleaf">Source on GitHub</a></span>
@@ -767,10 +767,13 @@ over it to watch the clip without leaving the editor.</p>
 
 <p>
   The editor below turns most of it on at once. Right-click a link, an image or a
-  table for a context menu; select some text for the floating toolbar; press
+  table for a context menu; select some text for the floating toolbar (it hides
+  again when the editor is not focused); press
   <kbd>F1</kbd> for the shortcut sheet. <strong>Visual aids</strong> marks empty
   blocks and non-breaking spaces, which is the difference between "there is a
-  stray nbsp in this paragraph" and an hour of squinting.
+  stray nbsp in this paragraph" and an hour of squinting. The main toolbar
+  sticks while this editor is in view; a host with a fixed header can pad that
+  with <code>--openleaf-toolbar-sticky-offset</code>.
 </p>
 
 <pre>&lt;openleaf-editor
