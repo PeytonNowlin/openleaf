@@ -12,6 +12,15 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **A whole-number size claim is checked with the same zlib-survival
+  tolerance as a decimal one.** The demo badge `123 KB gzipped` took an
+  exact-round path that the 1% band never reached, so CI's Node 22 at
+  123.6 KB failed a claim that a Node 26 workstation at 123.25 KB accepted
+  -- and writing 124 inverted which machine was red. The `BUDGETS_KB`
+  ceilings remain the regression gate.
+
 ### Added
 
 - **`placeholder` on `<openleaf-editor>`.** An empty document shows the prompt
@@ -67,6 +76,35 @@ entries below say so explicitly when they do.
   Negative `clientX` is treated the same way -- a real coordinate, not a
   missing one. `#200`
 
+### Changed
+
+- **The main toolbar stays on screen while the editor is in view.** `.ol-toolbar`
+  is `position: sticky` against the nearest scrolling ancestor — page scroll in
+  the framed and autoresize cases, which is what used to take Bold/Link/Save
+  off-screen on a long canvas. Fullscreen is unchanged: the host is a column
+  flex and only the content pane scrolls, so the bar never left. Integrators
+  with a fixed site header set `--openleaf-toolbar-sticky-offset` (default
+  `0px`). The menubar and a second toolbar stay in flow: two sticky bars at
+  the same `top` would overlap, and stacking them needs a height the
+  stylesheet cannot know. `toolbar2` is marked `.ol-toolbar--secondary` so
+  that holds when it is the only bar (`toolbar="none"`). Floating bars stay
+  `position: absolute`. The overflow
+  More panel is already `position: fixed` from the trigger's viewport box, so
+  it still tracks the button when the bar is stuck. `#203`
+
+### Fixed
+
+- **Floating selection and insert bars hide when the editor is unfocused,
+  readonly, or the selection sits inside a locked node.** Visibility was
+  selection-shape only, so a click on the host page left the selection bar
+  painted, a readonly empty editor showed the insert bar on mount, and a range
+  inside `contenteditable="false"` (or a preserved atom) still offered Bold.
+  Pointer-down inside the canvas still counts as focused: some engines have
+  not moved focus into the view yet while a drag-select is establishing the
+  range, and a naive `hasFocus()` guard would hide the bar for that gesture.
+  A Select All (or a drag that merely *contains* a locked block) still shows
+  the bar: the unlocked text is formattable, and the transaction filter
+  already refuses the locked interior. `#186`
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed

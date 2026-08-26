@@ -227,7 +227,7 @@ and attribute-driven:
 - **Context menus** — right-click a link, image, or table. An image offers
   **Edit image** and prefills the dialog from the selected picture. Set
   `contextmenu="none"` to disable.
-- **Floating toolbars** — `selection-toolbar` and `insert-toolbar`.
+- **Floating toolbars** — `selection-toolbar` and `insert-toolbar`. Shown only while the editor is focused, editable, and the selection covers some unlocked content.
 - **Fullscreen, help, visual aids** — toolbar ids `fullscreen`, `help`, `visualAids`. F1 opens help.
 - **Autoresize / inline** — grow with content (CSS, not a pixel height), or hide chrome until focus.
 - **Placeholder** — `placeholder="Write the article…"` on an empty document; never stored in `value`.
