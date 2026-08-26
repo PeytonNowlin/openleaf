@@ -12,6 +12,16 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **Autolink is the same undo step as the Space, Enter, or IME commit that
+  created it.** The mark used to be a separate transaction (`AddMarkStep` maps
+  no positions, so history treated it as a new group): Ctrl+Z after a composed
+  URL plus Space peeled the link off, then the space, then the URL. The mark
+  now appends to the committing transaction. Paste of a URL-plus-space and
+  inserting a table over a selection were already one undo each and are
+  unchanged. `#182`
+
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed

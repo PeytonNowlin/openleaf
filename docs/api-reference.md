@@ -54,7 +54,7 @@ Changing any of these later has no effect without recreating the element.
 | `inline` | present / absent | Hide chrome until the editor is focused. |
 | `autoresize` | present / absent | Grow the canvas with the document. |
 | `toolbar-overflow` | present / absent | Collapse overflowing groups into a More menu. |
-| `autolink` | `false` to disable | URLs become links on space, Enter, or the end of an IME composition; nothing is marked while a composition is still open. The mark covers the URL after trailing prose punctuation is stripped, so a full stop or a wrapping `]` is not part of the href. Any value other than exactly `"false"` enables it. |
+| `autolink` | `false` to disable | URLs become links on space, Enter, or the end of an IME composition; nothing is marked while a composition is still open. The mark is the same undo step as that commit, not a second Ctrl+Z. The mark covers the URL after trailing prose punctuation is stripped, so a full stop or a wrapping `]` is not part of the href. Any value other than exactly `"false"` enables it. |
 | `visualaids` | `false` to disable | Guides for invisible structure. Same `"false"`-exactly rule. At runtime the `openleaf:toggle-visual-aids` event toggles the *styling* only; whether the plugin is loaded is decided at build. |
 | `aria-label` | string | Accessible name for the editable region. |
 
