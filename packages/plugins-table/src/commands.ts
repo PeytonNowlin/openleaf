@@ -351,12 +351,40 @@ function copyFormattingOntoInsertedCells(
   if (!after || after.type.spec['tableRole'] !== 'table') return
 
   const insertedRow = insertedRowIndex(before.node, after)
-  if (insertedRow !== null) {
-    copyOntoInsertedRow(tr, pos, after, insertedRow)
-    return
-  }
-  const insertedCol = insertedColumnIndex(before.node, after)
-  if (insertedCol !== null) copyOntoInsertedColumn(tr, pos, after, insertedCol)
+  const insertedCol = insertedRow === null ? insertedColumnIndex(before.node, after) : null
+  if (insertedRow === null && insertedCol === null) return
+
+  const map = TableMap.get(after)
+  after.forEach((row, rowOffset, rowIndex) => {
+    const rowPos = pos + 1 + rowOffset
+    let col = 0
+    row.forEach((cell, cellOffset) => {
+      const colspan = (cell.attrs['colspan'] as number) || 1
+      const hit = insertedRow !== null ? rowIndex === insertedRow : col === insertedCol
+      if (
+        hit &&
+        !cell.textContent &&
+        colspan === 1 &&
+        ((cell.attrs['rowspan'] as number) || 1) === 1
+      ) {
+        const source = neighbourCell(
+          after,
+          map,
+          rowIndex,
+          col,
+          insertedRow !== null ? 'row' : 'col',
+          cell.type,
+        )
+        if (source) {
+          tr.setNodeMarkup(rowPos + 1 + cellOffset, undefined, {
+            ...cell.attrs,
+            ...copiedCellAttrs(source, insertedRow !== null),
+          })
+        }
+      }
+      col += colspan
+    })
+  })
 }
 
 function insertedRowIndex(before: Node, after: Node): number | null {
@@ -400,63 +428,6 @@ function insertedColumnIndex(before: Node, after: Node): number | null {
   return null
 }
 
-function copyOntoInsertedRow(tr: Transaction, tablePos: number, table: Node, rowIndex: number): void {
-  const map = TableMap.get(table)
-  const row = table.child(rowIndex)
-  if (!row) return
-  let offset = 0
-  for (let i = 0; i < rowIndex; i += 1) offset += table.child(i).nodeSize
-  const rowPos = tablePos + 1 + offset
-  let cellOffset = 0
-  let col = 0
-  row.forEach((cell) => {
-    const cellPos = rowPos + 1 + cellOffset
-    const colspan = (cell.attrs['colspan'] as number) || 1
-    if (!cell.textContent && colspan === 1 && ((cell.attrs['rowspan'] as number) || 1) === 1) {
-      const source = neighbourCell(table, map, rowIndex, col, 'row', cell.type)
-      if (source) {
-        tr.setNodeMarkup(cellPos, undefined, {
-          ...cell.attrs,
-          ...copiedCellAttrs(source, { includeColwidth: true }),
-        })
-      }
-    }
-    cellOffset += cell.nodeSize
-    col += colspan
-  })
-}
-
-function copyOntoInsertedColumn(
-  tr: Transaction,
-  tablePos: number,
-  table: Node,
-  colIndex: number,
-): void {
-  const map = TableMap.get(table)
-  table.forEach((row, rowOffset, rowIndex) => {
-    const rowPos = tablePos + 1 + rowOffset
-    let col = 0
-    row.forEach((cell, cellOffset) => {
-      const colspan = (cell.attrs['colspan'] as number) || 1
-      if (
-        col === colIndex &&
-        !cell.textContent &&
-        colspan === 1 &&
-        ((cell.attrs['rowspan'] as number) || 1) === 1
-      ) {
-        const source = neighbourCell(table, map, rowIndex, colIndex, 'col', cell.type)
-        if (source) {
-          tr.setNodeMarkup(rowPos + 1 + cellOffset, undefined, {
-            ...cell.attrs,
-            ...copiedCellAttrs(source, { includeColwidth: false }),
-          })
-        }
-      }
-      col += colspan
-    })
-  })
-}
-
 function neighbourCell(
   table: Node,
   map: TableMap,
@@ -477,10 +448,7 @@ function neighbourCell(
   return null
 }
 
-function copiedCellAttrs(
-  source: Node,
-  { includeColwidth }: { includeColwidth: boolean },
-): Record<string, unknown> {
+function copiedCellAttrs(source: Node, includeColwidth: boolean): Record<string, unknown> {
   const next: Record<string, unknown> = {}
   for (const key of COPIED_CELL_ATTRS) {
     if (source.attrs[key] != null) next[key] = source.attrs[key]
@@ -523,23 +491,18 @@ function withPreservedColumnWidths(command: Command): Command {
     return command(
       state,
       (tr) => {
-        if (snapshot) applyColumnWidthsToCells(tr, snapshot.pos, snapshot.widths)
+        if (snapshot) {
+          const pos = tr.mapping.map(snapshot.pos)
+          const table = tr.doc.nodeAt(pos)
+          if (table?.type.spec['tableRole'] === 'table') {
+            writeColwidthOntoCells(tr, pos, table, snapshot.widths)
+          }
+        }
         dispatch(tr)
       },
       view,
     )
   }
-}
-
-function applyColumnWidthsToCells(
-  tr: Transaction,
-  tablePos: number,
-  widths: Array<number | null>,
-): void {
-  const pos = tr.mapping.map(tablePos)
-  const table = tr.doc.nodeAt(pos)
-  if (!table || table.type.spec['tableRole'] !== 'table') return
-  writeColwidthOntoCells(tr, pos, table, widths)
 }
 
 function writeColwidthOntoCells(
@@ -1102,8 +1065,7 @@ function columnWidths(table: Node): Array<number | null> {
   return widths
 }
 
-function colgroupFromCellWidths(table: Node): string | null {
-  const widths = columnWidths(table)
+function colgroupFromWidths(table: Node, widths: Array<number | null>): string | null {
   if (widths.every((width) => width == null)) return null
   // Patched onto whatever the table already stored, for the same reason the
   // properties dialog patches: a column resize must not cost an inherited
@@ -1133,16 +1095,6 @@ function colgroupFromCellWidths(table: Node): string | null {
  */
 const colgroupForNode = new WeakMap<Node, string | null>()
 
-function cachedColgroupFromCellWidths(table: Node): string | null {
-  const known = colgroupForNode.get(table)
-  // `null` is a real answer -- "this table has no resized columns" -- so the
-  // miss test is `undefined`, not falsiness.
-  if (known !== undefined) return known
-  const computed = colgroupFromCellWidths(table)
-  colgroupForNode.set(table, computed)
-  return computed
-}
-
 /**
  * Keep `<colgroup>` in lockstep with column resizing.
  *
@@ -1165,77 +1117,32 @@ export function colgroupSyncPlugin(): Plugin {
         // Cached on the node: a transaction elsewhere in the document reuses
         // every table node it did not touch, so an untouched table answers from
         // the map instead of rebuilding its TableMap and reparsing its colgroup.
+        // `null` is a real answer -- "this table has no resized columns" -- so
+        // the miss test is `undefined`, not falsiness.
         const known = colgroupForNode.get(node)
         if (known !== undefined) return false
 
+        // One walk for widths, then the existing write helpers no-op when the
+        // cell already agrees. A separate "does this need repair?" pass was a
+        // second copy of the same loop.
         const widths = columnWidths(node)
-        const next = cachedColgroupFromCellWidths(node)
-        const repairCells = spanningColwidthNeedsRepair(node, widths)
-        const repairScope = cellScopeNeedsRepair(node)
-        if (
-          !repairCells &&
-          !repairScope &&
-          (next === null || next === node.attrs['colgroup'])
-        ) {
-          return false
-        }
-        tr ??= state.tr
-        if (repairCells) writeColwidthOntoCells(tr, pos, node, widths, true)
-        if (repairScope) applyCellScope(tr, pos, false)
-        const current = tr.doc.nodeAt(pos) ?? node
+        const next = colgroupFromWidths(node, widths)
+        colgroupForNode.set(node, next)
+
+        const working = tr ?? state.tr
+        const stepsBefore = working.steps.length
+        writeColwidthOntoCells(working, pos, node, widths, true)
+        applyCellScope(working, pos, false)
+        const current = working.doc.nodeAt(pos) ?? node
         if (next !== null && next !== current.attrs['colgroup']) {
-          tr.setNodeMarkup(pos, undefined, { ...current.attrs, colgroup: next })
+          working.setNodeMarkup(pos, undefined, { ...current.attrs, colgroup: next })
         }
+        if (working.steps.length > stepsBefore) tr = working
         return false
       })
       return tr
     },
   })
-}
-
-function spanningColwidthNeedsRepair(table: Node, widths: Array<number | null>): boolean {
-  const map = TableMap.get(table)
-  const seen = new Set<number>()
-  for (let i = 0; i < map.map.length; i += 1) {
-    const rel = map.map[i] ?? 0
-    if (seen.has(rel)) continue
-    seen.add(rel)
-    const cell = table.nodeAt(rel)
-    if (!cell) continue
-    const colspan = (cell.attrs['colspan'] as number) || 1
-    if (colspan < 2) continue
-    const col = i % map.width
-    const next = colwidthForSpan(widths, col, col + colspan)
-    if (next === null) continue
-    if (!sameColwidth(cell.attrs['colwidth'] as number[] | null, next)) return true
-  }
-  return false
-}
-
-function cellScopeNeedsRepair(table: Node): boolean {
-  const header = table.type.schema.nodes['table_header']
-  const cell = table.type.schema.nodes['table_cell']
-  if (!header || !cell) return false
-  let needed = false
-  table.forEach((row, _rowOffset, rowIndex) => {
-    row.forEach((cellNode, _cellOffset, cellIndex) => {
-      if (cellNode.type === cell && cellNode.attrs['scope']) {
-        needed = true
-        return
-      }
-      if (cellNode.type !== header) return
-      const current = scopeOf(cellNode)
-      if (current === null) return
-      const expected = expectedHeaderScope(
-        rowIndex,
-        cellIndex,
-        (cellNode.attrs['colspan'] as number) || 1,
-        (cellNode.attrs['rowspan'] as number) || 1,
-      )
-      if (scopeSpanMismatch(current, expected)) needed = true
-    })
-  })
-  return needed
 }
 
 export function emptyToNull(value: string | undefined): string | null {
