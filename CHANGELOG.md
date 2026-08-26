@@ -122,6 +122,14 @@ entries below say so explicitly when they do.
   lists Tab as "leave the editor" rather than implying it moves to the
   toolbar (that is Alt+F10), and does not claim the chord is a no-op in
   code. `#208`
+
+- **Excel clipboard HTML is no longer classified as Word.** `detectSource` now
+  returns `'excel'` for an Excel envelope (`ProgId=Excel.Sheet`, the Excel
+  xmlns, `x:num` / `x:str` / `x:fmla` cell attributes) and routes it through
+  its own normalizer, which does not run Word's list reconstruction. A Word
+  document that embeds a spreadsheet still takes the Word path; Google Sheets
+  still takes the gdocs path. Adding `'excel'` to `PasteSource` is a breaking
+  change for consumers who exhaustively switch on that union. `#177`
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed
