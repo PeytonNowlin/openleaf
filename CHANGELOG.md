@@ -14,6 +14,13 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **A whole-number size claim is checked with the same zlib-survival
+  tolerance as a decimal one.** The demo badge `123 KB gzipped` took an
+  exact-round path that the 1% band never reached, so CI's Node 22 at
+  123.6 KB failed a claim that a Node 26 workstation at 123.25 KB accepted
+  -- and writing 124 inverted which machine was red. The `BUDGETS_KB`
+  ceilings remain the regression gate.
+
 - **The editor context menu survives the pointer sequence that opened it.**
   Hybrid and long-press engines fire `contextmenu` and then a follow-up
   `pointerdown` for the same `pointerId`; the document capture closer treated
