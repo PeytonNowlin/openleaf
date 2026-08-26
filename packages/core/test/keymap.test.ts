@@ -22,8 +22,24 @@ function stateInEmptyTextblock(html: string): EditorState {
 
 /** Fire a binding by key string and return the resulting HTML. */
 function press(state: EditorState, keys: string): string | null {
+  const result = tryPress(state, keys)
+  if (!result.bound) throw new Error(`no binding for ${keys}`)
+  return result.handled ? result.html : null
+}
+
+/**
+ * Dispatch a key the way the keymap would, including the unbound case.
+ *
+ * Tab has no binding on purpose. A helper that throws on a missing chord
+ * cannot assert that, so this one reports `bound: false` and leaves the
+ * document as it was.
+ */
+function tryPress(
+  state: EditorState,
+  keys: string,
+): { bound: boolean; handled: boolean; html: string } {
   const command = buildKeymap()[keys]
-  if (!command) throw new Error(`no binding for ${keys}`)
+  if (!command) return { bound: false, handled: false, html: serializeHtml(state.doc) }
   // A holder rather than a `let`: a variable assigned only inside a callback
   // keeps its narrowed `null` type at the point it is read, so `next.doc` would
   // not typecheck. A property is not narrowed that way.
@@ -31,7 +47,26 @@ function press(state: EditorState, keys: string): string | null {
   const handled = command(state, (tr) => {
     out.state = state.apply(tr)
   })
-  return handled && out.state ? serializeHtml(out.state.doc) : null
+  return {
+    bound: true,
+    handled,
+    html: serializeHtml((handled && out.state ? out.state : state).doc),
+  }
+}
+
+/** Caret inside the first `code_block` in `html`. */
+function stateInCodeBlock(html: string): EditorState {
+  const doc = parseHtml(html)
+  let pos = -1
+  doc.descendants((node, nodePos) => {
+    if (node.type.name === 'code_block') {
+      pos = nodePos + 1
+      return false
+    }
+    return true
+  })
+  if (pos < 0) throw new Error(`no code_block in ${html}`)
+  return stateFrom(html, pos)
 }
 
 describe('the shortcut table', () => {
@@ -51,12 +86,57 @@ describe('the shortcut table', () => {
 
   it('does not bind Tab, which would trap keyboard users', () => {
     // WCAG 2.1.2. Capturing Tab inside a contenteditable removes the only way
-    // out of the editor. Indentation uses Mod-[ and Mod-] instead.
+    // out of the editor. `code_block` is not an exception: authors indent
+    // there with typed spaces. Mod-[ / Mod-] remain paragraph and list indent.
     const bindings = buildKeymap()
     expect(bindings['Tab']).toBeUndefined()
     expect(bindings['Shift-Tab']).toBeUndefined()
     expect(bindings['Mod-]']).toBeDefined()
     expect(bindings['Mod-[']).toBeDefined()
+  })
+
+  it('does not handle Tab in a paragraph', () => {
+    const before = '<p>Hello</p>'
+    const result = tryPress(stateFrom(before), 'Tab')
+    expect(result.bound).toBe(false)
+    expect(result.handled).toBe(false)
+    expect(result.html).toBe(before)
+  })
+
+  it('does not handle Tab inside a code block either', () => {
+    // The regression net for the accessibility choice: a `code_block`
+    // exception would still trap a keyboard user in the editor. Tab stays
+    // unbound, so the document is unchanged and the browser can move focus.
+    const before = '<pre><code>line</code></pre>'
+    const result = tryPress(stateInCodeBlock(before), 'Tab')
+    expect(result.bound).toBe(false)
+    expect(result.handled).toBe(false)
+    expect(result.html).toBe(before)
+  })
+
+  it('does not treat Indent as a code-block indent command', () => {
+    // A top-level code_block has no `indent` attr, so Mod-] does not insert
+    // spaces. List items are a different path: enclosingList runs first.
+    const before = '<pre><code>line</code></pre>'
+    const result = tryPress(stateInCodeBlock(before), 'Mod-]')
+    expect(result.bound).toBe(true)
+    expect(result.handled).toBe(false)
+    expect(result.html).toBe(before)
+  })
+
+  it('still nests a list item when Indent is pressed inside a code block in it', () => {
+    // indent asks enclosingList first, so a caret in a code_block inside a
+    // non-first list item sinks the whole item. The <pre> text is unchanged
+    // — this is list indent, not source indent. Help therefore does not
+    // claim Mod-] is a no-op in a code block.
+    const before =
+      '<ul><li>one</li><li><p>two</p><pre><code>line</code></pre></li></ul>'
+    const result = tryPress(stateInCodeBlock(before), 'Mod-]')
+    expect(result.bound).toBe(true)
+    expect(result.handled).toBe(true)
+    expect(result.html).toBe(
+      '<ul><li><p>one</p><ul><li><p>two</p><pre><code>line</code></pre></li></ul></li></ul>',
+    )
   })
 
   it('binds every shortcut it advertises', () => {

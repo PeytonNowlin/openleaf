@@ -12,10 +12,18 @@ import { t, withLocale } from './i18n.js'
 import { ensureStyles } from './styles.js'
 
 const HELP_CHROME: Array<[string, string]> = [
+  // Tab is not a keymap binding. Listing it here is how Help tells the
+  // truth: it leaves the editor, including from a code block, and Alt+F10
+  // is the toolbar shortcut. Binding Tab to indent would trap a keyboard
+  // user in the contenteditable (WCAG 2.1.2); see keymap.ts.
+  ['Tab', 'Leave the editor (including from a code block)'],
   ['Alt+F10', 'Move focus to the formatting toolbar'],
   ['Escape', 'Return focus to the document'],
   ['F1', 'Open this help dialog'],
 ]
+
+const CODE_BLOCK_HINT =
+  'In a code block, indent by typing spaces. Tab is never captured, including there.'
 
 /**
  * Unique per dialog.
@@ -80,6 +88,15 @@ function buildHelp(doc: Document, host?: HTMLElement): void {
   }
   table.appendChild(body)
   form.appendChild(table)
+
+  const hint = doc.createElement('p')
+  hint.className = 'ol-hint'
+  // Do not mention Mod-] here. indent asks enclosingList first, so a caret
+  // in a code block inside a list item still nests that item — claiming the
+  // chord is a no-op would be a lie, and a subordinate clause about list
+  // nesting does not belong in F1. Indent is already in the shortcut table.
+  hint.textContent = t(CODE_BLOCK_HINT)
+  form.appendChild(hint)
 
   const actions = doc.createElement('div')
   actions.className = 'ol-actions'

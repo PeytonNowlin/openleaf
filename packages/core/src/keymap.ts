@@ -16,9 +16,20 @@
  * keyboard-trap failure -- and for the institutional users who most need a free
  * editor, that is a procurement blocker rather than a rough edge.
  *
- * Indentation uses `Mod-[` and `Mod-]` instead, matching Google Docs and
- * VS Code. If Tab is ever added it must come with a documented escape (Escape
- * then Tab, or a first-Tab-escapes heuristic) and real screen reader testing.
+ * That includes `code_block`. A `<pre>` can hold spaces and `\t` because
+ * `preserveWhitespace` is `'full'`, but nothing inserts them on a key: Tab
+ * stays the way out. `Mod-]` is still paragraph and list indent. It asks
+ * `enclosingList` first, so a caret in a code block inside a non-first
+ * list item nests the item rather than inserting spaces. A top-level
+ * `code_block` has no `indent` attr, so that chord is a no-op there.
+ * Indentation in a code sample is typed spaces. Help says so without
+ * claiming the chord never fires.
+ *
+ * Indentation of paragraphs and lists uses `Mod-[` and `Mod-]`, matching
+ * Google Docs and VS Code. If Tab is ever added it must come with a
+ * documented escape (Escape then Tab, or a first-Tab-escapes heuristic) and
+ * real screen reader testing. An escape hatch that lives only in Help is
+ * still a trap for anyone who has not opened Help.
  */
 
 import { baseKeymap, chainCommands, exitCode } from 'prosemirror-commands'

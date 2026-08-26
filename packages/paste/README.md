@@ -1,6 +1,6 @@
 # @openleaf-editor/paste
 
-Paste normalizers: Word, Google Docs and Excel debris into clean semantic
+Paste normalizers: Word, Excel and Google Docs debris into clean semantic
 HTML.
 
 > **Editor output is untrusted input.** Whatever the editor produces — and
@@ -29,7 +29,7 @@ registry -- and a node built by one is not a node type the other accepts.
 ```ts
 import { detectSource, normalizePastedHtml } from '@openleaf-editor/paste'
 
-detectSource(html)          // 'word' | 'gdocs' | 'openleaf' | 'unknown'
+detectSource(html)          // 'word' | 'excel' | 'gdocs' | 'openleaf' | 'unknown'
 normalizePastedHtml(html)   // cleaned
 ```
 
@@ -50,9 +50,18 @@ Once that is done the strip is total rather than an allowlist, because a partial
 allowlist is how `line-height:1.38` ends up in a database.
 
 Word's list structure is rebuilt from `mso-list` metadata and its `<o:p>` and
-conditional-comment scaffolding is removed. Google Docs' wrapping
-`<b style="font-weight:normal">` is unwrapped rather than trusted -- reading it as
-bold turns the entire paste bold.
+conditional-comment scaffolding is removed. Excel's clipboard is the same
+Office markup -- `mso-`, `urn:schemas-microsoft-com`, `MsoNormalTable` -- so
+it used to take that path too. It is not Word's fake-list protocol: it is a
+real `<table>`, and `detectSource` now returns `'excel'` for an Excel envelope
+(`ProgId=Excel.Sheet`, the Excel xmlns, `x:num`/`x:str` cell attributes) so
+list reconstruction does not run. A Word document that embeds a spreadsheet
+still takes the Word path; Google Sheets still takes the gdocs path. Adding
+`'excel'` to the `PasteSource` union is a breaking change for consumers who
+exhaustively `switch` on it.
+
+Google Docs' wrapping `<b style="font-weight:normal">` is unwrapped rather than
+trusted -- reading it as bold turns the entire paste bold.
 
 What is *not* stripped is structure: table column widths and cell alignment, the
 dimensions of an embedded video, and a `lang` marking the source used to say

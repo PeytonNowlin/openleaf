@@ -14,6 +14,123 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **A whole-number size claim is checked with the same zlib-survival
+  tolerance as a decimal one.** The demo badge `123 KB gzipped` took an
+  exact-round path that the 1% band never reached, so CI's Node 22 at
+  123.6 KB failed a claim that a Node 26 workstation at 123.25 KB accepted
+  -- and writing 124 inverted which machine was red. The `BUDGETS_KB`
+  ceilings remain the regression gate.
+
+### Added
+
+- **`placeholder` on `<openleaf-editor>`.** An empty document shows the prompt
+  as a CSS `::before` on the canvas, never as a text node, so it cannot
+  serialize into `value` or submit with the form. ProseMirror's empty
+  document is a paragraph containing a trailing break, not an empty
+  element; the class `ol-placeholder` is what actually gates the prompt.
+  `#175`
+- **Pasting a bare image URL inserts an `<img>`.** A clipboard whose entire
+  plain text is one `http(s)` URL whose path ends in `png`, `jpg`/`jpeg`/`jfif`,
+  `gif`, `webp`, or `avif` goes through `isSafeUrl` and `insertImage`, with
+  or without an uploader. Query strings and fragments are ignored when
+  looking at the path. An extensionless CDN address, an SVG, or any other
+  non-image URL keeps today's link/plain paste. `#168`
+- **`openleaf:link`.** A read-only editor never follows an `<a href>`
+  (mouse, keyboard, or modified click). It fires a bubbling, composed,
+  non-cancelable `openleaf:link` with `{ href }` set to the authored
+  attribute. Integrators who want a new tab listen and call
+  `window.open`. `#181`
+
+### Fixed
+
+- **Read-only left-click no longer navigates away.** `contenteditable="false"`
+  restores native link activation; the canvas now `preventDefault`s it
+  without making the anchor inert, so Tab and the browser's own menu can
+  still copy the URL. There is no `querySelector(href)` path in the
+  repository; the handler uses `closest('a')`, so an href containing
+  `;`, `:`, `[` or `.` cannot throw. `#181`
+- **`autoresize` no longer writes a pixel height.** The old `height: auto`
+  → `scrollHeight` → pixel write was a synchronous reflow, and a no-op
+  observer pass left the canvas at `height: auto` for a frame. The
+  canvas now sizes to its content; leftover inline heights are cleared.
+  `#180`
+- **Canvas `lang` and `spellcheck`.** Host `lang` is copied onto the
+  editable region (UI locale doubles as the spellcheck language). A bound
+  textarea's `lang` is used when the host has none. Page `<html lang>`
+  is left to inherit. `spellcheck="false"` on the host is copied onto
+  the region, matching the off switch source view already has. `#175`
+
+- **The editor context menu survives the pointer sequence that opened it.**
+  Hybrid and long-press engines fire `contextmenu` and then a follow-up
+  `pointerdown` for the same `pointerId`; the document capture closer treated
+  that down as an outside click, so the menu flashed and vanished -- and
+  `preventDefault` had already eaten the browser's own menu. The closer now
+  ignores the ids that were in flight when the menu opened, until each is
+  released. A later, different pointer still dismisses. Keyboard open
+  (Shift+F10 / Menu) is unchanged. `#199`
+- **A pointer context menu at `clientX === 0` stays at the click.**
+  `#showContext` treated `x <= 0` as a synthesized keyboard event and moved
+  the menu to the caret. Keyboard already passes `point === null`; a real
+  click on the left edge (or any event whose `clientX` is 0) now uses the
+  event coordinates, which the menu already clamps onto the viewport.
+  Negative `clientX` is treated the same way -- a real coordinate, not a
+  missing one. `#200`
+### Changed
+
+- **The main toolbar stays on screen while the editor is in view.** `.ol-toolbar`
+  is `position: sticky` against the nearest scrolling ancestor — page scroll in
+  the framed and autoresize cases, which is what used to take Bold/Link/Save
+  off-screen on a long canvas. Fullscreen is unchanged: the host is a column
+  flex and only the content pane scrolls, so the bar never left. Integrators
+  with a fixed site header set `--openleaf-toolbar-sticky-offset` (default
+  `0px`). The menubar and a second toolbar stay in flow: two sticky bars at
+  the same `top` would overlap, and stacking them needs a height the
+  stylesheet cannot know. `toolbar2` is marked `.ol-toolbar--secondary` so
+  that holds when it is the only bar (`toolbar="none"`). Floating bars stay
+  `position: absolute`. The overflow
+  More panel is already `position: fixed` from the trigger's viewport box, so
+  it still tracks the button when the bar is stuck. `#203`
+
+### Fixed
+
+- **Underline and strikethrough follow the text colour**, including on a dark
+  skin and when a colour mark is nested inside `<u>`/`<s>` (the order the
+  schema serializes). CSS Text Decorations paint the line in the originating
+  element's colour, so `text-decoration-color: currentColor` on `u`/`s` is a
+  no-op for that nest; the colour span re-establishes the line in the glyphs'
+  colour. Highlight is background only — the line still matches the
+  foreground. Stored HTML is unchanged. `#190`
+- **Floating selection and insert bars hide when the editor is unfocused,
+  readonly, or the selection sits inside a locked node.** Visibility was
+  selection-shape only, so a click on the host page left the selection bar
+  painted, a readonly empty editor showed the insert bar on mount, and a range
+  inside `contenteditable="false"` (or a preserved atom) still offered Bold.
+  Pointer-down inside the canvas still counts as focused: some engines have
+  not moved focus into the view yet while a drag-select is establishing the
+  range, and a naive `hasFocus()` guard would hide the bar for that gesture.
+  A Select All (or a drag that merely *contains* a locked block) still shows
+  the bar: the unlocked text is formattable, and the transaction filter
+  already refuses the locked interior. `#186`
+
+### Changed
+
+- **Help and the shortcut docs now tell the truth about Tab in a code block.**
+  Tab is still unbound (WCAG 2.1.2): it leaves the editor, including from a
+  `<pre>`. Indentation in a code sample is typed spaces. `Mod-]` remains
+  paragraph and list indent — it does not insert spaces into the `<pre>`,
+  but it still nests a list item when the caret is inside one. The F1 dialog
+  lists Tab as "leave the editor" rather than implying it moves to the
+  toolbar (that is Alt+F10), and does not claim the chord is a no-op in
+  code. `#208`
+
+- **Excel clipboard HTML is no longer classified as Word.** `detectSource` now
+  returns `'excel'` for an Excel envelope (`ProgId=Excel.Sheet`, the Excel
+  xmlns, `x:num` / `x:str` / `x:fmla` cell attributes) and routes it through
+  its own normalizer, which does not run Word's list reconstruction. A Word
+  document that embeds a spreadsheet still takes the Word path; Google Sheets
+  still takes the gdocs path. Adding `'excel'` to `PasteSource` is a breaking
+  change for consumers who exhaustively switch on that union. `#177`
+
 - **Replace all returns focus to the find field.** The click handler never
   moved focus, and after a successful replace the button disables, which
   dumps focus to `<body>` in every engine. Focus now goes back through the
@@ -26,7 +143,6 @@ entries below say so explicitly when they do.
   find index now omit U+200B, U+00AD, and U+FEFF. Find treats them as a
   match barrier so Replace cannot swallow them. Non-breaking spaces are
   unchanged. `#191`
-
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed
