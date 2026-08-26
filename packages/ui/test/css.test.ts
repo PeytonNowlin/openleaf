@@ -91,7 +91,6 @@ describe('main toolbar sticky positioning', () => {
     expect(getComputedStyle(toolbar).position).toBe('sticky')
   })
 })
-
 describe('decoration colour follows the glyphs', () => {
   /*
    * jsdom does not compute `text-decoration-color`. The assertion is that the

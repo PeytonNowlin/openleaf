@@ -12,6 +12,30 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- **A whole-number size claim is checked with the same zlib-survival
+  tolerance as a decimal one.** The demo badge `123 KB gzipped` took an
+  exact-round path that the 1% band never reached, so CI's Node 22 at
+  123.6 KB failed a claim that a Node 26 workstation at 123.25 KB accepted
+  -- and writing 124 inverted which machine was red. The `BUDGETS_KB`
+  ceilings remain the regression gate.
+
+- **The editor context menu survives the pointer sequence that opened it.**
+  Hybrid and long-press engines fire `contextmenu` and then a follow-up
+  `pointerdown` for the same `pointerId`; the document capture closer treated
+  that down as an outside click, so the menu flashed and vanished -- and
+  `preventDefault` had already eaten the browser's own menu. The closer now
+  ignores the ids that were in flight when the menu opened, until each is
+  released. A later, different pointer still dismisses. Keyboard open
+  (Shift+F10 / Menu) is unchanged. `#199`
+- **A pointer context menu at `clientX === 0` stays at the click.**
+  `#showContext` treated `x <= 0` as a synthesized keyboard event and moved
+  the menu to the caret. Keyboard already passes `point === null`; a real
+  click on the left edge (or any event whose `clientX` is 0) now uses the
+  event coordinates, which the menu already clamps onto the viewport.
+  Negative `clientX` is treated the same way -- a real coordinate, not a
+  missing one. `#200`
 ### Changed
 
 - **The main toolbar stays on screen while the editor is in view.** `.ol-toolbar`
@@ -37,7 +61,6 @@ entries below say so explicitly when they do.
   no-op for that nest; the colour span re-establishes the line in the glyphs'
   colour. Highlight is background only — the line still matches the
   foreground. Stored HTML is unchanged. `#190`
-
 - **Floating selection and insert bars hide when the editor is unfocused,
   readonly, or the selection sits inside a locked node.** Visibility was
   selection-shape only, so a click on the host page left the selection bar
