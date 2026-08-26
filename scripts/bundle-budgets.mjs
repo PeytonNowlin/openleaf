@@ -122,7 +122,17 @@ export const BUDGETS_KB = {
   // to refuse -- the next unrelated patch would fail the gate. Figure-unit
   // drag (#185), list-item Enter with extra children (#178), and empty-type
   // image drops (#170) sit inside that ceiling.
-  'openleaf.min.js': 124,
+  //
+  // Raised to 127 for the sticky main toolbar and the floating-bar visibility
+  // gates (#203, #186). Both are core chrome, not an opt-in plugin: the main
+  // bar has to stay on screen while the author is in the editor, and the
+  // floating bars have to hide when they are not -- unfocused, readonly, or
+  // over a locked node -- because they are the same `.ol-toolbar` widget as
+  // the main one. CI's zlib weighed the same bytes at 124.0 against a 124
+  // ceiling that a local Node build reported as 123.7; 127 is the ~3 KB of
+  // headroom the paragraph above argues for, not 124.5, which is the trap
+  // of tens of bytes under another name.
+  'openleaf.min.js': 127,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,

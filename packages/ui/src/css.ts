@@ -153,7 +153,6 @@ export const CSS = `
      Focus Appearance. */
   --ol-focus-width: var(--openleaf-focus-width, 2px);
   --ol-focus-offset: var(--openleaf-focus-offset, 1px);
-  /* Host-header pad. See "Sticky toolbar" above. */
   --ol-toolbar-sticky-offset: var(--openleaf-toolbar-sticky-offset, 0px);
 
   display: block;
@@ -204,13 +203,11 @@ export const CSS = `
   border-radius: var(--ol-radius) var(--ol-radius) 0 0;
   background: var(--ol-surface);
   font: inherit;
-  /* See "Sticky toolbar" above. */
   position: sticky;
   top: var(--ol-toolbar-sticky-offset);
   z-index: var(--ol-z);
 }
 
-/* Second toolbar stays in flow. See "Sticky toolbar" above. */
 .ol-editor .ol-toolbar:not(.ol-floating) ~ .ol-toolbar:not(.ol-floating) {
   position: relative;
   top: auto;

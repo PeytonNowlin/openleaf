@@ -30,7 +30,6 @@ export const DEFAULT_INSERT_LAYOUT = 'link image horizontalRule'
 
 export class FloatingToolbars {
   #host: HTMLElement
-  #doc: Document
   #view: EditorView | null = null
   #resize: ResizeObserver | null = null
   #readonlyObserver: MutationObserver | null = null
@@ -59,7 +58,6 @@ export class FloatingToolbars {
     },
   ) {
     this.#host = host
-    this.#doc = doc
     const locale = options.locale ?? null
     this.#selection = options.selectionLayout
       ? new Toolbar(host, doc, {
@@ -87,7 +85,20 @@ export class FloatingToolbars {
     this.#view = view
     this.#selection?.mount(view)
     this.#insert?.mount(view)
-    this.#bindView(view)
+    view.dom.addEventListener('focusin', this.#sync)
+    view.dom.addEventListener('focusout', this.#onFocusOut)
+    view.dom.addEventListener('pointerdown', this.#onPointerDown)
+    const doc = view.dom.ownerDocument
+    doc.addEventListener('pointerup', this.#onPointerUp)
+    doc.addEventListener('pointercancel', this.#onPointerUp)
+    // Workaround: `OpenLeafEditor.#applyReadonly` updates the main bars and
+    // not these. The cleaner fix is `this.#floating?.update(view.state)`
+    // there; this file cannot reach it. Watching the attribute covers mount
+    // and a later `readonly` without that hook.
+    if (typeof MutationObserver !== 'undefined') {
+      this.#readonlyObserver = new MutationObserver(this.#sync)
+      this.#readonlyObserver.observe(this.#host, { attributes: true, attributeFilter: ['readonly'] })
+    }
     // Position from the state we are mounted with, not from the first
     // transaction after it. An editor that opens on an empty paragraph -- a new
     // post, the commonest way to meet one -- has the caret in exactly the place
@@ -107,10 +118,7 @@ export class FloatingToolbars {
     // resize -- none of them dispatch an editor transaction, and all of them
     // move the caret out from under a bar placed in viewport coordinates.
     if (typeof ResizeObserver !== 'undefined') {
-      this.#resize = new ResizeObserver(() => {
-        const current = this.#view
-        if (current && !current.isDestroyed) this.#position(current.state)
-      })
+      this.#resize = new ResizeObserver(this.#sync)
       this.#resize.observe(view.dom)
     }
   }
@@ -128,7 +136,16 @@ export class FloatingToolbars {
   }
 
   destroy(): void {
-    this.#unbindView()
+    const view = this.#view
+    if (view?.dom) {
+      view.dom.removeEventListener('focusin', this.#sync)
+      view.dom.removeEventListener('focusout', this.#onFocusOut)
+      view.dom.removeEventListener('pointerdown', this.#onPointerDown)
+      const doc = view.dom.ownerDocument
+      doc.removeEventListener('pointerup', this.#onPointerUp)
+      doc.removeEventListener('pointercancel', this.#onPointerUp)
+    }
+    this.#pointerSelecting = false
     this.#resize?.disconnect()
     this.#resize = null
     this.#readonlyObserver?.disconnect()
@@ -139,6 +156,11 @@ export class FloatingToolbars {
     this.#insert?.el.remove()
   }
 
+  #sync = (): void => {
+    const view = this.#view
+    if (view && !view.isDestroyed) this.#position(view.state)
+  }
+
   #position(state: EditorState): void {
     const view = this.#view
     if (!view) return
@@ -146,96 +168,33 @@ export class FloatingToolbars {
     // -- a hidden tab, a collapsed dialog -- measures every caret at 0,0, and a
     // bar shown there sits in the corner of the page rather than by the text.
     // It stays hidden until the box exists; the observer above brings it back.
+    //
+    // Shown only while the author is actually using this editor on unlocked
+    // content. Inline mode already clips every `.ol-toolbar` until the host is
+    // focused; framed mode had no equivalent, which is how a leftover range
+    // painted a second toolbar over an inactive page. `view.editable` is the
+    // live reading of `readonly` (and of anything else that flipped
+    // `editable()`), so a consumer that never sets the attribute still hides.
     const box = view.dom.getBoundingClientRect()
-    if (box.width === 0 && box.height === 0) {
-      this.#hideAll()
-      return
-    }
-    const allowed = this.#chromeAllowed(view, state)
-    const empty = state.selection.empty
+    const sel = state.selection
+    const empty = sel.empty
+    const allowed =
+      (box.width !== 0 || box.height !== 0) &&
+      !this.#host.hasAttribute('readonly') &&
+      view.editable !== false &&
+      (view.hasFocus() || this.#pointerSelecting) &&
+      !selectionInLockedContent(state)
     if (this.#selection) {
       const show = allowed && !empty
       this.#selection.el.hidden = !show
-      if (show) this.#place(this.#selection.el, view, state.selection.from)
+      if (show) this.#place(this.#selection.el, view, sel.from)
     }
     if (this.#insert) {
-      const $from = state.selection.$from
-      const emptyBlock = empty && $from.parent.isTextblock && $from.parent.content.size === 0
-      const show = allowed && emptyBlock
+      const parent = sel.$from.parent
+      const show = allowed && empty && parent.isTextblock && parent.content.size === 0
       this.#insert.el.hidden = !show
-      if (show) this.#place(this.#insert.el, view, state.selection.from)
+      if (show) this.#place(this.#insert.el, view, sel.from)
     }
-  }
-
-  /**
-   * Shown only while the author is actually using this editor on unlocked
-   * content. Inline mode already clips every `.ol-toolbar` until the host is
-   * focused; framed mode had no equivalent, which is how a leftover range
-   * painted a second toolbar over an inactive page.
-   */
-  #chromeAllowed(view: EditorView, state: EditorState): boolean {
-    if (!this.#editable(view)) return false
-    if (!this.#hasEditorFocus(view)) return false
-    if (selectionInLockedContent(state)) return false
-    return true
-  }
-
-  #editable(view: EditorView): boolean {
-    if (this.#host.hasAttribute('readonly')) return false
-    // `editable` is the view's live reading of the same attribute (and of
-    // anything else that flipped `editable()`). Checking both means a direct
-    // `FloatingToolbars` consumer that never sets `readonly` on the host still
-    // hides when the view is not editable, and a `readonly` set after mount
-    // is seen even before the next `setProps`.
-    if (view.editable === false) return false
-    return true
-  }
-
-  #hasEditorFocus(view: EditorView): boolean {
-    if (view.hasFocus()) return true
-    return this.#pointerSelecting
-  }
-
-  #hideAll(): void {
-    if (this.#selection) this.#selection.el.hidden = true
-    if (this.#insert) this.#insert.el.hidden = true
-  }
-
-  #bindView(view: EditorView): void {
-    view.dom.addEventListener('focusin', this.#onFocusIn)
-    view.dom.addEventListener('focusout', this.#onFocusOut)
-    view.dom.addEventListener('pointerdown', this.#onPointerDown)
-    const doc = view.dom.ownerDocument
-    doc.addEventListener('pointerup', this.#onPointerUp)
-    doc.addEventListener('pointercancel', this.#onPointerUp)
-    // `#applyReadonly` on the element updates the main bars and not these.
-    // Watching the attribute keeps the gate on the mount path *and* on a
-    // `readonly` added later, without a hook in the element.
-    if (typeof MutationObserver !== 'undefined') {
-      this.#readonlyObserver = new MutationObserver(() => {
-        const current = this.#view
-        if (current && !current.isDestroyed) this.#position(current.state)
-      })
-      this.#readonlyObserver.observe(this.#host, { attributes: true, attributeFilter: ['readonly'] })
-    }
-  }
-
-  #unbindView(): void {
-    const view = this.#view
-    if (view?.dom) {
-      view.dom.removeEventListener('focusin', this.#onFocusIn)
-      view.dom.removeEventListener('focusout', this.#onFocusOut)
-      view.dom.removeEventListener('pointerdown', this.#onPointerDown)
-      const doc = view.dom.ownerDocument
-      doc.removeEventListener('pointerup', this.#onPointerUp)
-      doc.removeEventListener('pointercancel', this.#onPointerUp)
-    }
-    this.#pointerSelecting = false
-  }
-
-  #onFocusIn = (): void => {
-    const view = this.#view
-    if (view && !view.isDestroyed) this.#position(view.state)
   }
 
   #onFocusOut = (event: FocusEvent): void => {
@@ -245,30 +204,22 @@ export class FloatingToolbars {
     // button whose `mousedown` `preventDefault` failed -- is not a blur of
     // the editor as far as the author is concerned.
     if (next instanceof Node && this.#host.contains(next)) return
-    const view = this.#view
-    if (!view || view.isDestroyed) return
     // Some engines deliver `focusout` with a null `relatedTarget` before the
     // next target is focused, or before the view has taken focus during the
     // pointer sequence. Recheck after the event; `hasFocus()` is then honest.
-    queueMicrotask(() => {
-      const current = this.#view
-      if (current && !current.isDestroyed) this.#position(current.state)
-    })
+    queueMicrotask(this.#sync)
   }
 
   #onPointerDown = (event: Event): void => {
-    const button = 'button' in event ? (event as MouseEvent).button : 0
-    if (button !== 0) return
+    if ('button' in event && (event as MouseEvent).button !== 0) return
     this.#pointerSelecting = true
-    const view = this.#view
-    if (view && !view.isDestroyed) this.#position(view.state)
+    this.#sync()
   }
 
   #onPointerUp = (): void => {
     if (!this.#pointerSelecting) return
     this.#pointerSelecting = false
-    const view = this.#view
-    if (view && !view.isDestroyed) this.#position(view.state)
+    this.#sync()
   }
 
   #place(el: HTMLElement, view: EditorView, pos: number): void {
@@ -276,7 +227,6 @@ export class FloatingToolbars {
     const hostBox = this.#host.getBoundingClientRect()
     el.style.left = `${coords.left - hostBox.left}px`
     el.style.top = `${coords.bottom - hostBox.top + 8}px`
-    void this.#doc
   }
 }
 
@@ -294,10 +244,10 @@ export class FloatingToolbars {
 function selectionInLockedContent(state: EditorState): boolean {
   const sel = state.selection
   if (sel instanceof NodeSelection) return isLockedNode(sel.node)
-  return isInsideLocked(sel.$from) || isInsideLocked(sel.$to)
+  return lockedAncestor(sel.$from) || lockedAncestor(sel.$to)
 }
 
-function isInsideLocked($pos: EditorState['selection']['$from']): boolean {
+function lockedAncestor($pos: EditorState['selection']['$from']): boolean {
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     if (isLockedNode($pos.node(depth))) return true
   }
@@ -305,7 +255,6 @@ function isInsideLocked($pos: EditorState['selection']['$from']): boolean {
 }
 
 function isLockedNode(node: PMNode): boolean {
-  if (isNonEditableNode(node)) return true
   const name = node.type.name
-  return name === 'unknown_block' || name === 'unknown_inline'
+  return isNonEditableNode(node) || name === 'unknown_block' || name === 'unknown_inline'
 }
