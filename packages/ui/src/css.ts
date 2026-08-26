@@ -97,12 +97,13 @@
  * no-op there and the bar already stays put. Do not "fix" fullscreen.
  *
  * Floating bars re-specify `position: absolute` at (0,3,0), so they are not
- * stuck. A second toolbar (`toolbar2`) is reset to `relative`: two sticky
- * bars at the same `top` would paint on top of each other. The menubar is
- * not sticky for the same reason -- stacking it with the toolbar needs a
- * height this sheet cannot know. `--openleaf-toolbar-sticky-offset` is the
- * host-header pad; 0px so a host that never heard of the token still gets a
- * bar that stays on screen.
+ * stuck. A second toolbar (`toolbar2`) carries `.ol-toolbar--secondary` and
+ * is reset to `relative`: two sticky bars at the same `top` would paint on
+ * top of each other, and a sibling selector would miss the supported
+ * `toolbar="none" toolbar2="..."` layout, where this bar is the first
+ * `.ol-toolbar`. The menubar is not sticky for the same stacking reason.
+ * `--openleaf-toolbar-sticky-offset` is the host-header pad; 0px so a host
+ * that never heard of the token still gets a bar that stays on screen.
  */
 
 const DARK_TOKENS = `
@@ -208,7 +209,7 @@ export const CSS = `
   z-index: var(--ol-z);
 }
 
-.ol-editor .ol-toolbar:not(.ol-floating) ~ .ol-toolbar:not(.ol-floating) {
+.ol-editor .ol-toolbar--secondary {
   position: relative;
   top: auto;
 }

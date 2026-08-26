@@ -8,7 +8,7 @@
  */
 
 import { coreSchema, parseHtml } from '@openleaf-editor/core'
-import { EditorState, NodeSelection, TextSelection, type Transaction } from 'prosemirror-state'
+import { AllSelection, EditorState, NodeSelection, TextSelection, type Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FloatingToolbars } from '../src/floating.js'
@@ -200,6 +200,26 @@ describe('floating toolbar visibility', () => {
     })
     expect(selection.hidden).toBe(true)
     expect(insert.hidden).toBe(true)
+  })
+
+  it('shows the selection bar for a range that spans a locked node', () => {
+    // Endpoints sit in unlocked paragraphs; the locked block is in the middle.
+    // Hiding here would take Bold away from Select All on any document that
+    // happens to contain one locked region. Commands already no-op inside it.
+    const html = '<p>before</p><p contenteditable="false">locked</p><p>after</p>'
+    const { selection } = fixture(html, {
+      selection: (state) =>
+        state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, state.doc.content.size - 1))),
+    })
+    expect(selection.hidden).toBe(false)
+  })
+
+  it('shows the selection bar on Select All over a document that contains a locked node', () => {
+    const html = '<p>before</p><p contenteditable="false">locked</p><p>after</p>'
+    const { selection } = fixture(html, {
+      selection: (state) => state.apply(state.tr.setSelection(new AllSelection(state.doc))),
+    })
+    expect(selection.hidden).toBe(false)
   })
 
   it('hides the selection bar on a preserved atom', () => {
