@@ -80,6 +80,13 @@ is required and nothing is injected inline. Every colour is a custom property;
 costing the author their undo history. On a browser without
 `adoptedStyleSheets`, link `openleaf.css` and call `markStylesExternal()`.
 
+Underline and strikethrough (`<u>`, `<s>`, `<del>`) paint in the text colour,
+including when a colour mark is nested inside the decoration — schema order
+wraps the line around the colour span, so a rule on `u`/`s` alone cannot retint
+an ancestor's line. Stored HTML stays `<u>`/`<s>`; this is a canvas paint rule.
+Highlight (`background-color`) does not change the line: it still matches the
+foreground.
+
 The main toolbar (`.ol-toolbar`, not a floating bar) is `position: sticky`, so
 it stays on screen while the editor is in view. Fullscreen does not need this:
 the host is a column flex and only the content pane scrolls, so the bar never

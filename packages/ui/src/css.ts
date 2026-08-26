@@ -103,6 +103,22 @@
  * height this sheet cannot know. `--openleaf-toolbar-sticky-offset` is the
  * host-header pad; 0px so a host that never heard of the token still gets a
  * bar that stays on screen.
+ *
+ * ### Decoration colour
+ *
+ * CSS Text Decorations paint the line in the originating element's colour.
+ * Schema order wraps `<u>`/`<s>` around the colour span, so a rule on `u, s`
+ * that sets `text-decoration-color: currentColor` is a no-op -- that is
+ * already the initial value, and it is the paragraph colour, not the glyphs'.
+ * A descendant cannot retint an ancestor's already-painted line. The colour
+ * span therefore re-establishes the same line in *its* `currentColor`; the
+ * ancestor's line remains and is covered (measured in Chromium and WebKit).
+ * The opposite nest -- colour wrapping `<u>`/`<s>` -- already inherits, and
+ * the first rule is what that nest needs if an engine's UA default is not
+ * `currentColor`. Highlight is background only: the line should still match
+ * the foreground, which the first rule does. Combined underline+strike
+ * re-establishes both lines, because a later `line-through` rule would
+ * otherwise leave the underline in the paragraph colour.
  */
 
 const DARK_TOKENS = `
@@ -390,6 +406,19 @@ export const CSS = `
   padding: 12px;
   min-height: 8rem;
   outline: none;
+}
+
+.ol-editor .ol-content .ProseMirror :is(u, s, del) {
+  text-decoration-color: currentColor;
+}
+.ol-editor .ol-content .ProseMirror u [style^="color:"] {
+  text-decoration: underline currentColor;
+}
+.ol-editor .ol-content .ProseMirror :is(s, del) [style^="color:"] {
+  text-decoration: line-through currentColor;
+}
+.ol-editor .ol-content .ProseMirror u :is(s, del) [style^="color:"] {
+  text-decoration: underline line-through currentColor;
 }
 
 .ol-editor .ol-content:focus-within {
