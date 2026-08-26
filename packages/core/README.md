@@ -84,6 +84,11 @@ A predicate returns `null` for a mixed selection rather than the first value it
 finds -- a dropdown showing "Georgia" for a range that is half Georgia would be
 worse than showing nothing.
 
+`indent` / `outdent` (`Mod-]` / `Mod-[`) nest a list item or add a padding
+step on a paragraph or heading. They are a no-op in a `code_block`: that
+node has no `indent` attribute, and Tab is never captured there, so a code
+sample is indented by typing spaces.
+
 Block-type commands (`setHeading`, `setParagraph`, `toggleCodeBlock`) refuse a
 textblock whose content the destination cannot hold. A captioned `<figure>` is a
 textblock in the schema (`content: 'inline+'`) but not a paragraph: converting it

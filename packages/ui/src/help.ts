@@ -8,14 +8,22 @@
 
 import { shortcutFor, shortcuts } from '@openleaf-editor/core'
 import { ensureDialogStyles } from './dialog.js'
-import { t, withLocale } from './i18n.js'
+import { fill, t, withLocale } from './i18n.js'
 import { ensureStyles } from './styles.js'
 
 const HELP_CHROME: Array<[string, string]> = [
+  // Tab is not a keymap binding. Listing it here is how Help tells the
+  // truth: it leaves the editor, including from a code block, and Alt+F10
+  // is the toolbar shortcut. Binding Tab to indent would trap a keyboard
+  // user in the contenteditable (WCAG 2.1.2); see keymap.ts.
+  ['Tab', 'Leave the editor (including from a code block)'],
   ['Alt+F10', 'Move focus to the formatting toolbar'],
   ['Escape', 'Return focus to the document'],
   ['F1', 'Open this help dialog'],
 ]
+
+const CODE_BLOCK_HINT =
+  'In a code block, indent by typing spaces. Tab is never captured, including there. {indent} indents paragraphs and lists, not code.'
 
 /**
  * Unique per dialog.
@@ -80,6 +88,13 @@ function buildHelp(doc: Document, host?: HTMLElement): void {
   }
   table.appendChild(body)
   form.appendChild(table)
+
+  const hint = doc.createElement('p')
+  hint.className = 'ol-hint'
+  hint.textContent = fill(t(CODE_BLOCK_HINT), {
+    indent: shortcutFor('Indent') ?? 'Mod-]',
+  })
+  form.appendChild(hint)
 
   const actions = doc.createElement('div')
   actions.className = 'ol-actions'

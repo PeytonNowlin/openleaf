@@ -12,6 +12,15 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Changed
+
+- **Help and the shortcut docs now tell the truth about Tab in a code block.**
+  Tab is still unbound (WCAG 2.1.2): it leaves the editor, including from a
+  `<pre>`. Indentation in a code sample is typed spaces; `Mod-]` remains
+  paragraph and list indent and is a no-op there. The F1 dialog lists Tab as
+  "leave the editor" rather than implying it moves to the toolbar (that is
+  Alt+F10). `#208`
+
 ## 0.1.0-beta.4 - 2026-08-24
 
 ### Fixed

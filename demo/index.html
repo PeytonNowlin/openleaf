@@ -502,7 +502,8 @@ const ratio = width / height   // division, not a regex
   in the default layout. Subscript and superscript are
   <kbd>Mod</kbd>+<kbd>=</kbd> and <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>=</kbd>;
   indent and outdent also answer to <kbd>Mod</kbd>+<kbd>]</kbd> and
-  <kbd>Mod</kbd>+<kbd>[</kbd>. All four are in the <kbd>F1</kbd> list.
+  <kbd>Mod</kbd>+<kbd>[</kbd>, for paragraphs and lists — not a code block.
+  All four are in the <kbd>F1</kbd> list.
 </p>
 
 <p>
@@ -716,10 +717,15 @@ over it to watch the clip without leaving the editor.</p>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>B</kbd> <kbd>I</kbd> <kbd>U</kbd></td><td>Bold, italic, underline</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>6</kbd></td><td>Headings</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>7</kbd> / <kbd>8</kbd></td><td>Numbered / bulleted list</td></tr>
-    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>[</kbd> <kbd>]</kbd></td><td>Outdent / indent a list item</td></tr>
-    <tr><td><kbd>Tab</kbd></td><td>Leaves the editor. Deliberately never captured.</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>[</kbd> <kbd>]</kbd></td><td>Outdent / indent a paragraph or list item, not a code block</td></tr>
+    <tr><td><kbd>Tab</kbd></td><td>Leaves the editor, including from a code block. Deliberately never captured.</td></tr>
   </tbody>
 </table>
+<p>
+  In a code block, indent by typing spaces. <kbd>Tab</kbd> still leaves the
+  editor: capturing it there would trap a keyboard user in the
+  <code>&lt;pre&gt;</code>. The F1 list says the same.
+</p>
 
 <p>
   Formatting changes are announced through a polite live region — but only on a real

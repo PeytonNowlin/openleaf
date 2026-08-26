@@ -182,7 +182,7 @@ outdent also sit in the Format menu and keep their keyboard shortcuts.
 | Feature | How to reach it |
 | --- | --- |
 | Font family, font size, line height | Default toolbar selects |
-| Indent / outdent | Default toolbar, Format menu, `Mod+]` / `Mod+[`, F1 list |
+| Indent / outdent | Default toolbar, Format menu, `Mod+]` / `Mod+[`, F1 list. Paragraphs and lists only; in a code block, type spaces. Tab always leaves the editor. |
 | Subscript / superscript | `Mod+=` / `Mod+Shift+=`, and the F1 shortcut list |
 | Direction, language | `setDir`, `toggleDir`, `setLanguage` |
 | List style | `setListStyle` |
