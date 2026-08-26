@@ -85,6 +85,24 @@
  * had no indicator at all: which menu is open, which menu item has focus, which
  * cells are selected, and every one of the visual aids -- whose entire output
  * is a colour.
+ *
+ * ### Sticky toolbar
+ *
+ * The main bar sticks to the nearest scrolling ancestor. Page scroll is the
+ * one that used to take it off-screen: autoresize grows the canvas
+ * (`overflow: hidden` on `.ProseMirror`, a descendant, so it is not a
+ * sticky-killing scrollport above the bar) and the page moves. The host
+ * itself has no overflow. Fullscreen is a column flex whose `.ol-content` /
+ * `.ol-source` scroll -- the bar is not in that scroller, so sticky is a
+ * no-op there and the bar already stays put. Do not "fix" fullscreen.
+ *
+ * Floating bars re-specify `position: absolute` at (0,3,0), so they are not
+ * stuck. A second toolbar (`toolbar2`) is reset to `relative`: two sticky
+ * bars at the same `top` would paint on top of each other. The menubar is
+ * not sticky for the same reason -- stacking it with the toolbar needs a
+ * height this sheet cannot know. `--openleaf-toolbar-sticky-offset` is the
+ * host-header pad; 0px so a host that never heard of the token still gets a
+ * bar that stays on screen.
  */
 
 const DARK_TOKENS = `
@@ -135,6 +153,8 @@ export const CSS = `
      Focus Appearance. */
   --ol-focus-width: var(--openleaf-focus-width, 2px);
   --ol-focus-offset: var(--openleaf-focus-offset, 1px);
+  /* Host-header pad. See "Sticky toolbar" above. */
+  --ol-toolbar-sticky-offset: var(--openleaf-toolbar-sticky-offset, 0px);
 
   display: block;
   position: relative;
@@ -184,8 +204,16 @@ export const CSS = `
   border-radius: var(--ol-radius) var(--ol-radius) 0 0;
   background: var(--ol-surface);
   font: inherit;
-  position: relative;
+  /* See "Sticky toolbar" above. */
+  position: sticky;
+  top: var(--ol-toolbar-sticky-offset);
   z-index: var(--ol-z);
+}
+
+/* Second toolbar stays in flow. See "Sticky toolbar" above. */
+.ol-editor .ol-toolbar:not(.ol-floating) ~ .ol-toolbar:not(.ol-floating) {
+  position: relative;
+  top: auto;
 }
 
 .ol-editor .ol-group {

@@ -226,7 +226,7 @@ and attribute-driven:
 - **Context menus** — right-click a link, image, or table. An image offers
   **Edit image** and prefills the dialog from the selected picture. Set
   `contextmenu="none"` to disable.
-- **Floating toolbars** — `selection-toolbar` and `insert-toolbar`.
+- **Floating toolbars** — `selection-toolbar` and `insert-toolbar`. Shown only while the editor is focused, editable, and the selection is in unlocked content.
 - **Fullscreen, help, visual aids** — toolbar ids `fullscreen`, `help`, `visualAids`. F1 opens help.
 - **Autoresize / inline** — grow with content, or hide chrome until focus.
 - **Autolink** — URLs become links on space, Enter, or the end of an IME composition, so a CJK or mobile keyboard that accepts a candidate without typing ASCII whitespace still gets a link. Nothing is marked while a composition is still open. Trailing sentence punctuation and unmatched `)]}'"` stay outside the mark; a balanced `)` in the path (Wikipedia-style) stays in. Set `autolink="false"` to disable.
