@@ -1,6 +1,7 @@
 import { parseHtml, serializeHtml } from '@openleaf-editor/core'
+import type { Node } from 'prosemirror-model'
 import { EditorState, TextSelection, type Command, type Transaction } from 'prosemirror-state'
-import { TableMap } from 'prosemirror-tables'
+import { CellSelection, TableMap, mergeCells as mergeCellsRaw } from 'prosemirror-tables'
 import { describe, expect, it } from 'vitest'
 import {
   addColumnAfter,
@@ -10,11 +11,13 @@ import {
   deleteColumn,
   deleteRow,
   insertTable,
+  mergeCells,
   setCellVerticalAlign,
   setTableCaption,
   setTableColgroup,
+  splitCell,
   toggleHeaderRow,
-} from '../src/index.js'
+} from '../src/commands.js'
 
 function stateIn(html: string, text: string): EditorState {
   const doc = parseHtml(html)
@@ -171,6 +174,58 @@ function expectColgroupMatchesTable(doc: ReturnType<typeof parseHtml>): void {
   expect(colgroupCoverage(serializeHtml(doc))).toBe(tableWidth(doc))
 }
 
+function cellsIn(doc: Node): { pos: number; node: Node; text: string }[] {
+  const cells: { pos: number; node: Node; text: string }[] = []
+  doc.descendants((node, pos) => {
+    const role = node.type.spec['tableRole']
+    if (role !== 'cell' && role !== 'header_cell') return true
+    cells.push({ pos, node, text: node.textContent })
+    return false
+  })
+  return cells
+}
+
+function cellMatching(doc: Node, text: string): { pos: number; node: Node; text: string } {
+  const found = cellsIn(doc).find((cell) => cell.text === text)
+  if (!found) throw new Error(`no cell with text ${JSON.stringify(text)}`)
+  return found
+}
+
+function selectCells(state: EditorState, fromText: string, toText: string): EditorState {
+  const from = cellMatching(state.doc, fromText)
+  const to = cellMatching(state.doc, toText)
+  return state.apply(state.tr.setSelection(CellSelection.create(state.doc, from.pos, to.pos)))
+}
+
+function tableNode(doc: Node): Node {
+  let found: Node | null = null
+  doc.descendants((node) => {
+    if (node.type.spec['tableRole'] !== 'table') return true
+    found = node
+    return false
+  })
+  if (!found) throw new Error('no table')
+  return found
+}
+
+function rowCells(doc: Node, rowIndex: number): Node[] {
+  const rows: Node[] = []
+  tableNode(doc).forEach((row) => rows.push(row))
+  const row = rows[rowIndex]
+  if (!row) throw new Error(`no row ${rowIndex}`)
+  const cells: Node[] = []
+  row.forEach((cell) => cells.push(cell))
+  return cells
+}
+
+function withColgroupSync(state: EditorState): EditorState {
+  return EditorState.create({
+    doc: state.doc,
+    selection: state.selection,
+    plugins: [colgroupSyncPlugin()],
+  })
+}
+
 describe('colgroup tracks column insert and delete', () => {
   it('drops the middle <col> so the last column keeps class c3', () => {
     const next = apply(stateIn(THREE_COL, 'b'), deleteColumn)
@@ -311,3 +366,198 @@ describe('table section row counts', () => {
     expect(html).not.toContain('<td>c</td>')
   })
 })
+
+const TWO_BY_TWO_SIZED =
+  '<table><colgroup><col width="100"><col width="200"></colgroup><tbody>' +
+  '<tr><th scope="col" data-colwidth="100">A</th><th scope="col" data-colwidth="200">B</th></tr>' +
+  '<tr><td data-colwidth="100">C</td><td data-colwidth="200">D</td></tr>' +
+  '</tbody></table>'
+
+describe('merge and split keep colwidth and scope', () => {
+  it('concatenates the merged columns’ colwidth onto the surviving cell', () => {
+    const next = apply(selectCells(stateIn(TWO_BY_TWO_SIZED, 'A'), 'A', 'B'), mergeCells)
+    const merged = cellsIn(next.doc).find((cell) => (cell.node.attrs['colspan'] as number) === 2)
+    expect(merged?.node.attrs['colwidth']).toEqual([100, 200])
+    expect(merged?.node.attrs['colspan']).toBe(2)
+  })
+
+  it('partitions colwidth back onto the cells a split produces', () => {
+    const merged = apply(selectCells(stateIn(TWO_BY_TWO_SIZED, 'A'), 'A', 'B'), mergeCells)
+    const next = apply(merged, splitCell)
+    const headers = cellsIn(next.doc).filter((cell) => cell.node.type.name === 'table_header')
+    expect(headers).toHaveLength(2)
+    expect(headers[0]?.node.attrs['colwidth']).toEqual([100])
+    expect(headers[1]?.node.attrs['colwidth']).toEqual([200])
+    expect(headers[0]?.node.attrs['colspan']).toBe(1)
+    expect(headers[1]?.node.attrs['colspan']).toBe(1)
+  })
+
+  it('keeps per-column integers on an odd split rather than averaging them', () => {
+    const html =
+      '<table><tbody>' +
+      '<tr><th scope="col" data-colwidth="100">A</th><th scope="col" data-colwidth="101">B</th></tr>' +
+      '</tbody></table>'
+    const merged = apply(selectCells(stateIn(html, 'A'), 'A', 'B'), mergeCells)
+    expect(cellsIn(merged.doc)[0]?.node.attrs['colwidth']).toEqual([100, 101])
+    const next = apply(merged, splitCell)
+    const headers = cellsIn(next.doc)
+    expect(headers[0]?.node.attrs['colwidth']).toEqual([100])
+    expect(headers[1]?.node.attrs['colwidth']).toEqual([101])
+  })
+
+  it('fills a missing cell colwidth from the stored colgroup on merge', () => {
+    const html =
+      '<table><colgroup><col width="100"><col width="200"></colgroup><tbody>' +
+      '<tr><th scope="col" data-colwidth="100">A</th><th scope="col">B</th></tr>' +
+      '</tbody></table>'
+    const next = apply(selectCells(stateIn(html, 'A'), 'A', 'B'), mergeCells)
+    expect(cellsIn(next.doc)[0]?.node.attrs['colwidth']).toEqual([100, 200])
+  })
+
+  it('copies colgroup-only widths onto a merge that spanned them', () => {
+    const html =
+      '<table><colgroup><col width="100"><col width="200"></colgroup><tbody>' +
+      '<tr><th scope="col">A</th><th scope="col">B</th></tr>' +
+      '</tbody></table>'
+    const next = apply(selectCells(stateIn(html, 'A'), 'A', 'B'), mergeCells)
+    expect(cellsIn(next.doc)[0]?.node.attrs['colwidth']).toEqual([100, 200])
+  })
+
+  it('leaves colwidth unset when neither the cells nor the colgroup know a width', () => {
+    const html =
+      '<table><tbody>' +
+      '<tr><th scope="col">A</th><th scope="col">B</th></tr>' +
+      '</tbody></table>'
+    const next = apply(selectCells(stateIn(html, 'A'), 'A', 'B'), mergeCells)
+    expect(cellsIn(next.doc)[0]?.node.attrs['colwidth']).toBeNull()
+  })
+
+  it('gives a two-column header scope="colgroup", not scope="col"', () => {
+    const next = apply(selectCells(stateIn(TWO_BY_TWO_SIZED, 'A'), 'A', 'B'), mergeCells)
+    const merged = cellsIn(next.doc).find((cell) => (cell.node.attrs['colspan'] as number) === 2)
+    expect(merged?.node.type.name).toBe('table_header')
+    expect(merged?.node.attrs['scope']).toBe('colgroup')
+  })
+
+  it('restores scope="col" on each header after splitting a colgroup header', () => {
+    const merged = apply(selectCells(stateIn(TWO_BY_TWO_SIZED, 'A'), 'A', 'B'), mergeCells)
+    const next = apply(merged, splitCell)
+    const headers = cellsIn(next.doc).filter((cell) => cell.node.type.name === 'table_header')
+    expect(headers[0]?.node.attrs['scope']).toBe('col')
+    expect(headers[1]?.node.attrs['scope']).toBe('col')
+  })
+
+  it('clears a stale scope on a body cell the merge left behind', () => {
+    const html =
+      '<table><tbody>' +
+      '<tr><td scope="col">A</td><td scope="col">B</td></tr>' +
+      '</tbody></table>'
+    const next = apply(selectCells(stateIn(html, 'A'), 'A', 'B'), mergeCells)
+    const merged = cellsIn(next.doc)[0]
+    expect(merged?.node.type.name).toBe('table_cell')
+    expect(merged?.node.attrs['scope']).toBeNull()
+  })
+
+  it('keeps both columns after a resize of a merged cell so colgroup and cells agree', () => {
+    let state = withColgroupSync(selectCells(stateIn(TWO_BY_TWO_SIZED, 'A'), 'A', 'B'))
+    state = apply(state, mergeCells)
+    const merged = cellsIn(state.doc).find((cell) => (cell.node.attrs['colspan'] as number) === 2)
+    if (!merged) throw new Error('expected a merged cell')
+    expect(merged.node.attrs['colwidth']).toEqual([100, 200])
+
+    // Column resize writes the dragged column's new width into that slot of
+    // the cell's array and leaves the others. The fight the issue describes
+    // is the next slot being 0, so the sync plugin then blanks that <col>.
+    const colwidth = [...(merged.node.attrs['colwidth'] as number[])]
+    colwidth[0] = 140
+    const body = cellMatching(state.doc, 'C')
+    let tr = state.tr
+    tr = tr.setNodeMarkup(merged.pos, undefined, { ...merged.node.attrs, colwidth })
+    tr = tr.setNodeMarkup(body.pos, undefined, { ...body.node.attrs, colwidth: [140] })
+    state = state.apply(tr)
+
+    const resized = cellsIn(state.doc).find((cell) => (cell.node.attrs['colspan'] as number) === 2)
+    expect(resized?.node.attrs['colwidth']).toEqual([140, 200])
+    const colgroup = tableNode(state.doc).attrs['colgroup'] as string
+    expect(colgroup).toContain('width="140"')
+    expect(colgroup).toContain('width="200"')
+    expectColgroupMatchesTable(state.doc)
+  })
+
+  it('repairs stock mergeCells through the colgroup sync plugin', () => {
+    // The toolbar still registers the upstream command (index.ts belongs to
+    // another PR). The plugin has to make that path agree too.
+    let state = withColgroupSync(selectCells(stateIn(TWO_BY_TWO_SIZED, 'A'), 'A', 'B'))
+    state = apply(state, mergeCellsRaw)
+    const merged = cellsIn(state.doc).find((cell) => (cell.node.attrs['colspan'] as number) === 2)
+    expect(merged?.node.attrs['colwidth']).toEqual([100, 200])
+    expect(merged?.node.attrs['scope']).toBe('colgroup')
+  })
+})
+
+describe('insert row and column copy visual cell attrs', () => {
+  it('copies align and background onto a row inserted below a styled cell', () => {
+    const start = stateIn(
+      '<table><tbody><tr>' +
+        '<td align="right" class="banded" style="background-color:#ff0000">A</td>' +
+        '<td>B</td>' +
+        '</tr></tbody></table>',
+      'A',
+    )
+    const next = apply(start, addRowAfter)
+    const inserted = rowCells(next.doc, 1)
+    expect(inserted[0]?.attrs['align']).toBe('right')
+    expect(String(inserted[0]?.attrs['style'] ?? '')).toContain('background-color')
+    expect(inserted[0]?.attrs['class']).toBeNull()
+    expect(inserted[0]?.attrs['scope']).toBeNull()
+    expect(inserted[1]?.attrs['align']).toBeNull()
+    expect(inserted[1]?.attrs['style']).toBeNull()
+  })
+
+  it('copies colwidth onto a new row in the same columns', () => {
+    const start = stateIn(
+      '<table><tbody><tr>' +
+        '<td data-colwidth="100">A</td><td data-colwidth="200">B</td>' +
+        '</tr></tbody></table>',
+      'A',
+    )
+    const next = apply(start, addRowAfter)
+    const inserted = rowCells(next.doc, 1)
+    expect(inserted[0]?.attrs['colwidth']).toEqual([100])
+    expect(inserted[1]?.attrs['colwidth']).toEqual([200])
+  })
+
+  it('copies align onto a new column but not the neighbour’s colwidth', () => {
+    const start = stateIn(
+      '<table><tbody><tr>' +
+        '<td align="center" data-colwidth="100">A</td><td>B</td>' +
+        '</tr></tbody></table>',
+      'A',
+    )
+    const next = apply(start, addColumnAfter)
+    const cells = rowCells(next.doc, 0)
+    expect(cells).toHaveLength(3)
+    expect(cells[1]?.attrs['align']).toBe('center')
+    expect(cells[1]?.attrs['colwidth']).toBeNull()
+    expect(cells[0]?.attrs['colwidth']).toEqual([100])
+  })
+
+  it('does not copy a header’s background onto a body row inserted below it', () => {
+    const start = stateIn(
+      '<table><thead><tr>' +
+        '<th scope="col" style="background-color:#00ff00">H1</th><th scope="col">H2</th>' +
+        '</tr></thead>' +
+        '<tbody><tr><td>A</td><td>B</td></tr></tbody></table>',
+      'H1',
+    )
+    const next = apply(start, addRowAfter)
+    expect(tableSectionCounts(next)).toEqual({ headerRows: 1, footerRows: 0 })
+    const inserted = rowCells(next.doc, 1)
+    expect(inserted[0]?.type.name).toBe('table_cell')
+    expect(inserted[0]?.attrs['style']).toBeNull()
+    expect(inserted[0]?.attrs['scope']).toBeNull()
+    expect(inserted[0]?.textContent).toBe('')
+    expect(rowCells(next.doc, 2)[0]?.textContent).toBe('A')
+  })
+})
+

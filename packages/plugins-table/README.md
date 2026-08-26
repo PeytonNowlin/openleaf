@@ -67,6 +67,22 @@ Without that, every remaining column inherited the previous `<col>`'s width and
 class. Column resize still patches widths onto the same elements, so the two
 paths do not fight.
 
+Merge and split keep that contract too. A merged cell's `colwidth` is one
+entry per column it covers — the concatenation of those columns' widths, filled
+from other cells in the column and then from the stored colgroup, never folded
+into a single number — and `scope` follows the new span: a header that covers
+two columns is `scope="colgroup"`, and a body cell that still carried `scope`
+from an earlier header conversion has it cleared. Split writes each entry back
+onto the cell that covers that column.
+
+Inserting a row or column copies the neighbour cell's alignment and background
+so the new cells look like the ones the author was in. It does not copy `class`
+(often a band the author wanted on one row), `scope` (owned by the header pass
+above), or — on a new column — `colwidth`, because a new column is an unmeasured
+`<col>` and stamping the neighbour's width would make the next resize fight it.
+A body row inserted below a header copies from a body neighbour of the same
+type, not from the header's chrome.
+
 ## License
 
 Apache-2.0.
@@ -83,9 +99,9 @@ the ones you want in the element's `toolbar` attribute:
 | `rowProperties` | Row properties dialog |
 | `cellProperties` | Cell properties dialog |
 | `tableCaption` | Caption dialog |
-| `addRowBefore`, `addRowAfter`, `deleteRow` | Row commands. They keep `headerRows` / `footerRows` in step so `<thead>` and `<tfoot>` stay on the header and footer rows the author actually has. |
-| `addColumnBefore`, `addColumnAfter`, `deleteColumn` | Column commands |
-| `mergeCells`, `splitCell` | Cell merge and split |
+| `addRowBefore`, `addRowAfter`, `deleteRow` | Row commands. They keep `headerRows` / `footerRows` in step so `<thead>` and `<tfoot>` stay on the header and footer rows the author actually has. A new row copies the neighbour cell's alignment, background, and `colwidth`. |
+| `addColumnBefore`, `addColumnAfter`, `deleteColumn` | Column commands. A new column copies alignment and background, not `colwidth`. |
+| `mergeCells`, `splitCell` | Cell merge and split. They keep per-column `colwidth` and rewrite `scope` for the new span. |
 | `toggleHeaderRow` | Promote or demote the header row |
 | `deleteTable` | Delete the whole table |
 
