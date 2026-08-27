@@ -196,6 +196,32 @@ Neither of these is a reason not to use plugins. They are the reason the
 answer to "can I load this third-party plugin?" is the same as the answer
 to "can I add this third-party script tag?"
 
+### Agent tools are a new caller, not a new trust level
+
+`@openleaf-editor/plugins-webmcp` registers a WebMCP tool set with the
+browser, which lets an agent driving the page call into the editor. Three
+things about it are worth stating before you install it.
+
+**It is opt-in and it is off.** The package is not in the core bundle and
+nothing calls `installAgentTools()` for you. A deployment that does not
+install it has no agent surface at all, and the tools are additionally
+inert in every browser that does not implement the API.
+
+**The caller is the browser's own agent, not another origin.** Cross-origin
+tool exposure is a separate mechanism and this package does not configure
+it, so the tools are reachable from this document and nowhere else.
+
+**Document content read back through a tool is untrusted, in a direction
+the rest of this file does not cover.** Everywhere else here, "untrusted"
+means the HTML your server is about to store. A tool that returns document
+content is untrusted in the other direction as well: an author — or
+whoever pasted into the document before them — can leave text in it that
+is aimed at the agent reading it. Tools that return content are annotated
+`untrustedContentHint`, which is what tells the client driving the agent
+to treat instructions found inside as data. `openleaf_list_editors`
+returns identifiers and accessible names only, and is annotated
+accordingly.
+
 ## Defence in depth: a baseline CSP
 
 Everything above is about the sanitizer. A Content-Security-Policy on the

@@ -1,0 +1,45 @@
+{
+  "name": "@openleaf-editor/plugins-webmcp",
+  "version": "0.1.0-beta.4",
+  "description": "Opt-in WebMCP tool surface for OpenLeaf: an agent driving the page can discover the editors on it and act on them through the editor's own commands.",
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeytonNowlin/openleaf.git",
+    "directory": "packages/plugins-webmcp"
+  },
+  "homepage": "https://peytonnowlin.github.io/openleaf/",
+  "bugs": {
+    "url": "https://github.com/PeytonNowlin/openleaf/issues"
+  },
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@openleaf-editor/core": "workspace:^",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-view": "^1.37.0"
+  },
+  "devDependencies": {
+    "@openleaf-editor/core": "workspace:*",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-view": "^1.37.0"
+  }
+}

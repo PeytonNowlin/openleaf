@@ -13,6 +13,22 @@ import { BASE_URL, PORT } from './packages/element/test/e2e/port.js'
  * All three engines run by default. WebKit is not optional -- it is Safari
  * and every iOS browser, and it is historically where selection bugs live.
  */
+
+/**
+ * The one spec that needs a browser flag.
+ *
+ * WebMCP is a Chromium blink feature that is off by default, so the tools are
+ * registered with nothing unless the browser is launched with it on. It gets
+ * its own project rather than a launch argument on `chromium`, because turning
+ * an experimental feature on for the whole suite changes the browser every
+ * other test is asserting against.
+ *
+ * The three engine projects have to ignore it explicitly: the `testMatch`
+ * below is repo-wide, so without that they would each pick the spec up and run
+ * it in a browser that has no such API.
+ */
+const FLAGGED = '**/webmcp-registration.spec.ts'
+
 export default defineConfig({
   testDir: 'packages/element/test/e2e',
   testMatch: '**/*.spec.ts',
@@ -28,9 +44,17 @@ export default defineConfig({
   },
 
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: FLAGGED },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] }, testIgnore: FLAGGED },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] }, testIgnore: FLAGGED },
+    {
+      name: 'chromium-webmcp',
+      testMatch: FLAGGED,
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: { args: ['--enable-blink-features=WebMCP'] },
+      },
+    },
   ],
 
   // The rebuild is HERE and not in `webServer.command`, so the tests can never

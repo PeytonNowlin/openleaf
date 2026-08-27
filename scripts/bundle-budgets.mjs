@@ -151,6 +151,14 @@ export const BUDGETS_KB = {
   // the feature if it goes.
   'openleaf-session.min.js': 10,
   'openleaf-insert.min.js': 20,
+  // The smallest budget in the tree, and the reason is structural rather than
+  // frugal: this bundle registers agent tools, so it carries no icons, no
+  // stylesheet and no dialogs at all. 8 against a measured 1.3 is not slack for
+  // its own sake -- the tool set arrives one tool per issue, and a ceiling that
+  // has to be raised for each of them is a ceiling nobody reads. If the whole
+  // surface ever needs more than this, something that is not an agent tool has
+  // been put in it.
+  'openleaf-webmcp.min.js': 8,
 }
 
 /** Short label for a bundle: `openleaf-tables.min.js` reads as `-tables`. */

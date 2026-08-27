@@ -81,7 +81,15 @@ const unitOk = step('unit tests + round-trip fidelity', () => {
 const browserOk = step(
   quick ? 'browser tests (chromium only)' : 'browser tests (chromium, firefox, webkit)',
   () => {
-    run('pnpm', quick ? ['exec', 'playwright', 'test', '--project=chromium'] : ['exec', 'playwright', 'test'])
+    // `chromium-webmcp` is the same engine with one blink feature turned on,
+    // so the quick gate runs it too -- it needs no extra browser download, and
+    // it is the only test that proves the real registration path works.
+    run(
+      'pnpm',
+      quick
+        ? ['exec', 'playwright', 'test', '--project=chromium', '--project=chromium-webmcp']
+        : ['exec', 'playwright', 'test'],
+    )
   },
 )
 

@@ -7,7 +7,7 @@ This repo is **single-context**: one glossary and one ADR directory at the root,
 covering every package. The `packages/*` split is a delivery boundary, not a
 domain boundary — `schema`, `preservation layer`, `sanitize policy` and
 `round-trip fidelity` mean the same thing in `core` as they do in `sanitize` or
-`plugins-table`, and fifteen glossaries would be fifteen copies of the same
+`plugins-table`, and sixteen glossaries would be sixteen copies of the same
 terms.
 
 ## Before exploring, read these

@@ -16,7 +16,7 @@ because you were about to, the answer is almost certainly
 2. **Runs the full gate** — `node scripts/verify.mjs`, all three browser
    engines, not the chromium-only `--quick` form that pull requests get. Nothing
    is published if it fails, and the Playwright report is attached to the run.
-3. **Bumps and rolls** — `scripts/bump.mjs` moves all fifteen packages to the
+3. **Bumps and rolls** — `scripts/bump.mjs` moves all sixteen packages to the
    next `0.1.0-beta.N` and turns the changelog's `## Unreleased` section into a
    dated entry for it.
 4. **Commits and tags locally**, then publishes, then pushes. That order is
@@ -78,7 +78,7 @@ pipeline. See [the npm changelog entry](https://github.blog/changelog/2026-07-08
 
 ### One-time setup, per package
 
-Trusted publishing is configured **per package**, and there are fifteen of them.
+Trusted publishing is configured **per package**, and there are sixteen of them.
 Do it from the CLI rather than the website:
 
 ```sh

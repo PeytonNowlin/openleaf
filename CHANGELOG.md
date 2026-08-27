@@ -12,6 +12,21 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Added
+
+- **`@openleaf-editor/plugins-webmcp`: an opt-in agent tool surface.** An agent
+  driving the page can ask which OpenLeaf editors are on it and get back a
+  stable identifier for each — the host element's `id`, or an ordinal where it
+  has none — and an editor removed from the page stops being offered. The
+  registration is page-global and made once, because the browser answers a
+  repeated tool name with `InvalidStateError: Duplicate tool name` and a page
+  with several editors is the normal case here; each editor adds itself to a
+  register through the editor plugin's own per-view lifecycle instead. In a
+  browser without the API, installing is silent: no error, no console output,
+  and no half-wired editor. The package contributes no nodes, no marks, no
+  toolbar items, no icons and no CSS, so a deployment that does not install it
+  is unchanged. `#242`
+
 ### Fixed
 
 - **Font-family names with apostrophes, plus signs, or a leading digit now
