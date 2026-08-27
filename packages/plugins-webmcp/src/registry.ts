@@ -102,3 +102,19 @@ export function agentRegistry(): Plugin {
 export function listEditors(): RegisteredEditor[] {
   return [...editors.values()]
 }
+
+/**
+ * The editor an agent named, or nothing.
+ *
+ * A linear scan over a handful of editors: a page with enough of them for an
+ * index to matter does not exist, and an index would be a second thing to keep
+ * in step with the register on every mount and teardown.
+ *
+ * A miss is never resolved to "the first editor". An agent that was handed a
+ * stale identifier and silently got somebody else's document would write into
+ * it, so the tools answer a miss with a failure that says to list again.
+ */
+export function findEditor(id: string): RegisteredEditor | null {
+  for (const editor of editors.values()) if (editor.id === id) return editor
+  return null
+}

@@ -22,6 +22,16 @@
                  editing commands were never put on the bar is exercised
                  alongside one where they were.
 
+  `post-body` carries `blockType` -- the control that applies a heading --
+  precisely because `comment-box` does not. The capabilities tool has to report
+  that the narrow editor cannot apply a heading while its schema still stores
+  one, and a page where no editor could apply a heading would let a tool that
+  reported nothing at all pass that test.
+
+  No editor here loads a table bundle, so every one of them has table nodes in
+  its schema and no command that builds a table -- the other half of the same
+  divergence, and the one an integrator hits without meaning to.
+
   Host ids are distinct from the textarea ids they bind to (`post-body` for
   `body`), because `getElementById` cannot answer for two elements.
 -->
@@ -31,7 +41,7 @@
     id="post-body"
     for="body"
     aria-label="Post body"
-    toolbar="undo redo | bold italic | source"></openleaf-editor>
+    toolbar="undo redo | blockType | bold italic | source"></openleaf-editor>
   <textarea id="body" name="body" hidden><p>alpha beta</p></textarea>
 
   <label for="notes">Notes</label>

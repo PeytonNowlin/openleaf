@@ -26,6 +26,22 @@ entries below say so explicitly when they do.
   and no half-wired editor. The package contributes no nodes, no marks, no
   toolbar items, no icons and no CSS, so a deployment that does not install it
   is unchanged. `#242`
+- **`@openleaf-editor/plugins-webmcp`: an agent can ask an editor what it can do
+  and read what is in it.** `openleaf_get_capabilities` reports two things
+  separately, because they are two different sets: the node and mark types the
+  editor's document can store, and the editing commands that editor actually
+  offers. The schema is deliberately the wider of the two — table and structural
+  nodes are in it whether or not the chrome for them was installed, so that a
+  stored document round-trips in every deployment — and the commands are
+  narrowed again by the `toolbar` layout the integrator gave that editor, so two
+  editors on one page can answer differently. An agent told only the schema
+  would attempt edits that cannot happen; one told only the commands would treat
+  a stored table as unreadable. `openleaf_get_document` returns the editor's
+  current content as HTML, including edits the author has not saved, and is
+  annotated `untrustedContentHint` because a document is where text aimed at the
+  agent reading it hides. Both are annotated read-only, and naming an editor
+  that is not on the page answers with a failure that says to list again rather
+  than with somebody else's document. `#243`
 
 ### Fixed
 
