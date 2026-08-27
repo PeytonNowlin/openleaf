@@ -244,6 +244,9 @@ importers:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
+      '@openleaf-editor/ui':
+        specifier: workspace:*
+        version: link:../ui
       prosemirror-state:
         specifier: ^1.4.3
         version: 1.4.4

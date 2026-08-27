@@ -18,7 +18,7 @@ The reference implementations are the eight plugins in this repository:
 | `plugins-highlight` | Syntax highlighting for code blocks, and a formatted source view |
 | `plugins-import` | HTML and plain-text file import, plus the converter seam |
 | `plugins-import-docx` | Word `.docx` import, on top of `plugins-import` |
-| `plugins-webmcp` | A WebMCP tool surface, so an agent driving the page can discover the editors on it. No nodes, no marks, no toolbar items, no icons, no CSS |
+| `plugins-webmcp` | A WebMCP tool surface, so an agent driving the page can discover the editors on it, ask what each can do, and read its content. No nodes, no marks, no toolbar items, no icons, no CSS |
 
 `plugins-table` is the one most examples below are adapted from, because it is
 the only one that exercises every extension point at once. Where another plugin
@@ -930,7 +930,7 @@ openleaf-insert.min.js        8.4 /  20
 openleaf-highlight.min.js     6.7 /  15
 openleaf-colour.min.js        5.3 /  15
 openleaf-import.min.js        3.3 /  12
-openleaf-webmcp.min.js        1.3 /   8
+openleaf-webmcp.min.js        2.2 /   8
 ```
 
 Run `node scripts/bundle-budgets.mjs` for the current numbers rather than

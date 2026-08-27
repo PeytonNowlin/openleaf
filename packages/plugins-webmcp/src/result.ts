@@ -18,7 +18,11 @@
  * can read. Deliberately not an HTTP-shaped number: the agent's next move
  * differs per case, and `404` does not say "list the editors again".
  */
-export type ToolErrorCode = 'unknown-editor'
+export type ToolErrorCode =
+  /** The named editor is not on the page -- gone, or never there. List again. */
+  | 'unknown-editor'
+  /** The arguments do not match the schema the tool published. Read it and retry. */
+  | 'invalid-argument'
 
 /**
  * A success: the payload, carrying `"ok": true`.

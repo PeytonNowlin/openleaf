@@ -44,8 +44,38 @@ describe('the tool set', () => {
     for (const tool of webmcp.agentTools) expect(tool.name).toMatch(/^openleaf_[a-z_]+$/)
   })
 
-  it('offers the editor listing', () => {
-    expect(webmcp.agentTools.map((tool) => tool.name)).toEqual(['openleaf_list_editors'])
+  it('offers the tools it says it offers', () => {
+    // Pinned rather than counted: the names are page-global and published to
+    // agents, so one disappearing or being spelled differently is a break for
+    // every integration that told an agent to call it.
+    expect(webmcp.agentTools.map((tool) => tool.name)).toEqual([
+      'openleaf_list_editors',
+      'openleaf_get_capabilities',
+      'openleaf_get_document',
+    ])
+  })
+
+  it('annotates every tool read-only, and says which ones return content', () => {
+    // Nothing here writes yet, so a tool claiming otherwise would have a client
+    // asking a person before every read. The content hint is the half that
+    // varies: it marks the results an agent must treat as data rather than as
+    // instructions addressed to it.
+    const contentReturning = webmcp.agentTools
+      .filter((tool) => tool.annotations.untrustedContentHint)
+      .map((tool) => tool.name)
+    expect(webmcp.agentTools.every((tool) => tool.annotations.readOnlyHint)).toBe(true)
+    expect(contentReturning).toEqual(['openleaf_get_document'])
+  })
+
+  it('asks for an editor by id everywhere except the listing', () => {
+    // The listing is the one call that can have no id, because it is where an
+    // id comes from. Every other tool requires one -- there is no implicit
+    // "current editor" on a page with three of them.
+    for (const tool of webmcp.agentTools) {
+      const required = tool.inputSchema.required ?? []
+      if (tool.name === 'openleaf_list_editors') expect(required).toEqual([])
+      else expect(required).toEqual(['id'])
+    }
   })
 
   it('gives every tool a title, a description and annotations', () => {

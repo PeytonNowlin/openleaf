@@ -1,6 +1,6 @@
 # `@openleaf-editor/plugins-webmcp`
 
-An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page and get a stable identifier for each one.
+An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, and what is currently in it.
 
 This is a **beta** (`0.1.0-beta.4`). Keep every `@openleaf-editor/*` package on the
 same version.
@@ -59,6 +59,8 @@ namespace.
 | Tool | Read-only | Returns document content | What it does |
 | --- | --- | --- | --- |
 | `openleaf_list_editors` | yes | no | Lists the OpenLeaf editors on the page, with an identifier for each. |
+| `openleaf_get_capabilities` | yes | no | Reports what one editor's document can store, and which editing commands that editor actually offers. |
+| `openleaf_get_document` | yes | **yes** | Returns one editor's current content as HTML — including edits the author has not saved. |
 
 Every result is a **JSON string**, because a string is all the browser's execute
 path returns. The envelope is the same for every tool:
@@ -71,8 +73,45 @@ path returns. The envelope is the same for every tool:
 Read tools carry the `readOnlyHint` annotation, so the client driving the agent
 can decide when a call needs a person's confirmation. Any tool that returns
 document content carries `untrustedContentHint`, because a document is exactly
-where text aimed at the agent reading it can hide. `openleaf_list_editors`
-returns identifiers and accessible names only, and is annotated accordingly.
+where text aimed at the agent reading it can hide. `openleaf_get_document` is
+annotated with it; `openleaf_list_editors` and `openleaf_get_capabilities`
+return identifiers, type names and command labels only, and are annotated
+accordingly.
+
+## What "capabilities" means here
+
+`openleaf_get_capabilities` answers two questions that are easy to confuse, and
+answers them separately because in this editor they have different answers:
+
+```json
+{
+  "ok": true,
+  "id": "comment-box",
+  "nodes": ["blockquote", "doc", "heading", "paragraph", "table", "…"],
+  "marks": ["em", "link", "strong", "…"],
+  "commands": [{ "id": "bold", "label": "Bold" }, { "id": "italic", "label": "Italic" }]
+}
+```
+
+- **`nodes` and `marks`** are what this editor's document can *store*. The base
+  schema is deliberately wide — table and structural nodes are in it whether or
+  not you installed the chrome for them — so that a stored document round-trips
+  faithfully in every deployment.
+- **`commands`** are what this editor can *do*: the toolbar items this
+  deployment registered, narrowed to the ones this editor's `toolbar` and
+  `toolbar2` layouts name. The `id` is what identifies a command; the `label` is
+  what it is called.
+
+So an editor can hold a table in a deployment that never installed
+`@openleaf-editor/plugins-table`, and can hold a heading on a bar you restricted
+to `toolbar="bold italic"`. Reporting only the schema would promise an agent
+edits that cannot happen; reporting only the commands would tell it a stored
+table is unreadable.
+
+Restricting one editor is a layout decision, not an uninstall: `registerToolbarItem`
+is page-global, so two editors on one page can report different commands from
+the same registry. An editor with no `toolbar` attribute reports the default
+bar; `toolbar="none"` reports no commands at all.
 
 ## Editor identity
 

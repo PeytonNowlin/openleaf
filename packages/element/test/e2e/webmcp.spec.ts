@@ -56,6 +56,39 @@ async function listed(page: Page): Promise<ListedEditor[]> {
 
 const ids = async (page: Page): Promise<string[]> => (await listed(page)).map((one) => one.id)
 
+interface Capabilities {
+  ok: boolean
+  id: string
+  nodes: string[]
+  marks: string[]
+  commands: { id: string; label: string }[]
+}
+
+async function capabilities(page: Page, id: string): Promise<Capabilities> {
+  const result = (await call(page, 'openleaf_get_capabilities', { id })) as Capabilities
+  expect(result.ok).toBe(true)
+  return result
+}
+
+/**
+ * The command ids, sorted.
+ *
+ * Order is not part of the contract -- the tools walk the registry, so it is
+ * whatever order the deployment's plugins happened to register in -- and a test
+ * that pinned it would fail the day a plugin moves its own registration.
+ */
+const commandIds = async (page: Page, id: string): Promise<string[]> =>
+  (await capabilities(page, id)).commands.map((command) => command.id).sort()
+
+async function documentHtml(page: Page, id: string): Promise<string> {
+  const result = (await call(page, 'openleaf_get_document', { id })) as {
+    ok: boolean
+    html: string
+  }
+  expect(result.ok).toBe(true)
+  return result.html
+}
+
 test.describe('core bundle alone', () => {
   test('exposes no agent tools', async ({ page }) => {
     await page.goto(CORE_ONLY)
@@ -72,6 +105,12 @@ test.describe('with the agent tool bundle loaded', () => {
 
   test('offers the editor-listing tool', async ({ page }) => {
     expect(await toolNames(page)).toContain('openleaf_list_editors')
+  })
+
+  test('offers the capability and content tools', async ({ page }) => {
+    expect(await toolNames(page)).toEqual(
+      expect.arrayContaining(['openleaf_get_capabilities', 'openleaf_get_document']),
+    )
   })
 
   test('marks the listing read-only and free of document content', async ({ page }) => {
@@ -142,5 +181,124 @@ test.describe('with the agent tool bundle loaded', () => {
       host.OpenLeaf.__runtime['@openleaf-editor/core']!.registerEditorPlugin(() => [])
     })
     await expect.poll(() => ids(page)).toEqual(before)
+  })
+})
+
+test.describe('what an editor can do', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(HARNESS)
+    await expect(editor(page)).toBeVisible()
+  })
+
+  test('reports the schema types the document can hold', async ({ page }) => {
+    const caps = await capabilities(page, 'post-body')
+    expect(caps.id).toBe('post-body')
+    expect(caps.nodes).toEqual(expect.arrayContaining(['paragraph', 'heading', 'table']))
+    expect(caps.marks).toEqual(expect.arrayContaining(['strong', 'em', 'link']))
+  })
+
+  test('reports the commands this editor offers, not every command there is', async ({ page }) => {
+    // The layout is the per-editor half: `registerToolbarItem` is page-global,
+    // so an editor is restricted by the `toolbar` attribute it was given rather
+    // than by anything being uninstalled.
+    expect(await commandIds(page, 'post-body')).toEqual([
+      'blockType',
+      'bold',
+      'italic',
+      'redo',
+      'source',
+      'undo',
+    ])
+    // Registered on this page -- every editor here renders a bar with a source
+    // toggle -- and still absent from the narrow editor's answer.
+    expect(await commandIds(page, 'comment-box')).toEqual(['bold', 'italic'])
+  })
+
+  test('says a restricted editor cannot apply a heading, and still stores one', async ({ page }) => {
+    // The divergence the whole tool exists for, in one editor. `blockType` is
+    // the control that applies a heading; this bar does not carry it. Reporting
+    // only the schema would promise an agent an edit that cannot happen, and
+    // reporting only the commands would tell it a stored heading is unreadable.
+    const caps = await capabilities(page, 'comment-box')
+    expect(caps.commands.map((command) => command.id)).not.toContain('blockType')
+    expect(caps.nodes).toContain('heading')
+  })
+
+  test('says the document can hold a table this deployment cannot build', async ({ page }) => {
+    // The other half, and the one that bites without anyone choosing it: table
+    // nodes are in the base schema so a stored document round-trips, while the
+    // editing chrome for them is an opt-in bundle this page never loads.
+    const caps = await capabilities(page, 'post-body')
+    expect(caps.nodes).toEqual(expect.arrayContaining(['table', 'table_row', 'table_cell']))
+    expect(caps.commands.map((command) => command.id)).not.toContain('insertTable')
+  })
+
+  test('names every command it reports', async ({ page }) => {
+    // The id is what a later call passes back; the label is the only thing that
+    // tells an agent what `blockType` is for.
+    const caps = await capabilities(page, 'post-body')
+    for (const command of caps.commands) expect(command.label.length).toBeGreaterThan(0)
+  })
+
+  test('fails clearly on an editor that is not on the page', async ({ page }) => {
+    expect(await call(page, 'openleaf_get_capabilities', { id: 'no-such-editor' })).toEqual({
+      ok: false,
+      error: 'unknown-editor',
+      message: expect.stringContaining('openleaf_list_editors'),
+    })
+  })
+})
+
+test.describe('reading an editor', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(HARNESS)
+    await expect(editor(page)).toBeVisible()
+  })
+
+  test('returns the content as HTML', async ({ page }) => {
+    expect(await documentHtml(page, 'post-body')).toBe('<p>alpha beta</p>')
+    // Each editor answers for itself, which is the whole reason the id is
+    // required rather than there being a "current" editor.
+    expect(await documentHtml(page, 'comment-box')).toBe('<p>delta</p>')
+  })
+
+  test('returns what the author has typed but not yet saved', async ({ page }) => {
+    // What the form would submit right now, not what it was loaded with: an
+    // agent asked to fix a sentence has to read the sentence in front of the
+    // author.
+    await editor(page).click()
+    await page.keyboard.type('zeta ')
+    await expect.poll(() => documentHtml(page, 'post-body')).toContain('zeta')
+  })
+
+  test('marks the content untrusted and the read read-only', async ({ page }) => {
+    // The annotation this package exists to get right: a document is where text
+    // aimed at the agent reading it hides, and this is what tells the client
+    // driving the agent to treat it as data.
+    const annotations = await page.evaluate(() => {
+      const host = globalThis as unknown as {
+        OpenLeaf?: { agentTools?: { name: string; annotations: unknown }[] }
+      }
+      return host.OpenLeaf?.agentTools?.find((t) => t.name === 'openleaf_get_document')?.annotations
+    })
+    expect(annotations).toEqual({ readOnlyHint: true, untrustedContentHint: true })
+  })
+
+  test('fails clearly on an editor that was removed from the page', async ({ page }) => {
+    await page.evaluate(() => document.getElementById('comment-box')?.remove())
+    await expect.poll(() => ids(page)).not.toContain('comment-box')
+    expect(await call(page, 'openleaf_get_document', { id: 'comment-box' })).toEqual({
+      ok: false,
+      error: 'unknown-editor',
+      message: expect.stringContaining('openleaf_list_editors'),
+    })
+  })
+
+  test('fails rather than guessing when no editor is named', async ({ page }) => {
+    // Nothing validates an agent's arguments against the schema on the way in.
+    expect(await call(page, 'openleaf_get_document', {})).toMatchObject({
+      ok: false,
+      error: 'invalid-argument',
+    })
   })
 })
