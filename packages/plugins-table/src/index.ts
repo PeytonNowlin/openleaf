@@ -64,6 +64,8 @@ import { openCaptionDialog, openCellProperties, openRowProperties, openTableProp
 import { buildInsertGrid } from './grid.js'
 import { TABLE_ICON_PATHS } from './icons.js'
 import { tableContextMenu } from './menu.js'
+import { nestedTablePastePlugin } from './paste.js'
+import { COLUMN_RESIZE_HANDLE_WIDTH, nestedColumnResizePlugin } from './resize.js'
 import { TABLE_UI_CSS } from './styles.js'
 
 export const TABLE_TOOLBAR_ITEMS = [
@@ -169,9 +171,19 @@ class CaptionedTableView extends TableView {
 /** The ProseMirror plugins table editing needs. */
 export function tableEditingPlugins() {
   return [
-    // Resizing must come first: it reads cell geometry that tableEditing's
-    // selection handling would otherwise have already consumed.
-    columnResizing({ View: CaptionedTableView }),
+    // `EditorView.someProp` walks from the start of this list and stops at the
+    // first handler that returns true. Nested-table hit-testing has to run
+    // *before* `columnResizing` so it can claim an outer border; `columnResizing`
+    // has to run *before* `tableEditing` so a mousedown on a handle is a drag
+    // rather than a cell selection. Paste nesting has to run *before*
+    // `tableEditing` so a closed table at a text caret is not unwrapped into
+    // `insertCells`.
+    nestedColumnResizePlugin(COLUMN_RESIZE_HANDLE_WIDTH),
+    columnResizing({
+      View: CaptionedTableView,
+      handleWidth: COLUMN_RESIZE_HANDLE_WIDTH,
+    }),
+    nestedTablePastePlugin(),
     tableEditing({ allowTableNodeSelection: true }),
     colgroupSyncPlugin(),
     tableContextMenu(),

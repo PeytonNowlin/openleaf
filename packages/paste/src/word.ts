@@ -459,7 +459,14 @@ function stripJunk(container: Container): void {
   dropEmptyBlocks(container, ['p'])
 }
 
-/** True when this HTML looks like it came from Microsoft Word or Outlook. */
+/**
+ * True when this HTML looks like it came from Microsoft Word or Outlook.
+ *
+ * Excel's clipboard matches too (`mso-`, `urn:schemas-microsoft-com`,
+ * `MsoNormalTable`). That is not a bug in this predicate -- it is why
+ * `detectSource` asks `looksLikeExcel` first. Do not "fix" Excel by narrowing
+ * this; a Word paste of a table of numbers still has to take this path.
+ */
 export function looksLikeWord(html: string): boolean {
   return /mso-|urn:schemas-microsoft-com|class="?Mso|<o:p|<w:|WordDocument/i.test(html)
 }

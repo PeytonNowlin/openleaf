@@ -68,6 +68,11 @@ custom-control contract is strict about focus: exactly one focusable element in
 what you return, and if it is not a `button.ol-btn` then name it as `focusable`.
 Two makes the bar two tab stops where the author expects one.
 
+Tab itself is never captured inside the editor, including in a code block —
+it is how a keyboard user leaves. Indent a code sample by typing spaces.
+The F1 dialog lists Tab as "leave the editor" and Alt+F10 as the toolbar
+shortcut.
+
 [Authoring OpenLeaf plugins](../../docs/authoring-plugins.md) documents the rest,
 including the `mousedown` `preventDefault` that keeps the selection alive and why
 `destroy` runs before every re-render rather than only on teardown.
@@ -79,6 +84,39 @@ is required and nothing is injected inline. Every colour is a custom property;
 `skin` and `theme` attributes switch them without rebuilding the editor or
 costing the author their undo history. On a browser without
 `adoptedStyleSheets`, link `openleaf.css` and call `markStylesExternal()`.
+
+Underline and strikethrough (`<u>`, `<s>`, `<del>`) paint in the text colour,
+including when a colour mark is nested inside the decoration — schema order
+wraps the line around the colour span, so a rule on `u`/`s` alone cannot retint
+an ancestor's line. Stored HTML stays `<u>`/`<s>`; this is a canvas paint rule.
+Highlight (`background-color`) does not change the line: it still matches the
+foreground.
+The main toolbar (`.ol-toolbar`, not a floating bar) is `position: sticky`, so
+it stays on screen while the editor is in view. Fullscreen does not need this:
+the host is a column flex and only the content pane scrolls, so the bar never
+left. Integrators with a fixed site header set `--openleaf-toolbar-sticky-offset`
+to that header's height (default `0px`) on `.ol-editor` or an ancestor. The
+menubar is not sticky: stacking it with the toolbar needs a height the
+stylesheet cannot know, and two bars at the same `top` would overlap. A second
+toolbar (`toolbar2`) stays in flow for the same reason, including when it is
+the only bar (`toolbar="none"`).
+
+The overflow "More" panel is `position: fixed` from the trigger's viewport box,
+so an open panel still lands under the button when the bar is stuck.
+
+## Floating toolbars
+
+`selection-toolbar` and `insert-toolbar` on the element create the two floating
+bars. They are shown only while the view is focused, the editor is editable,
+and the selection covers some unlocked content. A range that lives entirely
+inside `contenteditable="false"` or *is* a preserved atom hides the bar; a
+Select All that merely *contains* a locked block does not, because the
+unlocked text is still formattable. A pointer-down inside the canvas still
+counts as focused: some
+engines have not moved focus into the view yet while a drag-select is
+establishing the range, and a naive `hasFocus()` guard would hide the selection
+bar for that gesture. Placement itself stays pointer-driven — a keyboard user
+already has Alt+F10 for the main toolbar.
 
 ## License
 

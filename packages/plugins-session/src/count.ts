@@ -5,6 +5,13 @@
  * reported as a single "word" the way a whitespace split would. Engines without
  * a segmenter fall back to splitting on whitespace, which is what Latin-script
  * documents already expect.
+ *
+ * Zero-width space, soft hyphen, and BOM are not content: they have no glyph,
+ * visual aids do not mark them, and Word/Docs omit them from statistics. Both
+ * character totals and the word count skip the same set, and so does find --
+ * see `isInvisibleFormat`. They used to inflate `characters` while BOM alone
+ * was `\s` and dropped from `charactersExcludingSpaces`, and ZWSP split words
+ * because the segmenter treats it as a boundary.
  */
 
 import { isNonEditableNode } from '@openleaf-editor/core'
@@ -93,6 +100,53 @@ export function documentText(doc: PMNode): string {
   return text
 }
 
+/**
+ * Format characters that are not content.
+ *
+ * ZWSP (U+200B) is a break hint some paste pipelines and IMEs insert; soft
+ * hyphen (U+00AD) is a hyphenation point; BOM (U+FEFF) is an encoding artifact.
+ * None of them has a glyph, and `visualAidsPlugin` marks only NBSP. Find uses
+ * this same predicate so the two tools cannot drift: a character the counter
+ * skips is a character the index will not treat as content.
+ *
+ * NBSP (U+00A0) is not in this set. It is a real space -- counted, marked by
+ * visual aids, folded to U+0020 in find.
+ */
+export function isInvisibleFormat(code: number): boolean {
+  return code === 0x200b || code === 0x00ad || code === 0xfeff
+}
+
+/**
+ * `text` with format characters removed, or `text` itself when there are none.
+ *
+ * Allocates only when something has to go: the in-place character walk exists
+ * so a hundred-page recount does not copy the document, and almost no document
+ * contains these characters. Find uses this on the query; the document index
+ * cannot, because concatenating around a skipped character would make Replace
+ * eat it.
+ */
+export function stripInvisibleFormat(text: string): string {
+  let first = -1
+  for (let i = 0; i < text.length; i += 1) {
+    if (isInvisibleFormat(text.charCodeAt(i))) {
+      first = i
+      break
+    }
+  }
+  if (first < 0) return text
+  const parts: string[] = []
+  if (first > 0) parts.push(text.slice(0, first))
+  let run = first + 1
+  for (let i = first + 1; i < text.length; i += 1) {
+    if (isInvisibleFormat(text.charCodeAt(i))) {
+      if (run < i) parts.push(text.slice(run, i))
+      run = i + 1
+    }
+  }
+  if (run < text.length) parts.push(text.slice(run))
+  return parts.join('')
+}
+
 /** Matches what `\s` matches, consulted only for the characters that need it. */
 const UNICODE_SPACE = /\s/
 
@@ -118,7 +172,7 @@ function nonSpaceCount(text: string): number {
 }
 
 export function documentStats(doc: PMNode): DocumentStats {
-  const text = documentText(doc)
+  const text = stripInvisibleFormat(documentText(doc))
   let paragraphs = 0
   doc.descendants((node) => {
     if (isNonEditableNode(node)) return false

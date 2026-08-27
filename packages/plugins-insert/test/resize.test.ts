@@ -28,13 +28,36 @@ function press(target: Element, key: string, shiftKey = false): KeyboardEvent {
 }
 
 /** What the document says the image is, which is what gets saved. */
-function storedWidth(): string | null {
-  let width: string | null = null
+function storedAttr(name: string): string | null {
+  let value: string | null = null
   view?.state.doc.descendants((node) => {
-    if (node.type.name === 'image') width = (node.attrs['width'] as string | null) ?? null
+    if (node.type.name === 'image') value = (node.attrs[name] as string | null) ?? null
     return true
   })
-  return width
+  return value
+}
+
+function storedWidth(): string | null {
+  return storedAttr('width')
+}
+
+function storedHeight(): string | null {
+  return storedAttr('height')
+}
+
+/** A PointerEvent jsdom will accept, carrying the properties the drag reads. */
+function pointer(type: string, clientX: number): Event {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperties(event, {
+    clientX: { value: clientX },
+    pointerId: { value: 1 },
+  })
+  return event
+}
+
+function giveImageSize(img: HTMLImageElement, width: number, height: number): void {
+  Object.defineProperty(img, 'naturalWidth', { configurable: true, get: () => width })
+  Object.defineProperty(img, 'naturalHeight', { configurable: true, get: () => height })
 }
 
 function renderedImage(html: string): HTMLImageElement {
@@ -142,5 +165,108 @@ describe('resizing by keyboard', () => {
     const handle = renderedHandle('<p><img src="/a.png" alt="x" width="240"></p>')
     const event = press(handle, 'ArrowRight')
     expect(event.defaultPrevented).toBe(true)
+  })
+})
+
+/**
+ * Do not commit a dimension taken from the broken-image box.
+ *
+ * jsdom never decodes, so `naturalWidth` stays 0 until a test sets it. That is
+ * the loading window: the handle is positioned from `getBoundingClientRect()`
+ * of a 0×0 (or ~16–40px broken-icon) box, and the first drag used to store that
+ * placeholder width, which then survived once the real bitmap arrived.
+ */
+describe('resizing before the image has decoded', () => {
+  it('withholds the handle while naturalWidth is still 0', () => {
+    const handle = renderedHandle('<p><img src="/slow.png" alt="x"></p>')
+    expect(handle.hidden).toBe(true)
+  })
+
+  it('does not commit a placeholder width from an arrow press', () => {
+    const handle = renderedHandle('<p><img src="/slow.png" alt="x"></p>')
+    press(handle, 'ArrowRight')
+    expect(storedWidth()).toBeNull()
+    expect(storedHeight()).toBeNull()
+  })
+
+  it('does not commit a placeholder width from a drag', () => {
+    const handle = renderedHandle('<p><img src="/slow.png" alt="x"></p>')
+    handle.dispatchEvent(pointer('pointerdown', 0))
+    window.dispatchEvent(pointer('pointermove', 40))
+    window.dispatchEvent(pointer('pointerup', 40))
+    expect(storedWidth()).toBeNull()
+    expect(storedHeight()).toBeNull()
+  })
+
+  it('offers the handle once load reports an intrinsic size, and then writes height', () => {
+    const img = renderedImage('<p><img src="/slow.png" alt="x"></p>')
+    const handle = view!.dom.querySelector('.ol-img-handle')
+    if (!(handle instanceof HTMLButtonElement)) throw new Error('no resize handle rendered')
+    expect(handle.hidden).toBe(true)
+
+    giveImageSize(img, 800, 400)
+    img.dispatchEvent(new Event('load'))
+
+    expect(handle.hidden).toBe(false)
+    press(handle, 'ArrowRight')
+    // jsdom has no layout, so the first press starts from 0 and clamps to 16.
+    expect(storedWidth()).toBe('16')
+    expect(storedHeight()).toBe('8')
+  })
+
+  it('swallows a rejected decode and leaves the handle off', async () => {
+    const img = renderedImage('<p><img src="/broken.png" alt="x"></p>')
+    const handle = view!.dom.querySelector('.ol-img-handle')
+    if (!(handle instanceof HTMLButtonElement)) throw new Error('no resize handle rendered')
+    let decodeCalled = false
+    img.decode = () => {
+      decodeCalled = true
+      return Promise.reject(new Error('EncodingError'))
+    }
+    img.dispatchEvent(new Event('load'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(decodeCalled).toBe(true)
+    expect(handle.hidden).toBe(true)
+    press(handle, 'ArrowRight')
+    expect(storedWidth()).toBeNull()
+  })
+
+  it('does not write through a node view destroyed while the image was loading', () => {
+    const img = renderedImage('<p><img src="/slow.png" alt="x"></p>')
+    view!.destroy()
+    giveImageSize(img, 800, 400)
+    expect(() => img.dispatchEvent(new Event('load'))).not.toThrow()
+  })
+})
+
+/**
+ * A cached bitmap can be complete before the node view attaches a listener.
+ * Checking `complete` synchronously is what makes the handle appear at all.
+ */
+describe('a cached image that is already complete', () => {
+  const proto = HTMLImageElement.prototype
+  const previous = {
+    complete: Object.getOwnPropertyDescriptor(proto, 'complete'),
+    naturalWidth: Object.getOwnPropertyDescriptor(proto, 'naturalWidth'),
+    naturalHeight: Object.getOwnPropertyDescriptor(proto, 'naturalHeight'),
+  }
+
+  afterEach(() => {
+    for (const name of ['complete', 'naturalWidth', 'naturalHeight'] as const) {
+      const desc = previous[name]
+      if (desc) Object.defineProperty(proto, name, desc)
+    }
+  })
+
+  it('offers the handle without waiting for a load event', () => {
+    Object.defineProperty(proto, 'complete', { configurable: true, get: () => true })
+    Object.defineProperty(proto, 'naturalWidth', { configurable: true, get: () => 800 })
+    Object.defineProperty(proto, 'naturalHeight', { configurable: true, get: () => 400 })
+    const handle = renderedHandle('<p><img src="/cached.png" alt="x"></p>')
+    expect(handle.hidden).toBe(false)
+    press(handle, 'ArrowRight')
+    expect(storedWidth()).toBe('16')
+    expect(storedHeight()).toBe('8')
   })
 })

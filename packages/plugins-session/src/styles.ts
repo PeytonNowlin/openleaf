@@ -140,9 +140,11 @@ export const SESSION_CSS = `
   height: min(28rem, 60vh);
   margin: 0 16px;
   border: 1px solid var(--ol-border-strong, var(--openleaf-color-border-strong, #6e7781));
-  /* Stays white: the frame renders the author's document as a reader will see
-     it, and repainting that in the editor's palette would be a lie. */
-  background: #fff;
+  /* The document inside the frame paints its own surface (content-css and the
+     canvas skin). This only shows while that document is loading, so it follows
+     the editor token rather than a hardcoded white that would flash against
+     midnight. */
+  background: var(--ol-surface, var(--openleaf-color-surface, #fff));
 }
 .ol-session-dialog .ol-stats { margin: 0 16px 8px; padding-inline-start: 1.2em; }
 .ol-session-dialog .ol-danger {
