@@ -22,7 +22,7 @@
 import type { Command } from 'prosemirror-state'
 import { Plugin, TextSelection } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
-import { deleteTable, mergeCells, splitCell } from 'prosemirror-tables'
+import { deleteTable } from 'prosemirror-tables'
 import {
   addColumnAfter,
   addColumnBefore,
@@ -32,6 +32,8 @@ import {
   deleteRow,
   findTable,
   inTable,
+  mergeCells,
+  splitCell,
   toggleHeaderRow,
 } from './commands.js'
 import { openCaptionDialog, openCellProperties, openRowProperties, openTableProperties } from './dialogs.js'

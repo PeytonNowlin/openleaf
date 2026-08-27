@@ -31,6 +31,20 @@ entries below say so explicitly when they do.
   -- and writing 124 inverted which machine was red. The `BUDGETS_KB`
   ceilings remain the regression gate.
 
+- **Merging or splitting table cells keeps `colwidth` and `scope` in step.**
+  Stock `mergeCells` grew `colwidth` with zeros for the newly covered columns,
+  so the colgroup sync then blanked those `<col>`s and the next resize fought
+  the stored widths. The surviving cell now holds one width per column it
+  covers — concatenated from the cells, or from the colgroup when a column
+  never had a cell width — and a split writes those entries back. A header
+  that now spans two columns is `scope="colgroup"`; a body cell that still
+  carried `scope` from an earlier header conversion has it cleared. `#189`
+- **Inserting a table row or column copies the neighbour cell's alignment and
+  background.** Stock `addRow` / `addColumn` copied only the cell type, so a
+  new row under a right-aligned red cell was unstyled. The new cells inherit
+  `align`, `valign`, `style`, and `bgcolor`. They do not inherit `class` or
+  `scope`; a new column does not inherit `colwidth`; a body row inserted below
+  a header does not inherit the header's chrome. `#189`
 - **Autolink is the same undo step as the Space, Enter, or IME commit that
   created it.** The mark used to be a separate transaction (`AddMarkStep` maps
   no positions, so history treated it as a new group): Ctrl+Z after a composed
