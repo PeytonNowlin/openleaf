@@ -1,3 +1,4 @@
+import { splitBlock } from 'prosemirror-commands'
 import { EditorState, TextSelection } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { describe, expect, it } from 'vitest'
@@ -32,23 +33,12 @@ function editorAtEnd(html: string, composing = false) {
   }
 }
 
-function htmlAfterAutolinkSpace(html: string): string {
-  const { view, plugin } = editorAtEnd(html)
-  const handle = plugin.props.handleTextInput
-  const from = view.state.selection.from
-  // Called on the plugin the handler belongs to, which is what it declares as
-  // its `this`. The fifth argument is ProseMirror's default action; the plugin
-  // ignores it and returns false so the space is still inserted normally.
-  handle?.call(plugin, view, from, from, ' ', () => view.state.tr)
-  return serializeHtml(view.state.doc)
-}
-
 /**
  * The `appendTransaction` path, which is the one a typed space actually takes.
- * `handleTextInput` is belt to this braces: the space arrives as a transaction
- * whichever way it was produced, so this is where a composing IME's own
- * `readDOMChange` transactions land too. Installing the view the way PM does
- * is what lets that path see `composing` at all.
+ * Space used to be handled in `handleTextInput` by dispatching a mark and
+ * returning false so PM still inserted the space — two transactions, two
+ * undo events (#182). Installing the view the way PM does is what lets that
+ * path see `composing` at all.
  */
 function htmlAfterSpaceTransaction(html: string, composing: boolean): string {
   const schema = coreSchema()
@@ -95,35 +85,35 @@ describe('hrefFromTypedUrl', () => {
 
 describe('autolinkPlugin', () => {
   it('turns a finished URL into a link when a space is typed', () => {
-    expect(htmlAfterAutolinkSpace('<p>See https://example.org</p>')).toContain(
+    expect(htmlAfterSpaceTransaction('<p>See https://example.org</p>', false)).toContain(
       '<a href="https://example.org">',
     )
   })
 
   it('marks the trimmed URL, not the sentence punctuation after it', () => {
-    expect(htmlAfterAutolinkSpace('<p>Visit www.example.com.</p>')).toBe(
-      '<p>Visit <a href="https://www.example.com">www.example.com</a>.</p>',
+    expect(htmlAfterSpaceTransaction('<p>Visit www.example.com.</p>', false)).toBe(
+      '<p>Visit <a href="https://www.example.com">www.example.com</a>. </p>',
     )
-    expect(htmlAfterAutolinkSpace('<p>See https://example.com,</p>')).toBe(
-      '<p>See <a href="https://example.com">https://example.com</a>,</p>',
+    expect(htmlAfterSpaceTransaction('<p>See https://example.com,</p>', false)).toBe(
+      '<p>See <a href="https://example.com">https://example.com</a>, </p>',
     )
   })
 
   it('does not put a wrapping bracket into the href or the mark', () => {
-    expect(htmlAfterAutolinkSpace('<p>see [www.example.com]</p>')).toBe(
-      '<p>see [<a href="https://www.example.com">www.example.com</a>]</p>',
+    expect(htmlAfterSpaceTransaction('<p>see [www.example.com]</p>', false)).toBe(
+      '<p>see [<a href="https://www.example.com">www.example.com</a>] </p>',
     )
   })
 
   it('autolinks a URL wrapped in parentheses', () => {
-    expect(htmlAfterAutolinkSpace('<p>ref (www.example.com)</p>')).toBe(
-      '<p>ref (<a href="https://www.example.com">www.example.com</a>)</p>',
+    expect(htmlAfterSpaceTransaction('<p>ref (www.example.com)</p>', false)).toBe(
+      '<p>ref (<a href="https://www.example.com">www.example.com</a>) </p>',
     )
   })
 
   it('keeps a balanced closing paren that belongs to the path', () => {
-    expect(htmlAfterAutolinkSpace('<p>https://en.wikipedia.org/wiki/Foo_(bar)</p>')).toBe(
-      '<p><a href="https://en.wikipedia.org/wiki/Foo_(bar)">https://en.wikipedia.org/wiki/Foo_(bar)</a></p>',
+    expect(htmlAfterSpaceTransaction('<p>https://en.wikipedia.org/wiki/Foo_(bar)</p>', false)).toBe(
+      '<p><a href="https://en.wikipedia.org/wiki/Foo_(bar)">https://en.wikipedia.org/wiki/Foo_(bar)</a> </p>',
     )
   })
 
@@ -147,15 +137,26 @@ describe('autolinkPlugin', () => {
     expect(editor.html).not.toContain('<a href="https://example.org">')
   })
 
-  it('autolinks on the space transaction, not only on handleTextInput', () => {
-    expect(htmlAfterSpaceTransaction('<p>See https://example.org</p>', false)).toContain(
+  it('leaves the space transaction alone while a composition is open', () => {
+    expect(htmlAfterSpaceTransaction('<p>See https://example.org</p>', true)).not.toContain(
       '<a href="https://example.org">',
     )
   })
 
-  it('leaves the space transaction alone while a composition is open', () => {
-    expect(htmlAfterSpaceTransaction('<p>See https://example.org</p>', true)).not.toContain(
-      '<a href="https://example.org">',
+  it('autolinks a URL when Enter splits the block after it', () => {
+    const schema = coreSchema()
+    const plugin = autolinkPlugin()
+    let state = EditorState.create({
+      doc: parseHtml('<p>See https://example.org</p>', { schema }),
+      plugins: [plugin],
+    })
+    const end = state.doc.content.size - 1
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, end)))
+    splitBlock(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(serializeHtml(state.doc)).toBe(
+      '<p>See <a href="https://example.org">https://example.org</a></p><p></p>',
     )
   })
 })

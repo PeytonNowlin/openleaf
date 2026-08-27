@@ -31,6 +31,14 @@ entries below say so explicitly when they do.
   -- and writing 124 inverted which machine was red. The `BUDGETS_KB`
   ceilings remain the regression gate.
 
+- **Autolink is the same undo step as the Space, Enter, or IME commit that
+  created it.** The mark used to be a separate transaction (`AddMarkStep` maps
+  no positions, so history treated it as a new group): Ctrl+Z after a composed
+  URL plus Space peeled the link off, then the space, then the URL. The mark
+  now appends to the committing transaction. Paste of a URL-plus-space and
+  inserting a table over a selection were already one undo each and are
+  unchanged. `#182`
+
 ### Added
 
 - **`placeholder` on `<openleaf-editor>`.** An empty document shows the prompt
