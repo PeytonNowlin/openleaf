@@ -95,12 +95,20 @@ pasted.
 
 ### The `style` attribute and atomic DOMPurify setup
 
-Since alignment and colour landed, the policy permits a `style` attribute on
-paragraphs, headings and `<span>` -- for `text-align`, `color` and
-`background-color` only, with the values checked. It has to: those declarations
-are how every editor OpenLeaf replaces expresses alignment and colour, and a
-policy that forbids `style` outright deletes them out of every document it
-touches.
+Since alignment, colour and typography landed, the policy permits a `style`
+attribute on paragraphs, headings and `<span>` -- for `text-align`, `color`,
+`background-color`, `font-family` and `font-size`, with the values checked. It
+has to: those declarations are how every editor OpenLeaf replaces expresses
+alignment, colour and type, and a policy that forbids `style` outright deletes
+them out of every document it touches.
+
+`font-family` is an allowlist of family names, not a denylist of known-bad
+functions. A name may contain letters, digits, spaces, hyphens, apostrophes
+and plus, and may start with a digit when quoted (`21st Century`,
+`Goudy's Old Style`). `url()`, `expression()`, `var()`, comments, unbalanced
+quotes, backslash escapes, `;` and newlines are refused. Accepted names are
+re-emitted as a CSS identifier or a double-quoted string, which is the
+spelling the toolbar options use.
 
 `sanitizeHtml()` and the emitted `allowlist.json` carry that precision per
 element. **The DOMPurify config cannot**, because `ALLOWED_ATTR` is global and

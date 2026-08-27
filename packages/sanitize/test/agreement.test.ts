@@ -134,10 +134,19 @@ describe('the default policy accepts everything the editor emits', () => {
       'color:expression(alert(1))',
       'background-color:var(--x)',
       'text-align:absolute',
+      'font-family:url(https://evil.example/x)',
+      'font-family:expression(alert(1))',
+      'font-family:var(--x)',
     ]) {
       const out = sanitizeHtml(`<p><span style="${style}">t</span></p>`, { policy: DEFAULT_POLICY })
       expect(out).toBe('<p><span>t</span></p>')
     }
+  })
+
+  it('keeps a quoted family the editor now models', () => {
+    const html = '<p><span style="font-family:&quot;Goudy\'s Old Style&quot;">t</span></p>'
+    const stored = serializeHtml(parseHtml(html))
+    expect(sanitizeHtml(stored, { policy: DEFAULT_POLICY })).toBe(stored)
   })
 
   it('leaves an acceptable style attribute exactly as it found it', () => {

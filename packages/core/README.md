@@ -73,6 +73,8 @@ import { setFontFamily, activeFontFamily } from '@openleaf-editor/core'
 
 activeFontFamily(view.state)                          // 'Georgia' | null
 setFontFamily('Georgia')(view.state, view.dispatch)   // boolean
+setFontFamily("Goudy's Old Style")(view.state, view.dispatch)
+// stores '"Goudy\'s Old Style"' -- the canonical double-quoted form
 ```
 
 `selectedImage` / `updateImage` (and the matching media pair) are how the

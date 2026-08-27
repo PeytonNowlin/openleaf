@@ -8,7 +8,13 @@
  * tested in packages/element/test/e2e.
  */
 
-import { coreSchema, parseHtml, serializeHtml, type FormatSpec } from '@openleaf-editor/core'
+import {
+  coreSchema,
+  parseDeclarations,
+  parseHtml,
+  serializeHtml,
+  type FormatSpec,
+} from '@openleaf-editor/core'
 import { EditorState, NodeSelection, TextSelection, type Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -236,6 +242,41 @@ describe('select controls', () => {
     select!.dispatchEvent(new Event('change', { bubbles: true }))
     toolbar.update(view.state)
     expect(select!.value).toBe(quoted)
+  })
+
+  it('selects a stored single-quoted family rather than showing Default', () => {
+    // The schema rewrites single quotes to double quotes. Option values are
+    // that same spelling, so a stored `'Times New Roman'` has to land on the
+    // preset rather than the empty Default option -- which is the reported
+    // symptom when the two sides disagree. `'21st Century'` is not a preset;
+    // it still has to appear as the selected value, not Default, or an
+    // inherited face looks cleared.
+    const cases: Array<[string, string]> = [
+      ["<p><span style=\"font-family:'Times New Roman'\">hello</span></p>", '"Times New Roman"'],
+      ["<p><span style=\"font-family:'21st Century'\">hello</span></p>", '"21st Century"'],
+      ['<p><span style="font-family:&quot;Goudy\'s Old Style&quot;">hello</span></p>', '"Goudy\'s Old Style"'],
+    ]
+    for (const [html, family] of cases) {
+      const { toolbar, view } = mount('fontFamily', { html })
+      const select = toolbar.el.querySelector<HTMLSelectElement>('[data-ol-id="fontFamily"]')
+      expect(select?.value, html).toBe(family)
+      expect(select?.value, html).not.toBe('')
+
+      let found: string | null = null
+      view.state.doc.descendants((node) => {
+        if (found !== null) return false
+        const mark = node.marks.find((m) => m.type.name === 'font_family')
+        if (mark) found = mark.attrs['family'] as string
+        return true
+      })
+      expect(found, html).toBe(family)
+
+      const host = document.createElement('div')
+      host.innerHTML = serializeHtml(view.state.doc)
+      const span = host.querySelector('span')
+      expect(span, html).not.toBeNull()
+      expect(parseDeclarations(span!.getAttribute('style')).get('font-family'), html).toBe(family)
+    }
   })
 
   it('reflects an active font size, including values outside the presets', () => {

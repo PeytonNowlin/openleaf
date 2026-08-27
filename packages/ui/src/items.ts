@@ -216,8 +216,10 @@ export function registerDefaultItems(): void {
     selectMod: 'wide',
     options: [
       { value: '', label: 'Default' },
-      // Option values are the validated spelling the schema stores (quoted when
-      // the name has a space), so getValue can match them after a round-trip.
+      // Option values are the canonical spelling `safeFontFamily` stores:
+      // a CSS identifier unquoted, everything else in double quotes. A stored
+      // single-quoted family is rewritten to that form on parse, so getValue
+      // matches the option rather than snapping the dropdown to Default.
       ...FONT_FAMILIES.map((family) => ({
         value: safeFontFamily(family) ?? family,
         label: family,
