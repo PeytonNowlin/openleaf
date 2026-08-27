@@ -262,7 +262,8 @@ npm install \
   @openleaf-editor/plugins-import@beta \
   @openleaf-editor/plugins-import-docx@beta \
   @openleaf-editor/plugins-session@beta \
-  @openleaf-editor/plugins-insert@beta
+  @openleaf-editor/plugins-insert@beta \
+  @openleaf-editor/plugins-webmcp@beta
 ```
 
 ```ts
@@ -273,6 +274,7 @@ import { installImport } from '@openleaf-editor/plugins-import'
 import { installDocxImport } from '@openleaf-editor/plugins-import-docx'
 import { installSessionTools } from '@openleaf-editor/plugins-session'
 import { installInsertTools } from '@openleaf-editor/plugins-insert'
+import { installAgentTools } from '@openleaf-editor/plugins-webmcp'
 
 installTableEditing()
 installColourPicker()
@@ -281,6 +283,7 @@ installImport()
 installDocxImport()
 installSessionTools()
 installInsertTools()
+installAgentTools()
 ```
 
 Installing a plugin registers its capabilities; it does not rearrange a custom
@@ -296,6 +299,7 @@ by id:
 | `plugins-import` | `importFile` |
 | `plugins-import-docx` | none — it registers a converter behind `importFile` |
 | `plugins-highlight` | none — it changes how code blocks render |
+| `plugins-webmcp` | none — it registers agent tools, not toolbar controls |
 
 An id in the `toolbar` string that nothing has registered produces a
 `console.warn` rather than being silently skipped, so a typo is visible.
@@ -323,6 +327,7 @@ package owns, so on its own there is no control to reach it through.
 | [`@openleaf-editor/plugins-import-docx`](packages/plugins-import-docx) | Microsoft Word `.docx` import via Mammoth |
 | [`@openleaf-editor/plugins-session`](packages/plugins-session) | Find and replace, word count, autosave, save, print, preview, and new document |
 | [`@openleaf-editor/plugins-insert`](packages/plugins-insert) | Media, details, anchors, character map, emoji, snippets, and image resize |
+| [`@openleaf-editor/plugins-webmcp`](packages/plugins-webmcp) | WebMCP tool surface: an agent driving the page can discover the editors on it |
 
 ## Documentation
 

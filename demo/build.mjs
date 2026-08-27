@@ -64,6 +64,7 @@ const WORKSPACE_ALIASES = {
   '@openleaf-editor/plugins-import-docx': src('../packages/plugins-import-docx/src/index.ts'),
   '@openleaf-editor/plugins-session': src('../packages/plugins-session/src/index.ts'),
   '@openleaf-editor/plugins-insert': src('../packages/plugins-insert/src/index.ts'),
+  '@openleaf-editor/plugins-webmcp': src('../packages/plugins-webmcp/src/index.ts'),
 }
 
 /** Modules the core bundle publishes and plugin bundles borrow. */
@@ -256,13 +257,30 @@ await build({
 })
 const insertGz = report('openleaf-insert.min.js', src('./openleaf-insert.min.js'))
 
+/* ---- opt-in agent tool surface (WebMCP) ----
+   The smallest bundle here, and it should stay that way: no icons, no
+   stylesheet, no dialogs, and nothing in it that an editor without an agent
+   driving it ever runs. */
+await build({
+  entryPoints: [src('./entry-webmcp.ts')],
+  bundle: true,
+  format: 'iife',
+  target: ['es2022'],
+  minify: true,
+  sourcemap: true,
+  outfile: src('./openleaf-webmcp.min.js'),
+  alias: { '@openleaf-editor/plugins-webmcp': WORKSPACE_ALIASES['@openleaf-editor/plugins-webmcp'] },
+  plugins: [shareRuntime('OpenLeaf')],
+})
+const webmcpGz = report('openleaf-webmcp.min.js', src('./openleaf-webmcp.min.js'))
+
 console.log(
   `\ncore is the budgeted bundle (${(coreGz / 1024).toFixed(1)} KB gzip). ` +
     `Optional: tables ${(tablesGz / 1024).toFixed(1)} KB, colour ` +
     `${(colorGz / 1024).toFixed(1)} KB, highlighting ` +
     `${(highlightGz / 1024).toFixed(1)} KB, import ${(importGz / 1024).toFixed(1)} KB, ` +
     `Word .docx ${(docxGz / 1024).toFixed(1)} KB, session ${(sessionGz / 1024).toFixed(1)} KB, ` +
-    `insert ${(insertGz / 1024).toFixed(1)} KB.`,
+    `insert ${(insertGz / 1024).toFixed(1)} KB, WebMCP ${(webmcpGz / 1024).toFixed(1)} KB.`,
 )
 
 /* ---- per-package attribution for the core bundle ---- */

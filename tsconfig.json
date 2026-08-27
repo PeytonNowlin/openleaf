@@ -28,6 +28,7 @@
     { "path": "packages/plugins-insert" },
     { "path": "packages/plugins-session" },
     { "path": "packages/plugins-table" },
+    { "path": "packages/plugins-webmcp" },
     { "path": "packages/react" },
     { "path": "packages/sanitize" },
     { "path": "packages/ui" },

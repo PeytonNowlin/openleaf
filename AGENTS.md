@@ -59,7 +59,7 @@ the change has no user-facing or contributor-facing documentation impact.
 ## Never bump a version; do write the changelog entry
 
 Every `@openleaf-editor/*` package shares one version, and the weekly release
-workflow owns it -- `.github/workflows/release.yml` bumps all fifteen manifests
+workflow owns it -- `.github/workflows/release.yml` bumps all sixteen manifests
 and rolls `## Unreleased` into a dated section every Monday. A version edited in
 a feature branch is a merge conflict with the next release and nothing else.
 
