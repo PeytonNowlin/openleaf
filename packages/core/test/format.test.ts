@@ -40,6 +40,7 @@ import {
   safeListStyle,
   serializeHtml,
   setBackgroundColor,
+  setFontFamily,
   setTextAlign,
   setTextColor,
   toggleTextAlign,
@@ -523,6 +524,59 @@ describe('typography active marks', () => {
       ),
     )
     expect(activeFontFamily(twoFamilies)).toBeNull()
+  })
+
+  it('models apostrophe, leading-digit and plus families as marks', () => {
+    // Asserted against the mark and the parsed DOM, not the serialized string:
+    // an entity-encoded value can look escaped in HTML and still be the wrong
+    // family once the browser has parsed it.
+    const cases: Array<[string, string]> = [
+      ['<p><span style="font-family:&quot;Goudy\'s Old Style&quot;">hi</span></p>', '"Goudy\'s Old Style"'],
+      ["<p><span style=\"font-family:'21st Century'\">hi</span></p>", '"21st Century"'],
+      ['<p><span style="font-family:&quot;C++ Sans&quot;">hi</span></p>', '"C++ Sans"'],
+      ['<p><span style="font-family:Gill Sans MT Extra Condensed">hi</span></p>', '"Gill Sans MT Extra Condensed"'],
+      ["<p><span style=\"font-family:'Times New Roman'\">hi</span></p>", '"Times New Roman"'],
+    ]
+    for (const [html, family] of cases) {
+      const doc = parseHtml(html, { schema: coreSchema() })
+      let found: string | null = null
+      doc.descendants((node) => {
+        if (found !== null) return false
+        const mark = node.marks.find((m) => m.type.name === 'font_family')
+        if (mark) found = mark.attrs['family'] as string
+        return true
+      })
+      expect(found, html).toBe(family)
+
+      const host = document.createElement('div')
+      host.innerHTML = serializeHtml(doc)
+      const span = host.querySelector('span')
+      expect(span, html).not.toBeNull()
+      expect(parseDeclarations(span!.getAttribute('style')).get('font-family'), html).toBe(family)
+    }
+  })
+
+  it('converts a font face carrying an apostrophe into the same mark', () => {
+    const doc = parseHtml('<p><font face="Goudy\'s Old Style">hi</font></p>', { schema: coreSchema() })
+    let found: string | null = null
+    doc.descendants((node) => {
+      if (found !== null) return false
+      const mark = node.marks.find((m) => m.type.name === 'font_family')
+      if (mark) found = mark.attrs['family'] as string
+      return true
+    })
+    expect(found).toBe('"Goudy\'s Old Style"')
+  })
+
+  it('lets setFontFamily quote a leading-digit name rather than decline it', () => {
+    const state = selectAll(stateFrom('<p>hi</p>'))
+    const next = run(state, setFontFamily('21st Century'))
+    expect(next).not.toBeNull()
+    const host = document.createElement('div')
+    host.innerHTML = html(next)
+    expect(parseDeclarations(host.querySelector('span')!.getAttribute('style')).get('font-family')).toBe(
+      '"21st Century"',
+    )
   })
 })
 

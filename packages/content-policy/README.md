@@ -57,11 +57,24 @@ exactly.
 ```ts
 import { isSafeUrl } from '@openleaf-editor/content-policy/url'
 import { isAllowedEmbedSrc } from '@openleaf-editor/content-policy/embed'
+import { safeFontFamily } from '@openleaf-editor/content-policy/css'
 
 isSafeUrl('javascript:alert(1)')                        // false
 isAllowedEmbedSrc('https://www.youtube.com/embed/abc')  // true
 isAllowedEmbedSrc('https://evil.example/')              // false
+safeFontFamily('"Goudy\'s Old Style"')                  // '"Goudy\'s Old Style"'
+safeFontFamily("'Times New Roman'")                     // '"Times New Roman"'
+safeFontFamily('url(https://evil.example)')             // null
 ```
+
+`safeFontFamily` is an allowlist, not a denylist of `url()` / `expression()` /
+`var()`. After unquoting, a name may contain letters, digits, spaces, hyphens,
+apostrophes and plus, and may start with a digit (legal in a quoted family
+name; unquoted `21st` is a CSS dimension). The canonical spelling is a CSS
+identifier unquoted, or double quotes otherwise, so a stored single-quoted
+family matches the toolbar. `"` `\` `(` `)` `;` `/` `*` and newlines stay
+out: they terminate a declaration, start a function, a comment, or a CSS
+escape.
 
 No dependencies, no DOM requirement, `sideEffects: false`. Safe to import in a
 request handler, a worker, or a build step.

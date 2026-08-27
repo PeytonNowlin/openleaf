@@ -14,6 +14,16 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Font-family names with apostrophes, plus signs, or a leading digit now
+  round-trip.** `oneFontFamily` only allowed `[a-zA-Z0-9 -]` starting with a
+  letter, so `Goudy's Old Style`, `21st Century` and `C++ Sans` were dropped
+  at the policy layer, the span was not modelled as a mark, and the toolbar
+  showed Default over text that was visibly in that face. The allowlist now
+  admits apostrophes, plus and a leading digit; names that are not a single
+  CSS identifier are re-emitted in double quotes so a stored single-quoted
+  family matches the dropdown. `url()`, `expression()`, `var()`, comments,
+  unbalanced quotes, backslash, `;` and newlines are still refused. `#202`
+
 - **A whole-number size claim is checked with the same zlib-survival
   tolerance as a decimal one.** The demo badge `123 KB gzipped` took an
   exact-round path that the 1% band never reached, so CI's Node 22 at
@@ -35,6 +45,13 @@ entries below say so explicitly when they do.
   `align`, `valign`, `style`, and `bgcolor`. They do not inherit `class` or
   `scope`; a new column does not inherit `colwidth`; a body row inserted below
   a header does not inherit the header's chrome. `#189`
+- **Autolink is the same undo step as the Space, Enter, or IME commit that
+  created it.** The mark used to be a separate transaction (`AddMarkStep` maps
+  no positions, so history treated it as a new group): Ctrl+Z after a composed
+  URL plus Space peeled the link off, then the space, then the URL. The mark
+  now appends to the committing transaction. Paste of a URL-plus-space and
+  inserting a table over a selection were already one undo each and are
+  unchanged. `#182`
 
 ### Added
 

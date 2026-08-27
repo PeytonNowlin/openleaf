@@ -61,9 +61,13 @@ const clean = purify.sanitize(dirty, config)
 express -- `ALLOWED_ATTR` is global and `ALLOWED_URI_REGEXP` applies to every URL
 attribute at once. So `toDOMPurifyConfig` **withholds both by default**, and
 `configureDOMPurify` installs the hooks and enables the features in one call, so a
-config and the hooks it depends on cannot disagree. Forgetting it costs alignment
-and colour, which is visible; the alternative was admitting
-`position:fixed;inset:0`, which is not.
+config and the hooks it depends on cannot disagree. Forgetting it costs alignment,
+colour and type, which is visible; the alternative was admitting
+`position:fixed;inset:0`, which is not. `font-family` values are the same
+allowlist `@openleaf-editor/content-policy` uses: letters, digits, spaces,
+hyphens, apostrophes and plus, re-emitted as a CSS identifier or a
+double-quoted string. `url()`, `expression()`, `var()`, comments and `;`
+are refused.
 
 ## Read this before trusting `sanitizeHtml`
 

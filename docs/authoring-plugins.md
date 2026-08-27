@@ -443,7 +443,10 @@ does two different things, the way the built-in `image` item inserts or edits.
 Do not use it to bake "pressed" into a toggle; `aria-pressed` already does that.
 
 For a preset dropdown, use `type: 'select'`. Option values should be the spelling
-the schema stores so `getValue` can match them after a round-trip:
+the schema stores so `getValue` can match them after a round-trip. For font
+families that is whatever `safeFontFamily` returns: a CSS identifier unquoted,
+everything else in double quotes (so a stored `'Times New Roman'` or
+`'21st Century'` still matches rather than showing Default):
 
 ```ts
 registerToolbarItem({

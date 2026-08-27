@@ -126,9 +126,9 @@ export const LINE_HEIGHT_PRESETS: readonly string[] = ['1', '1.15', '1.5', '2', 
  * normalizes as it parses -- Chrome turns `#ff0000` into `rgb(255, 0, 0)` -- and
  * anything that reads through it rewrites every hex colour in an archive on the
  * first save. The parse is trivial because the values that survive validation
- * contain no semicolons or quotes; anything that does fails validation and is
- * dropped, so a naive split cannot be tricked into producing a value the
- * validators would not have accepted anyway.
+ * contain no semicolons. Quoted font-family names are re-emitted in double
+ * quotes, and the name itself cannot contain `;`, so a naive split cannot be
+ * tricked into producing a value the validators would not have accepted anyway.
  *
  * Keys are lowercased; values keep their case, because a colour may be a hex
  * digit sequence an author wrote in capitals and there is no reason to change it.
@@ -261,11 +261,21 @@ const GENERIC_FAMILIES = new Set([
 /**
  * A font stack, or null.
  *
- * Names are identifiers or quoted strings of letters, digits, spaces and
- * hyphens. Anything that can reach outside the declaration -- `url()`,
- * `expression()`, `var()`, a quote that does not match -- is refused. A stack
- * is a comma-separated list of those names, capped so a paste cannot dump a
- * novel into the attribute.
+ * Each name is a CSS identifier or a quoted family-name. After unquoting, the
+ * inner name is checked against an allowlist -- letters, digits, spaces,
+ * hyphens, apostrophes and plus -- and re-emitted in one canonical spelling so
+ * the schema, the sanitizer and the toolbar dropdown agree. Apostrophe and
+ * plus are in the class because Goudy's Old Style and C++ Sans are real faces;
+ * a leading digit is in the start rule because 21st Century is a legal
+ * *quoted* family name (unquoted it would be a dimension token).
+ *
+ * Everything that can reach outside the declaration is still a character this
+ * refuses. A denylist of `url()` / `expression()` / `var()` would be a
+ * different, weaker thing: it would have to name every construct CSS gains
+ * next. The allowlist does not.
+ *
+ * A stack is a comma-separated list of those names, capped so a paste cannot
+ * dump a novel into the attribute.
  */
 export function safeFontFamily(value: string | null | undefined): string | null {
   if (!value) return null
@@ -283,6 +293,14 @@ export function safeFontFamily(value: string | null | undefined): string | null 
       continue
     }
     if (char === '"' || char === "'") {
+      // Quotes only open a family name at the start of a part. An apostrophe
+      // in Goudy's Old Style is a character in the name, not a string
+      // delimiter -- treating it as one made `<font face="Goudy's Old Style">`
+      // and setFontFamily("Goudy's Old Style") look like an unclosed quote.
+      if (current.trim() !== '') {
+        current += char
+        continue
+      }
       quote = char
       current += char
       continue
@@ -307,6 +325,37 @@ export function safeFontFamily(value: string | null | undefined): string | null 
   return out.join(',')
 }
 
+/**
+ * One family name, or null.
+ *
+ * Quoted and unquoted input both unquote to an inner name, which is then
+ * checked against the allowlist and re-emitted canonically:
+ *
+ *   generic families  lowercase and unquoted (quoting "serif" would name a
+ *                     font called serif rather than the generic)
+ *   a CSS identifier  unquoted (`Georgia`)
+ *   everything else   double-quoted (`"Times New Roman"`, `"Goudy's Old
+ *                     Style"`, `"21st Century"`)
+ *
+ * Single-quoted input is therefore rewritten. That is what lets a stored
+ * `font-family:'Times New Roman'` match the toolbar option, which is the
+ * same spelling.
+ *
+ * What the inner allowlist still refuses, and why that set is enough:
+ *
+ *   `"`        would terminate the double quotes we re-emit around a name
+ *   `\`        is how CSS encodes any other character, including the ones
+ *              below; we do not process escapes, so we do not admit them
+ *   `(` `)`    wrap `url()`, `expression()`, `var()`
+ *   `;`        ends the declaration, and would also split parseDeclarations
+ *   `/` `*`    comment delimiters
+ *   newlines, and the rest of ASCII punctuation (`&` included: it is an
+ *   HTML-entity delimiter in a `style` attribute)
+ *
+ * A leading digit is legal only in the *quoted* form, which is why names
+ * that are not a single identifier are always re-emitted in double quotes
+ * rather than passed through raw.
+ */
 function oneFontFamily(part: string): string | null {
   const trimmed = part.trim()
   if (trimmed === '' || trimmed.length > 64) return null
@@ -316,11 +365,17 @@ function oneFontFamily(part: string): string | null {
   // so a quoted empty name still reads as '' and is refused below -- the `??`
   // only fires when there was no match at all.
   const name = quoted?.[2] ?? trimmed
-  if (name === '' || /[^a-zA-Z0-9 \-]/.test(name)) return null
-  if (!/^[a-zA-Z]/.test(name)) return null
+  if (name === '' || name.length > 64) return null
+  if (/[^a-zA-Z0-9 \-'+]/.test(name)) return null
+  if (!/^[a-zA-Z0-9]/.test(name)) return null
   const lower = name.toLowerCase()
   if (GENERIC_FAMILIES.has(lower)) return lower
-  return /\s/.test(name) ? `"${name}"` : name
+  // Unquoted, a leading digit is a dimension (`21st` is 21 + st) and an
+  // apostrophe or plus is not an ident character. Quote anything that is
+  // not a single CSS identifier; a name with a space already took this
+  // path, which is the stored form the toolbar options use.
+  if (!/^[a-zA-Z][a-zA-Z0-9\-]*$/.test(name)) return `"${name}"`
+  return name
 }
 
 const FONT_SIZE_KEYWORDS = new Set([
