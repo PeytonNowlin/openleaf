@@ -18,7 +18,17 @@
  * can read. Deliberately not an HTTP-shaped number: the agent's next move
  * differs per case, and `404` does not say "list the editors again".
  */
-export type ToolErrorCode = 'unknown-editor'
+export type ToolErrorCode =
+  /** No editor of that name is on the page. List them again; do not guess. */
+  | 'unknown-editor'
+  /** The call was malformed: a required argument missing, empty, or not a string. */
+  | 'invalid-argument'
+  /**
+   * A handle no longer names anything -- the text it pointed at was deleted, or
+   * the editor holding it has left the page. The agent's move is to search
+   * again, which is why this is not folded into `invalid-argument`.
+   */
+  | 'stale-handle'
 
 /**
  * A success: the payload, carrying `"ok": true`.

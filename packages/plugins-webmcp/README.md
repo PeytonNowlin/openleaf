@@ -1,6 +1,6 @@
 # `@openleaf-editor/plugins-webmcp`
 
-An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page and get a stable identifier for each one.
+An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, get a stable identifier for each one, and search one of them for text.
 
 This is a **beta** (`0.1.0-beta.4`). Keep every `@openleaf-editor/*` package on the
 same version.
@@ -59,6 +59,7 @@ namespace.
 | Tool | Read-only | Returns document content | What it does |
 | --- | --- | --- | --- |
 | `openleaf_list_editors` | yes | no | Lists the OpenLeaf editors on the page, with an identifier for each. |
+| `openleaf_find_text` | yes | yes | Searches one editor for a literal string, and returns a handle for each match. |
 
 Every result is a **JSON string**, because a string is all the browser's execute
 path returns. The envelope is the same for every tool:
@@ -67,6 +68,11 @@ path returns. The envelope is the same for every tool:
 { "ok": true,  "editors": [{ "id": "post-body", "label": "Post body" }] }
 { "ok": false, "error": "unknown-editor", "message": "…what to do instead" }
 ```
+
+`error` is a short token to branch on, and `message` is written for a model to
+read: it says what to do next, because "not found" and "search again" are
+different instructions. The tokens are `unknown-editor`, `invalid-argument` and
+`stale-handle`.
 
 Read tools carry the `readOnlyHint` annotation, so the client driving the agent
 can decide when a call needs a person's confirmation. Any tool that returns
@@ -90,6 +96,44 @@ An editor removed from the page stops being listed. An editor mounted after the
 bundle loaded starts being listed. Both follow from where the register is kept:
 the editor plugin's own per-view lifecycle.
 
+## Handles
+
+Every tool other than the listing acts on a place in a document, and a place
+cannot be named by a selection: a selection does not survive the round trip out
+to an agent and back. So `openleaf_find_text` returns a **handle** per match — an
+opaque token the agent passes to a later call.
+
+```json
+{ "ok": true, "matches": [{ "handle": "…", "context": "the first beta here" }], "truncated": false }
+```
+
+- **Handles are opaque.** They encode nothing: not the position, not the editor,
+  not the text. Anything an agent could read out of one is something it would
+  eventually compute with, and a computed handle is a write to a position nobody
+  chose.
+- **They follow the document.** Each editor keeps its handles in its own plugin
+  state and carries them through every transaction's position mapping, so an
+  edit in one part of the document — by the author, by another agent call, by
+  anything — leaves a handle in another part still on its text.
+- **A handle whose text was deleted fails, loudly.** It resolves to
+  `stale-handle` and never to the neighbouring position. That distinction is the
+  reason handles exist as a mechanism: a mapping that always answers with *some*
+  position turns a deleted paragraph into a write into whatever moved up to take
+  its place.
+- **Handles die with their editor.** An editor removed from the page stops
+  resolving them, like it stops being listed.
+- **They are bounded.** An editor keeps its most recent 256 handles and drops the
+  oldest, because nothing releases a handle and the table is walked on every
+  transaction. A dropped handle stops resolving, which is a refusal rather than a
+  wrong answer.
+
+`openleaf_find_text` matches a literal string, case sensitively, one block at a
+time — so a query spanning a mark boundary (`be<strong>ta</strong>`) is one
+match, and one spanning a paragraph break is none. Text that does not occur is
+`{"ok":true,"matches":[]}`, not an error. At most 50 matches come back, with
+`"truncated": true` when there were more, because an agent that believes it has
+seen every occurrence will replace them all.
+
 ## Browser support
 
 The tools are registered with the browser's agent API — `document.modelContext`,
@@ -108,7 +152,7 @@ hands that array to the browser:
 ```ts
 import { agentTools } from '@openleaf-editor/plugins-webmcp'
 
-agentTools.map((tool) => tool.name) // ['openleaf_list_editors']
+agentTools.map((tool) => tool.name) // ['openleaf_list_editors', 'openleaf_find_text']
 ```
 
 From a script tag it is `OpenLeaf.agentTools` once the bundle has loaded, the

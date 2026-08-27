@@ -44,8 +44,26 @@ describe('the tool set', () => {
     for (const tool of webmcp.agentTools) expect(tool.name).toMatch(/^openleaf_[a-z_]+$/)
   })
 
-  it('offers the editor listing', () => {
-    expect(webmcp.agentTools.map((tool) => tool.name)).toEqual(['openleaf_list_editors'])
+  it('offers the editor listing and the search', () => {
+    expect(webmcp.agentTools.map((tool) => tool.name)).toEqual([
+      'openleaf_list_editors',
+      'openleaf_find_text',
+    ])
+  })
+
+  it('says of every tool whether it writes, and whether it hands back document content', () => {
+    // Not a restatement of the type. These two flags are what the client
+    // driving the agent reads to decide whether a call needs a person's
+    // confirmation, and whether what comes back may contain instructions aimed
+    // at the agent -- a tool that returns document text and does not say so is
+    // the failure this pins.
+    const annotated = Object.fromEntries(
+      webmcp.agentTools.map((tool) => [tool.name, tool.annotations]),
+    )
+    expect(annotated).toEqual({
+      openleaf_list_editors: { readOnlyHint: true, untrustedContentHint: false },
+      openleaf_find_text: { readOnlyHint: true, untrustedContentHint: true },
+    })
   })
 
   it('gives every tool a title, a description and annotations', () => {

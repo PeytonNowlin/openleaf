@@ -15,6 +15,9 @@
  */
 
 import type { AgentTool } from './agent.js'
+import { findTextTool } from './find-text.js'
 import { listEditorsTool } from './list-editors.js'
 
-export const agentTools: readonly AgentTool[] = [listEditorsTool]
+// Ordered the way an agent meets them: list the editors, then find a place in
+// one of them. `getTools()` hands the client this order.
+export const agentTools: readonly AgentTool[] = [listEditorsTool, findTextTool]

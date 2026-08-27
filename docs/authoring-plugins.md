@@ -930,7 +930,7 @@ openleaf-insert.min.js        8.4 /  20
 openleaf-highlight.min.js     6.7 /  15
 openleaf-colour.min.js        5.3 /  15
 openleaf-import.min.js        3.3 /  12
-openleaf-webmcp.min.js        1.3 /   8
+openleaf-webmcp.min.js        2.8 /   8
 ```
 
 Run `node scripts/bundle-budgets.mjs` for the current numbers rather than

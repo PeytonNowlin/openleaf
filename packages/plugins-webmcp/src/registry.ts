@@ -102,3 +102,8 @@ export function agentRegistry(): Plugin {
 export function listEditors(): RegisteredEditor[] {
   return [...editors.values()]
 }
+
+export function findEditor(id: string): RegisteredEditor | null {
+  for (const editor of editors.values()) if (editor.id === id) return editor
+  return null
+}
