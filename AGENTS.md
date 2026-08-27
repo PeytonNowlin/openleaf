@@ -119,3 +119,14 @@ bare diff in the middle of it reads as unfinished.
 
 No new dependencies without saying why in the PR body. No `!important`, and no
 `<style>` injection fallback (see the header of `packages/ui/src/styles.ts`).
+
+## Agent skills
+
+Issue tracker, triage labels, and domain-doc layout are configured for the
+`mattpocock-skills` engineering flow. That block lives in
+[CLAUDE.md](CLAUDE.md#agent-skills), and the detail lives in `docs/agents/`.
+
+This is the one topic that points the other way. Everything else here is the
+single copy, and CLAUDE.md defers to it; the skills config is a Claude-harness
+concern, so it sits in the Claude-harness file rather than being written out
+twice.

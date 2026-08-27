@@ -304,6 +304,152 @@ test.describe('with the table bundle loaded', () => {
     await page.getByRole('gridcell', { name: '2 by 2 table' }).click()
     await expect(editor(page).locator('table table')).toHaveCount(1)
   })
+
+  /**
+   * Nested-table column borders. `columnResizing`'s own hit-test walks to the
+   * innermost `td`, so a pointer over a nested table used to resize that inner
+   * grid even when it was sitting on an outer column edge. Padding is 0 so the
+   * inner table's box actually reaches the outer cell's border — the case the
+   * wrapping plugin exists for, not a padded cell where the target would already
+   * be the outer `td`.
+   */
+  const NESTED_FOR_RESIZE =
+    '<table border="1"><tbody><tr>' +
+    '<td style="padding:0">Left</td>' +
+    '<td style="padding:0">' +
+    '<table border="1"><tbody><tr><td>InnerA</td><td>InnerB</td></tr></tbody></table>' +
+    '</td></tr></tbody></table>'
+
+  test('dragging an outer column border over a nested table resizes the outer grid', async ({
+    page,
+  }) => {
+    await page.evaluate((html) => {
+      const host = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      host.value = html
+    }, NESTED_FOR_RESIZE)
+    const nested = editor(page).locator('table table')
+    await expect(nested).toBeVisible()
+
+    const leftWidthBefore = await editor(page)
+      .locator('td', { hasText: 'Left' })
+      .first()
+      .evaluate((el) => (el as HTMLElement).offsetWidth)
+
+    const point = await nested.evaluate((inner) => {
+      const host = inner.closest('td')
+      if (!host) return null
+      const hostRect = host.getBoundingClientRect()
+      const innerRect = inner.getBoundingClientRect()
+      return { x: hostRect.left + 2, y: innerRect.top + innerRect.height / 2 }
+    })
+    expect(point).not.toBeNull()
+
+    await page.mouse.move(point!.x, point!.y)
+    await expect(editor(page)).toHaveClass(/resize-cursor/)
+    await page.mouse.down()
+    await page.mouse.move(point!.x + 50, point!.y, { steps: 8 })
+    await page.mouse.up()
+
+    const storedHtml = await value(page)
+    expect(storedHtml).toContain('InnerA')
+    expect(storedHtml).toContain('Left')
+    expect(storedHtml.match(/<table/g)?.length).toBe(2)
+    // The handle we grabbed belongs to the outer table: its cells pick up
+    // `data-colwidth`, and the inner ones do not.
+    expect(storedHtml).toMatch(/<td[^>]*data-colwidth/)
+    const inner = storedHtml.slice(storedHtml.lastIndexOf('<table'))
+    expect(inner).not.toMatch(/data-colwidth/)
+
+    const leftWidthAfter = await editor(page)
+      .locator('td', { hasText: 'Left' })
+      .first()
+      .evaluate((el) => (el as HTMLElement).offsetWidth)
+    expect(leftWidthAfter).toBeGreaterThan(leftWidthBefore + 20)
+  })
+
+  test('dragging an inner column border still resizes the nested table', async ({ page }) => {
+    await page.evaluate((html) => {
+      const host = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      host.value = html
+    }, NESTED_FOR_RESIZE)
+    const innerA = editor(page).locator('table table td', { hasText: 'InnerA' })
+    await expect(innerA).toBeVisible()
+    const box = await innerA.boundingBox()
+    expect(box).not.toBeNull()
+
+    const x = box!.x + box!.width - 2
+    const y = box!.y + box!.height / 2
+    await page.mouse.move(x, y)
+    await expect(editor(page)).toHaveClass(/resize-cursor/)
+    await page.mouse.down()
+    await page.mouse.move(x + 40, y, { steps: 8 })
+    await page.mouse.up()
+
+    const storedHtml = await value(page)
+    const inner = storedHtml.slice(storedHtml.lastIndexOf('<table'))
+    expect(inner).toMatch(/data-colwidth/)
+    expect(storedHtml).toContain('Left')
+    expect(storedHtml).toContain('InnerB')
+  })
+
+  /**
+   * Paste HTML by dispatching a synthetic clipboard event. Same construction as
+   * `paste.spec.ts`: real clipboard access is permission-gated, and Firefox
+   * returns a null `clipboardData` from the constructor, so a false return is
+   * reported rather than a vacuous pass.
+   */
+  async function pasteHtml(page: Page, html: string): Promise<boolean> {
+    return page.evaluate((payload) => {
+      const region = document.querySelector<HTMLElement>('.ProseMirror')
+      if (!region) return false
+      region.focus()
+      let data: DataTransfer
+      try {
+        data = new DataTransfer()
+        data.setData('text/html', payload)
+      } catch {
+        return false
+      }
+      if (data.getData('text/html') !== payload) return false
+      const event = new ClipboardEvent('paste', {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      })
+      if (!event.clipboardData || event.clipboardData.getData('text/html') !== payload) return false
+      region.dispatchEvent(event)
+      return true
+    }, html)
+  }
+
+  test('pasting a table into a cell nests it instead of replacing the host', async ({ page }) => {
+    await page.evaluate(() => {
+      const host = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      host.value =
+        '<table><tbody>' +
+        '<tr><td>Target</td><td>Sibling</td></tr>' +
+        '<tr><td>Below</td><td>Corner</td></tr>' +
+        '</tbody></table>'
+    })
+    await editor(page).getByText('Target').click()
+    const ok = await pasteHtml(
+      page,
+      '<table><tbody>' +
+        '<tr><td>Inner A</td><td>Inner B</td></tr>' +
+        '<tr><td>Inner C</td><td>Inner D</td></tr>' +
+        '</tbody></table>',
+    )
+    test.skip(!ok, 'this engine does not honour a constructed ClipboardEvent')
+
+    await expect.poll(() => value(page)).toContain('Inner A')
+    const html = await value(page)
+    expect(html.match(/<table/g)?.length).toBe(2)
+    expect(html).toContain('Target')
+    expect(html).toContain('Sibling')
+    expect(html).toContain('Below')
+    expect(html).toContain('Corner')
+    expect(html).toContain('Inner D')
+  })
 })
 
 /**

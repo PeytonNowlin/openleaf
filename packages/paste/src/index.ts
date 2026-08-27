@@ -2,10 +2,10 @@
  * @openleaf-editor/paste -- turn foreign clipboard HTML into clean semantic markup.
  *
  * This is the package that decides whether the editor feels professional.
- * Paste fidelity from Word and Google Docs is the single most common reason
- * organizations pay for a commercial editor, and the difference between a good
- * and a bad implementation is visible to an author within about four seconds
- * of trying it.
+ * Paste fidelity from Word, Excel and Google Docs is the single most common
+ * reason organizations pay for a commercial editor, and the difference between
+ * a good and a bad implementation is visible to an author within about four
+ * seconds of trying it.
  *
  * Note on where this sits: pasting and *loading* are different operations with
  * opposite defaults. On load, the author's markup is authoritative and we
@@ -22,14 +22,22 @@ import {
   stripAllStyles,
 } from './clean.js'
 import { parseFragment, resolveDocument, serializeFragment, stripComments } from './dom.js'
+import { looksLikeExcel, normalizeExcel } from './excel.js'
 import { looksLikeGoogleDocs, normalizeGoogleDocs } from './gdocs.js'
 import { looksLikeWord, normalizeWord } from './word.js'
 
+export { looksLikeExcel, normalizeExcel } from './excel.js'
 export { looksLikeWord, normalizeWord } from './word.js'
 export { looksLikeGoogleDocs, normalizeGoogleDocs } from './gdocs.js'
 
-/** Where a paste appears to have come from. */
-export type PasteSource = 'word' | 'gdocs' | 'openleaf' | 'unknown'
+/**
+ * Where a paste appears to have come from.
+ *
+ * `'excel'` is a new member. Adding it is a breaking change for consumers who
+ * exhaustively `switch` on this union without a default branch; the existing
+ * members are unchanged.
+ */
+export type PasteSource = 'word' | 'excel' | 'gdocs' | 'openleaf' | 'unknown'
 
 /**
  * True when this HTML came off the clipboard of a ProseMirror editor -- which,
@@ -59,6 +67,12 @@ export function detectSource(html: string): PasteSource {
   // when it is copied, and the Word stripper then destroys exactly the markup
   // preservation exists to protect.
   if (looksLikeOpenLeaf(html)) return 'openleaf'
+  // Excel's clipboard is Microsoft Office markup, so `looksLikeWord` matches
+  // it (`mso-`, `urn:schemas-microsoft-com`, `MsoNormalTable`). It is not
+  // Word's list protocol. Checking Word first sent spreadsheet grids through
+  // `reconstructLists`. `looksLikeExcel` itself refuses a Word document
+  // envelope and a Google Docs/Sheets signal, so this does not steal those.
+  if (looksLikeExcel(html)) return 'excel'
   // Word is checked next: an Outlook message quoting a Google Doc can match
   // both, and Word's markup is the more destructive of the two to leave alone.
   if (looksLikeWord(html)) return 'word'
@@ -133,6 +147,8 @@ export function normalizePastedHtml(html: string, explicitDocument?: Document): 
       return normalizeOpenLeaf(html, explicitDocument)
     case 'word':
       return normalizeWord(html, explicitDocument)
+    case 'excel':
+      return normalizeExcel(html, explicitDocument)
     case 'gdocs':
       return normalizeGoogleDocs(html, explicitDocument)
     default:

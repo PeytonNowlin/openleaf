@@ -103,7 +103,7 @@ export function previewDocument(host: EditorHost): void {
 
 export function printDocument(host: EditorHost): void {
   const title = host.getAttribute('aria-label') ?? host.ownerDocument.title ?? 'Document'
-  printHtml(host.ownerDocument, host.value, title)
+  printHtml(host.ownerDocument, host.value, title, host)
 }
 
 export function showWordCount(host: EditorHost): void {

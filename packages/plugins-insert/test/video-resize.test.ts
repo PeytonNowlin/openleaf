@@ -419,6 +419,50 @@ describe('activating the player', () => {
   })
 })
 
+describe('resizing before the video has metadata', () => {
+  function giveVideoSize(el: HTMLVideoElement, width: number, height: number): void {
+    Object.defineProperty(el, 'videoWidth', { configurable: true, get: () => width })
+    Object.defineProperty(el, 'videoHeight', { configurable: true, get: () => height })
+  }
+
+  it('withholds the handle while videoWidth is still 0 and nothing is stored', () => {
+    const handle = handleFor('<video src="/v.mp4" controls></video>')
+    expect(handle.hidden).toBe(true)
+    press(handle, 'ArrowRight')
+    expect(storedAttr('video', 'width')).toBeNull()
+  })
+
+  it('offers the handle on loadedmetadata and then keeps the ratio', () => {
+    const el = renderedVideo('<video src="/v.mp4" controls></video>')
+    const handle = view!.dom.querySelector('.ol-img-handle')
+    if (!(handle instanceof HTMLButtonElement)) throw new Error('no resize handle rendered')
+    expect(handle.hidden).toBe(true)
+
+    giveVideoSize(el, 1920, 1080)
+    el.dispatchEvent(new Event('loadedmetadata'))
+
+    expect(handle.hidden).toBe(false)
+    press(handle, 'ArrowRight')
+    expect(storedAttr('video', 'width')).toBe('16')
+    expect(storedAttr('video', 'height')).toBe('9')
+  })
+
+  it('writes height on the next resize once metadata has arrived', () => {
+    const el = renderedVideo('<video src="/v.mp4" width="640" controls></video>')
+    const handle = view!.dom.querySelector('.ol-img-handle')
+    if (!(handle instanceof HTMLButtonElement)) throw new Error('no resize handle rendered')
+    press(handle, 'ArrowRight')
+    expect(storedAttr('video', 'width')).toBe('650')
+    expect(storedAttr('video', 'height')).toBeNull()
+
+    giveVideoSize(el, 1920, 1080)
+    el.dispatchEvent(new Event('loadedmetadata'))
+    press(handle, 'ArrowRight')
+    expect(storedAttr('video', 'width')).toBe('660')
+    expect(storedAttr('video', 'height')).toBe('371')
+  })
+})
+
 describe('audio', () => {
   it('gets no resize handle, because its spec declares no box', () => {
     const dom = render('<audio src="/a.mp3" controls></audio>')

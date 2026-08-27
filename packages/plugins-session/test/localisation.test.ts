@@ -75,8 +75,9 @@ describe('the preview document', () => {
     document.documentElement.setAttribute('lang', 'fr')
     showPreview(document, '<p>bonjour</p>')
     const srcdoc = document.querySelector('iframe.ol-preview-frame')?.getAttribute('srcdoc') ?? ''
-    expect(srcdoc).toContain('<html lang="fr">')
-    expect(srcdoc).toContain('<title>Preview</title>')
+    const parsed = new DOMParser().parseFromString(srcdoc, 'text/html')
+    expect(parsed.documentElement.getAttribute('lang')).toBe('fr')
+    expect(parsed.title).toBe('Preview')
   })
 
   it('gives each dialog its own heading id, so two editors cannot collide', () => {

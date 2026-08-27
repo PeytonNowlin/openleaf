@@ -29,11 +29,22 @@ import '@openleaf-editor/element'
 ```html
 <form method="post">
   <label for="body">Post body</label>
-  <openleaf-editor for="body" aria-label="Post body"></openleaf-editor>
+  <openleaf-editor
+    for="body"
+    aria-label="Post body"
+    placeholder="Write the article…"
+  ></openleaf-editor>
   <textarea id="body" name="body" hidden></textarea>
   <button type="submit">Save</button>
 </form>
 ```
+
+`placeholder` is a prompt on an empty document. It is never stored in `value`
+and never submitted. `lang` on the host (or, if the host has none, on the bound
+textarea) is the canvas language used for spellcheck; `spellcheck="false"`
+turns checking off. A read-only editor does not follow links: it fires
+`openleaf:link` with `{ href }` instead. Pasting a bare `https://…/hero.png`
+inserts an image; a URL that does not look like an image keeps today's paste.
 
 Optional plugins, each a separate package. Keep the `@beta` tag:
 
@@ -79,7 +90,10 @@ Image upload is a hook you point at your own endpoint. Register one and the imag
 dialog grows a file picker, and dropping or pasting an image file routes through
 it. Register nothing and the dialog stays insert-by-URL — there is deliberately no
 `data:` URL fallback, because the schema refuses `data:` URLs and content that
-vanishes on save is worse than a missing picker.
+vanishes on save is worse than a missing picker. Pasting a bare `http(s)` URL
+whose path ends in a well-known image suffix (`png`, `jpg`/`jpeg`/`jfif`, `gif`,
+`webp`, `avif`) inserts an `<img>` through the same `isSafeUrl` / `insertImage`
+checks, with or without an uploader. Other URLs keep today's paste.
 
 ```ts
 import { registerImageUploader } from '@openleaf-editor/element'
