@@ -140,6 +140,106 @@ describe('non-breaking space', () => {
   })
 })
 
+/**
+ * Invisible format characters: ZWSP, soft hyphen, BOM.
+ *
+ * They have no glyph and visual aids do not mark them (only NBSP). The
+ * counter used to count them as characters -- except BOM, which is `\s` and
+ * so dropped from `charactersExcludingSpaces` only -- and ZWSP split words.
+ * Find kept them as ordinary characters, so a visually joined word was not
+ * found by its visible spelling, and a policy that stripped them from the
+ * index by concatenating would have let Replace eat them.
+ *
+ * One set, used by both tools: not counted, not findable as themselves, not
+ * a bridge a match can cross.
+ */
+describe('invisible format characters', () => {
+  const formatChars: Array<[string, string]> = [
+    ['zero-width space', '\u200b'],
+    ['soft hyphen', '\u00ad'],
+    ['BOM', '\ufeff'],
+  ]
+
+  it.each(formatChars)('omits %s from both character totals', (_name, ch) => {
+    const withFormat = parseHtml(`<p>a${ch}b</p>`, { schema: coreSchema() })
+    const plain = parseHtml('<p>ab</p>', { schema: coreSchema() })
+    const stats = documentStats(withFormat)
+    expect(stats.characters).toBe(2)
+    expect(stats.charactersExcludingSpaces).toBe(2)
+    expect(stats.characters).toBe(documentStats(plain).characters)
+    expect(stats.charactersExcludingSpaces).toBe(documentStats(plain).charactersExcludingSpaces)
+  })
+
+  it('counts a non-breaking space as a space, not as format', () => {
+    const doc = parseHtml('<p>a\u00a0b</p>', { schema: coreSchema() })
+    const stats = documentStats(doc)
+    expect(stats.characters).toBe(3)
+    expect(stats.charactersExcludingSpaces).toBe(2)
+    expect(stats.words).toBe(2)
+  })
+
+  it('does not let ZWSP split a word', () => {
+    // The segmenter treats U+200B as a boundary, so `hello\u200bworld` used
+    // to report two words. SHY and BOM do not split; ZWSP is the one that
+    // made the status line look haunted after a Word paste.
+    const withZwsp = parseHtml('<p>hello\u200bworld</p>', { schema: coreSchema() })
+    const plain = parseHtml('<p>helloworld</p>', { schema: coreSchema() })
+    expect(documentStats(withZwsp).words).toBe(1)
+    expect(documentStats(withZwsp).words).toBe(documentStats(plain).words)
+  })
+
+  it.each(formatChars)('does not match a query across a %s', (_name, ch) => {
+    const doc = parseHtml(`<p>a${ch}b</p>`, { schema: coreSchema() })
+    expect(findMatches(doc, 'ab')).toEqual([])
+    expect(findMatches(doc, 'a')).toHaveLength(1)
+    expect(findMatches(doc, 'b')).toHaveLength(1)
+  })
+
+  it.each(formatChars)('does not find a %s as itself', (_name, ch) => {
+    const doc = parseHtml(`<p>a${ch}b</p>`, { schema: coreSchema() })
+    expect(findMatches(doc, ch)).toEqual([])
+  })
+
+  it.each(formatChars)('strips a %s out of the query so the visible spelling still matches', (_name, ch) => {
+    const doc = parseHtml('<p>ab</p>', { schema: coreSchema() })
+    expect(findMatches(doc, `a${ch}b`)).toHaveLength(1)
+  })
+
+  it.each(formatChars)('replace of a neighbour does not eat a %s', (_name, ch) => {
+    let state = stateFrom(`<p>a${ch}b</p>`)
+    setSearch('a')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    replaceAll('x')(state, (tr) => {
+      state = state.apply(tr)
+    })
+    expect(state.doc.textContent).toBe(`x${ch}b`)
+  })
+
+  it('the counter and find agree about which characters are content', () => {
+    const raw = 'a\u200bb\u00adc\ufeffd\u00a0e'
+    const doc = parseHtml(`<p>${raw}</p>`, { schema: coreSchema() })
+    const stats = documentStats(doc)
+
+    // NBSP is content (a space); the three format characters are not.
+    expect(stats.characters).toBe(6)
+    expect(stats.charactersExcludingSpaces).toBe(5)
+
+    for (const ch of ['\u200b', '\u00ad', '\ufeff']) {
+      expect(findMatches(doc, ch)).toEqual([])
+    }
+    // Concatenating around a stripped character would be the two tools
+    // disagreeing: the counter says they are not there, find would treat
+    // the hole as glue and Replace would eat them.
+    expect(findMatches(doc, 'ab')).toEqual([])
+    expect(findMatches(doc, 'bc')).toEqual([])
+    expect(findMatches(doc, 'cd')).toEqual([])
+    expect(findMatches(doc, 'a')).toHaveLength(1)
+    expect(findMatches(doc, 'e')).toHaveLength(1)
+    expect(findMatches(doc, 'd e')).toHaveLength(1)
+  })
+})
+
 describe('find and replace commands', () => {
   it('selects the next match', () => {
     let state = stateFrom('<p>one two one</p>')

@@ -75,6 +75,14 @@ textarea shortly after document changes and synchronously before submission.
 Set the textarea's initial value to load a document. The textarea may also be
 nested inside the element; OpenLeaf will discover and bind it automatically.
 
+`placeholder="Write the article…"` shows a prompt on an empty document without
+writing into `value`. `lang` on the host — or, if the host has none, on the
+bound textarea — is copied onto the canvas for spellcheck; `spellcheck="false"`
+turns checking off. A `readonly` editor does not follow links: listen for
+`openleaf:link` (`{ href }`) if a preview should open in a new tab. Pasting a
+bare `https://…/hero.png` inserts an image; a URL that is not an image keeps
+today's paste.
+
 For application-managed state, use the element's `value` property and listen to
 `openleaf:change`. Compare before assigning an external value so a synchronization
 loop does not create unnecessary transactions.
@@ -211,7 +219,7 @@ chosen editor package when possible:
 | Syntax highlighting | `@openleaf-editor/plugins-highlight` | `installSyntaxHighlighting()` |
 | HTML and text file import | `@openleaf-editor/plugins-import` | `installImport()` |
 | Word `.docx` import | `@openleaf-editor/plugins-import-docx` | `installDocxImport()` |
-| Find, count, save, preview, print, and recovery | `@openleaf-editor/plugins-session` | `installSessionTools()` |
+| Find, count, save, preview, print, and recovery | `@openleaf-editor/plugins-session` | `installSessionTools()`. Preview and print reuse the editor's `content-css`, canvas `dir` / `lang`, and (for preview) the active skin. |
 | Media, details, symbols, snippets, and image resize | `@openleaf-editor/plugins-insert` | `installInsertTools()` |
 
 Example:
@@ -329,7 +337,7 @@ An integration is complete only after these checks pass:
 - Reloading the saved value preserves supported and application-specific
   markup as intended.
 - The editor has an accessible name and can be reached by keyboard.
-- A paste from Word or Google Docs retains text and list structure.
+- A paste from Word or Google Docs retains text and list structure. A paste from Excel retains the copied grid as a table.
 - Server-side sanitization removes scripts, event-handler attributes, unsafe
   URLs, unapproved embeds, and disallowed CSS.
 - Every configured toolbar item is registered; OpenLeaf emits a console warning

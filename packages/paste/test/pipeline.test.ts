@@ -82,6 +82,40 @@ describe('Word paste through the full pipeline', () => {
   })
 })
 
+describe('Excel paste through the full pipeline', () => {
+  const EXCEL =
+    '<meta name=ProgId content=Excel.Sheet>' +
+    '<table class="xl63" border="0" cellpadding="0" cellspacing="0" width="192" ' +
+    'xmlns:x="urn:schemas-microsoft-com:office:excel">' +
+    '<tr><td colspan="2" class="xl65" style="mso-number-format:\'\\@\'" x:str>Quarter</td>' +
+    '<td class="xl65" x:num="2024">2024</td></tr>' +
+    '<tr><td class="xl66" style="mso-number-format:\'0.00\'" x:num="1.25">1.25</td>' +
+    '<td class="xl66" x:num="2.50">2.50</td>' +
+    '<td class="xl66" x:num="3.75">3.75</td></tr></table>'
+
+  const out = through(EXCEL)
+
+  it('produces a real table the schema accepts, not a list', () => {
+    expect(out).toContain('<table')
+    expect(out).toContain('colspan="2"')
+    expect(out).not.toContain('<ul')
+    expect(out).not.toContain('<ol')
+  })
+
+  it('keeps every cell of the copied range', () => {
+    const text = out.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    expect(text).toBe('Quarter 2024 1.25 2.50 3.75')
+  })
+
+  it('produces ZERO preserved atoms -- the real quality bar', () => {
+    expect(preservedAtoms(normalizePastedHtml(EXCEL))).toEqual([])
+  })
+
+  it('is stable through a second round trip', () => {
+    expect(serializeHtml(parseHtml(out))).toBe(out)
+  })
+})
+
 describe('Google Docs paste through the full pipeline', () => {
   const out = through(GDOCS)
 

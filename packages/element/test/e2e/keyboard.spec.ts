@@ -389,6 +389,105 @@ test.describe('the link context menu', () => {
       .click()
     await expect.poll(() => page.locator('#body').inputValue()).not.toContain('<a href')
   })
+
+  /*
+   * Hybrid / long-press engines fire `contextmenu` then a follow-up
+   * `pointerdown` for the same pointer. The capture closer treated that
+   * down as an outside click, so the menu flashed and vanished.
+   */
+  test('survives a follow-up pointerdown with the same pointerId', async ({ page }) => {
+    await expect(page.getByRole('link', { name: 'linked' })).toBeVisible()
+    const stayedOpen = await page.evaluate(() => {
+      const link = document.querySelector('openleaf-editor a')
+      if (!link) throw new Error('no link to open a menu on')
+      const id = 7
+      link.dispatchEvent(
+        new PointerEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          pointerId: id,
+          clientX: 80,
+          clientY: 80,
+        }),
+      )
+      const menu = document.querySelector('[role="menu"][aria-label="Editor menu"]')
+      if (!menu || (menu as HTMLElement).hidden) return 'closed-after-contextmenu'
+      link.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          pointerId: id,
+          pointerType: 'touch',
+        }),
+      )
+      if ((menu as HTMLElement).hidden) return 'closed-after-same-id'
+      document.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, pointerId: 99, pointerType: 'mouse' }),
+      )
+      return (menu as HTMLElement).hidden ? 'closed-after-distinct-id' : 'still-open'
+    })
+    expect(stayedOpen).toBe('closed-after-distinct-id')
+  })
+
+  /*
+   * `x <= 0` used to mean "synthesized keyboard event" and jumped the menu
+   * to the caret. A real click at the left edge is `clientX === 0`.
+   */
+  test('a pointer open at clientX 0 stays at the click, not the caret', async ({ page }) => {
+    await page.evaluate(() => {
+      const el = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+      el.value =
+        '<p>' +
+        'A long first paragraph so the caret sits far from the left edge of the viewport. '.repeat(
+          4,
+        ) +
+        '</p><p>See <a href="https://example.org">edge-link</a>.</p>'
+    })
+    await expect(page.getByRole('link', { name: 'edge-link' })).toBeVisible()
+
+    const { menuX, caretLeft } = await page.evaluate(() => {
+      const host = document.querySelector('openleaf-editor') as HTMLElement & {
+        view?: {
+          state: { doc: any; selection: any; tr: any }
+          dispatch(tr: unknown): void
+          coordsAtPos(pos: number): { left: number }
+          focus(): void
+        }
+      }
+      const view = host.view
+      if (!view) throw new Error('no view')
+      const first = view.state.doc.firstChild
+      if (!first) throw new Error('no first paragraph')
+      // End of the long paragraph: well to the right of the left viewport edge.
+      const caretAt = 1 + first.content.size
+      const TextSelection = view.state.selection.constructor as {
+        create(doc: unknown, anchor: number): unknown
+      }
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, caretAt)))
+      view.focus()
+      const caretLeft = view.coordsAtPos(caretAt).left
+
+      const link = host.querySelector('a')
+      if (!link) throw new Error('no link')
+      const rect = link.getBoundingClientRect()
+      link.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 0,
+          clientY: rect.top + 4,
+        }),
+      )
+      const menu = document.querySelector('[role="menu"][aria-label="Editor menu"]') as HTMLElement | null
+      if (!menu || menu.hidden) throw new Error('menu did not open')
+      return { menuX: menu.getBoundingClientRect().left, caretLeft }
+    })
+    // `#place` clamps a real x onto the viewport (>= 4). The caret of a
+    // long wrapping paragraph is well to the right of that.
+    expect(menuX).toBeGreaterThanOrEqual(0)
+    expect(menuX).toBeLessThan(20)
+    expect(caretLeft).toBeGreaterThan(40)
+    expect(Math.abs(menuX - caretLeft)).toBeGreaterThan(20)
+  })
 })
 
 test.describe('focus restoration', () => {

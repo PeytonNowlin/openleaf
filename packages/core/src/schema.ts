@@ -231,6 +231,15 @@ export const coreNodes: Record<string, NodeSpec> = {
     // `language` is content, not decoration. Without it a fenced block loses
     // `class="language-js"` on the first save -- which is both an attribute-loss
     // bug and the reason a highlighter has nothing to work from.
+    //
+    // Whitespace is content here too. Authors indent by typing spaces (or by
+    // pasting a tab), and `preserveWhitespace: 'full'` is what keeps those
+    // bytes. Tab is not a binding -- it is how a keyboard user leaves the
+    // editor (see keymap.ts). A command that inserted `\t` or two spaces on
+    // Tab would trap them in the `<pre>`. There is also no `indent` attr:
+    // CSS padding is not source indentation. `Mod-]` still nests a
+    // surrounding list item (`enclosingList` runs first); it does not
+    // insert spaces into this node.
     attrs: { language: { default: null } },
     content: 'text*',
     marks: '',

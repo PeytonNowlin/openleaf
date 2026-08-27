@@ -81,6 +81,18 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('secondary toolbar', () => {
+  it('marks toolbar2 so sticky CSS does not depend on sibling order', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const toolbar = new Toolbar(host, document, { layout: 'bold', label: 'More formatting' })
+    const primary = new Toolbar(host, document, { layout: 'bold' })
+    mounted.push(toolbar, primary)
+    expect(toolbar.el.classList.contains('ol-toolbar--secondary')).toBe(true)
+    expect(primary.el.classList.contains('ol-toolbar--secondary')).toBe(false)
+  })
+})
+
 describe('custom controls', () => {
   function registerPicker(): { updates: number; destroyed: number } {
     const counters = { updates: 0, destroyed: 0 }

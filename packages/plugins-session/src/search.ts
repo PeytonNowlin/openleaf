@@ -9,7 +9,10 @@
  * covered one would take it with it on Replace. Locked interiors
  * (`contenteditable="false"`) are omitted: they are not editable, and a hit
  * inside one would make Replace All write a transaction that the lock filter
- * then rejects wholesale, including the unlocked matches.
+ * then rejects wholesale, including the unlocked matches. Invisible format
+ * characters (ZWSP, soft hyphen, BOM) are not content -- the counter skips
+ * the same set -- but they are a barrier in the index rather than a hole,
+ * so Replace cannot swallow them. See `emitIndexedText`.
  *
  * Every offset in that concatenated text has to name a document position, so the
  * index carries a parallel `pos` table with one entry per UTF-16 code unit. That
@@ -21,6 +24,7 @@ import { isNonEditableNode } from '@openleaf-editor/core'
 import type { Mark, Node as PMNode } from 'prosemirror-model'
 import { Plugin, PluginKey, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
+import { isInvisibleFormat, stripInvisibleFormat } from './count.js'
 
 export interface SearchMatch {
   from: number
@@ -109,6 +113,11 @@ interface TextIndex {
  * each other. Other Unicode spaces are left alone -- they are a word-count
  * problem, not a find one. The two characters occupy one UTF-16 unit each, so
  * the position table is untouched.
+ *
+ * ZWSP, soft hyphen, and BOM are not folded here. They are stripped from the
+ * query and omitted from the index as match barriers -- see `emitIndexedText`
+ * -- so find and the counter agree they are not content, without Replace
+ * swallowing them.
  */
 function foldCodePoint(raw: string, units: number): string {
   if (raw === 'ς') return 'σ'
@@ -171,6 +180,38 @@ function foldText(input: string): string {
   return chunks.join('')
 }
 
+/**
+ * Push one text node's folded (or raw) characters into the index.
+ *
+ * ZWSP, soft hyphen, and BOM are omitted as content -- the same set the
+ * counter skips -- but replaced with `ATOM` rather than concatenated away.
+ * Concatenating would make "ab" match `a\u200bb` and hand Replace a range
+ * that includes the format character, deleting it. An atom is the same
+ * barrier an image already is: find will not cross it, replace cannot eat
+ * what it cannot match.
+ *
+ * `raw` is length-preserving with the source node (`foldText` guarantees
+ * it), so `nodePos + i` still names the document position of unit `i`
+ * even when that unit is a format character we skip.
+ */
+function emitIndexedText(raw: string, nodePos: number, parts: string[], pos: number[]): void {
+  let runStart = 0
+  for (let i = 0; i < raw.length; i += 1) {
+    if (!isInvisibleFormat(raw.charCodeAt(i))) continue
+    if (runStart < i) {
+      parts.push(raw.slice(runStart, i))
+      for (let j = runStart; j < i; j += 1) pos.push(nodePos + j)
+    }
+    parts.push(ATOM)
+    pos.push(-1)
+    runStart = i + 1
+  }
+  if (runStart < raw.length) {
+    parts.push(raw.slice(runStart))
+    for (let j = runStart; j < raw.length; j += 1) pos.push(nodePos + j)
+  }
+}
+
 function indexText(doc: PMNode, fold: boolean): TextIndex {
   // Accumulated in a list rather than with `+=`. V8 represents a `+=` chain as
   // an unflattened rope, and `endsWith` cannot run on a rope -- asking it once
@@ -211,8 +252,7 @@ function indexText(doc: PMNode, fold: boolean): TextIndex {
 
     const text = node.isText ? node.text : undefined
     if (text !== undefined && text.length > 0) {
-      parts.push(fold ? foldText(text) : text)
-      for (let i = 0; i < text.length; i += 1) pos.push(nodePos + i)
+      emitIndexedText(fold ? foldText(text) : text, nodePos, parts, pos)
       emitted = true
       lastWasSeparator = false
       return true
@@ -241,8 +281,14 @@ export function findMatches(
   if (query.length === 0) return []
 
   const caseSensitive = options.caseSensitive === true
+  // Format characters are not content on either side. Stripping them from the
+  // query (without a barrier) is what lets a pasted ZWSP in the find field
+  // still find the visible spelling; the document index inserts a barrier
+  // instead, so the same character in the document cannot be matched across.
+  let needle = stripInvisibleFormat(caseSensitive ? query : foldText(query))
+  if (needle.length === 0) return []
+
   let { text, pos } = indexText(doc, !caseSensitive)
-  let needle = caseSensitive ? query : foldText(query)
 
   // Match offsets are looked up in `pos` by their offset in `text`, so the two
   // must hold exactly one entry per code unit. `foldText` guarantees it by
@@ -254,7 +300,8 @@ export function findMatches(
   // range that is off by the drift.
   if (text.length !== pos.length) {
     ;({ text, pos } = indexText(doc, false))
-    needle = query
+    needle = stripInvisibleFormat(query)
+    if (needle.length === 0) return []
   }
 
   const matches: SearchMatch[] = []
