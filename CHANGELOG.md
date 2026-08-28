@@ -93,6 +93,20 @@ entries below say so explicitly when they do.
   the HTML source view open are all refused, matching what the editor's own
   toolbar does. Each call is exactly one transaction, marked as
   agent-originated, so one undo reverses one agent action. `#248`
+- **An integrator can refuse individual agent tool calls.**
+  `installAgentTools({ allowTool })` takes a synchronous predicate asked before
+  every tool call — the listing included — and answering `false` returns
+  `refused` to the agent and changes nothing, because the question is asked
+  before any argument is validated and before anything touches an editor. The
+  predicate is handed the tool's name, the editor identifier the call names
+  (`null` for `openleaf_list_editors`, which names none) and the tool's own
+  `readOnlyHint`, so "allow reads, refuse writes" is `({ readOnly }) =>
+  readOnly` rather than a list of tool names that goes stale the moment one is
+  added. A predicate that throws is treated as a refusal rather than reaching
+  the agent as a crashed call, and nothing of the thrown error travels back with
+  it. With no predicate supplied, every tool behaves exactly as it did. From a
+  script tag — which installs on load, so the options argument is already spent
+  — it is `OpenLeaf.registerAgentPermission(fn)`. `#250`
 
 ### Fixed
 

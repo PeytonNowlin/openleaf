@@ -51,6 +51,9 @@ harmless — the second call is ignored, options and all — because a CMS templ
 that includes the bundle on two paths must not try to register the same tool
 names twice.
 
+Installing offers an agent the whole tool set. To narrow it, pass a
+[permission predicate](#permission).
+
 ## Tools
 
 Tool names are page-global, so every one of them is in the `openleaf_`
@@ -92,6 +95,68 @@ names and command labels only, and are annotated accordingly.
 `openleaf_replace_at` and `openleaf_apply_command` are the two tools annotated
 as **not** read-only, which is what lets a client decide that they, and only
 they, are worth confirming with a person.
+
+## Permission
+
+Installing is a coarse decision: it offers an agent the whole set or none of it.
+`allowTool` is the fine one — a synchronous predicate asked before **every** tool
+call, including `openleaf_list_editors`.
+
+```ts
+import { installAgentTools } from '@openleaf-editor/plugins-webmcp'
+
+installAgentTools({
+  // An agent may read anything on this page, and may only write to the draft.
+  allowTool: ({ tool, editor, readOnly }) => readOnly || editor === 'draft',
+})
+```
+
+It is handed one object:
+
+| Field | |
+| --- | --- |
+| `tool` | The tool's name, e.g. `'openleaf_replace_at'`. |
+| `editor` | The editor identifier the call names, or `null` for `openleaf_list_editors` — the one tool that takes no editor. |
+| `readOnly` | The tool's own `readOnlyHint`, so `({ readOnly }) => readOnly` is the whole of "allow reads, refuse writes". |
+
+Answering with `readOnly` and `editor` rather than with a list of tool names is
+the point of those two fields: a policy written today still means what its
+author meant after a tool is added to the set, and a list of names does not.
+
+- **A refused call returns `{"ok":false,"error":"refused","message":"…"}`** and
+  changes nothing. The predicate is asked before any argument is validated and
+  before anything is looked up, so a refusal is not a partial call — it is not a
+  call. The message tells the agent it is the site's policy rather than a mistake
+  it can correct, so it does not retry.
+- **A predicate that throws is a refusal.** A host predicate that could not
+  reach whatever it needed has not said yes, and the safe reading of "did not say
+  yes" on a write path is no. Nothing of the thrown error travels back to the
+  agent.
+- **With no predicate, every tool behaves exactly as it does without this
+  option.** The default is not a permissive predicate; it is no predicate.
+- **It is synchronous, and it answers with a boolean.** Deliberately: staging a
+  change as a reviewable diff for a person to approve is a substantially larger
+  feature, and the proposal's user-interaction mechanism is not something the
+  shipping implementation can be relied on for. This asks a question the host can
+  answer out of what it already knows.
+
+It is not a security boundary against the page itself. Anything running on the
+page can call `agentTools` directly, and everything the editor produces still has
+to be [sanitized on your server](#openleaf-editorplugins-webmcp). What it is: the
+place where the integrator hosting the editor gets to express a policy at all.
+
+From a script tag the predicate is `OpenLeaf.registerAgentPermission(fn)`, which
+is `allowTool` on its own — that bundle installs on load, so by the time your own
+script runs, `installAgentTools` has already been called and a second call is
+ignored. Pass `null` to clear it. Last writer wins.
+
+```html
+<script src="/js/openleaf.min.js"></script>
+<script src="/js/openleaf-webmcp.min.js"></script>
+<script>
+  OpenLeaf.registerAgentPermission(({ readOnly }) => readOnly)
+</script>
+```
 
 ## What "capabilities" means here
 
@@ -254,7 +319,9 @@ one per tool:
   disables its own toolbar in both cases, and a change made behind the source
   view would be discarded the moment the author closes it.
 - **A refused write changes nothing.** Every check runs before anything touches
-  the editor, so a failure is not a partial write; it is not a write.
+  the editor, so a failure is not a partial write; it is not a write. The
+  integrator's own [permission predicate](#permission) is the first of those
+  checks, and refuses with the same `refused` token.
 - **One call is one transaction**, so one thing the agent did is one thing the
   author undoes.
 
@@ -335,6 +402,11 @@ From a script tag it is `OpenLeaf.agentTools` once the bundle has loaded, the
 same way `OpenLeaf.registerSaveHandler` is exposed by the session bundle. This
 is what makes the surface testable without a flagged browser, and it is what a
 host integration reaches for when it wants to drive a tool itself.
+
+These are the gated handlers: the [permission predicate](#permission) is applied
+where the array is composed, not inside each tool, so a call made through
+`agentTools` is subject to it exactly as a call arriving from the browser is —
+and a tool added to the set later is gated by having been added.
 
 ## Accessibility and CSP
 

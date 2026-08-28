@@ -15,23 +15,37 @@
 import { registerEditorPlugin } from '@openleaf-editor/core'
 import { resolveModelContext } from './agent.js'
 import { agentHandles } from './handles.js'
+import { registerAgentPermission, type AgentPermission } from './permission.js'
 import { agentRegistry } from './registry.js'
 import { agentTools } from './tools.js'
 
 export type { AgentTool, AgentToolAnnotations, AgentToolInputSchema } from './agent.js'
+export type { AgentPermission, AgentToolCall } from './permission.js'
+export { registerAgentPermission } from './permission.js'
 export type { ToolErrorCode } from './result.js'
 export { agentTools } from './tools.js'
 
-/**
- * Options for {@link installAgentTools}.
- *
- * Empty today, and a bag rather than a bare call on purpose: the install is the
- * integrator's one hook into this package, so the permission predicate that
- * lets a host allow reads and refuse writes belongs in here. Adding a field to
- * an options object is a smaller change to a published function than adding a
- * parameter to one.
- */
-export interface AgentToolsOptions {}
+/** Options for {@link installAgentTools}. */
+export interface AgentToolsOptions {
+  /**
+   * Decide, per call, whether an agent may do that here.
+   *
+   * Called before every tool call, with the tool's name, the editor the call
+   * names, and whether the tool only reads -- so "allow reads, refuse writes"
+   * is `({ readOnly }) => readOnly` and stays right when a tool is added,
+   * rather than a list of names that goes stale the moment one is. A call it
+   * refuses returns a `refused` result to the agent and changes nothing; so
+   * does one it throws out of. Omitted, every tool behaves exactly as it does
+   * without this option.
+   *
+   * ```ts
+   * installAgentTools({
+   *   allowTool: ({ editor, readOnly }) => readOnly || editor === 'draft',
+   * })
+   * ```
+   */
+  allowTool?: AgentPermission
+}
 
 let installed = false
 
@@ -62,6 +76,11 @@ let teardown: AbortController | undefined
 export function installAgentTools(options: AgentToolsOptions = {}): void {
   if (installed) return
   installed = true
+
+  // Options are taken from the first call and this one is not an exception --
+  // but only when it was actually given, so `installAgentTools()` after
+  // `registerAgentPermission(...)` does not quietly clear the host's policy.
+  if (options.allowTool) registerAgentPermission(options.allowTool)
 
   // Two plugins, both per editor and both storage rather than behaviour: the
   // register, which is how a tool finds an editor by name, and the handle
