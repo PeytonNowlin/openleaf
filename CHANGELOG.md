@@ -14,6 +14,15 @@ entries below say so explicitly when they do.
 
 ### Added
 
+- **`@openleaf-editor/ui`: a toolbar item can declare what its command acts
+  on.** `ToolbarItemSpec` takes an optional `scope`, either `'selection'` (the
+  default, and everything that formats what the author picked) or `'document'`
+  for a command that ignores the selection entirely — the built-in `undo` and
+  `redo`, which act on the last history event wherever in the document it
+  happened. The toolbar does not read it, and no bar changes: for a person
+  clicking a button the distinction is invisible and correct. It is for callers
+  that run a command against a range they staged themselves, where it is
+  neither, and it saves each of them from keeping a list of command names.
 - **`@openleaf-editor/plugins-webmcp`: an opt-in agent tool surface.** An agent
   driving the page can ask which OpenLeaf editors are on it and get back a
   stable identifier for each — the host element's `id`, or an ordinal where it
@@ -100,9 +109,12 @@ entries below say so explicitly when they do.
   has, including ones a plugin added. Only commands that editor actually offers
   can be applied, which is the same intersection of the registry and the
   `toolbar` layout that `openleaf_get_capabilities` reports; a control that only
-  works through a dialog says so rather than pretending; and a command that does
-  not apply where the handle points reports the refusal rather than reporting
-  success. Preserved markup, a readonly editor and an editor whose author has
+  works through a dialog says so rather than pretending; a command that does not
+  act on a selection at all — `undo` and `redo` act on the document's last
+  history event, so a handle would not scope them and running one would revert
+  an author's unrelated work — is refused on the item's own `scope` declaration
+  rather than on a list of names; and a command that does not apply where the
+  handle points reports the refusal rather than reporting success. Preserved markup, a readonly editor and an editor whose author has
   the HTML source view open are all refused, matching what the editor's own
   toolbar does. Each call is exactly one transaction, marked as
   agent-originated, so one undo reverses one agent action. `#248`
@@ -128,9 +140,12 @@ entries below say so explicitly when they do.
   (`null` for `openleaf_list_editors`, which names none) and the tool's own
   `readOnlyHint`, so "allow reads, refuse writes" is `({ readOnly }) =>
   readOnly` rather than a list of tool names that goes stale the moment one is
-  added. A predicate that throws is treated as a refusal rather than reaching
-  the agent as a crashed call, and nothing of the thrown error travels back with
-  it. With no predicate supplied, every tool behaves exactly as it did. From a
+  added. Only `true` allows a call: the answer is compared with `===`, so an
+  `async` predicate's Promise, or any other truthy value that is not `true`, is
+  a refusal rather than an accidental yes — a policy that did not compile to an
+  answer is not an answer. A predicate that throws is treated as a refusal
+  rather than reaching the agent as a crashed call, and nothing of the thrown
+  error travels back with it. With no predicate supplied, every tool behaves exactly as it did. From a
   script tag — which installs on load, so the options argument is already spent
   — it is `OpenLeaf.registerAgentPermission(fn)`. Either spelling is set-once
   and cannot be cleared, so nothing that runs after the integrator can replace
