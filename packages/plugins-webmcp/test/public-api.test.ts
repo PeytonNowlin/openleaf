@@ -59,6 +59,7 @@ describe('the tool set', () => {
       'openleaf_get_structure',
       'openleaf_find_text',
       'openleaf_replace_at',
+      'openleaf_insert_html',
       'openleaf_apply_command',
     ])
   })
@@ -80,12 +81,12 @@ describe('the tool set', () => {
       // safer: it is made of the document's own headings.
       openleaf_get_structure: { readOnlyHint: true, untrustedContentHint: true },
       openleaf_find_text: { readOnlyHint: true, untrustedContentHint: true },
-      // The one tool that writes, and the one that hands nothing of the
-      // document back: an id and a flag are all a write reports.
+      // The tools that write, and the ones that hand nothing of the document
+      // back: an id and a flag are all a write reports.
       openleaf_replace_at: { readOnlyHint: false, untrustedContentHint: false },
-      // The only tool here that writes, and the only one whose `readOnlyHint`
-      // is false. That flag is what a client reads to decide whether this call
-      // needs a person's confirmation, so it getting stuck on `true` is the
+      openleaf_insert_html: { readOnlyHint: false, untrustedContentHint: false },
+      // That flag is what a client reads to decide whether a call needs a
+      // person's confirmation, so one of these getting stuck on `true` is the
       // failure worth a pinned assertion.
       openleaf_apply_command: { readOnlyHint: false, untrustedContentHint: false },
     })
@@ -111,6 +112,7 @@ describe('the tool set', () => {
       openleaf_get_structure: ['id'],
       openleaf_find_text: ['id', 'text'],
       openleaf_replace_at: ['id', 'handle', 'html'],
+      openleaf_insert_html: ['id', 'handle', 'html', 'position'],
       openleaf_apply_command: ['id', 'command', 'handle'],
     })
   })

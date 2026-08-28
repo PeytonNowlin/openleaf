@@ -80,6 +80,19 @@ entries below say so explicitly when they do.
   than landing on whatever moved into its place, and each call is one
   transaction, so one thing the agent did is one thing the author undoes. It is
   the first tool in the set that is not annotated read-only. `#246`
+- **`openleaf_insert_html`: an agent can add content beside a passage instead
+  of over it.** The handle names where, `position` says which side, and the text
+  the handle named is left alone — so the handle is not spent and the same one
+  can be inserted at again. The HTML goes through the paste policy first, like
+  every other agent write, and the one thing insertion does that replacement
+  does not is ask the schema whether the content may sit there at all.
+  Replacement can be fitted to the range it lands in; an insertion that is
+  fitted is a heading turned into a paragraph split in two, or emphasis silently
+  dropped on its way into a code block, reported to the agent as a success. So
+  an insertion the position cannot hold is refused with `invalid-position` and a
+  message naming what that position does hold, the document is untouched, and
+  the agent knows to reshape the HTML or ask an outline for a handle that names
+  a whole block. `#247`
 - **`openleaf_apply_command`: an agent can format a passage using the editor's
   own commands.** Bold, italic or a list, applied to the text a handle names,
   and applied by running the command the toolbar button runs rather than by
