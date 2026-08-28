@@ -91,7 +91,7 @@ describe('the tool set', () => {
       openleaf_list_editors: [],
       openleaf_get_capabilities: ['id'],
       openleaf_get_document: ['id'],
-      openleaf_find_text: ['editor', 'text'],
+      openleaf_find_text: ['id', 'text'],
     })
   })
 

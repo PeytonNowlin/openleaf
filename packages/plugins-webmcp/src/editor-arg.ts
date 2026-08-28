@@ -25,6 +25,26 @@ export const editorArgument: AgentToolInputSchema = {
 }
 
 /**
+ * The same `id` argument, plus a tool's own arguments.
+ *
+ * Every tool but the listing names an editor, and it has to be spelled the same
+ * way on all of them: `openleaf_list_editors` tells an agent to "pass an id
+ * back to any other openleaf_* tool", and a tool that quietly called it
+ * something else would make that instruction wrong. The editor argument goes
+ * first, and is always required.
+ */
+export function editorArgumentWith(
+  properties: AgentToolInputSchema['properties'],
+  required: string[] = [],
+): AgentToolInputSchema {
+  return {
+    type: 'object',
+    properties: { ...editorArgument.properties, ...properties },
+    required: ['id', ...required],
+  }
+}
+
+/**
  * Resolve `args.id` and hand the editor to `answer`, or return the failure.
  *
  * `args` is whatever the agent sent. The browser parses it, but nothing checks

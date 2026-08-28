@@ -10,8 +10,8 @@
 
 import type { Node as PMNode } from 'prosemirror-model'
 import type { AgentTool } from './agent.js'
+import { editorArgumentWith, withEditor } from './editor-arg.js'
 import { createHandles, type HandleRange } from './handles.js'
-import { findEditor } from './registry.js'
 import { fail, ok } from './result.js'
 
 /**
@@ -57,20 +57,15 @@ export const findTextTool: AgentTool = {
     '"matches":[]}, which is an answer and not an error. At most ' +
     String(MAX_MATCHES) +
     ' matches come back, with "truncated":true when there were more.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      editor: {
-        type: 'string',
-        description: 'The editor to search, named by an "id" from openleaf_list_editors.',
-      },
+  inputSchema: editorArgumentWith(
+    {
       text: {
         type: 'string',
         description: 'The literal text to look for. Case sensitive; not a regular expression.',
       },
     },
-    required: ['editor', 'text'],
-  },
+    ['text'],
+  ),
   annotations: {
     readOnlyHint: true,
     // The document is read, and the context around each match is handed back
@@ -80,11 +75,7 @@ export const findTextTool: AgentTool = {
     untrustedContentHint: true,
   },
   execute(args) {
-    const id = typeof args.editor === 'string' ? args.editor.trim() : ''
     const text = typeof args.text === 'string' ? args.text : ''
-    if (id === '') {
-      return fail('invalid-argument', 'pass "editor": an id from openleaf_list_editors.')
-    }
     if (text === '') {
       return fail(
         'invalid-argument',
@@ -93,21 +84,15 @@ export const findTextTool: AgentTool = {
       )
     }
 
-    const editor = findEditor(id)
-    if (!editor) {
-      return fail(
-        'unknown-editor',
-        `no editor named "${id}" on this page; call openleaf_list_editors again`,
-      )
-    }
-
-    const { matches, truncated } = matchesIn(editor.view.state.doc, text)
-    // One transaction for the whole batch, after the search rather than during
-    // it, so a search that found nothing dispatches nothing at all.
-    const found = createHandles(editor, matches)
-    return ok({
-      matches: found.map((match) => ({ handle: match.handle, context: match.context })),
-      truncated,
+    return withEditor(args, (editor) => {
+      const { matches, truncated } = matchesIn(editor.view.state.doc, text)
+      // One transaction for the whole batch, after the search rather than
+      // during it, so a search that found nothing dispatches nothing at all.
+      const found = createHandles(editor, matches)
+      return ok({
+        matches: found.map((match) => ({ handle: match.handle, context: match.context })),
+        truncated,
+      })
     })
   },
 }

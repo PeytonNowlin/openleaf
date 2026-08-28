@@ -51,7 +51,7 @@ interface FindResult {
 }
 
 const find = (id: string, text: string): FindResult =>
-  JSON.parse(findTextTool.execute({ editor: id, text })) as FindResult
+  JSON.parse(findTextTool.execute({ id, text })) as FindResult
 
 function handles(id: string, text: string): string[] {
   const result = find(id, text)

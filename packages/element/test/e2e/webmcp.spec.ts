@@ -98,7 +98,7 @@ async function documentHtml(page: Page, id: string): Promise<string> {
 }
 
 const found = (page: Page, id: string, text: string): Promise<FoundText> =>
-  call(page, 'openleaf_find_text', { editor: id, text }) as Promise<FoundText>
+  call(page, 'openleaf_find_text', { id, text }) as Promise<FoundText>
 
 /** The annotations the client driving the agent reads before it calls anything. */
 function annotations(page: Page, name: string): Promise<unknown> {
