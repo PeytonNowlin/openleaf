@@ -30,6 +30,20 @@ export type ToolErrorCode =
    */
   | 'stale-handle'
   /**
+   * No command of that name is available on that editor -- either the
+   * deployment never registered one, or this editor's toolbar layout does not
+   * carry it. One code for both, because the agent's next move is the same:
+   * read `openleaf_get_capabilities` for that editor, which reports exactly the
+   * intersection of the two.
+   */
+  | 'unknown-command'
+  /**
+   * The editor offers that command, but it cannot be driven from here: it is a
+   * dialog or a control that builds its own interface, with no plain command
+   * underneath it. Nothing to retry, and not a mistake in the call.
+   */
+  | 'unsupported-command'
+  /**
    * The range names markup the editor is preserving verbatim. Nothing edits in
    * there -- that is the whole of the byte-identical promise -- so the agent's
    * move is to target text outside it, not to retry.
@@ -42,6 +56,12 @@ export type ToolErrorCode =
    * re-reading the schema will not help.
    */
   | 'rejected-content'
+  /**
+   * The editor would not make the change -- the command does not apply at that
+   * position, or the editor is not accepting writes at all. The document is
+   * exactly as it was.
+   */
+  | 'refused'
 
 /**
  * A success: the payload, carrying `"ok": true`.

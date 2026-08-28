@@ -1,6 +1,6 @@
 # `@openleaf-editor/plugins-webmcp`
 
-An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, what is currently in it, how it is structured, and where a given string occurs in it, and can rewrite a passage it located.
+An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, what is currently in it, how it is structured, and where a given string occurs in it, and can rewrite a passage it located or format one with the editor's own commands.
 
 This is a **beta** (`0.1.0-beta.4`). Keep every `@openleaf-editor/*` package on the
 same version.
@@ -64,6 +64,7 @@ namespace.
 | `openleaf_get_structure` | yes | **yes** | Outlines one editor's blocks — type, heading level, and the start of the text — with a handle for each, and without its markup. |
 | `openleaf_find_text` | yes | **yes** | Searches one editor for a literal string, and returns a handle for each match. |
 | `openleaf_replace_at` | **no** | no | Replaces the text one handle names with HTML, as a single undoable step. |
+| `openleaf_apply_command` | **no** | no | Applies one of the editor's own registered commands — bold, italic, a list — to the text a handle names. |
 
 Every result is a **JSON string**, because a string is all the browser's execute
 path returns. The envelope is the same for every tool:
@@ -76,7 +77,8 @@ path returns. The envelope is the same for every tool:
 `error` is a short token to branch on, and `message` is written for a model to
 read: it says what to do next, because "not found" and "search again" are
 different instructions. The tokens are `unknown-editor`, `invalid-argument`,
-`stale-handle`, `preserved-region` and `rejected-content`.
+`stale-handle`, `unknown-command`, `unsupported-command`,
+`preserved-region`, `rejected-content` and `refused`.
 
 Read tools carry the `readOnlyHint` annotation, so the client driving the agent
 can decide when a call needs a person's confirmation. Any tool that returns
@@ -84,9 +86,12 @@ document content carries `untrustedContentHint`, because a document is exactly
 where text aimed at the agent reading it can hide. `openleaf_get_document`,
 `openleaf_get_structure` and `openleaf_find_text` are annotated with it — one
 returns the document, one an outline built from its headings, one the text
-around each match; `openleaf_list_editors` and `openleaf_get_capabilities`
-return identifiers, type names and command labels only, and are annotated
-accordingly.
+around each match; `openleaf_list_editors`, `openleaf_get_capabilities`,
+`openleaf_replace_at` and `openleaf_apply_command` return identifiers, type
+names and command labels only, and are annotated accordingly.
+`openleaf_replace_at` and `openleaf_apply_command` are the two tools annotated
+as **not** read-only, which is what lets a client decide that they, and only
+they, are worth confirming with a person.
 
 ## What "capabilities" means here
 
@@ -220,16 +225,17 @@ seen every occurrence will replace them all.
 ## Writing
 
 `openleaf_replace_at` takes a handle, the editor it belongs to, and the HTML to
-put there. It is the one tool in the set that is not annotated read-only, which
-is what tells the client driving the agent that this is the call to ask a person
-about.
+put there. It and `openleaf_apply_command` are the two tools in the set that are
+not annotated read-only, which is what tells the client driving the agent that
+these are the calls to ask a person about.
 
 ```json
 { "id": "post-body", "handle": "…", "html": "<strong>rewritten</strong>" }
 ```
 
-Four things hold for every agent write, and they are the reason the write path
-is one module rather than one per tool:
+Five things hold for every agent write — for `openleaf_apply_command` as much as
+for this one — and they are the reason the write path is one module rather than
+one per tool:
 
 - **The content is sanitized before it is parsed, by the same policy a paste
   goes through.** This ordering is the whole of it. The preservation layer is a
@@ -243,6 +249,10 @@ is one module rather than one per tool:
 - **A range covering preserved markup is refused**, with `preserved-region`.
   The editor promises to hand that markup back byte-identical, and that promise
   is only kept if nothing edits inside it.
+- **A readonly editor, and one whose author has the HTML source view open, are
+  refused** with `refused`. Neither is this package's policy: the editor
+  disables its own toolbar in both cases, and a change made behind the source
+  view would be discarded the moment the author closes it.
 - **A refused write changes nothing.** Every check runs before anything touches
   the editor, so a failure is not a partial write; it is not a write.
 - **One call is one transaction**, so one thing the agent did is one thing the
@@ -255,6 +265,47 @@ Passing the editor identifier alongside the handle is redundant — handles are
 page-unique — and required anyway: it is what turns an agent that has muddled
 two editors' handles into a refusal rather than a correct-looking write to the
 document it did not mean.
+
+## Applying a command
+
+`openleaf_apply_command` runs one of the editor's own registered commands
+against the text a handle names. It deliberately does not write markup:
+
+```json
+{ "id": "post-body", "command": "bold", "handle": "…" }
+```
+
+Routing through the command is the whole point. A command already knows what it
+is allowed to do — it declines on a figure, it stops at an isolating boundary,
+it knows which marks its own schema permits — so an agent inherits every guard a
+keyboard shortcut has, including ones added by a plugin this package has never
+heard of. There is no list of command names anywhere in the package.
+
+- **Only what that editor offers.** `command` must be an id
+  `openleaf_get_capabilities` reported *for that editor*. Both tools read the
+  same intersection of the registry and the editor's `toolbar` layout, so a
+  command it listed is a command this will run. Anything else is
+  `unknown-command`.
+- **Some offered commands still cannot be applied.** `blockType`, `link`,
+  `image` and `source` open a dialog or build their own control; there is no
+  plain command underneath, so they answer `unsupported-command`. Retrying will
+  not help, and reporting them as applied would be worse — the agent would move
+  on believing the heading exists.
+- **A command that declines reports it.** `refused`, and the document is
+  untouched. That is the greyed-out button, in words.
+- **Preserved markup is refused**, with `preserved-region`. So is a readonly
+  editor, and one whose author has the HTML source view open — the editor
+  disables its own toolbar in both cases, and a change made behind the source
+  view would be discarded when it closes.
+- **One call is one transaction**, marked as agent-originated, so one undo
+  reverses one agent action.
+- **The handle survives.** Formatting does not delete the text, so a second
+  command can be applied to the same handle.
+
+The `handle` and the editor `id` must agree. A handle carries its own editor, so
+a pair that disagrees is `invalid-argument` rather than a guess — preferring the
+handle would edit a document the agent did not name, and preferring the id would
+check the wrong editor's toolbar for what is allowed.
 
 ## Browser support
 
@@ -276,7 +327,8 @@ import { agentTools } from '@openleaf-editor/plugins-webmcp'
 
 agentTools.map((tool) => tool.name)
 // ['openleaf_list_editors', 'openleaf_get_capabilities', 'openleaf_get_document',
-//  'openleaf_get_structure', 'openleaf_find_text', 'openleaf_replace_at']
+//  'openleaf_get_structure', 'openleaf_find_text', 'openleaf_replace_at',
+//  'openleaf_apply_command']
 ```
 
 From a script tag it is `OpenLeaf.agentTools` once the bundle has loaded, the

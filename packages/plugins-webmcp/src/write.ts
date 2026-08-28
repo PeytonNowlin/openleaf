@@ -1,14 +1,17 @@
 /**
  * The write path: the one place in this package that changes a document.
  *
- * Every tool that edits goes through `writeAt`, and that is a design decision
- * rather than tidiness. A write has four ways to be wrong before it has any way
- * to be right -- the handle is spent, the handle belongs to another editor, the
- * range covers markup the editor promised to hand back untouched, the content
- * does not survive the paste policy -- and each of those has to answer with the
+ * Every tool that edits goes through here, and that is a design decision rather
+ * than tidiness. A write has half a dozen ways to be wrong before it has any
+ * way to be right -- the handle is spent, the handle belongs to another editor,
+ * the editor is readonly, its author has the HTML source view open, the range
+ * covers markup the editor promised to hand back untouched, the content does
+ * not survive the paste policy -- and each of those has to answer with the
  * document exactly as it was. A second tool that re-derived those checks would
  * eventually differ from this one in a case nobody thought to test, and the
- * case it differed in would be a write to the wrong place.
+ * case it differed in would be a write to the wrong place. `writeAt` is the
+ * whole path for a tool that can hand over a finished transaction;
+ * `refuseWrite` is the same guards on their own, for the one tool that cannot.
  *
  * Two orderings in here are load-bearing:
  *
@@ -44,6 +47,13 @@ import { fail, ok } from './result.js'
  * It is deliberately not attached to any plugin. Nothing needs to *hold* state
  * for it; what it names is "this change came from an agent, not from the
  * person", which a transaction either carries or does not.
+ *
+ * Two things need that and neither can be retrofitted onto an unmarked write.
+ * The author's undo has to reverse one agent action per press rather than
+ * whatever fell inside `prosemirror-history`'s time window -- agent calls
+ * arrive in a burst, so elapsed time is exactly the wrong thing to group on --
+ * and anything watching the document has to be able to tell an edit the author
+ * made from one made on their behalf.
  */
 export const agentKey = new PluginKey('openleaf-webmcp')
 
@@ -56,8 +66,10 @@ export interface AgentEdit {
  * Mark a transaction as agent-originated.
  *
  * Exported for the tools that cannot hand `writeAt` a finished transaction --
- * a command applied through the toolbar registry dispatches its own -- so that
- * there is still exactly one place that knows what the marker looks like.
+ * `openleaf_apply_command` runs the editor's own command and dispatches what it
+ * captured -- so that there is still exactly one place that knows what the
+ * marker looks like. A tool that dispatched an unmarked transaction would be
+ * invisible to undo grouping, and the omission would be invisible in review.
  */
 export function markAgent(tr: Transaction, tool: string): Transaction {
   const edit: AgentEdit = { tool }
@@ -86,6 +98,48 @@ export interface AgentTarget {
 }
 
 /**
+ * The range a write is aimed at, or the refusal that stops it before it starts.
+ *
+ * Split out of `writeAt` for the one tool that cannot hand back a finished
+ * transaction: `openleaf_apply_command` has to know which range it is working
+ * on before it can decide whether the command it was given exists on that
+ * editor's bar. Both callers ask these three questions in this order, which is
+ * what keeps "a handle from another editor is a refusal" true of every write
+ * tool rather than of whichever one remembered it.
+ */
+export function targetFor(
+  args: Record<string, unknown>,
+  editor: RegisteredEditor,
+): AgentTarget | string {
+  const handle = args['handle']
+  if (typeof handle !== 'string' || handle === '') {
+    return fail(
+      'invalid-argument',
+      'pass "handle", a handle from openleaf_find_text or openleaf_get_structure ' +
+        'naming the text to act on',
+    )
+  }
+
+  const found = resolveHandle(handle)
+  if (!found.ok) return fail(found.error, found.message)
+  if (found.editor !== editor) {
+    // The handle alone would have been enough to find the editor -- handles are
+    // page-unique. Requiring the id as well is what turns an agent that has
+    // muddled two editors' handles into a refusal rather than into a
+    // correct-looking write to the document it did not mean. Neither argument
+    // is safe to prefer: the handle would act on a document the agent did not
+    // name, and the id would check the wrong editor's bar for what is allowed.
+    return fail(
+      'invalid-argument',
+      `that handle names text in "${found.editor.id}", not in "${editor.id}"; ` +
+        'pass the editor it came from, or search this one with openleaf_find_text',
+    )
+  }
+
+  return { editor, from: found.from, to: found.to }
+}
+
+/**
  * Resolve a write's target, refuse it or dispatch it -- once.
  *
  * `change` is called only with a range it is allowed to write to, and it
@@ -101,44 +155,75 @@ export function writeAt(
   change: (target: AgentTarget) => Transaction | string,
 ): string {
   return withEditor(args, (editor) => {
-    const handle = args['handle']
-    if (typeof handle !== 'string' || handle === '') {
-      return fail(
-        'invalid-argument',
-        'pass "handle", a handle from openleaf_find_text or openleaf_get_structure ' +
-          'naming the text to act on',
-      )
-    }
+    const target = targetFor(args, editor)
+    if (typeof target === 'string') return target
 
-    const found = resolveHandle(handle)
-    if (!found.ok) return fail(found.error, found.message)
-    if (found.editor !== editor) {
-      // The handle alone would have been enough to find the editor -- handles
-      // are page-unique. Requiring the id as well is what turns an agent that
-      // has muddled two editors' handles into a refusal rather than into a
-      // correct-looking write to the document it did not mean.
-      return fail(
-        'invalid-argument',
-        `that handle names text in "${found.editor.id}", not in "${editor.id}"; ` +
-          'search the editor you meant with openleaf_find_text',
-      )
-    }
+    const refusal = refuseWrite(editor, target.from, target.to)
+    if (refusal) return refusal
 
-    const { from, to } = found
-    if (touchesPreserved(editor.view.state.doc, from, to)) {
-      return fail(
-        'preserved-region',
-        'that range covers markup the editor preserves verbatim and hands back ' +
-          'byte-identical; nothing edits inside it. Target text outside it.',
-      )
-    }
-
-    const built = change({ editor, from, to })
+    const built = change(target)
     if (typeof built === 'string') return built
 
+    const before = editor.view.state
     editor.view.dispatch(markAgent(built, tool))
+    // The editor gets the last word even after every guard above agreed. A
+    // `filterTransaction` -- core's, honouring stored `contenteditable="false"`,
+    // or one an integrator added -- drops a transaction silently and leaves the
+    // state object identical. Reporting success there would be reporting a write
+    // that did not happen, which is the one failure this whole path is shaped to
+    // avoid.
+    if (editor.view.state === before) {
+      return fail('refused', 'the editor refused that change: that text is locked.')
+    }
     return ok({ id: editor.id })
   })
+}
+
+/**
+ * Whether an agent may write to a given range at all, asked once.
+ *
+ * Three refusals, and none of them is this package's own policy: each one is a
+ * guard the editor already applies to the person sitting in front of it. An
+ * agent that got past any of them would be doing something no keyboard shortcut
+ * and no toolbar button can do, which is the opposite of what routing through
+ * the editor's own guards is for.
+ *
+ * It answers with the finished failure string rather than a boolean so that
+ * every tool that writes refuses in the same words. Exported because a tool
+ * that cannot hand `writeAt` a finished transaction -- `openleaf_apply_command`
+ * runs the editor's own command and captures what it produces -- still has to
+ * ask exactly these three questions, in exactly this order.
+ */
+export function refuseWrite(editor: RegisteredEditor, from: number, to: number): string | null {
+  if (editor.host.hasAttribute('readonly')) {
+    return fail(
+      'refused',
+      'that editor is readonly. Its own toolbar is unavailable too, so there is ' +
+        'nothing to retry while the attribute is set.',
+    )
+  }
+
+  // Read through the property rather than requiring it on the host type: the
+  // element is a peer dependency over a range, and one that predates source
+  // view simply has no source view to be in.
+  if ((editor.host as { sourceMode?: boolean }).sourceMode === true) {
+    return fail(
+      'refused',
+      'that editor has its HTML source view open: the author is editing its ' +
+        'markup by hand, and a change made now would be discarded when the view ' +
+        'closes. Read the document again before retrying.',
+    )
+  }
+
+  if (touchesPreserved(editor.view.state.doc, from, to)) {
+    return fail(
+      'preserved-region',
+      'that range covers markup the editor preserves verbatim and hands back ' +
+        'byte-identical; nothing edits inside it. Target text outside it.',
+    )
+  }
+
+  return null
 }
 
 /**

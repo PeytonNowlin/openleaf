@@ -163,6 +163,17 @@ interface WriteResult {
 const write = (page: Page, args: Record<string, unknown>): Promise<WriteResult> =>
   call(page, 'openleaf_replace_at', args) as Promise<WriteResult>
 
+interface Applied {
+  ok: boolean
+  error?: string
+  message?: string
+  id?: string
+  command?: string
+}
+
+const applied = (page: Page, args: Record<string, unknown>): Promise<Applied> =>
+  call(page, 'openleaf_apply_command', args) as Promise<Applied>
+
 /** The annotations the client driving the agent reads before it calls anything. */
 function annotations(page: Page, name: string): Promise<unknown> {
   return page.evaluate((toolName) => {
@@ -534,8 +545,11 @@ test.describe('outlining a document', () => {
 
   test('describes the blocks the author has just typed', async ({ page }) => {
     // Aimed at the first paragraph rather than at the editor's centre, which
-    // lands in the preserved callout now that the fixture carries one.
+    // lands in the preserved callout now that the fixture carries one -- and
+    // waiting for focus, because a keypress that arrives before the click has
+    // placed the caret types at position 0 instead of at the end of the line.
     await editor(page).getByText('alpha beta').click()
+    await expect(editor(page)).toBeFocused()
     await page.keyboard.press('End')
     await page.keyboard.press('Enter')
     await page.keyboard.type('a second paragraph')
@@ -699,5 +713,159 @@ test.describe('writing to an editor', () => {
     expect(result).toMatchObject({ ok: false, error: 'invalid-argument' })
     expect(result.message).toContain('post-body')
     expect(await stored(page, 'comment')).toBe(before)
+  })
+})
+
+/**
+ * Applying a command, asserted through what the form would submit.
+ *
+ * The stored value is the only thing that answers the question the tool is for:
+ * an agent said "bold this", and the host has to end up posting markup that has
+ * it. Nothing here reaches for the register, the handle table or the
+ * transaction marker.
+ */
+test.describe('applying a command', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(HARNESS)
+    await expect(editor(page)).toBeVisible()
+  })
+
+  test('offers the tool, and says it writes', async ({ page }) => {
+    expect(await toolNames(page)).toContain('openleaf_apply_command')
+    // The only tool here that is not read-only, which is what lets the client
+    // driving the agent decide this is the call worth confirming with a person.
+    expect(await annotations(page, 'openleaf_apply_command')).toEqual({
+      readOnlyHint: false,
+      untrustedContentHint: false,
+    })
+  })
+
+  test('formats the text a handle names', async ({ page }) => {
+    const handle = await handleFor(page, 'post-body', 'beta')
+    expect(await applied(page, { id: 'post-body', command: 'bold', handle })).toEqual({
+      ok: true,
+      id: 'post-body',
+      command: 'bold',
+    })
+    // `toContain` rather than an equality: `post-body` also carries the
+    // preserved callout the write tests lean on, and this assertion is about
+    // the paragraph the handle named.
+    await expect.poll(() => stored(page)).toContain('<p>alpha <strong>beta</strong></p>')
+  })
+
+  test('lands as one undoable step', async ({ page }) => {
+    // One transaction per call is what makes this true, and an author pressing
+    // undo once is the only place it is observable from outside.
+    const before = await stored(page)
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await applied(page, { id: 'post-body', command: 'bold', handle })
+    await expect.poll(() => stored(page)).toContain('<strong>')
+    // Aimed at the paragraph rather than at the editor's centre, which lands in
+    // the preserved callout the fixture carries.
+    await editor(page).getByText('alpha beta').click()
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(() => stored(page)).toBe(before)
+  })
+
+  test('leaves the other editors alone', async ({ page }) => {
+    const untouched = await stored(page, 'body')
+    const handle = await handleFor(page, 'comment-box', 'delta')
+    expect((await applied(page, { id: 'comment-box', command: 'italic', handle })).ok).toBe(true)
+    await expect.poll(() => stored(page, 'comment')).toBe('<p><em>delta</em></p>')
+    expect(await stored(page, 'body')).toBe(untouched)
+  })
+
+  test('refuses a command this editor does not offer, and writes nothing', async ({ page }) => {
+    // `blockType` is registered on this page -- `post-body` carries it -- and is
+    // not on the comment box's bar. The answer has to be per editor, because
+    // restricting one editor is a layout decision rather than an uninstall.
+    const handle = await handleFor(page, 'comment-box', 'delta')
+    const result = await applied(page, { id: 'comment-box', command: 'blockType', handle })
+    expect(result).toMatchObject({ ok: false, error: 'unknown-command' })
+    expect(result.message).toContain('openleaf_get_capabilities')
+    expect(await stored(page, 'comment')).toBe('<p>delta</p>')
+  })
+
+  test('refuses a command nothing on the page registered', async ({ page }) => {
+    // No table bundle is loaded here, so `insertTable` exists in no registry --
+    // which is exactly what `openleaf_get_capabilities` already reports.
+    const before = await stored(page)
+    const handle = await handleFor(page, 'post-body', 'beta')
+    expect(await applied(page, { id: 'post-body', command: 'insertTable', handle })).toMatchObject({
+      ok: false,
+      error: 'unknown-command',
+    })
+    expect(await stored(page)).toBe(before)
+  })
+
+  test('refuses a control that only works through the interface', async ({ page }) => {
+    // `blockType` applies a heading, is registered, and is on this editor's bar
+    // -- and builds its own control rather than being a command, so there is
+    // nothing to run. Reporting it applied is the worst of the three answers:
+    // the agent moves on believing the heading exists.
+    const before = await stored(page)
+    const handle = await handleFor(page, 'post-body', 'beta')
+    expect(await applied(page, { id: 'post-body', command: 'blockType', handle })).toMatchObject({
+      ok: false,
+      error: 'unsupported-command',
+    })
+    expect(await stored(page)).toBe(before)
+  })
+
+  test('everything it reports as a command is a command or an honest refusal', async ({ page }) => {
+    // The pair of criteria in one assertion: nothing outside the capability
+    // list can be applied, and nothing inside it answers "no such command".
+    const handle = await handleFor(page, 'post-body', 'beta')
+    for (const id of await commandIds(page, 'post-body')) {
+      const result = await applied(page, { id: 'post-body', command: id, handle })
+      expect(result.error, `${id} reported as offered but unknown`).not.toBe('unknown-command')
+    }
+  })
+
+  test('refuses a handle whose text has been deleted', async ({ page }) => {
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await editor(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('rewritten')
+    await expect.poll(() => stored(page)).toContain('rewritten')
+    expect(await applied(page, { id: 'post-body', command: 'bold', handle })).toMatchObject({
+      ok: false,
+      error: 'stale-handle',
+    })
+  })
+
+  test('refuses a handle from another editor', async ({ page }) => {
+    const before = await stored(page)
+    const notes = await stored(page, 'notes')
+    const handle = await handleFor(page, 'editor-2', 'gamma')
+    expect(await applied(page, { id: 'post-body', command: 'bold', handle })).toMatchObject({
+      ok: false,
+      error: 'invalid-argument',
+    })
+    expect(await stored(page)).toBe(before)
+    expect(await stored(page, 'notes')).toBe(notes)
+  })
+
+  test('refuses an editor that is not on the page', async ({ page }) => {
+    const handle = await handleFor(page, 'post-body', 'beta')
+    expect(await applied(page, { id: 'no-such-editor', command: 'bold', handle })).toMatchObject({
+      ok: false,
+      error: 'unknown-editor',
+    })
+  })
+
+  test('refuses while the author is editing the HTML by hand', async ({ page }) => {
+    // Source view disables every toolbar control, because a command applied
+    // here runs against the hidden document that closing the view parses over
+    // the top of -- the change would be reported and then thrown away.
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await page.evaluate(() => {
+      const host = document.getElementById('post-body') as HTMLElement & { sourceMode: boolean }
+      host.sourceMode = true
+    })
+    expect(await applied(page, { id: 'post-body', command: 'bold', handle })).toMatchObject({
+      ok: false,
+      error: 'refused',
+    })
   })
 })
