@@ -52,30 +52,47 @@ describe('the tool set', () => {
       'openleaf_list_editors',
       'openleaf_get_capabilities',
       'openleaf_get_document',
+      'openleaf_find_text',
     ])
   })
 
-  it('annotates every tool read-only, and says which ones return content', () => {
-    // Nothing here writes yet, so a tool claiming otherwise would have a client
-    // asking a person before every read. The content hint is the half that
-    // varies: it marks the results an agent must treat as data rather than as
-    // instructions addressed to it.
-    const contentReturning = webmcp.agentTools
-      .filter((tool) => tool.annotations.untrustedContentHint)
-      .map((tool) => tool.name)
-    expect(webmcp.agentTools.every((tool) => tool.annotations.readOnlyHint)).toBe(true)
-    expect(contentReturning).toEqual(['openleaf_get_document'])
+  it('says of every tool whether it writes, and whether it hands back document content', () => {
+    // Not a restatement of the type. These two flags are what the client
+    // driving the agent reads to decide whether a call needs a person's
+    // confirmation, and whether what comes back may contain instructions aimed
+    // at the agent -- a tool that returns document text and does not say so is
+    // the failure this pins.
+    const annotated = Object.fromEntries(
+      webmcp.agentTools.map((tool) => [tool.name, tool.annotations]),
+    )
+    expect(annotated).toEqual({
+      openleaf_list_editors: { readOnlyHint: true, untrustedContentHint: false },
+      openleaf_get_capabilities: { readOnlyHint: true, untrustedContentHint: false },
+      openleaf_get_document: { readOnlyHint: true, untrustedContentHint: true },
+      openleaf_find_text: { readOnlyHint: true, untrustedContentHint: true },
+    })
   })
 
-  it('asks for an editor by id everywhere except the listing', () => {
-    // The listing is the one call that can have no id, because it is where an
-    // id comes from. Every other tool requires one -- there is no implicit
-    // "current editor" on a page with three of them.
-    for (const tool of webmcp.agentTools) {
-      const required = tool.inputSchema.required ?? []
-      if (tool.name === 'openleaf_list_editors') expect(required).toEqual([])
-      else expect(required).toEqual(['id'])
-    }
+  it('names an editor in every tool except the listing', () => {
+    // The listing is the one call that can have no editor argument, because it
+    // is where an identifier comes from. Every other tool requires one -- there
+    // is no implicit "current editor" on a page with three of them.
+    //
+    // Pinned per tool rather than as one rule because the surface currently
+    // spells that argument two ways: `id` on the tools that go through
+    // `editor-arg.ts`, and `editor` on the search. The two landed concurrently
+    // and both are published to agents, so this records the divergence instead
+    // of hiding it -- aligning them is a deliberate change to a published
+    // argument name, not something to do quietly in a merge.
+    const required = Object.fromEntries(
+      webmcp.agentTools.map((tool) => [tool.name, tool.inputSchema.required ?? []]),
+    )
+    expect(required).toEqual({
+      openleaf_list_editors: [],
+      openleaf_get_capabilities: ['id'],
+      openleaf_get_document: ['id'],
+      openleaf_find_text: ['editor', 'text'],
+    })
   })
 
   it('gives every tool a title, a description and annotations', () => {

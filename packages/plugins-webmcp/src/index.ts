@@ -14,6 +14,7 @@
 
 import { registerEditorPlugin } from '@openleaf-editor/core'
 import { resolveModelContext } from './agent.js'
+import { agentHandles } from './handles.js'
 import { agentRegistry } from './registry.js'
 import { agentTools } from './tools.js'
 
@@ -62,7 +63,11 @@ export function installAgentTools(options: AgentToolsOptions = {}): void {
   if (installed) return
   installed = true
 
-  registerEditorPlugin(() => [agentRegistry()])
+  // Two plugins, both per editor and both storage rather than behaviour: the
+  // register, which is how a tool finds an editor by name, and the handle
+  // table, which is how it finds a place inside one after the document has
+  // moved under it.
+  registerEditorPlugin(() => [agentRegistry(), agentHandles()])
 
   const context = resolveModelContext()
   if (!context) return

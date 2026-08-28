@@ -22,6 +22,14 @@ interface ListedEditor {
   label: string | null
 }
 
+interface FoundText {
+  ok: boolean
+  error?: string
+  message?: string
+  matches?: { handle: string; context: string }[]
+  truncated?: boolean
+}
+
 /** The tool set as the script-tag bundle publishes it. */
 function toolNames(page: Page): Promise<string[]> {
   return page.evaluate(() => {
@@ -89,6 +97,19 @@ async function documentHtml(page: Page, id: string): Promise<string> {
   return result.html
 }
 
+const found = (page: Page, id: string, text: string): Promise<FoundText> =>
+  call(page, 'openleaf_find_text', { editor: id, text }) as Promise<FoundText>
+
+/** The annotations the client driving the agent reads before it calls anything. */
+function annotations(page: Page, name: string): Promise<unknown> {
+  return page.evaluate((toolName) => {
+    const host = globalThis as unknown as {
+      OpenLeaf?: { agentTools?: { name: string; annotations: unknown }[] }
+    }
+    return host.OpenLeaf?.agentTools?.find((tool) => tool.name === toolName)?.annotations
+  }, name)
+}
+
 test.describe('core bundle alone', () => {
   test('exposes no agent tools', async ({ page }) => {
     await page.goto(CORE_ONLY)
@@ -118,13 +139,10 @@ test.describe('with the agent tool bundle loaded', () => {
     // a person. A read tool that claimed to write would get confirmed at every
     // call; one that returned document content without saying so would hand an
     // agent text aimed at it with no warning attached.
-    const annotations = await page.evaluate(() => {
-      const host = globalThis as unknown as {
-        OpenLeaf?: { agentTools?: { name: string; annotations: unknown }[] }
-      }
-      return host.OpenLeaf?.agentTools?.find((t) => t.name === 'openleaf_list_editors')?.annotations
+    expect(await annotations(page, 'openleaf_list_editors')).toEqual({
+      readOnlyHint: true,
+      untrustedContentHint: false,
     })
-    expect(annotations).toEqual({ readOnlyHint: true, untrustedContentHint: false })
   })
 
   test('returns one entry per editor on the page', async ({ page }) => {
@@ -275,13 +293,10 @@ test.describe('reading an editor', () => {
     // The annotation this package exists to get right: a document is where text
     // aimed at the agent reading it hides, and this is what tells the client
     // driving the agent to treat it as data.
-    const annotations = await page.evaluate(() => {
-      const host = globalThis as unknown as {
-        OpenLeaf?: { agentTools?: { name: string; annotations: unknown }[] }
-      }
-      return host.OpenLeaf?.agentTools?.find((t) => t.name === 'openleaf_get_document')?.annotations
+    expect(await annotations(page, 'openleaf_get_document')).toEqual({
+      readOnlyHint: true,
+      untrustedContentHint: true,
     })
-    expect(annotations).toEqual({ readOnlyHint: true, untrustedContentHint: true })
   })
 
   test('fails clearly on an editor that was removed from the page', async ({ page }) => {
@@ -300,5 +315,89 @@ test.describe('reading an editor', () => {
       ok: false,
       error: 'invalid-argument',
     })
+  })
+})
+
+/**
+ * Searching, through the shipped bundle and against real editors.
+ *
+ * What a handle is worth after the document changes is asserted in
+ * `packages/plugins-webmcp/test/handles.test.ts`, which can resolve one; no
+ * tool consumes a handle yet, so there is nothing to drive from here. What this
+ * covers is the half only a browser can answer: that the search reads the live
+ * document of the editor it was named, including text the author has just
+ * typed into it.
+ */
+test.describe('finding text', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(HARNESS)
+    await expect(editor(page)).toBeVisible()
+  })
+
+  test('offers the search tool', async ({ page }) => {
+    expect(await toolNames(page)).toContain('openleaf_find_text')
+  })
+
+  test('marks the search read-only, and what it returns untrusted', async ({ page }) => {
+    // It reads the document and hands back the text around each match, so the
+    // client driving the agent has to know that an instruction found in there
+    // is content, not an instruction.
+    expect(await annotations(page, 'openleaf_find_text')).toEqual({
+      readOnlyHint: true,
+      untrustedContentHint: true,
+    })
+  })
+
+  test('returns a handle and the text around each match', async ({ page }) => {
+    const result = await found(page, 'post-body', 'beta')
+    expect(result.ok).toBe(true)
+    expect(result.truncated).toBe(false)
+    expect(result.matches).toHaveLength(1)
+    const [match] = result.matches ?? []
+    expect(typeof match?.handle).toBe('string')
+    expect(match?.handle.length).toBeGreaterThan(0)
+    expect(match?.context).toContain('beta')
+  })
+
+  test('searches the editor it was named and no other', async ({ page }) => {
+    // "gamma" is in the second editor only. A tool that searched the page, or
+    // fell back to the first editor, would find it either way.
+    expect((await found(page, 'post-body', 'gamma')).matches).toEqual([])
+    expect((await found(page, 'editor-2', 'gamma')).matches).toHaveLength(1)
+  })
+
+  test('answers text that is not there with no matches, not a failure', async ({ page }) => {
+    expect(await found(page, 'post-body', 'omega')).toEqual({
+      ok: true,
+      matches: [],
+      truncated: false,
+    })
+  })
+
+  test('refuses an editor it does not know, and says what to do instead', async ({ page }) => {
+    const result = await found(page, 'no-such-editor', 'beta')
+    expect(result).toMatchObject({ ok: false, error: 'unknown-editor' })
+    expect(result.message).toContain('openleaf_list_editors')
+  })
+
+  test('hands back handles that say nothing about where they point', async ({ page }) => {
+    const first = (await found(page, 'post-body', 'beta')).matches?.[0]?.handle
+    const again = (await found(page, 'post-body', 'beta')).matches?.[0]?.handle
+    expect(first).toBeTruthy()
+    // Anything an agent can read out of a handle is something it will
+    // eventually compute with, and a computed handle is a write to a position
+    // nobody chose.
+    expect(first).not.toContain('post-body')
+    expect(first).not.toContain('beta')
+    expect(first).not.toBe(again)
+  })
+
+  test('finds text the author has just typed', async ({ page }) => {
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' and beta again')
+    // The search reads the editor's live state, not the markup the page loaded
+    // with -- which is the whole reason it runs in a real browser.
+    await expect.poll(async () => (await found(page, 'post-body', 'beta')).matches?.length).toBe(2)
   })
 })

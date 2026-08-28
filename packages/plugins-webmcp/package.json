@@ -35,12 +35,14 @@
   "peerDependencies": {
     "@openleaf-editor/core": "workspace:^",
     "@openleaf-editor/ui": "workspace:^",
+    "prosemirror-model": "^1.24.1",
     "prosemirror-state": "^1.4.3",
     "prosemirror-view": "^1.37.0"
   },
   "devDependencies": {
     "@openleaf-editor/core": "workspace:*",
     "@openleaf-editor/ui": "workspace:*",
+    "prosemirror-model": "^1.24.1",
     "prosemirror-state": "^1.4.3",
     "prosemirror-view": "^1.37.0"
   }

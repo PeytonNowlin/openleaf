@@ -42,6 +42,17 @@ entries below say so explicitly when they do.
   agent reading it hides. Both are annotated read-only, and naming an editor
   that is not on the page answers with a failure that says to list again rather
   than with somebody else's document. `#243`
+- **`openleaf_find_text`: an agent can search an editor and get a handle for
+  every match.** A handle is how a later call names the same text, because a
+  selection does not survive the round trip out to an agent and back. Each
+  editor carries its handles through every transaction's position mapping, so
+  one taken before an edit elsewhere in the document still names the text it was
+  taken for — and one whose text has been deleted fails with `stale-handle`
+  rather than sliding onto the neighbouring position, which is how a stale
+  handle would otherwise become a write into something nobody chose. Handles are
+  opaque, so nothing an agent reads out of one can be computed with, and they
+  stop resolving when their editor leaves the page. Text that does not occur is
+  an empty result rather than an error. `#244`
 
 ### Fixed
 

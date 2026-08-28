@@ -23,6 +23,12 @@ export type ToolErrorCode =
   | 'unknown-editor'
   /** The arguments do not match the schema the tool published. Read it and retry. */
   | 'invalid-argument'
+  /**
+   * A handle no longer names anything -- the text it pointed at was deleted, or
+   * the editor holding it has left the page. The agent's move is to search
+   * again, which is why this is not folded into `invalid-argument`.
+   */
+  | 'stale-handle'
 
 /**
  * A success: the payload, carrying `"ok": true`.
