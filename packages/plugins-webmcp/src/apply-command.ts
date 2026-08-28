@@ -25,11 +25,11 @@ import type { Command, Selection, Transaction } from 'prosemirror-state'
 import { NodeSelection, TextSelection } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import type { AgentTool } from './agent.js'
-import { editorArgumentWith, withEditor } from './editor-arg.js'
+import { editorArgumentWith, stringArg, withEditor } from './editor-arg.js'
 import { offeredCommands } from './get-capabilities.js'
 import type { RegisteredEditor } from './registry.js'
 import { fail, ok } from './result.js'
-import { dispatchAgent, dispatchRefused, refuseWrite, targetFor } from './write.js'
+import { dispatchAgent, dispatchRefused, handleArgument, refuseWrite, targetFor } from './write.js'
 
 const NAME = 'openleaf_apply_command'
 
@@ -40,7 +40,8 @@ export const applyCommandTool: AgentTool = {
     "Apply one of an OpenLeaf editor's own editing commands -- bold, italic, a " +
     'list -- to the text a handle names. Returns JSON: {"ok":true,"id":string,' +
     '"command":string}. Pass "command" as an id openleaf_get_capabilities ' +
-    'reported for THIS editor, and "handle" as one from openleaf_find_text. ' +
+    'reported for THIS editor, and "handle" as one from openleaf_find_text or ' +
+    'openleaf_get_structure. ' +
     'The command runs with the same guards it has for a person clicking the ' +
     'button, so one that does not apply where the handle points fails with ' +
     '"refused" and changes nothing rather than reporting success. A name that ' +
@@ -55,10 +56,7 @@ export const applyCommandTool: AgentTool = {
         type: 'string',
         description: 'The command id, as reported by openleaf_get_capabilities for this editor.',
       },
-      handle: {
-        type: 'string',
-        description: 'A handle from openleaf_find_text, naming the text to apply the command to.',
-      },
+      ...handleArgument,
     },
     ['command', 'handle'],
   ),
@@ -70,7 +68,7 @@ export const applyCommandTool: AgentTool = {
     untrustedContentHint: false,
   },
   execute(args) {
-    const name = typeof args['command'] === 'string' ? args['command'] : ''
+    const name = stringArg(args, 'command')
     if (name === '') {
       return fail(
         'invalid-argument',

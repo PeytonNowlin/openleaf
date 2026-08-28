@@ -33,7 +33,7 @@ import { Slice, type Node as PMNode } from 'prosemirror-model'
 import { PluginKey, type Transaction } from 'prosemirror-state'
 import type { EditorView } from 'prosemirror-view'
 import type { AgentToolInputSchema } from './agent.js'
-import { withEditor } from './editor-arg.js'
+import { stringArg, withEditor } from './editor-arg.js'
 import { resolveHandle } from './handles.js'
 import type { RegisteredEditor } from './registry.js'
 import { fail, ok } from './result.js'
@@ -217,8 +217,8 @@ export function targetFor(
   args: Record<string, unknown>,
   editor: RegisteredEditor,
 ): AgentTarget | string {
-  const handle = args['handle']
-  if (typeof handle !== 'string' || handle === '') {
+  const handle = stringArg(args, 'handle')
+  if (handle === '') {
     return fail(
       'invalid-argument',
       'pass "handle", a handle from openleaf_find_text or openleaf_get_structure ' +

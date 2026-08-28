@@ -1,5 +1,6 @@
 /**
- * The `id` argument every tool but the listing takes.
+ * The arguments every tool shares: the `id` naming an editor, and the reading
+ * of a string argument out of whatever the agent actually sent.
  *
  * A page-global tool set has no implicit "current editor" -- there are several
  * on the page and nothing focuses one of them -- so naming an editor is the
@@ -45,6 +46,23 @@ export function editorArgumentWith(
 }
 
 /**
+ * One string argument, as the agent sent it, or `''` if it sent nothing usable.
+ *
+ * Every tool has at least one of these and they were being spelled two
+ * different ways, which is one way too many for a check this load-bearing:
+ * `args` is whatever the agent sent, the browser parses it but nothing checks
+ * it against the schema the tool published, so a missing argument, a `null`, an
+ * object and a number all arrive here as things that are not strings. Folding
+ * them all into the empty string means a tool's guard is one comparison and
+ * every tool guards alike. The message stays the tool's own: it is the only
+ * place an agent is told what to send instead.
+ */
+export function stringArg(args: Record<string, unknown>, name: string): string {
+  const value = args[name]
+  return typeof value === 'string' ? value : ''
+}
+
+/**
  * Resolve `args.id` and hand the editor to `answer`, or return the failure.
  *
  * `args` is whatever the agent sent. The browser parses it, but nothing checks
@@ -57,8 +75,8 @@ export function withEditor(
   args: Record<string, unknown>,
   answer: (editor: RegisteredEditor) => string,
 ): string {
-  const id = args['id']
-  if (typeof id !== 'string' || id === '') {
+  const id = stringArg(args, 'id')
+  if (id === '') {
     return fail('invalid-argument', 'pass "id", the identifier of an editor from openleaf_list_editors')
   }
 

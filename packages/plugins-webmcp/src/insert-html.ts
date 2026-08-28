@@ -20,7 +20,7 @@
 
 import type { ResolvedPos } from 'prosemirror-model'
 import type { AgentTool } from './agent.js'
-import { editorArgumentWith } from './editor-arg.js'
+import { editorArgumentWith, stringArg } from './editor-arg.js'
 import { fail } from './result.js'
 import { agentSlice, handleArgument, writeAt } from './write.js'
 
@@ -60,8 +60,8 @@ export const insertHtmlTool: AgentTool = {
     untrustedContentHint: false,
   },
   execute(args) {
-    const html = args['html']
-    if (typeof html !== 'string' || html === '') {
+    const html = stringArg(args, 'html')
+    if (html === '') {
       return fail('invalid-argument', 'pass "html", the content to insert')
     }
 

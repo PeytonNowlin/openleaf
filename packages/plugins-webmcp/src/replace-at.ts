@@ -8,7 +8,7 @@
  */
 
 import type { AgentTool } from './agent.js'
-import { editorArgumentWith } from './editor-arg.js'
+import { editorArgumentWith, stringArg } from './editor-arg.js'
 import { fail } from './result.js'
 import { agentSlice, handleArgument, writeAt } from './write.js'
 
@@ -45,8 +45,8 @@ export const replaceAtTool: AgentTool = {
     untrustedContentHint: false,
   },
   execute(args) {
-    const html = args['html']
-    if (typeof html !== 'string' || html === '') {
+    const html = stringArg(args, 'html')
+    if (html === '') {
       // An empty string is refused rather than treated as a deletion. A model
       // whose template rendered nothing sends exactly that, and "replace" is
       // not a word anyone reads as "delete"; erasing a passage on the strength

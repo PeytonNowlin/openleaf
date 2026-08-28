@@ -10,7 +10,7 @@
 
 import type { Node as PMNode } from 'prosemirror-model'
 import type { AgentTool } from './agent.js'
-import { editorArgumentWith, withEditor } from './editor-arg.js'
+import { editorArgumentWith, stringArg, withEditor } from './editor-arg.js'
 import { createHandles, type HandleRange } from './handles.js'
 import { fail, ok } from './result.js'
 
@@ -75,7 +75,7 @@ export const findTextTool: AgentTool = {
     untrustedContentHint: true,
   },
   execute(args) {
-    const text = typeof args.text === 'string' ? args.text : ''
+    const text = stringArg(args, 'text')
     if (text === '') {
       return fail(
         'invalid-argument',
