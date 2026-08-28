@@ -258,9 +258,12 @@ await build({
 const insertGz = report('openleaf-insert.min.js', src('./openleaf-insert.min.js'))
 
 /* ---- opt-in agent tool surface (WebMCP) ----
-   The smallest bundle here, and it should stay that way: no icons, no
+   The smallest *budget* here -- 8 KB -- rather than the smallest bundle: at
+   7.2 KB gzipped it is bigger than import, colour and highlight. What keeps it
+   near its ceiling is structural, and should stay that way: no icons, no
    stylesheet, no dialogs, and nothing in it that an editor without an agent
-   driving it ever runs. */
+   driving it ever runs. Most of the rest is the tools' own descriptions, which
+   are the only documentation an agent ever reads. */
 await build({
   entryPoints: [src('./entry-webmcp.ts')],
   bundle: true,

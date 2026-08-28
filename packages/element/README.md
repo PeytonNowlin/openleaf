@@ -55,7 +55,8 @@ npm install @openleaf-editor/plugins-table@beta \
             @openleaf-editor/plugins-import@beta \
             @openleaf-editor/plugins-import-docx@beta \
             @openleaf-editor/plugins-session@beta \
-            @openleaf-editor/plugins-insert@beta
+            @openleaf-editor/plugins-insert@beta \
+            @openleaf-editor/plugins-webmcp@beta
 ```
 
 ```ts
@@ -66,6 +67,7 @@ import { installImport } from '@openleaf-editor/plugins-import'
 import { installDocxImport } from '@openleaf-editor/plugins-import-docx'
 import { installSessionTools } from '@openleaf-editor/plugins-session'
 import { installInsertTools } from '@openleaf-editor/plugins-insert'
+import { installAgentTools } from '@openleaf-editor/plugins-webmcp'
 
 installTableEditing()
 installColourPicker()
@@ -74,6 +76,10 @@ installImport()
 installDocxImport()
 installSessionTools()
 installInsertTools()
+// Offers an agent driving the page a tool set for the editors on it. Opt-in
+// and silent in a browser without the API; see the package README for the
+// per-call permission predicate.
+installAgentTools()
 ```
 
 **Keep every `@openleaf-editor/*` package on the same version.** They pin each
