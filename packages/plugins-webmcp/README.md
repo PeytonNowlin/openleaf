@@ -258,7 +258,8 @@ to an agent and back. So `openleaf_find_text` returns a **handle** per match, an
 passes to a later call.
 
 ```json
-{ "ok": true, "matches": [{ "handle": "…", "context": "the first beta here" }], "truncated": false }
+{ "ok": true, "id": "post-body",
+  "matches": [{ "handle": "…", "context": "the first beta here" }], "truncated": false }
 ```
 
 - **Handles are opaque.** They encode nothing: not the position, not the editor,
@@ -284,7 +285,7 @@ passes to a later call.
 `openleaf_find_text` matches a literal string, case sensitively, one block at a
 time — so a query spanning a mark boundary (`be<strong>ta</strong>`) is one
 match, and one spanning a paragraph break is none. Text that does not occur is
-`{"ok":true,"matches":[]}`, not an error. At most 50 matches come back, with
+an empty `"matches"`, not an error. At most 50 matches come back, with
 `"truncated": true` when there were more, because an agent that believes it has
 seen every occurrence will replace them all.
 

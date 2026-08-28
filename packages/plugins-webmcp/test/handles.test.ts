@@ -44,6 +44,7 @@ function editor(id: string, html: string): EditorView {
 
 interface FindResult {
   ok: boolean
+  id?: string
   error?: string
   message?: string
   matches?: { handle: string; context: string }[]
@@ -84,7 +85,7 @@ describe('searching', () => {
     editor('post', '<p>alpha beta</p>')
     // An agent that is told "error" retries; an agent that is told "none" moves
     // on. Not finding something is an answer.
-    expect(find('post', 'omega')).toEqual({ ok: true, matches: [], truncated: false })
+    expect(find('post', 'omega')).toEqual({ ok: true, id: 'post', matches: [], truncated: false })
   })
 
   it('reads through a mark boundary but not through a paragraph one', () => {

@@ -25,6 +25,7 @@ interface ListedEditor {
 
 interface FoundText {
   ok: boolean
+  id?: string
   error?: string
   message?: string
   matches?: { handle: string; context: string }[]
@@ -446,6 +447,7 @@ test.describe('finding text', () => {
   test('answers text that is not there with no matches, not a failure', async ({ page }) => {
     expect(await found(page, 'post-body', 'omega')).toEqual({
       ok: true,
+      id: 'post-body',
       matches: [],
       truncated: false,
     })
