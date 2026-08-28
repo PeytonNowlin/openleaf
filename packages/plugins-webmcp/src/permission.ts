@@ -21,6 +21,7 @@
  */
 
 import type { AgentTool } from './agent.js'
+import { stringArg } from './editor-arg.js'
 import { fail } from './result.js'
 
 /** What the host is told about a call before it happens. */
@@ -114,12 +115,14 @@ export function gated(tool: AgentTool): AgentTool {
     ...tool,
     execute(args) {
       if (permission) {
-        const id = args['id']
+        const id = stringArg(args, 'id')
         let allowed: boolean
         try {
           allowed = permission({
             tool: tool.name,
-            editor: typeof id === 'string' && id !== '' ? id : null,
+            // `null` rather than `''` for a call that names no editor, so a
+            // host testing `editor === 'draft'` cannot match it by accident.
+            editor: id === '' ? null : id,
             readOnly: tool.annotations.readOnlyHint,
           })
         } catch {
