@@ -204,6 +204,41 @@ describe('what the predicate is told', () => {
   })
 })
 
+/**
+ * `true`, and nothing that merely looks like it.
+ *
+ * The predicate is a function on the page's own global, handed over by an
+ * integrator who may have no types in front of them at all. The contract is
+ * that `true` allows a call, so an answer that is not `true` is a policy that
+ * did not compile to an answer -- and reading one as a yes would be reading it
+ * as authorization.
+ */
+describe('a predicate that answers with something other than true', () => {
+  it('refuses an async predicate rather than reading its Promise as a yes', () => {
+    const view = editor('post-body', '<p>alpha beta</p>')
+    const handle = call('openleaf_find_text', { id: 'post-body', text: 'beta' }).matches?.[0]
+      ?.handle
+
+    // The mistake this exists for: `async` is what a host reaches for when the
+    // decision looks like it needs a lookup, and the Promise it returns is
+    // truthy whether the policy would have said yes or no.
+    ;(webmcp.registerAgentPermission as (allow: unknown) => void)(async () => false)
+
+    const result = call('openleaf_replace_at', { id: 'post-body', handle, html: '<em>g</em>' })
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('refused')
+    expect(serializeHtml(view.state.doc)).toBe('<p>alpha beta</p>')
+  })
+
+  it('refuses any other truthy answer', () => {
+    editor('post-body', '<p>alpha beta</p>')
+    // A predicate whose body ends in the session it looked the decision up in.
+    ;(webmcp.registerAgentPermission as (allow: unknown) => void)(() => ({ user: 'editor' }))
+
+    expect(call('openleaf_get_document', { id: 'post-body' }).error).toBe('refused')
+  })
+})
+
 describe('a predicate that throws', () => {
   it('refuses instead of reaching the agent as a crashed call', () => {
     const view = editor('post-body', '<p>alpha beta</p>')

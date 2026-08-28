@@ -214,7 +214,9 @@ editor the call names, and whether the tool only reads. Answering `false`
 returns `refused` to the agent and changes nothing, because the question
 is asked before any argument is validated and before anything touches an
 editor; a predicate that throws is treated the same way rather than
-reaching the agent as a crashed call. The setting is set-once and cannot
+reaching the agent as a crashed call, and so is one that answers with
+anything other than `true` -- the answer is compared with `===`, so an
+`async` predicate's Promise refuses rather than reading as a truthy yes. The setting is set-once and cannot
 be cleared -- the script-tag spelling, `OpenLeaf.registerAgentPermission`,
 is a function on the page's own global, so a later script would otherwise
 be able to replace the policy or take it off. It is where the integrator

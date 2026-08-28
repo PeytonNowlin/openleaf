@@ -282,8 +282,10 @@ A call it refuses returns `{"ok":false,"error":"refused","message":"…"}` to th
 agent and changes nothing: the question is asked before any argument is validated
 and before anything touches an editor, so a refusal is not a partial call. A
 predicate that throws is treated as a refusal rather than reaching the agent as a
-crashed call. With no predicate supplied, every tool behaves exactly as it does
-without the option.
+crashed call. So is one that answers with anything other than `true` — the answer
+is compared with `===`, so an `async` predicate's Promise is a refusal rather
+than a truthy yes. With no predicate supplied, every tool behaves exactly as it
+does without the option.
 
 From a script tag the predicate is `OpenLeaf.registerAgentPermission(fn)` — that
 bundle installs on load, so `installAgentTools`'s options argument is already

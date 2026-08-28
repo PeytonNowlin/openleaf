@@ -140,6 +140,12 @@ author meant after a tool is added to the set, and a list of names does not.
   feature, and the proposal's user-interaction mechanism is not something the
   shipping implementation can be relied on for. This asks a question the host can
   answer out of what it already knows.
+- **Only `true` allows a call.** The answer is compared with `===`, so anything
+  else refuses — including a truthy value that is not `true`. An `async`
+  predicate answers with a Promise, and one whose body ends in the session it
+  looked the decision up in answers with an object; both are truthy, and neither
+  is a policy that said yes. If your decision needs an `await`, cache the answer
+  and have the predicate read the cache.
 
 It is not a security boundary against the page itself. Anything running on the
 page can call `agentTools` directly, and everything the editor produces still has
@@ -413,6 +419,13 @@ heard of. There is no list of command names anywhere in the package.
   plain command underneath, so they answer `unsupported-command`. Retrying will
   not help, and reporting them as applied would be worse — the agent would move
   on believing the heading exists.
+- **Nor can a command that ignores the selection.** `undo` and `redo` are on the
+  default bar and do have a plain command, but they act on the document's last
+  history event wherever it happened — so a handle does not scope them, and an
+  agent that ran one would revert an author's unrelated work and be told the
+  handle-scoped call succeeded. They answer `unsupported-command` too. A toolbar
+  item declares this with `scope: 'document'` in
+  [`@openleaf-editor/ui`](../ui/README.md); nothing here keeps a list of names.
 - **A command that declines reports it.** `refused`, and the document is
   untouched. That is the greyed-out button, in words.
 - **Preserved markup is refused**, with `preserved-region`. So is a readonly

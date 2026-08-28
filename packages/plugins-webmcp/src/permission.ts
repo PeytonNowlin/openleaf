@@ -51,6 +51,13 @@ export interface AgentToolCall {
 /**
  * Whether a call may proceed. `true` allows it; anything else refuses it.
  *
+ * "Anything else" is meant literally: the answer is compared with `===`, so a
+ * predicate that answers with a truthy value which is not `true` -- an `async`
+ * one, whose answer is a Promise; one that ends in the session object it looked
+ * the decision up in -- refuses. A policy that did not compile to a yes is not
+ * a yes, and this is the one place in the package where guessing which was
+ * meant would be guessing about authorization.
+ *
  * Called on every tool call, before any argument is validated and before
  * anything is looked up, so a refusal cannot be a partial anything.
  */
@@ -116,7 +123,12 @@ export function gated(tool: AgentTool): AgentTool {
     execute(args) {
       if (permission) {
         const id = stringArg(args, 'id')
-        let allowed: boolean
+        // `unknown`, not `boolean`. This is host code reached through a function
+        // on the page's own global: the type says it answers with a boolean, and
+        // nothing makes that so. An `async` predicate answers with a Promise; one
+        // whose body ends in an assignment answers with the value assigned. Both
+        // are truthy.
+        let allowed: unknown
         try {
           allowed = permission({
             tool: tool.name,
@@ -134,7 +146,11 @@ export function gated(tool: AgentTool): AgentTool {
           // avoid. So it refuses, in the same words a deliberate refusal uses.
           allowed = false
         }
-        if (!allowed) {
+        // Exactly `true`, which is what the contract above says and what a host
+        // reading it would write. Anything else is a policy that did not compile
+        // to an answer to the question asked -- and "did not say yes" on a write
+        // path reads as no.
+        if (allowed !== true) {
           return fail(
             'refused',
             `this page does not allow ${tool.name} here. Nothing was read or ` +
