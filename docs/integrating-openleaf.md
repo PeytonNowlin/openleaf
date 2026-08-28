@@ -221,7 +221,7 @@ chosen editor package when possible:
 | Word `.docx` import | `@openleaf-editor/plugins-import-docx` | `installDocxImport()` |
 | Find, count, save, preview, print, and recovery | `@openleaf-editor/plugins-session` | `installSessionTools()`. Preview and print reuse the editor's `content-css`, canvas `dir` / `lang`, and (for preview) the active skin. |
 | Media, details, symbols, snippets, and image resize | `@openleaf-editor/plugins-insert` | `installInsertTools()` |
-| Agent tools (WebMCP) | `@openleaf-editor/plugins-webmcp` | `installAgentTools()`. Registers a page-global tool set an agent driving the browser can call: list the editors, ask one what it can do, read its content. Silent in a browser without the API. |
+| Agent tools (WebMCP) | `@openleaf-editor/plugins-webmcp` | `installAgentTools()`. Registers a page-global tool set an agent driving the browser can call: list the editors, ask one what it can do, read its content, search it, and rewrite a passage through the same paste policy a person's typing goes through. Silent in a browser without the API. |
 
 Example:
 

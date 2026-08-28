@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 /**
  * The agent tool surface, driven through its descriptors rather than through a
@@ -99,6 +100,24 @@ async function documentHtml(page: Page, id: string): Promise<string> {
 
 const found = (page: Page, id: string, text: string): Promise<FoundText> =>
   call(page, 'openleaf_find_text', { id, text }) as Promise<FoundText>
+
+/** The handle for the first match, which is the only addressing a write has. */
+async function handleFor(page: Page, id: string, text: string): Promise<string> {
+  const result = await found(page, id, text)
+  const handle = result.matches?.[0]?.handle
+  expect(handle, `nothing matched "${text}" in ${id}`).toBeTruthy()
+  return handle as string
+}
+
+interface WriteResult {
+  ok: boolean
+  id?: string
+  error?: string
+  message?: string
+}
+
+const write = (page: Page, args: Record<string, unknown>): Promise<WriteResult> =>
+  call(page, 'openleaf_replace_at', args) as Promise<WriteResult>
 
 /** The annotations the client driving the agent reads before it calls anything. */
 function annotations(page: Page, name: string): Promise<unknown> {
@@ -274,7 +293,7 @@ test.describe('reading an editor', () => {
   })
 
   test('returns the content as HTML', async ({ page }) => {
-    expect(await documentHtml(page, 'post-body')).toBe('<p>alpha beta</p>')
+    expect(await documentHtml(page, 'post-body')).toContain('<p>alpha beta</p>')
     // Each editor answers for itself, which is the whole reason the id is
     // required rather than there being a "current" editor.
     expect(await documentHtml(page, 'comment-box')).toBe('<p>delta</p>')
@@ -321,12 +340,12 @@ test.describe('reading an editor', () => {
 /**
  * Searching, through the shipped bundle and against real editors.
  *
- * What a handle is worth after the document changes is asserted in
- * `packages/plugins-webmcp/test/handles.test.ts`, which can resolve one; no
- * tool consumes a handle yet, so there is nothing to drive from here. What this
- * covers is the half only a browser can answer: that the search reads the live
- * document of the editor it was named, including text the author has just
- * typed into it.
+ * What this covers is the half only a browser can answer: that the search reads
+ * the live document of the editor it was named, including text the author has
+ * just typed into it. What a handle is worth after the document changes is
+ * asserted twice -- as position arithmetic in
+ * `packages/plugins-webmcp/test/handles.test.ts`, and end to end below, where a
+ * handle taken before an edit is written through after it.
  */
 test.describe('finding text', () => {
   test.beforeEach(async ({ page }) => {
@@ -399,5 +418,145 @@ test.describe('finding text', () => {
     // The search reads the editor's live state, not the markup the page loaded
     // with -- which is the whole reason it runs in a real browser.
     await expect.poll(async () => (await found(page, 'post-body', 'beta')).matches?.length).toBe(2)
+  })
+})
+
+/**
+ * Writing, which is the half of the surface that can do damage.
+ *
+ * Every assertion here goes through `stored()` -- what the form would actually
+ * post -- rather than through anything the plugin knows about itself. A write
+ * that changed the editor's view and not the value the host submits would pass
+ * any test that asked the plugin how it went.
+ */
+test.describe('writing to an editor', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(HARNESS)
+    await expect(editor(page)).toBeVisible()
+  })
+
+  test('offers the write tool, and does not claim it is read-only', async ({ page }) => {
+    expect(await toolNames(page)).toContain('openleaf_replace_at')
+    // The flag the client driving the agent reads to decide whether this is a
+    // call to ask a person about first.
+    expect(await annotations(page, 'openleaf_replace_at')).toEqual({
+      readOnlyHint: false,
+      untrustedContentHint: false,
+    })
+  })
+
+  test('replaces the text a handle names', async ({ page }) => {
+    const handle = await handleFor(page, 'post-body', 'beta')
+    expect(await write(page, { id: 'post-body', handle, html: 'sigma' })).toEqual({
+      ok: true,
+      id: 'post-body',
+    })
+    await expect.poll(() => stored(page)).toContain('<p>alpha sigma</p>')
+  })
+
+  test('leaves preserved markup byte-identical', async ({ page }) => {
+    // The guarantee the preservation layer makes to an author, under a writer
+    // it was not designed against. The wrapper is stored as an opaque atom
+    // carrying its own markup; a write two paragraphs away must not cost it a
+    // byte, an attribute or a quote character.
+    const before = await stored(page)
+    const wrapper = '<div class="callout" data-callout-id="7"><p>Load-bearing wrapper.</p></div>'
+    expect(before).toContain(wrapper)
+
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await write(page, { id: 'post-body', handle, html: 'sigma' })
+    await expect.poll(() => stored(page)).toContain('<p>alpha sigma</p>')
+    expect(await stored(page)).toBe(before.replace('alpha beta', 'alpha sigma'))
+  })
+
+  test('sanitizes before it parses', async ({ page }) => {
+    // The ordering the whole ticket turns on. Parsing first would hand the
+    // preservation layer a `<div>` the schema does not recognize, and it would
+    // keep the thing whole -- inline style and all -- for the life of the
+    // document. Running the paste policy first means the style is gone before
+    // the parser sees the markup, and an agent can put nothing into the
+    // document that a person could not have pasted into it.
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await write(page, {
+      id: 'post-body',
+      handle,
+      html: '<div class="callout" style="position:fixed"><p>injected</p></div>',
+    })
+    await expect.poll(() => stored(page)).toContain('injected')
+    expect(await stored(page)).not.toContain('position:fixed')
+  })
+
+  test('refuses content the paste policy leaves nothing of, and writes nothing', async ({
+    page,
+  }) => {
+    const before = await stored(page)
+    const handle = await handleFor(page, 'post-body', 'beta')
+    const result = await write(page, {
+      id: 'post-body',
+      handle,
+      html: '<script>alert(1)</script>',
+    })
+    expect(result).toMatchObject({ ok: false, error: 'rejected-content' })
+    expect(await stored(page)).toBe(before)
+  })
+
+  test('refuses a range covering preserved markup, and writes nothing', async ({ page }) => {
+    // The reachable route to preserved content: the search stands an inline
+    // atom in for one object-replacement character, so an agent that searches
+    // for that character is handed a handle onto the `<ins>` this editor is
+    // preserving. Refusing is what keeps the byte-identical promise true under
+    // an agent that went looking.
+    const before = await stored(page, 'notes')
+    expect(before).toContain('<ins>tracked</ins>')
+
+    const handle = await handleFor(page, 'editor-2', '\uFFFC')
+    const result = await write(page, { id: 'editor-2', handle, html: 'plain' })
+    expect(result).toMatchObject({ ok: false, error: 'preserved-region' })
+    expect(await stored(page, 'notes')).toBe(before)
+  })
+
+  test('refuses a handle it has already spent, and writes nothing', async ({ page }) => {
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await write(page, { id: 'post-body', handle, html: 'sigma' })
+    await expect.poll(() => stored(page)).toContain('alpha sigma')
+
+    // The text the handle named is gone, so the handle has to refuse rather
+    // than land on whatever now sits at those positions.
+    const after = await stored(page)
+    const again = await write(page, { id: 'post-body', handle, html: 'tau' })
+    expect(again).toMatchObject({ ok: false, error: 'stale-handle' })
+    expect(await stored(page)).toBe(after)
+  })
+
+  test('writes through a handle taken before the author edited elsewhere', async ({ page }) => {
+    // The end-to-end half of what handles exist for: an agent takes a handle,
+    // the author types somewhere else while the agent is thinking, and the
+    // write still lands on the text the agent read rather than two characters
+    // to the left of it.
+    const handle = await handleFor(page, 'post-body', 'beta')
+    // Clicked at the left edge of the paragraph rather than moved there with
+    // Home, which lands at the end of the line in WebKit and Firefox. The point
+    // is only that the author's text goes in *before* the handle, so that the
+    // positions it was issued against are the wrong ones by the time it is used.
+    await editor(page).getByText('alpha beta').click({ position: { x: 2, y: 8 } })
+    await page.keyboard.type('zulu ')
+    await expect.poll(() => stored(page)).toContain('zulu alpha beta')
+
+    expect(await write(page, { id: 'post-body', handle, html: 'sigma' })).toMatchObject({
+      ok: true,
+    })
+    await expect.poll(() => stored(page)).toContain('zulu alpha sigma')
+  })
+
+  test('refuses a handle that belongs to another editor', async ({ page }) => {
+    // Handles are page-unique, so the id is not needed to find the editor. It
+    // is required so that an agent which has muddled two editors' handles gets
+    // a refusal instead of a correct-looking write to the wrong document.
+    const before = await stored(page, 'comment')
+    const handle = await handleFor(page, 'post-body', 'beta')
+    const result = await write(page, { id: 'comment-box', handle, html: 'sigma' })
+    expect(result).toMatchObject({ ok: false, error: 'invalid-argument' })
+    expect(result.message).toContain('post-body')
+    expect(await stored(page, 'comment')).toBe(before)
   })
 })

@@ -1,6 +1,6 @@
 # `@openleaf-editor/plugins-webmcp`
 
-An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, what is currently in it, and where a given string occurs in it.
+An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, what is currently in it, where a given string occurs in it, and can rewrite a passage it located.
 
 This is a **beta** (`0.1.0-beta.4`). Keep every `@openleaf-editor/*` package on the
 same version.
@@ -62,6 +62,7 @@ namespace.
 | `openleaf_get_capabilities` | yes | no | Reports what one editor's document can store, and which editing commands that editor actually offers. |
 | `openleaf_get_document` | yes | **yes** | Returns one editor's current content as HTML — including edits the author has not saved. |
 | `openleaf_find_text` | yes | **yes** | Searches one editor for a literal string, and returns a handle for each match. |
+| `openleaf_replace_at` | **no** | no | Replaces the text one handle names with HTML, as a single undoable step. |
 
 Every result is a **JSON string**, because a string is all the browser's execute
 path returns. The envelope is the same for every tool:
@@ -73,8 +74,8 @@ path returns. The envelope is the same for every tool:
 
 `error` is a short token to branch on, and `message` is written for a model to
 read: it says what to do next, because "not found" and "search again" are
-different instructions. The tokens are `unknown-editor`, `invalid-argument` and
-`stale-handle`.
+different instructions. The tokens are `unknown-editor`, `invalid-argument`,
+`stale-handle`, `preserved-region` and `rejected-content`.
 
 Read tools carry the `readOnlyHint` annotation, so the client driving the agent
 can decide when a call needs a person's confirmation. Any tool that returns
@@ -174,6 +175,45 @@ match, and one spanning a paragraph break is none. Text that does not occur is
 `"truncated": true` when there were more, because an agent that believes it has
 seen every occurrence will replace them all.
 
+## Writing
+
+`openleaf_replace_at` takes a handle, the editor it belongs to, and the HTML to
+put there. It is the one tool in the set that is not annotated read-only, which
+is what tells the client driving the agent that this is the call to ask a person
+about.
+
+```json
+{ "id": "post-body", "handle": "…", "html": "<strong>rewritten</strong>" }
+```
+
+Four things hold for every agent write, and they are the reason the write path
+is one module rather than one per tool:
+
+- **The content is sanitized before it is parsed, by the same policy a paste
+  goes through.** This ordering is the whole of it. The preservation layer is a
+  catch-all: markup the schema does not recognise is wrapped and kept rather
+  than rejected, so parsing agent HTML first would turn hostile or malformed
+  input into an opaque atom the document then carries faithfully forever —
+  preserved *because* nothing could parse it. Running the policy first means an
+  agent can put nothing into a document that a person could not have pasted
+  into it. HTML the policy leaves nothing of is refused with
+  `rejected-content` rather than written as an empty passage.
+- **A range covering preserved markup is refused**, with `preserved-region`.
+  The editor promises to hand that markup back byte-identical, and that promise
+  is only kept if nothing edits inside it.
+- **A refused write changes nothing.** Every check runs before anything touches
+  the editor, so a failure is not a partial write; it is not a write.
+- **One call is one transaction**, so one thing the agent did is one thing the
+  author undoes.
+
+A write spends its handle: the text it named is gone, so the handle resolves to
+`stale-handle` afterwards. Search again before editing the same passage twice.
+
+Passing the editor identifier alongside the handle is redundant — handles are
+page-unique — and required anyway: it is what turns an agent that has muddled
+two editors' handles into a refusal rather than a correct-looking write to the
+document it did not mean.
+
 ## Browser support
 
 The tools are registered with the browser's agent API — `document.modelContext`,
@@ -193,7 +233,8 @@ hands that array to the browser:
 import { agentTools } from '@openleaf-editor/plugins-webmcp'
 
 agentTools.map((tool) => tool.name)
-// ['openleaf_list_editors', 'openleaf_get_capabilities', 'openleaf_get_document', 'openleaf_find_text']
+// ['openleaf_list_editors', 'openleaf_get_capabilities', 'openleaf_get_document',
+//  'openleaf_find_text', 'openleaf_replace_at']
 ```
 
 From a script tag it is `OpenLeaf.agentTools` once the bundle has loaded, the

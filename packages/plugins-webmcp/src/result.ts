@@ -29,6 +29,19 @@ export type ToolErrorCode =
    * again, which is why this is not folded into `invalid-argument`.
    */
   | 'stale-handle'
+  /**
+   * The range names markup the editor is preserving verbatim. Nothing edits in
+   * there -- that is the whole of the byte-identical promise -- so the agent's
+   * move is to target text outside it, not to retry.
+   */
+  | 'preserved-region'
+  /**
+   * The content did not survive the editor's paste policy: it parsed to nothing
+   * a document can hold, or it was nested past the parser's limit. Separate from
+   * `invalid-argument` because the arguments were fine; the content was not, and
+   * re-reading the schema will not help.
+   */
+  | 'rejected-content'
 
 /**
  * A success: the payload, carrying `"ok": true`.

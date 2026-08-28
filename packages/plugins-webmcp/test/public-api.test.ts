@@ -53,6 +53,7 @@ describe('the tool set', () => {
       'openleaf_get_capabilities',
       'openleaf_get_document',
       'openleaf_find_text',
+      'openleaf_replace_at',
     ])
   })
 
@@ -70,6 +71,9 @@ describe('the tool set', () => {
       openleaf_get_capabilities: { readOnlyHint: true, untrustedContentHint: false },
       openleaf_get_document: { readOnlyHint: true, untrustedContentHint: true },
       openleaf_find_text: { readOnlyHint: true, untrustedContentHint: true },
+      // The one tool that writes, and the one that hands nothing of the
+      // document back: an id and a flag are all a write reports.
+      openleaf_replace_at: { readOnlyHint: false, untrustedContentHint: false },
     })
   })
 
@@ -92,6 +96,7 @@ describe('the tool set', () => {
       openleaf_get_capabilities: ['id'],
       openleaf_get_document: ['id'],
       openleaf_find_text: ['id', 'text'],
+      openleaf_replace_at: ['id', 'handle', 'html'],
     })
   })
 

@@ -244,6 +244,9 @@ importers:
       '@openleaf-editor/core':
         specifier: workspace:*
         version: link:../core
+      '@openleaf-editor/paste':
+        specifier: workspace:*
+        version: link:../paste
       '@openleaf-editor/ui':
         specifier: workspace:*
         version: link:../ui

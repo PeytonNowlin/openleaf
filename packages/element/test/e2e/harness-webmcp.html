@@ -32,6 +32,14 @@
   its schema and no command that builds a table -- the other half of the same
   divergence, and the one an integrator hits without meaning to.
 
+  Two pieces of preserved markup, both load-bearing for the write path. The
+  `<div class="callout">` in `post-body` is what the byte-identical promise is
+  made about: a write elsewhere in that document must not disturb a byte of it.
+  The `<ins>` in the notes editor is the inline half, and it is the only route
+  an agent has to a handle that covers preserved markup -- the search stands an
+  inline atom in for one object-replacement character, so searching for that
+  character hands back a handle onto it, and the write has to refuse.
+
   Host ids are distinct from the textarea ids they bind to (`post-body` for
   `body`), because `getElementById` cannot answer for two elements.
 -->
@@ -42,14 +50,16 @@
     for="body"
     aria-label="Post body"
     toolbar="undo redo | blockType | bold italic | source"></openleaf-editor>
-  <textarea id="body" name="body" hidden><p>alpha beta</p></textarea>
+  <textarea id="body" name="body" hidden><p>alpha beta</p>
+<div class="callout" data-callout-id="7"><p>Load-bearing wrapper.</p></div>
+<p>tail</p></textarea>
 
   <label for="notes">Notes</label>
   <openleaf-editor
     for="notes"
     aria-label="Notes"
     toolbar="bold italic | source"></openleaf-editor>
-  <textarea id="notes" name="notes" hidden><p>gamma</p></textarea>
+  <textarea id="notes" name="notes" hidden><p>gamma <ins>tracked</ins> text</p></textarea>
 
   <label for="comment">Comment</label>
   <openleaf-editor
