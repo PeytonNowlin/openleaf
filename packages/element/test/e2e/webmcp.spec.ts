@@ -549,13 +549,30 @@ test.describe('outlining a document', () => {
   })
 
   test('describes the blocks the author has just typed', async ({ page }) => {
-    // Aimed at the first paragraph rather than at the editor's centre, which
-    // lands in the preserved callout now that the fixture carries one -- and
-    // waiting for focus, because a keypress that arrives before the click has
-    // placed the caret types at position 0 instead of at the end of the line.
-    await editor(page).getByText('alpha beta').click()
+    // The caret is placed through the view rather than by clicking and pressing
+    // End. A click that lands in the preserved callout, or a keypress that
+    // arrives before the click has moved the caret, both type at position 0 --
+    // which reads as "Enter did nothing" and was flaky in exactly that way.
+    // Same idiom as keyboard.spec.ts: end of the first paragraph, by arithmetic.
+    await page.evaluate(() => {
+      const host = document.querySelector('#post-body') as HTMLElement & {
+        view?: {
+          state: { doc: { firstChild: { content: { size: number } } | null }; selection: unknown; tr: unknown }
+          dispatch(tr: unknown): void
+          focus(): void
+        }
+      }
+      const view = host.view
+      if (!view) throw new Error('no view')
+      const first = view.state.doc.firstChild
+      if (!first) throw new Error('no first paragraph')
+      const TextSelection = (view.state.selection as { constructor: unknown })
+        .constructor as { create(doc: unknown, anchor: number): unknown }
+      const tr = view.state.tr as { setSelection(sel: unknown): unknown }
+      view.dispatch(tr.setSelection(TextSelection.create(view.state.doc, 1 + first.content.size)))
+      view.focus()
+    })
     await expect(editor(page)).toBeFocused()
-    await page.keyboard.press('End')
     await page.keyboard.press('Enter')
     await page.keyboard.type('a second paragraph')
     // The live document, not the markup the page loaded with -- which is the
