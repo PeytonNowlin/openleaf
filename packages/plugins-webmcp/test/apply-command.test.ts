@@ -1,5 +1,6 @@
 import { coreSchema, parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { registerDefaultItems, registerToolbarItem } from '@openleaf-editor/ui'
+import { history } from 'prosemirror-history'
 import { EditorState, TextSelection, type Transaction } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -242,6 +243,48 @@ describe('a command the editor will not run', () => {
     const result = apply({ id: 'post', command: 'insertTable', handle: handleFor('post', 'beta') })
     expect(result).toMatchObject({ ok: false, error: 'unknown-command' })
     expect(result.message).toContain('openleaf_get_capabilities')
+  })
+
+  /**
+   * The one refusal that is about what a command ACTS on rather than whether it
+   * can run at all.
+   *
+   * `undo` is registered, is first on the default bar, and has a plain command
+   * -- so every other guard in this file passes it through. It is also the one
+   * pair of commands that ignores the selection: it reverts the last history
+   * event wherever in the document it happened. Applied through a handle, it
+   * would revert an author's own edit in another paragraph and answer `{"ok":
+   * true, "command":"undo"}`, which is the exact shape of an agent reporting
+   * work it did not do.
+   */
+  it("refuses a command that acts on the document's history rather than a range", () => {
+    const host = document.createElement('openleaf-editor')
+    host.id = 'historied'
+    document.body.appendChild(host)
+    const mount = document.createElement('div')
+    host.appendChild(mount)
+    const view = new EditorView(mount, {
+      state: EditorState.create({
+        doc: parseHtml('<p>alpha beta</p><p>author paragraph</p>', { schema: coreSchema() }),
+        plugins: [history(), agentRegistry(), agentHandles()],
+      }),
+    })
+    views.push(view)
+
+    // The author's own edit, in the paragraph the agent's handle does not name.
+    // This is what an accepted `undo` would have thrown away.
+    const at = view.state.doc.child(0).nodeSize + view.state.doc.child(1).content.size
+    view.dispatch(view.state.tr.insertText(' edited', at))
+    const before = html(view)
+
+    const result = apply({
+      id: 'historied',
+      command: 'undo',
+      handle: handleFor('historied', 'beta'),
+    })
+    expect(result).toMatchObject({ ok: false, error: 'unsupported-command' })
+    expect(result.message).toContain('history')
+    expect(html(view)).toBe(before)
   })
 
   it('refuses a command that throws instead of letting it reach the agent', () => {

@@ -477,6 +477,17 @@ predicate: reporting them as disabled rather than letting them silently no-op
 "is the difference between a control that looks broken and one that looks
 unavailable".
 
+Name `scope: 'document'` if — and only if — the command ignores the selection
+entirely. The two built-ins that do are `undo` and `redo`: they act on the
+document's last history event wherever in the document it happened, and would do
+the same thing from any selection. The toolbar does not read `scope`; for a
+person clicking a button the distinction is invisible and correct. It is there
+for callers that run a command against a range they staged themselves —
+`@openleaf-editor/plugins-webmcp` refuses a `document` command rather than let an
+agent revert an author's unrelated work and report a handle-scoped success.
+Everything else is `selection`, which is the default, so a plugin that formats
+what the author has picked writes nothing.
+
 The `label` is the accessible name, and the toolbar keeps it constant across
 states. Do not write "Callout on" / "Turn callout off" — `aria-pressed` is what
 the platform announces, and baking the state into the name doubles it up.
@@ -927,7 +938,7 @@ openleaf-import-docx.min.js 124.5 / 140
 openleaf-tables.min.js       20.8 /  25
 openleaf-session.min.js       9.9 /  10
 openleaf-insert.min.js        8.4 /  20
-openleaf-webmcp.min.js        7.2 /   8
+openleaf-webmcp.min.js        7.4 /   8
 openleaf-highlight.min.js     6.7 /  15
 openleaf-colour.min.js        5.3 /  15
 openleaf-import.min.js        3.3 /  12

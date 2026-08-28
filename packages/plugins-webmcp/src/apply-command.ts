@@ -10,13 +10,16 @@
  * also what makes "only commands this deployment installed" true rather than
  * aspirational: there is no list of command names anywhere in this file.
  *
- * Two things a registered command may nonetheless not be. It may not be on this
- * editor's bar, which is how an integrator restricts one editor without
- * uninstalling anything; and it may have no plain command underneath it at all
- * -- `blockType`, `link`, `image` and `source` open a dialog or build their own
- * control, so there is nothing to run headlessly. Each is a refusal with its
- * own code, because answering either by pretending is how an agent comes to
- * report work it did not do.
+ * Three things a registered command may nonetheless not be. It may not be on
+ * this editor's bar, which is how an integrator restricts one editor without
+ * uninstalling anything; it may have no plain command underneath it at all --
+ * `blockType`, `link`, `image` and `source` open a dialog or build their own
+ * control, so there is nothing to run headlessly; and it may be one that does
+ * not act on a selection at all -- `undo` and `redo` act on the document's last
+ * history event, so a handle would not scope them and running one would revert
+ * an author's unrelated work under a successful-looking result. Each is a
+ * refusal with its own code or its own words, because answering any of them by
+ * pretending is how an agent comes to report work it did not do.
  */
 
 import type { Node as PMNode } from 'prosemirror-model'
@@ -45,9 +48,11 @@ export const applyCommandTool: AgentTool = {
     'The command runs with the same guards it has for a person clicking the ' +
     'button, so one that does not apply where the handle points fails with ' +
     '"refused" and changes nothing rather than reporting success. A name that ' +
-    'editor does not offer fails with "unknown-command"; a control that only ' +
-    'works through the editor\'s own interface, such as a dialog, fails with ' +
-    '"unsupported-command" and cannot be applied at all. Preserved markup fails ' +
+    'editor does not offer fails with "unknown-command"; a control that cannot ' +
+    "be applied to a handle -- one that only works through the editor's own " +
+    'interface, such as a dialog, or undo and redo, which act on the document ' +
+    'history rather than on any text -- fails with "unsupported-command" and ' +
+    'cannot be applied at all. Preserved markup fails ' +
     'with "preserved-region". The change is one undoable step, and the handle ' +
     'still names the same text afterwards.',
   inputSchema: editorArgumentWith(
@@ -100,6 +105,21 @@ export const applyCommandTool: AgentTool = {
           `"${name}" only works through the editor's own interface -- it opens a ` +
             'dialog or builds its own control, so there is no command to run. ' +
             'Retrying will not help.',
+        )
+      }
+      // A command that does not read the selection cannot be handle-scoped, and
+      // this tool's whole contract is that it acts on the text a handle names.
+      // Undo and redo act on the last history event wherever in the document it
+      // happened -- so running one here would revert an author's own work in
+      // another paragraph and answer with a successful, handle-scoped result.
+      // The item declares this; there is still no list of names in this file.
+      if (spec.scope === 'document') {
+        return fail(
+          'unsupported-command',
+          `"${name}" acts on the whole document's history rather than on the ` +
+            'text a handle names, so it cannot be applied to one -- it would ' +
+            "undo or redo whatever changed last, including the author's own " +
+            'work. Retrying will not help.',
         )
       }
 

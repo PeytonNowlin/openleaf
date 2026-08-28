@@ -38,9 +38,12 @@ export type ToolErrorCode =
    */
   | 'unknown-command'
   /**
-   * The editor offers that command, but it cannot be driven from here: it is a
-   * dialog or a control that builds its own interface, with no plain command
-   * underneath it. Nothing to retry, and not a mistake in the call.
+   * The editor offers that command, but it cannot be applied to a handle. Two
+   * ways that happens: it is a dialog or a control that builds its own
+   * interface, with no plain command underneath it; or it does not act on a
+   * selection at all -- `undo` and `redo` act on the document's last history
+   * event, so a handle would not scope them. Nothing to retry, and not a
+   * mistake in the call.
    */
   | 'unsupported-command'
   /**

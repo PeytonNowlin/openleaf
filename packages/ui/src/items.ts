@@ -140,6 +140,10 @@ export function registerDefaultItems(): void {
     render: ({ view, host, formats }) => blockTypeControl(view, host, formats ?? []),
   })
 
+  // `scope: 'document'` on both: history is the one pair here that ignores the
+  // selection entirely and acts on the last event anywhere in the document. It
+  // changes nothing about the button; it is what tells a caller running a
+  // command against a staged range that this is not one of those.
   registerToolbarItem({
     id: 'undo',
     type: 'button',
@@ -147,6 +151,7 @@ export function registerDefaultItems(): void {
     label: 'Undo',
     icon: 'undo',
     command: undo,
+    scope: 'document',
     shortcut: 'Undo',
   })
 
@@ -157,6 +162,7 @@ export function registerDefaultItems(): void {
     label: 'Redo',
     icon: 'redo',
     command: redo,
+    scope: 'document',
     shortcut: 'Redo',
   })
 

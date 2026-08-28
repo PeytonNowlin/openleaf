@@ -958,6 +958,29 @@ test.describe('applying a command', () => {
     expect(await stored(page)).toBe(before)
   })
 
+  test("refuses a command that acts on the document's history, leaving the author's edit", async ({
+    page,
+  }) => {
+    // `undo` is first on the default bar, is registered, and has a plain
+    // command -- so every other guard here passes it through. It is also the
+    // one pair of commands that does not read the selection: it reverts the
+    // last history event wherever it happened. Through a handle that would be
+    // an agent throwing away work the author had just done, and being told the
+    // handle-scoped call succeeded.
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' typed by the author')
+    await expect.poll(() => stored(page)).toContain('typed by the author')
+
+    const before = await stored(page)
+    const handle = await handleFor(page, 'post-body', 'beta')
+    expect(await applied(page, { id: 'post-body', command: 'undo', handle })).toMatchObject({
+      ok: false,
+      error: 'unsupported-command',
+    })
+    expect(await stored(page)).toBe(before)
+  })
+
   test('everything it reports as a command is a command or an honest refusal', async ({ page }) => {
     // The pair of criteria in one assertion: nothing outside the capability
     // list can be applied, and nothing inside it answers "no such command".
