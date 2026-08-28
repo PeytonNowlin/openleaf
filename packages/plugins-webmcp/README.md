@@ -84,6 +84,13 @@ different instructions. The tokens are `unknown-editor`, `invalid-argument`,
 `stale-handle`, `unknown-command`, `unsupported-command`,
 `preserved-region`, `rejected-content`, `invalid-position` and `refused`.
 
+Nothing validates a call against the schema a tool published, so a malformed one
+lands here rather than being rejected upstream — a missing argument, a `null`
+where a string belongs, or a top-level value that is not an object at all. Every
+one of those is an `invalid-argument` result naming what to send instead. None
+of them throws, because a throw reaches the agent as a rejected call with no
+shape to it and nothing to retry against.
+
 Read tools carry the `readOnlyHint` annotation, so the client driving the agent
 can decide when a call needs a person's confirmation. Any tool that returns
 document content carries `untrustedContentHint`, because a document is exactly

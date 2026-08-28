@@ -121,8 +121,18 @@ export function gated(tool: AgentTool): AgentTool {
   return {
     ...tool,
     execute(args) {
+      // Whatever the browser resolved out of the agent's JSON arrives here
+      // unchecked -- nothing validates it against the schema the tool published
+      // -- so a top-level `null`, a number or a string is a call every handler
+      // would throw on at its first property read, before it could answer
+      // `invalid-argument`. That throw reaches the agent as a rejected call with
+      // no shape to it. Normalising once, at the seam every tool is composed
+      // through, is what lets each handler go on reading its own arguments and
+      // saying what was missing.
+      const call = typeof args === 'object' && args !== null ? args : {}
+
       if (permission) {
-        const id = stringArg(args, 'id')
+        const id = stringArg(call, 'id')
         // `unknown`, not `boolean`. This is host code reached through a function
         // on the page's own global: the type says it answers with a boolean, and
         // nothing makes that so. An `async` predicate answers with a Promise; one
@@ -159,7 +169,7 @@ export function gated(tool: AgentTool): AgentTool {
           )
         }
       }
-      return tool.execute(args)
+      return tool.execute(call)
     },
   }
 }

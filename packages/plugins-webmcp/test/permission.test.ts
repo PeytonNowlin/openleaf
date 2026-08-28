@@ -239,6 +239,50 @@ describe('a predicate that answers with something other than true', () => {
   })
 })
 
+/**
+ * Arguments the browser resolved but nothing checked.
+ *
+ * Nothing validates a call against the schema a tool published, so what reaches
+ * `execute` is whatever the agent sent -- including a top-level value that is
+ * not an object at all. Every handler reads a property off it as its first act,
+ * so this is the difference between the package's own structured failure and a
+ * rejected call with no shape to it.
+ */
+describe('a call whose arguments are not an object', () => {
+  it('answers with a failure rather than throwing, for every tool in the set', () => {
+    editor('post-body', '<p>alpha beta</p>')
+
+    for (const tool of webmcp.agentTools) {
+      for (const args of [null, undefined, 'post-body', 7]) {
+        const raw = (tool.execute as (a: unknown) => string)(args)
+        const result = JSON.parse(raw) as ToolResult
+        // The listing takes no arguments, so it succeeds; every other tool
+        // fails because it was named no editor. Neither throws, which is the
+        // property being asserted.
+        if (tool.name === 'openleaf_list_editors') {
+          expect(result.ok, tool.name).toBe(true)
+        } else {
+          expect(result.ok, tool.name).toBe(false)
+          expect(result.error, tool.name).toBe('invalid-argument')
+        }
+      }
+    }
+  })
+
+  it('still asks the host, and tells it the call names no editor', () => {
+    editor('post-body', '<p>alpha beta</p>')
+    const seen: AgentToolCall[] = []
+    webmcp.registerAgentPermission((request) => {
+      seen.push(request)
+      return true
+    })
+
+    const raw = (webmcp.agentTools[2]!.execute as (a: unknown) => string)(null)
+    expect((JSON.parse(raw) as ToolResult).error).toBe('invalid-argument')
+    expect(seen).toEqual([{ tool: 'openleaf_get_document', editor: null, readOnly: true }])
+  })
+})
+
 describe('a predicate that throws', () => {
   it('refuses instead of reaching the agent as a crashed call', () => {
     const view = editor('post-body', '<p>alpha beta</p>')
