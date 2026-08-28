@@ -219,8 +219,10 @@ whoever pasted into the document before them — can leave text in it that
 is aimed at the agent reading it. Tools that return content are annotated
 `untrustedContentHint`, which is what tells the client driving the agent
 to treat instructions found inside as data. `openleaf_get_document`, which
-returns an editor's HTML, is annotated with it, and so is
-`openleaf_find_text`, which hands back the text around each match.
+returns an editor's HTML, is annotated with it; so is `openleaf_find_text`,
+which hands back the text around each match, and so is
+`openleaf_get_structure`, whose outline is built from the document's own
+headings — shorter than the document is not the same as safer than it.
 `openleaf_list_editors` and `openleaf_get_capabilities` return identifiers,
 accessible names, schema type names and command labels only, and are
 annotated the other way.

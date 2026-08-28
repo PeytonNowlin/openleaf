@@ -100,6 +100,50 @@ async function documentHtml(page: Page, id: string): Promise<string> {
 const found = (page: Page, id: string, text: string): Promise<FoundText> =>
   call(page, 'openleaf_find_text', { id, text }) as Promise<FoundText>
 
+interface OutlineEntry {
+  handle: string
+  type: string
+  level?: number
+  text: string
+}
+
+interface Structure {
+  ok: boolean
+  id?: string
+  outline?: OutlineEntry[]
+  truncated?: boolean
+}
+
+const structure = (page: Page, id: string): Promise<Structure> =>
+  call(page, 'openleaf_get_structure', { id }) as Promise<Structure>
+
+/**
+ * Mount another editor on the harness, with content of this test's choosing.
+ *
+ * The fixture's three editors are shared with every other spec here, so a test
+ * that needs a document of a particular shape brings its own rather than
+ * rewriting one they all assert against. This is also the path a CMS takes when
+ * it reveals an editor after the page has loaded.
+ */
+async function addEditor(page: Page, id: string, html: string): Promise<void> {
+  await page.evaluate(
+    ([editorId, value]) => {
+      const area = document.createElement('textarea')
+      area.id = `${editorId}-value`
+      area.name = editorId
+      area.hidden = true
+      area.value = value
+      const el = document.createElement('openleaf-editor')
+      el.id = editorId
+      el.setAttribute('for', `${editorId}-value`)
+      el.setAttribute('aria-label', editorId)
+      document.getElementById('post-form')?.append(area, el)
+    },
+    [id, html] as [string, string],
+  )
+  await expect.poll(() => ids(page)).toContain(id)
+}
+
 /** The annotations the client driving the agent reads before it calls anything. */
 function annotations(page: Page, name: string): Promise<unknown> {
   return page.evaluate((toolName) => {
@@ -399,5 +443,94 @@ test.describe('finding text', () => {
     // The search reads the editor's live state, not the markup the page loaded
     // with -- which is the whole reason it runs in a real browser.
     await expect.poll(async () => (await found(page, 'post-body', 'beta')).matches?.length).toBe(2)
+  })
+})
+
+/**
+ * Outlining, through the shipped bundle and against real editors.
+ *
+ * The shape of an outline, what it leaves out and what a handle taken from one
+ * is worth after an edit are asserted in
+ * `packages/plugins-webmcp/test/structure.test.ts`, which can resolve a handle.
+ * What this covers is the half only a browser can answer: that the outline
+ * describes the live document of the editor it was named -- including the
+ * blocks the author has only just typed -- and that a document loaded into a
+ * real editor outlines the way the fixture says it does.
+ */
+test.describe('outlining a document', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(HARNESS)
+    await expect(editor(page)).toBeVisible()
+  })
+
+  test('offers the outline tool', async ({ page }) => {
+    expect(await toolNames(page)).toContain('openleaf_get_structure')
+  })
+
+  test('marks the outline read-only, and what it returns untrusted', async ({ page }) => {
+    // An outline is shorter than the document, which is not the same as safer
+    // than the document: it is made of the document's own headings.
+    expect(await annotations(page, 'openleaf_get_structure')).toEqual({
+      readOnlyHint: true,
+      untrustedContentHint: true,
+    })
+  })
+
+  test('names each block of the editor it was asked about', async ({ page }) => {
+    const result = await structure(page, 'post-body')
+    expect(result.id).toBe('post-body')
+    expect(result.truncated).toBe(false)
+    expect(result.outline).toEqual([
+      { handle: expect.any(String), type: 'paragraph', text: 'alpha beta' },
+    ])
+  })
+
+  test('describes a heading without handing back the document', async ({ page }) => {
+    await addEditor(page, 'structured', '<h2>Introduction</h2><p>alpha <strong>beta</strong></p>')
+    const entries = (await structure(page, 'structured')).outline ?? []
+    expect(entries.map((entry) => [entry.type, entry.level, entry.text])).toEqual([
+      ['heading', 2, 'Introduction'],
+      ['paragraph', undefined, 'alpha beta'],
+    ])
+    // The point of the tool beside `openleaf_get_document`: an agent asked to
+    // retitle one section of fifty must not have to read the other forty-nine.
+    for (const entry of entries) expect(entry.text).not.toContain('<')
+  })
+
+  test('outlines an empty editor as an empty outline, not as a failure', async ({ page }) => {
+    await addEditor(page, 'blank', '')
+    expect(await call(page, 'openleaf_get_structure', { id: 'blank' })).toEqual({
+      ok: true,
+      id: 'blank',
+      outline: [],
+      truncated: false,
+    })
+  })
+
+  test('describes the blocks the author has just typed', async ({ page }) => {
+    await editor(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('a second paragraph')
+    // The live document, not the markup the page loaded with -- which is the
+    // whole reason this runs in a real browser.
+    await expect
+      .poll(async () => ((await structure(page, 'post-body')).outline ?? []).map((one) => one.text))
+      .toEqual(['alpha beta', 'a second paragraph'])
+  })
+
+  test('hands back a handle per entry, and says nothing in it', async ({ page }) => {
+    const [entry] = (await structure(page, 'post-body')).outline ?? []
+    expect(entry?.handle.length).toBeGreaterThan(0)
+    expect(entry?.handle).not.toContain('post-body')
+    expect(entry?.handle).not.toContain('alpha')
+  })
+
+  test('refuses an editor it does not know, and says what to do instead', async ({ page }) => {
+    expect(await call(page, 'openleaf_get_structure', { id: 'no-such-editor' })).toEqual({
+      ok: false,
+      error: 'unknown-editor',
+      message: expect.stringContaining('openleaf_list_editors'),
+    })
   })
 })

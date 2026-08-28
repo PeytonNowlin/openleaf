@@ -52,6 +52,7 @@ describe('the tool set', () => {
       'openleaf_list_editors',
       'openleaf_get_capabilities',
       'openleaf_get_document',
+      'openleaf_get_structure',
       'openleaf_find_text',
     ])
   })
@@ -69,6 +70,9 @@ describe('the tool set', () => {
       openleaf_list_editors: { readOnlyHint: true, untrustedContentHint: false },
       openleaf_get_capabilities: { readOnlyHint: true, untrustedContentHint: false },
       openleaf_get_document: { readOnlyHint: true, untrustedContentHint: true },
+      // An outline is shorter than the document, which is not the same as
+      // safer: it is made of the document's own headings.
+      openleaf_get_structure: { readOnlyHint: true, untrustedContentHint: true },
       openleaf_find_text: { readOnlyHint: true, untrustedContentHint: true },
     })
   })
@@ -91,6 +95,7 @@ describe('the tool set', () => {
       openleaf_list_editors: [],
       openleaf_get_capabilities: ['id'],
       openleaf_get_document: ['id'],
+      openleaf_get_structure: ['id'],
       openleaf_find_text: ['id', 'text'],
     })
   })
