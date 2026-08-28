@@ -869,3 +869,116 @@ test.describe('applying a command', () => {
     })
   })
 })
+
+/**
+ * The integrator's veto over every call.
+ *
+ * Driven through the script tag's own escape hatch rather than through
+ * `installAgentTools({ allowTool })`, because that bundle installs on load: by
+ * the time a page's own script runs, the options argument is already spent.
+ * This is therefore the exact path a CMS integrator takes.
+ */
+type Policy = 'clear' | 'deny-all' | 'reads-only' | 'not-comment-box' | 'throws'
+
+async function policy(page: Page, which: Policy): Promise<void> {
+  await page.evaluate((mode) => {
+    interface Call {
+      tool: string
+      editor: string | null
+      readOnly: boolean
+    }
+    const host = globalThis as unknown as {
+      OpenLeaf?: { registerAgentPermission?: (allow: ((call: Call) => boolean) | null) => void }
+    }
+    const register = host.OpenLeaf?.registerAgentPermission
+    if (!register) throw new Error('the bundle exposes no registerAgentPermission')
+    if (mode === 'clear') return register(null)
+    if (mode === 'deny-all') return register(() => false)
+    // No tool is named in either of these two, which is the point of the
+    // request carrying `readOnly` and `editor` at all: a policy written today
+    // still means what its author meant after a tool is added.
+    if (mode === 'reads-only') return register(({ readOnly }) => readOnly)
+    if (mode === 'not-comment-box') return register(({ editor }) => editor !== 'comment-box')
+    return register(() => {
+      throw new Error('the host session store was unreachable')
+    })
+  }, which)
+}
+
+test.describe('a page that refuses calls', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(HARNESS)
+    await expect(editor(page)).toBeVisible()
+  })
+
+  test('refuses every tool, the listing included', async ({ page }) => {
+    await policy(page, 'deny-all')
+    // The listing takes no editor, so nothing it does resolves an argument --
+    // and it is still gated, because the gate is applied where the tool set is
+    // composed rather than inside a handler.
+    for (const name of await toolNames(page)) {
+      expect(await call(page, name, { id: 'post-body' }), name).toMatchObject({
+        ok: false,
+        error: 'refused',
+      })
+    }
+  })
+
+  test('allows reads and refuses writes, and the refused write stores nothing', async ({ page }) => {
+    const before = await stored(page)
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await policy(page, 'reads-only')
+
+    expect(await documentHtml(page, 'post-body')).toContain('alpha beta')
+    expect(await write(page, { id: 'post-body', handle, html: 'sigma' })).toMatchObject({
+      ok: false,
+      error: 'refused',
+    })
+    expect(await applied(page, { id: 'post-body', command: 'bold', handle })).toMatchObject({
+      ok: false,
+      error: 'refused',
+    })
+    // What the form would post, which is the only place a partial write could
+    // hide: the gate runs before anything touches the view, so a refusal is not
+    // a write that was undone, it is not a write.
+    expect(await stored(page)).toBe(before)
+  })
+
+  test('refuses one editor and leaves the others alone', async ({ page }) => {
+    await policy(page, 'not-comment-box')
+    expect(await documentHtml(page, 'post-body')).toContain('alpha beta')
+    expect(await call(page, 'openleaf_get_document', { id: 'comment-box' })).toMatchObject({
+      ok: false,
+      error: 'refused',
+    })
+  })
+
+  test('treats a predicate that throws as a refusal, not as a crashed call', async ({ page }) => {
+    const before = await stored(page)
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await policy(page, 'throws')
+
+    // A throw out of a handler reaches the agent as a rejected call with no
+    // shape to it and nothing to retry against -- and it would reach it here as
+    // a Playwright evaluation error, which is what this asserts is not thrown.
+    const result = await write(page, { id: 'post-body', handle, html: 'sigma' })
+    expect(result).toMatchObject({ ok: false, error: 'refused' })
+    expect(result.message).not.toContain('session store')
+    expect(await stored(page)).toBe(before)
+  })
+
+  test('goes back to allowing everything when the policy is cleared', async ({ page }) => {
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await policy(page, 'deny-all')
+    expect(await write(page, { id: 'post-body', handle, html: 'sigma' })).toMatchObject({
+      ok: false,
+    })
+
+    await policy(page, 'clear')
+    expect(await write(page, { id: 'post-body', handle, html: 'sigma' })).toEqual({
+      ok: true,
+      id: 'post-body',
+    })
+    await expect.poll(() => stored(page)).toContain('<p>alpha sigma</p>')
+  })
+})

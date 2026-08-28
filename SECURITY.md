@@ -199,13 +199,27 @@ to "can I add this third-party script tag?"
 ### Agent tools are a new caller, not a new trust level
 
 `@openleaf-editor/plugins-webmcp` registers a WebMCP tool set with the
-browser, which lets an agent driving the page call into the editor. Four
+browser, which lets an agent driving the page call into the editor. A few
 things about it are worth stating before you install it.
 
 **It is opt-in and it is off.** The package is not in the core bundle and
 nothing calls `installAgentTools()` for you. A deployment that does not
 install it has no agent surface at all, and the tools are additionally
 inert in every browser that does not implement the API.
+
+**Installing is coarse; the permission predicate is not.**
+`installAgentTools({ allowTool })` is asked before every tool call --
+including `openleaf_list_editors` -- and is handed the tool's name, the
+editor the call names, and whether the tool only reads. Answering `false`
+returns `refused` to the agent and changes nothing, because the question
+is asked before any argument is validated and before anything touches an
+editor; a predicate that throws is treated the same way rather than
+reaching the agent as a crashed call. It is where the integrator hosting
+the editor expresses a policy -- "read but do not write", "not this
+editor" -- and it has the standing of every other client-side control in
+this file: it is not a boundary against the page itself, because anything
+running on the page can reach the tool handlers directly, and it is not a
+substitute for authorising the write on your server.
 
 **The caller is the browser's own agent, not another origin.** Cross-origin
 tool exposure is a separate mechanism and this package does not configure

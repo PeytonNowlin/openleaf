@@ -221,7 +221,7 @@ chosen editor package when possible:
 | Word `.docx` import | `@openleaf-editor/plugins-import-docx` | `installDocxImport()` |
 | Find, count, save, preview, print, and recovery | `@openleaf-editor/plugins-session` | `installSessionTools()`. Preview and print reuse the editor's `content-css`, canvas `dir` / `lang`, and (for preview) the active skin. |
 | Media, details, symbols, snippets, and image resize | `@openleaf-editor/plugins-insert` | `installInsertTools()` |
-| Agent tools (WebMCP) | `@openleaf-editor/plugins-webmcp` | `installAgentTools()`. Registers a page-global tool set an agent driving the browser can call: list the editors, ask one what it can do, read its content or an outline of it, search it, rewrite a passage through the same paste policy a person's typing goes through, and format one through the editor's own commands. Silent in a browser without the API. |
+| Agent tools (WebMCP) | `@openleaf-editor/plugins-webmcp` | `installAgentTools()`. Registers a page-global tool set an agent driving the browser can call: list the editors, ask one what it can do, read its content or an outline of it, search it, rewrite a passage through the same paste policy a person's typing goes through, and format one through the editor's own commands. Silent in a browser without the API. `installAgentTools({ allowTool })` gates every call — see [Refusing agent tool calls](#refusing-agent-tool-calls). |
 
 Example:
 
@@ -255,6 +255,45 @@ it fails closed when the archive's directory cannot be read. See
 Third-party schema extensions must register before an editor is built because a
 ProseMirror schema is immutable. See
 [Authoring schemas and plugins](authoring-plugins.md#11-schema-extensions).
+
+### Refusing agent tool calls
+
+Installing `@openleaf-editor/plugins-webmcp` offers an agent the whole tool set.
+`allowTool` is how the application narrows it without forking the package: a
+synchronous predicate asked before **every** tool call, including
+`openleaf_list_editors`.
+
+```ts
+import { installAgentTools } from '@openleaf-editor/plugins-webmcp'
+
+installAgentTools({
+  // An agent may read anything on this page, and may only write to the draft.
+  allowTool: ({ tool, editor, readOnly }) => readOnly || editor === 'draft',
+})
+```
+
+It receives the tool's `name`, the `editor` identifier the call names (`null` for
+`openleaf_list_editors`, which names none), and `readOnly` — the tool's own
+`readOnlyHint`. Deciding on `readOnly` and `editor` rather than on a list of tool
+names is what keeps a policy meaning what its author meant after a tool is added
+to the set.
+
+A call it refuses returns `{"ok":false,"error":"refused","message":"…"}` to the
+agent and changes nothing: the question is asked before any argument is validated
+and before anything touches an editor, so a refusal is not a partial call. A
+predicate that throws is treated as a refusal rather than reaching the agent as a
+crashed call. With no predicate supplied, every tool behaves exactly as it does
+without the option.
+
+From a script tag the predicate is `OpenLeaf.registerAgentPermission(fn)` — that
+bundle installs on load, so `installAgentTools`'s options argument is already
+spent by the time the page's own script runs. Pass `null` to clear it.
+
+This is not a security boundary against the page itself: anything running on the
+page can reach the tool handlers directly, and editor output still has to be
+[sanitized on the server](#server-side-sanitization). It is where the integrator
+hosting the editor expresses a policy at all. Full detail in
+[`@openleaf-editor/plugins-webmcp`](../packages/plugins-webmcp/README.md#permission).
 
 ## Server-side sanitization
 

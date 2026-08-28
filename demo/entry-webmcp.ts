@@ -5,16 +5,30 @@
  * file and an agent arriving on the page can find the editors. In a browser
  * with no agent API the call is silent, so the tag is safe to ship to everyone.
  *
- * The tool set is hung on the host global as well. It is the seam the whole
- * feature is built around -- a plain value with executable handlers -- and a
- * script-tag integrator has no other way to reach it, the same way
- * `registerSaveHandler` is exposed by the session bundle.
+ * Two things are hung on the host global, because installing on load is also
+ * what takes the options argument away from a script-tag integrator -- by the
+ * time their own code runs, `installAgentTools` has been called and a second
+ * call is ignored. Both follow the way `registerSaveHandler` is exposed by the
+ * session bundle:
+ *
+ *   - `agentTools`, the seam the whole feature is built around -- a plain value
+ *     with executable handlers, which a script tag has no other way to reach.
+ *   - `registerAgentPermission`, which is `installAgentTools({ allowTool })` on
+ *     its own. Without it the permission gate would be reachable only from a
+ *     bundler build, and "allow reads, refuse writes" is exactly the decision a
+ *     CMS integrator dropping in a script tag wants to make.
  */
 import * as webmcp from '@openleaf-editor/plugins-webmcp'
 
 webmcp.installAgentTools()
 
 const host = globalThis as typeof globalThis & {
-  OpenLeaf?: { agentTools?: typeof webmcp.agentTools }
+  OpenLeaf?: {
+    agentTools?: typeof webmcp.agentTools
+    registerAgentPermission?: typeof webmcp.registerAgentPermission
+  }
 }
-if (host.OpenLeaf) host.OpenLeaf.agentTools = webmcp.agentTools
+if (host.OpenLeaf) {
+  host.OpenLeaf.agentTools = webmcp.agentTools
+  host.OpenLeaf.registerAgentPermission = webmcp.registerAgentPermission
+}

@@ -18,6 +18,10 @@ const EXPECTED_EXPORTS = [
   // cannot get at the descriptors has to launch a flagged browser to assert
   // anything at all.
   'agentTools',
+  // The permission gate on its own, for the script-tag build. That bundle
+  // installs on load, so `installAgentTools({ allowTool })` is a call an
+  // integrator reaching for a script tag never gets to make.
+  'registerAgentPermission',
 ] as const
 
 describe('the public surface', () => {
