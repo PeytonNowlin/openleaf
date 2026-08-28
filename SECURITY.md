@@ -245,7 +245,13 @@ document; all of them are annotated the other way.
 **An agent that writes goes through the paste policy, and the ordering is
 the point.** `openleaf_replace_at` and `openleaf_insert_html` sanitize the
 HTML they were given before they parse it, with the same
-`normalizePastedHtml` the editor runs on a human paste. Parsing first
+`normalizePastedHtml` the editor runs on a human paste — and with its one
+lax branch taken away. That function picks a normalizer from what the
+markup looks like, and markup that looks like a copy out of an OpenLeaf
+editor keeps its inline styles, because a copy is in the same trust domain
+as where it is going. Agent HTML never is, and the signal is an attribute
+an agent can write into its own argument, so a write is routed to the
+foreign-input normalizer whatever it claims to be. Parsing first
 would be the hole: the preservation layer is a catch-all, so markup the
 schema does not recognise is wrapped and kept rather than rejected, and
 hostile or malformed input fed straight to the parser would become an

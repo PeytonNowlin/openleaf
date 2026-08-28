@@ -27,7 +27,7 @@
  */
 
 import { parseHtml } from '@openleaf-editor/core'
-import { normalizePastedHtml } from '@openleaf-editor/paste'
+import { detectSource, normalizeGeneric, normalizePastedHtml } from '@openleaf-editor/paste'
 import { closeHistory } from 'prosemirror-history'
 import { Slice, type Node as PMNode } from 'prosemirror-model'
 import { PluginKey, type Transaction } from 'prosemirror-state'
@@ -323,6 +323,36 @@ export function refuseWrite(editor: RegisteredEditor, from: number, to: number):
 }
 
 /**
+ * Agent HTML through the paste policy, as the foreign input it always is.
+ *
+ * `normalizePastedHtml` is the same call `transformPastedHTML` makes, so what an
+ * agent may write is what a person may paste -- one policy, not a second one
+ * that drifts. But it *dispatches*: it asks `detectSource` where the markup came
+ * from and picks the normalizer for that source, and one of those branches is
+ * laxer than the rest. `looksLikeOpenLeaf` is the bare presence of
+ * `data-pm-slice=`, the attribute ProseMirror stamps on its own clipboard HTML,
+ * and it selects `normalizeOpenLeaf`, which keeps inline styles -- correct for a
+ * copy out of this editor, which is the same schema and the same trust domain as
+ * where it is going.
+ *
+ * An agent's argument is never that. It is a string that arrived from outside
+ * the page, and the signal is one it can write into its own HTML: setting
+ * `data-pm-slice` on a `<div>` would let it choose its own sanitizer and land
+ * `style="position:fixed"` in the document, which is precisely the markup this
+ * package exists to make unreachable. So the choice is taken away from it and
+ * the foreign-input normalizer is called directly.
+ *
+ * Only that one branch is overridden. `word`, `excel` and `gdocs` all end in
+ * `stripAllStyles` and strip their own vendor debris besides, so steering into
+ * one of them can only make the policy stricter -- and an agent that genuinely
+ * forwards a Word fragment should get the Word cleanup, not the generic one.
+ */
+function sanitizeForeign(html: string): string {
+  if (detectSource(html) === 'openleaf') return normalizeGeneric(html)
+  return normalizePastedHtml(html)
+}
+
+/**
  * Agent HTML, sanitized and then parsed, fitted to the range it is going into.
  *
  * One call from "a string an agent sent" to "content this range can hold",
@@ -335,9 +365,7 @@ export function refuseWrite(editor: RegisteredEditor, from: number, to: number):
 export function agentSlice(html: string, target: AgentTarget): Slice | string {
   const { state } = target.editor.view
 
-  // The same call `transformPastedHTML` makes, so what an agent may write is
-  // exactly what a person may paste -- one policy, not a second one that drifts.
-  const sanitized = normalizePastedHtml(html)
+  const sanitized = sanitizeForeign(html)
 
   let parsed: PMNode
   try {

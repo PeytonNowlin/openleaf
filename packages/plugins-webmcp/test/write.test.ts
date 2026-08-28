@@ -181,6 +181,24 @@ describe('the paste policy, applied before the parser', () => {
     expect(html(view)).not.toContain('color:red')
   })
 
+  it('does not let the HTML choose which normalizer runs', () => {
+    // `normalizePastedHtml` dispatches on `detectSource`, and `data-pm-slice` --
+    // the attribute ProseMirror stamps on its own clipboard HTML -- selects the
+    // normalizer that KEEPS inline styles, because a copy out of this editor is
+    // in the same trust domain as its destination. An agent writes its own
+    // argument, so that signal is one it can set: without the override in
+    // `write.ts` the style below survives verbatim and an agent has put markup
+    // into the document that no person could have pasted there.
+    const view = editor('post', '<p>alpha beta</p>')
+    replace({
+      id: 'post',
+      handle: handleFor('post', 'beta'),
+      html: '<div class="callout" data-pm-slice="1 1 []" style="position:fixed">injected</div>',
+    })
+    expect(html(view)).toContain('injected')
+    expect(html(view)).not.toContain('position:fixed')
+  })
+
   it('refuses content the policy leaves nothing of, and writes nothing', () => {
     const view = editor('post', '<p>alpha beta</p>')
     const before = html(view)

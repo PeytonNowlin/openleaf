@@ -311,7 +311,12 @@ write path is one module rather than one per tool:
   preserved *because* nothing could parse it. Running the policy first means an
   agent can put nothing into a document that a person could not have pasted
   into it. HTML the policy leaves nothing of is refused with
-  `rejected-content` rather than written as an empty passage.
+  `rejected-content` rather than written as an empty passage. The policy is
+  applied as it is to *foreign* input: `normalizePastedHtml` picks a normalizer
+  from what the markup looks like, and the one it picks for a copy out of an
+  OpenLeaf editor keeps inline styles — so a write is routed past that branch
+  rather than letting an agent select its own sanitizer by stamping the marker
+  on its own HTML.
 - **A range covering preserved markup is refused**, with `preserved-region`.
   The editor promises to hand that markup back byte-identical, and that promise
   is only kept if nothing edits inside it.

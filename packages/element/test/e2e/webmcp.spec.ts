@@ -644,6 +644,24 @@ test.describe('writing to an editor', () => {
     expect(await stored(page)).not.toContain('position:fixed')
   })
 
+  test('does not let the HTML choose which normalizer runs', async ({ page }) => {
+    // The sanitizer dispatches on where the markup looks like it came from, and
+    // one of its branches keeps inline styles: `data-pm-slice` is what
+    // ProseMirror stamps on its own clipboard HTML, and a copy out of this
+    // editor is in the same trust domain as where it is going. An agent writes
+    // its own argument, so that signal is one it can set for itself -- and the
+    // whole promise here is that it cannot introduce markup a person could not
+    // have pasted. Byte-for-byte the fixture above, plus the attribute.
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await write(page, {
+      id: 'post-body',
+      handle,
+      html: '<div class="callout" data-pm-slice="1 1 []" style="position:fixed"><p>injected</p></div>',
+    })
+    await expect.poll(() => stored(page)).toContain('injected')
+    expect(await stored(page)).not.toContain('position:fixed')
+  })
+
   test('refuses content the paste policy leaves nothing of, and writes nothing', async ({
     page,
   }) => {
