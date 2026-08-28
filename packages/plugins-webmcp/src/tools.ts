@@ -15,17 +15,21 @@
  */
 
 import type { AgentTool } from './agent.js'
+import { applyCommandTool } from './apply-command.js'
 import { findTextTool } from './find-text.js'
 import { getCapabilitiesTool } from './get-capabilities.js'
 import { getDocumentTool } from './get-document.js'
 import { listEditorsTool } from './list-editors.js'
 
 // In the order an agent works through them: find an editor, ask what it can do,
-// read what is in it, then find a place inside it. The browser lists tools in
-// registration order, so this is also the order they are offered in.
+// read what is in it, find a place inside it, then change that place. The
+// browser lists tools in registration order, so this is also the order they are
+// offered in -- and the reads coming first is what an agent that has never seen
+// this editor needs to make the write usable.
 export const agentTools: readonly AgentTool[] = [
   listEditorsTool,
   getCapabilitiesTool,
   getDocumentTool,
   findTextTool,
+  applyCommandTool,
 ]

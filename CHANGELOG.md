@@ -53,6 +53,19 @@ entries below say so explicitly when they do.
   opaque, so nothing an agent reads out of one can be computed with, and they
   stop resolving when their editor leaves the page. Text that does not occur is
   an empty result rather than an error. `#244`
+- **`openleaf_apply_command`: an agent can format a passage using the editor's
+  own commands.** Bold, italic or a list, applied to the text a handle names,
+  and applied by running the command the toolbar button runs rather than by
+  writing markup — so an agent inherits every guard a keyboard shortcut already
+  has, including ones a plugin added. Only commands that editor actually offers
+  can be applied, which is the same intersection of the registry and the
+  `toolbar` layout that `openleaf_get_capabilities` reports; a control that only
+  works through a dialog says so rather than pretending; and a command that does
+  not apply where the handle points reports the refusal rather than reporting
+  success. Preserved markup, a readonly editor and an editor whose author has
+  the HTML source view open are all refused, matching what the editor's own
+  toolbar does. Each call is exactly one transaction, marked as
+  agent-originated, so one undo reverses one agent action. `#248`
 
 ### Fixed
 

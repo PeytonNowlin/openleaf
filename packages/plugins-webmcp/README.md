@@ -1,6 +1,6 @@
 # `@openleaf-editor/plugins-webmcp`
 
-An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, what is currently in it, and where a given string occurs in it.
+An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, what is currently in it, where a given string occurs in it, and can format a passage using the editor's own commands.
 
 This is a **beta** (`0.1.0-beta.4`). Keep every `@openleaf-editor/*` package on the
 same version.
@@ -62,6 +62,7 @@ namespace.
 | `openleaf_get_capabilities` | yes | no | Reports what one editor's document can store, and which editing commands that editor actually offers. |
 | `openleaf_get_document` | yes | **yes** | Returns one editor's current content as HTML — including edits the author has not saved. |
 | `openleaf_find_text` | yes | **yes** | Searches one editor for a literal string, and returns a handle for each match. |
+| `openleaf_apply_command` | **no** | no | Applies one of the editor's own registered commands — bold, italic, a list — to the text a handle names. |
 
 Every result is a **JSON string**, because a string is all the browser's execute
 path returns. The envelope is the same for every tool:
@@ -73,17 +74,21 @@ path returns. The envelope is the same for every tool:
 
 `error` is a short token to branch on, and `message` is written for a model to
 read: it says what to do next, because "not found" and "search again" are
-different instructions. The tokens are `unknown-editor`, `invalid-argument` and
-`stale-handle`.
+different instructions. The tokens are `unknown-editor`, `invalid-argument`,
+`stale-handle`, `unknown-command`, `unsupported-command`, `preserved-region`
+and `refused`.
 
 Read tools carry the `readOnlyHint` annotation, so the client driving the agent
 can decide when a call needs a person's confirmation. Any tool that returns
 document content carries `untrustedContentHint`, because a document is exactly
 where text aimed at the agent reading it can hide. `openleaf_get_document` and
 `openleaf_find_text` are annotated with it — one returns the document, the other
-the text around each match; `openleaf_list_editors` and
-`openleaf_get_capabilities` return identifiers, type names and command labels
-only, and are annotated accordingly.
+the text around each match; `openleaf_list_editors`,
+`openleaf_get_capabilities` and `openleaf_apply_command` return identifiers,
+type names and command labels only, and are annotated accordingly.
+`openleaf_apply_command` is the one tool annotated as **not** read-only, which
+is what lets a client decide that it, and only it, is worth confirming with a
+person.
 
 ## What "capabilities" means here
 
@@ -174,6 +179,47 @@ match, and one spanning a paragraph break is none. Text that does not occur is
 `"truncated": true` when there were more, because an agent that believes it has
 seen every occurrence will replace them all.
 
+## Applying a command
+
+`openleaf_apply_command` runs one of the editor's own registered commands
+against the text a handle names. It deliberately does not write markup:
+
+```json
+{ "id": "post-body", "command": "bold", "handle": "…" }
+```
+
+Routing through the command is the whole point. A command already knows what it
+is allowed to do — it declines on a figure, it stops at an isolating boundary,
+it knows which marks its own schema permits — so an agent inherits every guard a
+keyboard shortcut has, including ones added by a plugin this package has never
+heard of. There is no list of command names anywhere in the package.
+
+- **Only what that editor offers.** `command` must be an id
+  `openleaf_get_capabilities` reported *for that editor*. Both tools read the
+  same intersection of the registry and the editor's `toolbar` layout, so a
+  command it listed is a command this will run. Anything else is
+  `unknown-command`.
+- **Some offered commands still cannot be applied.** `blockType`, `link`,
+  `image` and `source` open a dialog or build their own control; there is no
+  plain command underneath, so they answer `unsupported-command`. Retrying will
+  not help, and reporting them as applied would be worse — the agent would move
+  on believing the heading exists.
+- **A command that declines reports it.** `refused`, and the document is
+  untouched. That is the greyed-out button, in words.
+- **Preserved markup is refused**, with `preserved-region`. So is a readonly
+  editor, and one whose author has the HTML source view open — the editor
+  disables its own toolbar in both cases, and a change made behind the source
+  view would be discarded when it closes.
+- **One call is one transaction**, marked as agent-originated, so one undo
+  reverses one agent action.
+- **The handle survives.** Formatting does not delete the text, so a second
+  command can be applied to the same handle.
+
+The `handle` and the editor `id` must agree. A handle carries its own editor, so
+a pair that disagrees is `invalid-argument` rather than a guess — preferring the
+handle would edit a document the agent did not name, and preferring the id would
+check the wrong editor's toolbar for what is allowed.
+
 ## Browser support
 
 The tools are registered with the browser's agent API — `document.modelContext`,
@@ -193,7 +239,8 @@ hands that array to the browser:
 import { agentTools } from '@openleaf-editor/plugins-webmcp'
 
 agentTools.map((tool) => tool.name)
-// ['openleaf_list_editors', 'openleaf_get_capabilities', 'openleaf_get_document', 'openleaf_find_text']
+// ['openleaf_list_editors', 'openleaf_get_capabilities', 'openleaf_get_document',
+//  'openleaf_find_text', 'openleaf_apply_command']
 ```
 
 From a script tag it is `OpenLeaf.agentTools` once the bundle has loaded, the

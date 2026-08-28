@@ -19,9 +19,10 @@
  * commands says a stored table is unreadable.
  */
 
-import { DEFAULT_LAYOUT, allToolbarItems } from '@openleaf-editor/ui'
+import { DEFAULT_LAYOUT, allToolbarItems, type ToolbarItemSpec } from '@openleaf-editor/ui'
 import type { AgentTool } from './agent.js'
 import { editorArgument, withEditor } from './editor-arg.js'
+import type { EditorHost } from './registry.js'
 import { ok } from './result.js'
 
 /**
@@ -47,6 +48,27 @@ export function layoutIds(toolbar: string | null, toolbar2: string | null): stri
   return ids
 }
 
+/**
+ * The commands one editor offers: installed in this deployment AND on its bar.
+ *
+ * The one definition of that intersection, because two tools depend on it
+ * agreeing with itself. `openleaf_get_capabilities` reports this list and
+ * `openleaf_apply_command` will only run something from it, so a command
+ * reported as available and then refused -- or applied without ever being
+ * reported -- is a contradiction an agent has no way to resolve.
+ *
+ * Walked from the registry rather than from the layout, so the answer is
+ * "installed, and offered here" in that order: an id in the layout that nothing
+ * registered is a typo the toolbar already warns about, and is not a capability.
+ */
+export function offeredCommands(host: EditorHost): ToolbarItemSpec[] {
+  // The attributes, not the reflecting properties: these are read through a
+  // peer dependency range, so an older `<openleaf-editor>` that predates a
+  // property is still asked the question the browser can always answer.
+  const named = layoutIds(host.getAttribute('toolbar'), host.getAttribute('toolbar2'))
+  return allToolbarItems().filter((item) => named.includes(item.id))
+}
+
 export const getCapabilitiesTool: AgentTool = {
   name: 'openleaf_get_capabilities',
   title: 'Get OpenLeaf editor capabilities',
@@ -69,20 +91,10 @@ export const getCapabilitiesTool: AgentTool = {
   },
   execute(args) {
     return withEditor(args, (editor) => {
-      // The attributes, not the reflecting properties: these are read through a
-      // peer dependency range, so an older `<openleaf-editor>` that predates a
-      // property is still asked the question the browser can always answer.
-      const named = layoutIds(
-        editor.host.getAttribute('toolbar'),
-        editor.host.getAttribute('toolbar2'),
-      )
-      // Walked from the registry rather than from the layout, so the answer is
-      // "installed, and offered here" in that order -- an id in the layout that
-      // nothing registered is a typo the toolbar already warns about, and is
-      // not a capability.
-      const commands = allToolbarItems()
-        .filter((item) => named.includes(item.id))
-        .map((item) => ({ id: item.id, label: item.label }))
+      const commands = offeredCommands(editor.host).map((item) => ({
+        id: item.id,
+        label: item.label,
+      }))
 
       // From the live state, never from a captured `coreSchema()`: a registered
       // schema extension is exactly the case where the two disagree, and it is

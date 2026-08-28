@@ -53,6 +53,7 @@ describe('the tool set', () => {
       'openleaf_get_capabilities',
       'openleaf_get_document',
       'openleaf_find_text',
+      'openleaf_apply_command',
     ])
   })
 
@@ -70,6 +71,11 @@ describe('the tool set', () => {
       openleaf_get_capabilities: { readOnlyHint: true, untrustedContentHint: false },
       openleaf_get_document: { readOnlyHint: true, untrustedContentHint: true },
       openleaf_find_text: { readOnlyHint: true, untrustedContentHint: true },
+      // The only tool here that writes, and the only one whose `readOnlyHint`
+      // is false. That flag is what a client reads to decide whether this call
+      // needs a person's confirmation, so it getting stuck on `true` is the
+      // failure worth a pinned assertion.
+      openleaf_apply_command: { readOnlyHint: false, untrustedContentHint: false },
     })
   })
 
@@ -78,12 +84,11 @@ describe('the tool set', () => {
     // is where an identifier comes from. Every other tool requires one -- there
     // is no implicit "current editor" on a page with three of them.
     //
-    // Pinned per tool rather than as one rule because the surface currently
-    // spells that argument two ways: `id` on the tools that go through
-    // `editor-arg.ts`, and `editor` on the search. The two landed concurrently
-    // and both are published to agents, so this records the divergence instead
-    // of hiding it -- aligning them is a deliberate change to a published
-    // argument name, not something to do quietly in a merge.
+    // Pinned per tool rather than as one rule, because the list is what a tool
+    // publishes to agents: `openleaf_list_editors` tells one to pass an id back
+    // to any other openleaf_* tool, so a tool that renamed or dropped that
+    // argument would make an instruction already in the wild wrong. A tool's
+    // own arguments come after it, in the order its schema declares them.
     const required = Object.fromEntries(
       webmcp.agentTools.map((tool) => [tool.name, tool.inputSchema.required ?? []]),
     )
@@ -92,6 +97,7 @@ describe('the tool set', () => {
       openleaf_get_capabilities: ['id'],
       openleaf_get_document: ['id'],
       openleaf_find_text: ['id', 'text'],
+      openleaf_apply_command: ['id', 'command', 'handle'],
     })
   })
 

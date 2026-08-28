@@ -225,6 +225,18 @@ returns an editor's HTML, is annotated with it, and so is
 accessible names, schema type names and command labels only, and are
 annotated the other way.
 
+**A tool that writes has the reach of the toolbar, and no more.**
+`openleaf_apply_command` changes the document, and it is the only tool so
+far that does. It cannot write markup: it runs one of the commands the
+deployment registered and the editor's own `toolbar` layout offers, so an
+agent reaches exactly what a person clicking that bar reaches. The
+refusals are the editor's own, not this package's -- a readonly editor,
+an open HTML source view, and markup the preservation layer holds byte
+for byte are all refused, because the toolbar is unavailable in the first
+two and editing the third is the one thing that breaks the guarantee it
+makes. It carries the `readOnlyHint: false` annotation, which is what
+lets a client single it out as the call worth putting to a person.
+
 ## Defence in depth: a baseline CSP
 
 Everything above is about the sanitizer. A Content-Security-Policy on the

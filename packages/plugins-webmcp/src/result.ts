@@ -29,6 +29,31 @@ export type ToolErrorCode =
    * again, which is why this is not folded into `invalid-argument`.
    */
   | 'stale-handle'
+  /**
+   * No command of that name is available on that editor -- either the
+   * deployment never registered one, or this editor's toolbar layout does not
+   * carry it. One code for both, because the agent's next move is the same:
+   * read `openleaf_get_capabilities` for that editor, which reports exactly the
+   * intersection of the two.
+   */
+  | 'unknown-command'
+  /**
+   * The editor offers that command, but it cannot be driven from here: it is a
+   * dialog or a control that builds its own interface, with no plain command
+   * underneath it. Nothing to retry, and not a mistake in the call.
+   */
+  | 'unsupported-command'
+  /**
+   * The target is inside markup the preservation layer holds byte for byte.
+   * Editing there is the one thing that breaks the promise that layer makes.
+   */
+  | 'preserved-region'
+  /**
+   * The editor would not make the change -- the command does not apply at that
+   * position, or the editor is not accepting writes at all. The document is
+   * exactly as it was.
+   */
+  | 'refused'
 
 /**
  * A success: the payload, carrying `"ok": true`.
