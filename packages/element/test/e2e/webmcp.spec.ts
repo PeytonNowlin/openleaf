@@ -614,6 +614,25 @@ test.describe('writing to an editor', () => {
     await expect.poll(() => stored(page)).toContain('<p>alpha sigma</p>')
   })
 
+  test('lands as one undoable step', async ({ page }) => {
+    // "Exactly one transaction per call" is a property of `writeAt` rather than
+    // a rule each tool keeps, and one press of undo is where an author sees it:
+    // a call that dispatched the staging and the change separately would take
+    // two presses to put back, and the first would leave the document in a
+    // state nobody asked for. Counted in jsdom by `write.test.ts`; this is the
+    // same claim where it is felt, through what the form would post.
+    const before = await stored(page)
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await write(page, { id: 'post-body', handle, html: 'sigma' })
+    await expect.poll(() => stored(page)).toContain('<p>alpha sigma</p>')
+
+    // Aimed at the paragraph rather than at the editor's centre, which lands in
+    // the preserved callout the fixture carries.
+    await editor(page).getByText('alpha sigma').click()
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(() => stored(page)).toBe(before)
+  })
+
   test('leaves preserved markup byte-identical', async ({ page }) => {
     // The guarantee the preservation layer makes to an author, under a writer
     // it was not designed against. The wrapper is stored as an opaque atom
