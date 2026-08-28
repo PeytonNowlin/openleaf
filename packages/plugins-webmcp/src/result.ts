@@ -57,6 +57,15 @@ export type ToolErrorCode =
    */
   | 'rejected-content'
   /**
+   * The content is allowed and the place is allowed; the pair is not. The
+   * document model will not hold that content at that position -- a block
+   * inside a sentence, an image inside a code block -- and the alternative to
+   * saying so is fitting it into some shape nobody asked for. Separate from
+   * `rejected-content` because here the schema is worth re-reading: the way out
+   * is to reshape the HTML, or to ask for a handle that names a whole block.
+   */
+  | 'invalid-position'
+  /**
    * The editor would not make the change -- the command does not apply at that
    * position, or the editor is not accepting writes at all. The document is
    * exactly as it was.

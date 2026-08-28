@@ -1,6 +1,6 @@
 # `@openleaf-editor/plugins-webmcp`
 
-An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, what is currently in it, how it is structured, and where a given string occurs in it, and can rewrite a passage it located or format one with the editor's own commands.
+An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, what is currently in it, how it is structured, and where a given string occurs in it, and can rewrite a passage it located, add content beside one, or format one with the editor's own commands.
 
 This is a **beta** (`0.1.0-beta.4`). Keep every `@openleaf-editor/*` package on the
 same version.
@@ -64,6 +64,7 @@ namespace.
 | `openleaf_get_structure` | yes | **yes** | Outlines one editor's blocks — type, heading level, and the start of the text — with a handle for each, and without its markup. |
 | `openleaf_find_text` | yes | **yes** | Searches one editor for a literal string, and returns a handle for each match. |
 | `openleaf_replace_at` | **no** | no | Replaces the text one handle names with HTML, as a single undoable step. |
+| `openleaf_insert_html` | **no** | no | Inserts HTML before or after the text one handle names, leaving that text in place. |
 | `openleaf_apply_command` | **no** | no | Applies one of the editor's own registered commands — bold, italic, a list — to the text a handle names. |
 
 Every result is a **JSON string**, because a string is all the browser's execute
@@ -78,7 +79,7 @@ path returns. The envelope is the same for every tool:
 read: it says what to do next, because "not found" and "search again" are
 different instructions. The tokens are `unknown-editor`, `invalid-argument`,
 `stale-handle`, `unknown-command`, `unsupported-command`,
-`preserved-region`, `rejected-content` and `refused`.
+`preserved-region`, `rejected-content`, `invalid-position` and `refused`.
 
 Read tools carry the `readOnlyHint` annotation, so the client driving the agent
 can decide when a call needs a person's confirmation. Any tool that returns
@@ -87,11 +88,11 @@ where text aimed at the agent reading it can hide. `openleaf_get_document`,
 `openleaf_get_structure` and `openleaf_find_text` are annotated with it — one
 returns the document, one an outline built from its headings, one the text
 around each match; `openleaf_list_editors`, `openleaf_get_capabilities`,
-`openleaf_replace_at` and `openleaf_apply_command` return identifiers, type
-names and command labels only, and are annotated accordingly.
-`openleaf_replace_at` and `openleaf_apply_command` are the two tools annotated
-as **not** read-only, which is what lets a client decide that they, and only
-they, are worth confirming with a person.
+`openleaf_replace_at`, `openleaf_insert_html` and `openleaf_apply_command`
+return identifiers, type names and command labels only, and are annotated
+accordingly. Those last three are the tools annotated as **not** read-only,
+which is what lets a client decide that they, and only they, are worth
+confirming with a person.
 
 ## What "capabilities" means here
 
@@ -225,17 +226,17 @@ seen every occurrence will replace them all.
 ## Writing
 
 `openleaf_replace_at` takes a handle, the editor it belongs to, and the HTML to
-put there. It and `openleaf_apply_command` are the two tools in the set that are
-not annotated read-only, which is what tells the client driving the agent that
-these are the calls to ask a person about.
+put there. It, `openleaf_insert_html` and `openleaf_apply_command` are the three
+tools in the set that are not annotated read-only, which is what tells the
+client driving the agent that these are the calls to ask a person about.
 
 ```json
 { "id": "post-body", "handle": "…", "html": "<strong>rewritten</strong>" }
 ```
 
-Five things hold for every agent write — for `openleaf_apply_command` as much as
-for this one — and they are the reason the write path is one module rather than
-one per tool:
+Five things hold for every agent write — for `openleaf_insert_html` and
+`openleaf_apply_command` as much as for this one — and they are the reason the
+write path is one module rather than one per tool:
 
 - **The content is sanitized before it is parsed, by the same policy a paste
   goes through.** This ordering is the whole of it. The preservation layer is a
@@ -258,13 +259,52 @@ one per tool:
 - **One call is one transaction**, so one thing the agent did is one thing the
   author undoes.
 
-A write spends its handle: the text it named is gone, so the handle resolves to
-`stale-handle` afterwards. Search again before editing the same passage twice.
+A replacement spends its handle: the text it named is gone, so the handle
+resolves to `stale-handle` afterwards. Search again before editing the same
+passage twice.
 
 Passing the editor identifier alongside the handle is redundant — handles are
 page-unique — and required anyway: it is what turns an agent that has muddled
 two editors' handles into a refusal rather than a correct-looking write to the
 document it did not mean.
+
+## Inserting
+
+`openleaf_insert_html` adds content beside the text a handle names rather than
+over it, so the handle survives and can be inserted at again:
+
+```json
+{ "id": "post-body", "handle": "…", "html": "<p>A new paragraph.</p>", "position": "after" }
+```
+
+`position` is `"before"` or `"after"`, and it is required. "Insert at this
+heading" means opposite things to an agent writing an introduction and one
+writing the section, so there is no default to guess wrong.
+
+The one thing insertion does that replacement does not is ask the schema first.
+Replacement is fitted to the range it lands in — that is what `replaceRange`
+is for, and it is right for a call that means "this text becomes that". An
+insertion has no such licence: a heading aimed into the middle of a sentence
+would be fitted by splitting the paragraph in two, and a marked-up run aimed
+into a code block by dropping the marks. Both would be reported as successes,
+and the agent would read back a document nobody asked for. So content the
+position cannot hold is refused with `invalid-position`, and the message names
+what that position does hold:
+
+```json
+{ "ok": false, "error": "invalid-position",
+  "message": "that HTML cannot go there: a \"paragraph\" holds inline*. …" }
+```
+
+The two ways out of it are the two shapes a handle comes in. A handle from
+`openleaf_find_text` names inline text inside one block, and takes inline HTML —
+a lone `<p>` wrapper is unwrapped into the sentence, because a model wraps its
+answer in one. A handle from `openleaf_get_structure` names a whole block, and
+takes whole blocks.
+
+The HTML is parsed on its own, so a space at either edge of it is leading or
+trailing whitespace in a document and goes the way it goes in any browser. Use
+`&nbsp;` where a space between words matters.
 
 ## Applying a command
 
@@ -328,7 +368,7 @@ import { agentTools } from '@openleaf-editor/plugins-webmcp'
 agentTools.map((tool) => tool.name)
 // ['openleaf_list_editors', 'openleaf_get_capabilities', 'openleaf_get_document',
 //  'openleaf_get_structure', 'openleaf_find_text', 'openleaf_replace_at',
-//  'openleaf_apply_command']
+//  'openleaf_insert_html', 'openleaf_apply_command']
 ```
 
 From a script tag it is `OpenLeaf.agentTools` once the bundle has loaded, the

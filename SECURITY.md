@@ -224,28 +224,30 @@ which hands back the text around each match, and so is
 `openleaf_get_structure`, whose outline is built from the document's own
 headings — shorter than the document is not the same as safer than it.
 `openleaf_list_editors` and `openleaf_get_capabilities` return identifiers,
-accessible names, schema type names and command labels only, and are
-annotated the other way.
+accessible names, schema type names and command labels only, and so do the
+three tools that write, which report an identifier and nothing of the
+document; all of them are annotated the other way.
 
 **An agent that writes goes through the paste policy, and the ordering is
-the point.** `openleaf_replace_at` sanitizes the HTML it was given before
-it parses it, with the same `normalizePastedHtml` the editor runs on a
-human paste. Parsing first would be the hole: the preservation layer is a
-catch-all, so markup the schema does not recognise is wrapped and kept
-rather than rejected, and hostile or malformed input fed straight to the
-parser would become an opaque atom the document then carries faithfully
-forever — preserved *because* nothing could parse it. Sanitizing first
-means an agent can put nothing into a document that a person could not
-have pasted into it, and that is a client-side control with exactly the
-standing every other one in this file has: it is a user-experience
-feature, not a substitute for sanitizing on your server. A write whose
-range covers preserved markup is refused outright, because the
-byte-identical promise only holds if nothing edits in there, and a write
-that is refused for any reason changes nothing at all.
+the point.** `openleaf_replace_at` and `openleaf_insert_html` sanitize the
+HTML they were given before they parse it, with the same
+`normalizePastedHtml` the editor runs on a human paste. Parsing first
+would be the hole: the preservation layer is a catch-all, so markup the
+schema does not recognise is wrapped and kept rather than rejected, and
+hostile or malformed input fed straight to the parser would become an
+opaque atom the document then carries faithfully forever — preserved
+*because* nothing could parse it. Sanitizing first means an agent can put
+nothing into a document that a person could not have pasted into it, and
+that is a client-side control with exactly the standing every other one in
+this file has: it is a user-experience feature, not a substitute for
+sanitizing on your server. A write whose range covers preserved markup is
+refused outright, because the byte-identical promise only holds if nothing
+edits in there, and a write that is refused for any reason changes nothing
+at all.
 
 **A tool that writes has the reach of the toolbar, and no more.**
-`openleaf_apply_command` changes the document, and it is the only tool so
-far that does. It cannot write markup: it runs one of the commands the
+`openleaf_apply_command` is the third tool that changes the document, and
+the one that cannot write markup at all: it runs one of the commands the
 deployment registered and the editor's own `toolbar` layout offers, so an
 agent reaches exactly what a person clicking that bar reaches. The
 refusals are the editor's own, not this package's -- a readonly editor,

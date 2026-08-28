@@ -163,6 +163,9 @@ interface WriteResult {
 const write = (page: Page, args: Record<string, unknown>): Promise<WriteResult> =>
   call(page, 'openleaf_replace_at', args) as Promise<WriteResult>
 
+const insert = (page: Page, args: Record<string, unknown>): Promise<WriteResult> =>
+  call(page, 'openleaf_insert_html', args) as Promise<WriteResult>
+
 interface Applied {
   ok: boolean
   error?: string
@@ -713,6 +716,93 @@ test.describe('writing to an editor', () => {
     expect(result).toMatchObject({ ok: false, error: 'invalid-argument' })
     expect(result.message).toContain('post-body')
     expect(await stored(page, 'comment')).toBe(before)
+  })
+})
+
+/**
+ * Inserting, which differs from replacement in one thing an agent can see.
+ *
+ * The stored value is again what everything here asserts on. The refusal is
+ * the case worth a browser: a heading aimed into the middle of a sentence is
+ * something the fitting would have answered by splitting the paragraph, and a
+ * split paragraph is exactly the kind of "success" that only looks wrong in
+ * the markup the host ends up posting.
+ */
+test.describe('inserting into an editor', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(HARNESS)
+    await expect(editor(page)).toBeVisible()
+  })
+
+  test('offers the insert tool, and does not claim it is read-only', async ({ page }) => {
+    expect(await toolNames(page)).toContain('openleaf_insert_html')
+    expect(await annotations(page, 'openleaf_insert_html')).toEqual({
+      readOnlyHint: false,
+      untrustedContentHint: false,
+    })
+  })
+
+  test('adds a block beside the one an outline named', async ({ page }) => {
+    // The two tools an agent actually chains: outline the document, then insert
+    // against an entry of it. Its own editor rather than the fixture's, because
+    // two other specs assert on what the fixture's three contain.
+    await addEditor(page, 'draft', '<h2>Title</h2><p>alpha</p>')
+    const outline = (await structure(page, 'draft')).outline ?? []
+    const handle = outline[0]?.handle as string
+    expect(
+      await insert(page, { id: 'draft', handle, html: '<p>intro</p>', position: 'after' }),
+    ).toEqual({ ok: true, id: 'draft' })
+
+    await expect.poll(() => stored(page, 'draft-value')).toContain('<p>intro</p>')
+    const html = await stored(page, 'draft-value')
+    expect(html.indexOf('<p>intro</p>')).toBeGreaterThan(html.indexOf('<h2>Title</h2>'))
+    expect(html.indexOf('<p>intro</p>')).toBeLessThan(html.indexOf('<p>alpha</p>'))
+  })
+
+  test('adds inline content beside the text a handle names, leaving it there', async ({ page }) => {
+    const handle = await handleFor(page, 'post-body', 'beta')
+    expect(
+      await insert(page, { id: 'post-body', handle, html: '<strong>!</strong>', position: 'after' }),
+    ).toMatchObject({ ok: true })
+    await expect.poll(() => stored(page)).toContain('<p>alpha beta<strong>!</strong></p>')
+  })
+
+  test('leaves the handle usable, unlike a replacement', async ({ page }) => {
+    // Nothing the handle named was deleted, so it still names it. An agent that
+    // is building a sentence up in pieces depends on this.
+    const handle = await handleFor(page, 'post-body', 'beta')
+    await insert(page, { id: 'post-body', handle, html: '(', position: 'before' })
+    expect(await insert(page, { id: 'post-body', handle, html: ')', position: 'after' })).toMatchObject({
+      ok: true,
+    })
+    await expect.poll(() => stored(page)).toContain('<p>alpha (beta)</p>')
+  })
+
+  test('refuses a block inside a sentence, and writes nothing', async ({ page }) => {
+    // The acceptance criterion with content in it. Fitting this in would mean
+    // cutting the paragraph in two around the heading -- a document nobody
+    // asked for, handed back as a success.
+    const before = await stored(page)
+    const handle = await handleFor(page, 'post-body', 'beta')
+    const result = await insert(page, {
+      id: 'post-body',
+      handle,
+      html: '<h2>Title</h2>',
+      position: 'after',
+    })
+    expect(result).toMatchObject({ ok: false, error: 'invalid-position' })
+    // The message names what the position does hold, which is the difference
+    // between a refusal an agent can act on and one it can only repeat.
+    expect(result.message).toContain('paragraph')
+    expect(await stored(page)).toBe(before)
+  })
+
+  test('refuses a handle covering preserved markup, and writes nothing', async ({ page }) => {
+    const before = await stored(page, 'notes')
+    const handle = await handleFor(page, 'editor-2', '\uFFFC')
+    const result = await insert(page, { id: 'editor-2', handle, html: 'plain', position: 'before' })
+    expect(result).toMatchObject({ ok: false, error: 'preserved-region' })
+    expect(await stored(page, 'notes')).toBe(before)
   })
 })
 
