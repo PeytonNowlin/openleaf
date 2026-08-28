@@ -28,10 +28,12 @@ import { editorArgumentWith, withEditor } from './editor-arg.js'
 import { offeredCommands } from './get-capabilities.js'
 import type { RegisteredEditor } from './registry.js'
 import { fail, ok } from './result.js'
-import { markAgent, refuseWrite, targetFor } from './write.js'
+import { dispatchAgent, dispatchRefused, refuseWrite, targetFor } from './write.js'
+
+const NAME = 'openleaf_apply_command'
 
 export const applyCommandTool: AgentTool = {
-  name: 'openleaf_apply_command',
+  name: NAME,
   title: 'Apply an OpenLeaf editing command',
   description:
     "Apply one of an OpenLeaf editor's own editing commands -- bold, italic, a " +
@@ -193,23 +195,21 @@ function run(
   }
   if (!applied || !produced) return declined(name)
 
-  view.dispatch(
+  // The write path's own dispatch, so a command applied through this tool is
+  // marked, grouped into the agent's undo event and checked for landing exactly
+  // as a replacement is. What this tool cannot delegate is the transaction --
+  // the command built it -- not what happens to it afterwards. The marker
+  // carries the TOOL name here: `name` is the command the agent asked for, and
+  // it goes back in the result, which is where an agent reads it.
+  const marked = produced.setSelection(
     // The author's caret is not the agent's to move. The staged selection is
     // there so the command knows what to act on; leaving it behind would jump a
     // caret that may be in another paragraph entirely, and the next thing the
     // author typed would land there. The element restores the caret across
     // `value = html` for the same reason.
-    markAgent(produced, name).setSelection(before.selection.map(produced.doc, produced.mapping)),
+    before.selection.map(produced.doc, produced.mapping),
   )
-
-  // The editor gets the last word even after the command agreed. A
-  // `filterTransaction` -- the one honouring stored `contenteditable="false"`,
-  // or one an integrator added -- drops a transaction silently and leaves the
-  // state object identical. Reporting success there is reporting a write that
-  // did not happen, which is the failure this whole tool is shaped to avoid.
-  if (view.state === before) {
-    return fail('refused', 'the editor refused that change: that text is locked.')
-  }
+  if (!dispatchAgent(editor, marked, NAME)) return dispatchRefused()
 
   return ok({ id: editor.id, command: name })
 }

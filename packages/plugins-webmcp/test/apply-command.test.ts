@@ -142,16 +142,24 @@ describe('applying a command', () => {
   })
 
   it('produces exactly one transaction, marked as the agent\'s', () => {
-    // One transaction is what makes one undo reverse one agent action. The
-    // marker is asserted directly because nothing else can see it yet: it is
-    // what the history integration will group on, and a write that forgot it
-    // would look correct here and fragment an author's undo stack later.
+    // One transaction is what makes one undo reverse one agent action, and the
+    // marker is what groups a run of them into that one action.
+    //
+    // The marker names the TOOL, not the command. It used to carry `bold` here
+    // -- the command id -- so a field called `tool` meant one thing on this
+    // path and another on `openleaf_replace_at`'s, and a reader of a marked
+    // transaction could not tell which. Which command ran is reported in the
+    // result, where the agent reads it; the marker says who wrote.
     const view = editor('post', '<p>alpha beta</p>')
     const handle = handleFor('post', 'beta')
     watch(view)
-    expect(apply({ id: 'post', command: 'bold', handle }).ok).toBe(true)
+    expect(apply({ id: 'post', command: 'bold', handle })).toEqual({
+      ok: true,
+      id: 'post',
+      command: 'bold',
+    })
     expect(seen).toHaveLength(1)
-    expect(seen[0]?.getMeta(agentKey)).toEqual({ tool: 'bold' })
+    expect(seen[0]?.getMeta(agentKey)).toEqual({ tool: 'openleaf_apply_command' })
   })
 
   it('leaves the author where they were rather than moving the caret', () => {

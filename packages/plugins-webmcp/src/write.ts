@@ -57,24 +57,56 @@ import { fail, ok } from './result.js'
  */
 export const agentKey = new PluginKey('openleaf-webmcp')
 
-/** What the marker carries: which tool made the change. */
+/**
+ * What the marker carries: the name of the tool the agent called.
+ *
+ * The tool name, and not something a tool happens to have in hand at the point
+ * it dispatches. `openleaf_apply_command` used to mark the id of the *command*
+ * it ran -- `{ tool: 'bold' }` -- which made the field mean one thing on one
+ * write path and something else on another, and left a reader of a marked
+ * transaction with no way to know which. The tool name is the value every write
+ * path has, it is the string the agent actually called and the one this
+ * package's own documentation names, and it is page-global where a command id
+ * is not: `registerToolbarItem` is last-wins, so `bold` may be an integrator's
+ * command rather than the built-in one. A tool that wants to report which
+ * command it ran does that in its result, where the agent reads it.
+ */
 export interface AgentEdit {
   tool: string
 }
 
-/**
- * Mark a transaction as agent-originated.
- *
- * Exported for the tools that cannot hand `writeAt` a finished transaction --
- * `openleaf_apply_command` runs the editor's own command and dispatches what it
- * captured -- so that there is still exactly one place that knows what the
- * marker looks like. A tool that dispatched an unmarked transaction would be
- * invisible to undo grouping, and the omission would be invisible in review.
- */
-export function markAgent(tr: Transaction, tool: string): Transaction {
+/** Mark a transaction as agent-originated. Private: `dispatchAgent` is the door. */
+function markAgent(tr: Transaction, tool: string): Transaction {
   const edit: AgentEdit = { tool }
   return tr.setMeta(agentKey, edit)
 }
+
+/**
+ * Dispatch an agent transaction: marked, grouped, and checked that it landed.
+ *
+ * The one `dispatch` in this package. `writeAt` covers every tool that can hand
+ * over a finished transaction, but `openleaf_apply_command` cannot -- it runs
+ * the editor's own command and dispatches what that produced -- so the marker
+ * and the did-it-land check live one level below `writeAt`, where both paths
+ * reach them. A tool that dispatched for itself would be unmarked, and the
+ * omission does not show up in a diff.
+ *
+ * Answers whether the change actually landed. The editor gets the last word
+ * even after every guard above agreed: a `filterTransaction` -- core's,
+ * honouring stored `contenteditable="false"`, or one an integrator added --
+ * drops a transaction silently and leaves the state object identical. Reporting
+ * success there would be reporting a write that did not happen.
+ */
+export function dispatchAgent(editor: RegisteredEditor, tr: Transaction, tool: string): boolean {
+  const { view } = editor
+  const before = view.state
+  view.dispatch(markAgent(tr, tool))
+  return view.state !== before
+}
+
+/** The refusal a dropped dispatch answers with, in one place because two paths use it. */
+export const dispatchRefused = (): string =>
+  fail('refused', 'the editor refused that change: that text is locked.')
 
 /**
  * The `handle` argument every write tool takes, so all of them describe it
@@ -146,8 +178,8 @@ export function targetFor(
  * returns either the transaction to dispatch or a `fail()` string to hand back
  * unchanged. Returning the transaction rather than dispatching it is what makes
  * "exactly one transaction per call" a property of this function instead of a
- * rule each tool has to keep: there is one `dispatch` in the package, and it is
- * below.
+ * rule each tool has to keep: `dispatchAgent` is the only `dispatch` in the
+ * package, and this is the only caller a tool needs.
  */
 export function writeAt(
   tool: string,
@@ -164,17 +196,7 @@ export function writeAt(
     const built = change(target)
     if (typeof built === 'string') return built
 
-    const before = editor.view.state
-    editor.view.dispatch(markAgent(built, tool))
-    // The editor gets the last word even after every guard above agreed. A
-    // `filterTransaction` -- core's, honouring stored `contenteditable="false"`,
-    // or one an integrator added -- drops a transaction silently and leaves the
-    // state object identical. Reporting success there would be reporting a write
-    // that did not happen, which is the one failure this whole path is shaped to
-    // avoid.
-    if (editor.view.state === before) {
-      return fail('refused', 'the editor refused that change: that text is locked.')
-    }
+    if (!dispatchAgent(editor, built, tool)) return dispatchRefused()
     return ok({ id: editor.id })
   })
 }
