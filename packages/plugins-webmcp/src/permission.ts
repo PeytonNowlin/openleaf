@@ -59,12 +59,12 @@ export type AgentPermission = (call: AgentToolCall) => boolean
  * Module state rather than a closure, because the tool descriptors are built at
  * module scope and the host's decision arrives later -- at install, or from a
  * script tag after the bundle has already installed itself. Read at call time,
- * so the order of the two does not matter.
+ * so the order of the two does not matter. Written once; see below.
  */
 let permission: AgentPermission | null = null
 
 /**
- * Install the predicate that gates every tool call, or `null` to clear it.
+ * Install the predicate that gates every tool call. The first one wins.
  *
  * Usually reached as `installAgentTools({ allowTool })`, which is where an
  * integrator with a bundler puts it. This is the same setting on its own, for
@@ -73,11 +73,26 @@ let permission: AgentPermission | null = null
  * ignores a second one. It is hung on `OpenLeaf` by the bundle entry point, the
  * same way the session bundle exposes `registerSaveHandler`.
  *
- * Last writer wins. Any script on the page can call it -- and any script on the
- * page can call the tools themselves through `agentTools`, so this is not a
- * boundary that was holding anything before.
+ * **Set-once and non-clearing**, exactly as `installAgentTools` treats its
+ * options, and for the reason the escape hatch exists at all: this is a
+ * function on the page's own global, so a later script -- another bundle, a
+ * tag manager, an injected one -- would otherwise be able to hand the tools a
+ * predicate of its own or clear the integrator's back to "allow everything",
+ * which is the one thing the integrator installed it to stop. It is not a
+ * defence against a script that has the page: such a script can call
+ * `agentTools` directly. It is what stops the policy being replaced by
+ * accident, which is how a second `installAgentTools()` in a CMS template
+ * behaves already.
+ *
+ * A host whose policy changes -- a document that locks, a session that ends --
+ * changes what its predicate *answers*, not which predicate is installed. It
+ * is asked on every call, so it can read the host's current state each time.
  */
-export function registerAgentPermission(allowTool: AgentPermission | null): void {
+export function registerAgentPermission(allowTool: AgentPermission): void {
+  // The `typeof` guard is for the script tag, where nothing checked the
+  // argument: `registerAgentPermission(null)` used to be how a policy was
+  // cleared, and it must now be the no-op that leaves one standing.
+  if (permission || typeof allowTool !== 'function') return
   permission = allowTool
 }
 

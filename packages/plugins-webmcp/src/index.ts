@@ -38,6 +38,11 @@ export interface AgentToolsOptions {
    * does one it throws out of. Omitted, every tool behaves exactly as it does
    * without this option.
    *
+   * Taken from the first call that supplies one, and never replaced or
+   * cleared afterwards -- including through `registerAgentPermission`, the
+   * script-tag spelling of the same setting. A policy that changes with the
+   * host's state belongs inside the predicate, which is asked on every call.
+   *
    * ```ts
    * installAgentTools({
    *   allowTool: ({ editor, readOnly }) => readOnly || editor === 'draft',
@@ -77,9 +82,10 @@ export function installAgentTools(options: AgentToolsOptions = {}): void {
   if (installed) return
   installed = true
 
-  // Options are taken from the first call and this one is not an exception --
-  // but only when it was actually given, so `installAgentTools()` after
-  // `registerAgentPermission(...)` does not quietly clear the host's policy.
+  // Options are taken from the first call and this one is not an exception.
+  // `registerAgentPermission` is first-wins in its own right, so a policy
+  // registered from a script tag before this survives -- and passing nothing
+  // here never clears one.
   if (options.allowTool) registerAgentPermission(options.allowTool)
 
   // Two plugins, both per editor and both storage rather than behaviour: the

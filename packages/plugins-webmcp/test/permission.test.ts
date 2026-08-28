@@ -1,10 +1,8 @@
 import { coreSchema, parseHtml, serializeHtml } from '@openleaf-editor/core'
-import { EditorState } from 'prosemirror-state'
+import { EditorState, type Plugin } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { agentHandles } from '../src/handles.js'
-import { agentTools, registerAgentPermission, type AgentToolCall } from '../src/index.js'
-import { agentRegistry } from '../src/registry.js'
+import type { AgentToolCall } from '../src/permission.js'
 
 /**
  * The integrator's veto, from the outside: what an agent is handed back when a
@@ -16,6 +14,13 @@ import { agentRegistry } from '../src/registry.js'
  * the predicate having been called would pass for an implementation that called
  * it and then wrote anyway.
  *
+ * The package is re-imported for every test rather than imported at the top,
+ * because the policy is set-once module state and that is the property under
+ * test: nothing may replace it, this file included. `vi.resetModules()` gives
+ * each test a page of its own, and the register and the handle table have to
+ * come from the same fresh instance the tools are reading -- an editor
+ * registered in one copy of `registry.ts` does not exist to another.
+ *
  * jsdom rather than Playwright, on the same grounds as `write.test.ts`: nothing
  * here is selection, focus or contenteditable. `webmcp.spec.ts` drives the same
  * refusal through the shipped bundle in three real browsers and asserts on what
@@ -23,6 +28,25 @@ import { agentRegistry } from '../src/registry.js'
  */
 
 const views: EditorView[] = []
+
+let webmcp: typeof import('../src/index.js')
+/** The two per-editor plugins, from the same module instance as the tools. */
+let editorPlugins: () => Plugin[]
+
+beforeEach(async () => {
+  vi.resetModules()
+  webmcp = await import('../src/index.js')
+  const registry = await import('../src/registry.js')
+  const handles = await import('../src/handles.js')
+  editorPlugins = () => [registry.agentRegistry(), handles.agentHandles()]
+})
+
+afterEach(() => {
+  for (const view of views.splice(0)) {
+    view.dom.closest('openleaf-editor')?.remove()
+    view.destroy()
+  }
+})
 
 /** An editor in the shape the register expects: a view inside a host element. */
 function editor(id: string, html: string): EditorView {
@@ -35,7 +59,7 @@ function editor(id: string, html: string): EditorView {
   const view: EditorView = new EditorView(mount, {
     state: EditorState.create({
       doc: parseHtml(html, { schema: coreSchema() }),
-      plugins: [agentRegistry(), agentHandles()],
+      plugins: editorPlugins(),
     }),
   })
   views.push(view)
@@ -52,22 +76,10 @@ interface ToolResult {
 
 /** Call a tool the way the browser does: by name, off the published set. */
 function call(name: string, args: Record<string, unknown> = {}): ToolResult {
-  const tool = agentTools.find((candidate) => candidate.name === name)
+  const tool = webmcp.agentTools.find((candidate) => candidate.name === name)
   expect(tool, name).toBeTruthy()
   return JSON.parse(tool!.execute(args)) as ToolResult
 }
-
-beforeEach(() => {
-  registerAgentPermission(null)
-})
-
-afterEach(() => {
-  registerAgentPermission(null)
-  for (const view of views.splice(0)) {
-    view.dom.closest('openleaf-editor')?.remove()
-    view.destroy()
-  }
-})
 
 describe('with no predicate installed', () => {
   it('leaves every tool exactly as it was', () => {
@@ -84,13 +96,13 @@ describe('with no predicate installed', () => {
 describe('a predicate that refuses', () => {
   it('gates every tool in the set, including the one that names no editor', () => {
     editor('post-body', '<p>alpha beta</p>')
-    registerAgentPermission(() => false)
+    webmcp.registerAgentPermission(() => false)
 
     // Asserted over the set rather than over a list of names, because the point
     // of applying the gate where the set is composed is that a tool added later
     // is gated by having been added. This fails if one ever reaches the array
     // ungated -- which is the failure no per-handler check could catch.
-    for (const tool of agentTools) {
+    for (const tool of webmcp.agentTools) {
       const result = JSON.parse(tool.execute({ id: 'post-body' })) as ToolResult
       expect(result.ok, tool.name).toBe(false)
       expect(result.error, tool.name).toBe('refused')
@@ -99,7 +111,7 @@ describe('a predicate that refuses', () => {
 
   it('tells the agent it is policy rather than a mistake it can correct', () => {
     editor('post-body', '<p>alpha beta</p>')
-    registerAgentPermission(() => false)
+    webmcp.registerAgentPermission(() => false)
 
     const result = call('openleaf_get_document', { id: 'post-body' })
     expect(result.message).toContain('openleaf_get_document')
@@ -116,7 +128,7 @@ describe('a predicate that refuses', () => {
     expect(handle).toBeTruthy()
 
     const before = serializeHtml(view.state.doc)
-    registerAgentPermission(() => false)
+    webmcp.registerAgentPermission(() => false)
 
     expect(call('openleaf_replace_at', { id: 'post-body', handle, html: '<em>gamma</em>' })).toEqual(
       { ok: false, error: 'refused', message: expect.stringContaining('openleaf_replace_at') },
@@ -132,7 +144,7 @@ describe('what the predicate is told', () => {
   it('names the tool and the editor, and says whether the call only reads', () => {
     editor('post-body', '<p>alpha beta</p>')
     const seen: AgentToolCall[] = []
-    registerAgentPermission((request) => {
+    webmcp.registerAgentPermission((request) => {
       seen.push(request)
       return true
     })
@@ -153,7 +165,7 @@ describe('what the predicate is told', () => {
 
   it('is asked before the arguments are checked, so an unknown editor is still the host to decide', () => {
     const seen: AgentToolCall[] = []
-    registerAgentPermission((request) => {
+    webmcp.registerAgentPermission((request) => {
       seen.push(request)
       return false
     })
@@ -173,7 +185,7 @@ describe('what the predicate is told', () => {
     // The worked example from the README, and the reason `readOnly` is on the
     // request at all: a host writing this today keeps the policy it meant when
     // a tool is added, which a list of names does not.
-    registerAgentPermission(({ readOnly }) => readOnly)
+    webmcp.registerAgentPermission(({ readOnly }) => readOnly)
 
     expect(call('openleaf_get_document', { id: 'post-body' }).ok).toBe(true)
     expect(call('openleaf_replace_at', { id: 'post-body', handle, html: '<em>g</em>' }).error).toBe(
@@ -185,7 +197,7 @@ describe('what the predicate is told', () => {
   it('lets a host refuse one editor and allow another', () => {
     editor('post-body', '<p>alpha</p>')
     editor('comment-box', '<p>beta</p>')
-    registerAgentPermission(({ editor: id }) => id !== 'comment-box')
+    webmcp.registerAgentPermission(({ editor: id }) => id !== 'comment-box')
 
     expect(call('openleaf_get_document', { id: 'post-body' }).ok).toBe(true)
     expect(call('openleaf_get_document', { id: 'comment-box' }).error).toBe('refused')
@@ -198,7 +210,7 @@ describe('a predicate that throws', () => {
     const handle = call('openleaf_find_text', { id: 'post-body', text: 'beta' }).matches?.[0]
       ?.handle
 
-    registerAgentPermission(() => {
+    webmcp.registerAgentPermission(() => {
       throw new Error('the host session store was unreachable')
     })
 
@@ -214,13 +226,47 @@ describe('a predicate that throws', () => {
   })
 })
 
-describe('supplying the predicate at install time', () => {
-  it('takes it from the options, and keeps the first call’s', async () => {
-    // `installed` is one-way module state, so this re-imports the package
-    // rather than sharing the instance the tests above use.
-    vi.resetModules()
-    const webmcp = await import('../src/index.js')
+/**
+ * The policy is the integrator's, and it stays theirs.
+ *
+ * `registerAgentPermission` is a function on the page's own `OpenLeaf` global,
+ * because a script-tag integrator has no other way to reach `allowTool`. That
+ * makes it reachable by everything else on the page too, so it is set-once and
+ * non-clearing -- the same way `installAgentTools` takes its options from the
+ * first call and ignores the rest.
+ */
+describe('a policy that is already installed', () => {
+  it('is not replaced by a second registration', () => {
+    editor('post-body', '<p>alpha beta</p>')
+    webmcp.registerAgentPermission(() => false)
+    webmcp.registerAgentPermission(() => true)
 
+    expect(call('openleaf_get_document', { id: 'post-body' }).error).toBe('refused')
+  })
+
+  it('is not cleared by a caller passing nothing', () => {
+    editor('post-body', '<p>alpha beta</p>')
+    webmcp.registerAgentPermission(() => false)
+    // `null` was how a policy used to be cleared, and it is what an untyped
+    // script tag would still reach for. It is now the no-op that leaves the
+    // integrator's policy standing.
+    ;(webmcp.registerAgentPermission as (allow: unknown) => void)(null)
+    ;(webmcp.registerAgentPermission as (allow: unknown) => void)(undefined)
+
+    expect(call('openleaf_get_document', { id: 'post-body' }).error).toBe('refused')
+  })
+
+  it('survives a later install that supplies its own predicate', () => {
+    editor('post-body', '<p>alpha beta</p>')
+    webmcp.registerAgentPermission(() => false)
+    webmcp.installAgentTools({ allowTool: () => true })
+
+    expect(call('openleaf_get_document', { id: 'post-body' }).error).toBe('refused')
+  })
+})
+
+describe('supplying the predicate at install time', () => {
+  it('takes it from the options, and keeps the first call’s', () => {
     webmcp.installAgentTools({ allowTool: () => false })
     webmcp.installAgentTools({ allowTool: () => true })
 
@@ -232,10 +278,7 @@ describe('supplying the predicate at install time', () => {
     })
   })
 
-  it('does not clear a predicate registered before it', async () => {
-    vi.resetModules()
-    const webmcp = await import('../src/index.js')
-
+  it('does not clear a predicate registered before it', () => {
     webmcp.registerAgentPermission(() => false)
     // A script tag installs on load, so an integrator's own
     // `installAgentTools()` is routinely the second call and routinely has no

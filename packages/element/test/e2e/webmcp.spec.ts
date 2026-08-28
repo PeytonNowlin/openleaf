@@ -988,7 +988,7 @@ test.describe('applying a command', () => {
  * the time a page's own script runs, the options argument is already spent.
  * This is therefore the exact path a CMS integrator takes.
  */
-type Policy = 'clear' | 'deny-all' | 'reads-only' | 'not-comment-box' | 'throws'
+type Policy = 'clear' | 'allow-all' | 'deny-all' | 'reads-only' | 'not-comment-box' | 'throws'
 
 async function policy(page: Page, which: Policy): Promise<void> {
   await page.evaluate((mode) => {
@@ -1002,7 +1002,11 @@ async function policy(page: Page, which: Policy): Promise<void> {
     }
     const register = host.OpenLeaf?.registerAgentPermission
     if (!register) throw new Error('the bundle exposes no registerAgentPermission')
+    // `clear` and `allow-all` are here to be *ignored*: the setting is
+    // set-once, so a second call is how a later script would try to take the
+    // integrator's policy off, and it must not work.
     if (mode === 'clear') return register(null)
+    if (mode === 'allow-all') return register(() => true)
     if (mode === 'deny-all') return register(() => false)
     // No tool is named in either of these two, which is the point of the
     // request carrying `readOnly` and `editor` at all: a policy written today
@@ -1077,19 +1081,27 @@ test.describe('a page that refuses calls', () => {
     expect(await stored(page)).toBe(before)
   })
 
-  test('goes back to allowing everything when the policy is cleared', async ({ page }) => {
+  test('keeps the first policy against a second script that tries to undo it', async ({ page }) => {
+    // The escape hatch is a function on the page's own global, so everything
+    // else on the page can reach it. It is set-once for that reason: neither a
+    // permissive predicate nor a clear may take the integrator's policy off,
+    // and the write has to still be refused and still store nothing after both.
+    const before = await stored(page)
     const handle = await handleFor(page, 'post-body', 'beta')
     await policy(page, 'deny-all')
+
+    await policy(page, 'allow-all')
     expect(await write(page, { id: 'post-body', handle, html: 'sigma' })).toMatchObject({
       ok: false,
+      error: 'refused',
     })
 
     await policy(page, 'clear')
-    expect(await write(page, { id: 'post-body', handle, html: 'sigma' })).toEqual({
-      ok: true,
-      id: 'post-body',
+    expect(await write(page, { id: 'post-body', handle, html: 'sigma' })).toMatchObject({
+      ok: false,
+      error: 'refused',
     })
-    await expect.poll(() => stored(page)).toContain('<p>alpha sigma</p>')
+    expect(await stored(page)).toBe(before)
   })
 })
 

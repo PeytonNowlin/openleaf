@@ -214,8 +214,11 @@ editor the call names, and whether the tool only reads. Answering `false`
 returns `refused` to the agent and changes nothing, because the question
 is asked before any argument is validated and before anything touches an
 editor; a predicate that throws is treated the same way rather than
-reaching the agent as a crashed call. It is where the integrator hosting
-the editor expresses a policy -- "read but do not write", "not this
+reaching the agent as a crashed call. The setting is set-once and cannot
+be cleared -- the script-tag spelling, `OpenLeaf.registerAgentPermission`,
+is a function on the page's own global, so a later script would otherwise
+be able to replace the policy or take it off. It is where the integrator
+hosting the editor expresses a policy -- "read but do not write", "not this
 editor" -- and it has the standing of every other client-side control in
 this file: it is not a boundary against the page itself, because anything
 running on the page can reach the tool handlers directly, and it is not a

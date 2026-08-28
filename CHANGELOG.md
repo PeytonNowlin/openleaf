@@ -132,7 +132,10 @@ entries below say so explicitly when they do.
   the agent as a crashed call, and nothing of the thrown error travels back with
   it. With no predicate supplied, every tool behaves exactly as it did. From a
   script tag — which installs on load, so the options argument is already spent
-  — it is `OpenLeaf.registerAgentPermission(fn)`. `#250`
+  — it is `OpenLeaf.registerAgentPermission(fn)`. Either spelling is set-once
+  and cannot be cleared, so nothing that runs after the integrator can replace
+  the policy or take it off; a policy that changes with the host's state goes
+  inside the predicate, which is asked on every call. `#250`
 
 ### Fixed
 

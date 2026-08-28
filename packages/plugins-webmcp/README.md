@@ -149,7 +149,16 @@ place where the integrator hosting the editor gets to express a policy at all.
 From a script tag the predicate is `OpenLeaf.registerAgentPermission(fn)`, which
 is `allowTool` on its own — that bundle installs on load, so by the time your own
 script runs, `installAgentTools` has already been called and a second call is
-ignored. Pass `null` to clear it. Last writer wins.
+ignored.
+
+**It is set-once, and it cannot be cleared.** The first predicate registered is
+the one every call is asked, whether it arrived through `installAgentTools` or
+through this function, and a later call — another predicate, or `null` — is
+ignored the same way a second `installAgentTools` is. It has to be: this is a
+function on the page's own global, so anything that runs after you could
+otherwise hand the tools a policy of its own or take yours off. A policy that
+changes with the host's state belongs *inside* the predicate, which is asked on
+every call and can read that state each time.
 
 ```html
 <script src="/js/openleaf.min.js"></script>

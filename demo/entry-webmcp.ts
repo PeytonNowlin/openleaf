@@ -16,7 +16,10 @@
  *   - `registerAgentPermission`, which is `installAgentTools({ allowTool })` on
  *     its own. Without it the permission gate would be reachable only from a
  *     bundler build, and "allow reads, refuse writes" is exactly the decision a
- *     CMS integrator dropping in a script tag wants to make.
+ *     CMS integrator dropping in a script tag wants to make. It is set-once and
+ *     non-clearing for the reason it is here at all: it is on a global anything
+ *     on the page can reach, so a second caller must not be able to replace the
+ *     integrator's policy or take it off.
  */
 import * as webmcp from '@openleaf-editor/plugins-webmcp'
 

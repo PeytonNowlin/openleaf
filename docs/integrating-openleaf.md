@@ -287,7 +287,11 @@ without the option.
 
 From a script tag the predicate is `OpenLeaf.registerAgentPermission(fn)` — that
 bundle installs on load, so `installAgentTools`'s options argument is already
-spent by the time the page's own script runs. Pass `null` to clear it.
+spent by the time the page's own script runs. Either way the setting is
+set-once: the first predicate registered is the one every call is asked, and a
+later call — another predicate, or `null` — is ignored, so nothing that runs
+after you can replace or clear your policy. Express a policy that changes inside
+the predicate, which is asked on every call.
 
 This is not a security boundary against the page itself: anything running on the
 page can reach the tool handlers directly, and editor output still has to be
