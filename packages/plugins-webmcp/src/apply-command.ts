@@ -23,6 +23,7 @@ import type { Node as PMNode } from 'prosemirror-model'
 import type { ToolbarItemSpec } from '@openleaf-editor/ui'
 import type { Command, Selection, Transaction } from 'prosemirror-state'
 import { NodeSelection, TextSelection } from 'prosemirror-state'
+import type { EditorView } from 'prosemirror-view'
 import type { AgentTool } from './agent.js'
 import { editorArgumentWith, withEditor } from './editor-arg.js'
 import { offeredCommands } from './get-capabilities.js'
@@ -154,7 +155,12 @@ function stage(doc: PMNode, from: number, to: number): Selection {
  *
  * The command's transaction is captured rather than forwarded, which makes
  * "exactly one transaction" a property of this function rather than a hope
- * about every command in every plugin an integrator happened to install.
+ * about every command in every plugin an integrator happened to install -- and
+ * that is why the third argument is a stand-in rather than the view itself. A
+ * `Command` is `(state, dispatch, view)`, and a command handed the live view can
+ * ignore the dispatch it was given and call `view.dispatch` instead. It would be
+ * dispatching unmarked and ungrouped, past the did-it-land check and past the
+ * one-transaction guarantee above, and none of that would show up in a diff.
  */
 function run(
   editor: RegisteredEditor,
@@ -179,13 +185,16 @@ function run(
   const staged = before.apply(before.tr.setSelection(selection))
 
   let produced: Transaction | undefined
+  const capture = (candidate: Transaction): void => {
+    produced ??= candidate
+  }
   let applied = false
   try {
     // `isEnabled` is the item's own answer to "would clicking this do
     // anything", and it defaults to asking the command. Where an item defines
     // one, it is the guard a person gets, so it is the guard an agent gets.
     if (spec.isEnabled && !spec.isEnabled(staged)) return declined(name)
-    applied = command(staged, (candidate) => (produced ??= candidate), view)
+    applied = command(staged, capture, standIn(view, capture))
   } catch {
     // A command is third-party code: an integrator can register one, and
     // `registerToolbarItem` is last-wins, so even a built-in id may not be the
@@ -212,6 +221,31 @@ function run(
   if (!dispatchAgent(editor, marked, NAME)) return dispatchRefused()
 
   return ok({ id: editor.id, command: name })
+}
+
+/**
+ * The view a command is handed: the real one, with its `dispatch` captured.
+ *
+ * A command is third-party code -- `registerToolbarItem` is last-wins, so even
+ * a built-in id may be an integrator's command -- and the third argument of a
+ * `Command` is the whole editor. Most commands that take it only read: they
+ * measure with `coordsAtPos`, ask `someProp` for a handler, or focus the DOM
+ * afterwards. Passing nothing would break those for the sake of the one that
+ * dispatches, and passing the view itself would leave that one a door out of
+ * every guarantee this file makes.
+ *
+ * So it gets the view with one property shadowed. Prototype delegation rather
+ * than a copy: every read falls through to the real object -- `state`, `dom`,
+ * `props`, and every method, called with the stand-in as `this` and resolving
+ * the view's own fields through the chain -- and only `dispatch` is this
+ * function's. A command that reaches for `view.dispatch` therefore hands its
+ * transaction to the same capture the callback would have, and it is dispatched
+ * once, marked and grouped, by the code below.
+ */
+function standIn(view: EditorView, dispatch: (tr: Transaction) => void): EditorView {
+  const captured: EditorView = Object.create(view) as EditorView
+  captured.dispatch = dispatch
+  return captured
 }
 
 /** The greyed-out button, in words: it does not apply here, and nothing moved. */

@@ -162,6 +162,36 @@ describe('applying a command', () => {
     expect(seen[0]?.getMeta(agentKey)).toEqual({ tool: 'openleaf_apply_command' })
   })
 
+  it("captures a command that dispatches through the view rather than its callback", () => {
+    // A `Command` is `(state, dispatch, view)`, and the third argument is a way
+    // out of the second: a command handed the live view can dispatch for
+    // itself, unmarked, ungrouped, past the did-it-land check and past "exactly
+    // one transaction per call". Commands are third-party code here --
+    // `registerToolbarItem` is last-wins, so even a built-in id may be an
+    // integrator's -- so the view it is handed captures the same way the
+    // callback does, and the one dispatch is still this package's.
+    registerToolbarItem({
+      id: 'sideways',
+      label: 'Sideways',
+      command: (state, _dispatch, editorView) => {
+        editorView?.dispatch(state.tr.insertText('!', state.selection.to))
+        return true
+      },
+    })
+    const view = editor('post', '<p>alpha beta</p>', 'sideways')
+    const handle = handleFor('post', 'beta')
+    watch(view)
+
+    expect(apply({ id: 'post', command: 'sideways', handle })).toEqual({
+      ok: true,
+      id: 'post',
+      command: 'sideways',
+    })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.getMeta(agentKey)).toEqual({ tool: 'openleaf_apply_command' })
+    expect(html(view)).toBe('<p>alpha beta!</p>')
+  })
+
   it('leaves the author where they were rather than moving the caret', () => {
     // The agent's range is staged as a selection so the command knows what to
     // act on. Leaving it there would jump a caret that may be in another
