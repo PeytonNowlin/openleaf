@@ -28,8 +28,10 @@
 
 import { parseHtml } from '@openleaf-editor/core'
 import { normalizePastedHtml } from '@openleaf-editor/paste'
+import { closeHistory } from 'prosemirror-history'
 import { Slice, type Node as PMNode } from 'prosemirror-model'
 import { PluginKey, type Transaction } from 'prosemirror-state'
+import type { EditorView } from 'prosemirror-view'
 import type { AgentToolInputSchema } from './agent.js'
 import { withEditor } from './editor-arg.js'
 import { resolveHandle } from './handles.js'
@@ -82,14 +84,81 @@ function markAgent(tr: Transaction, tool: string): Transaction {
 }
 
 /**
+ * The document each editor was left holding by this package's last write.
+ *
+ * Identity rather than a flag, and that is what makes "consecutive" mean the
+ * right thing. A `doc` node is replaced only by a transaction that changed the
+ * document, so `view.state.doc === lastWrite.get(view)` says precisely "nothing
+ * has edited this document since the agent last did" -- without being fooled by
+ * the caret moves, focus changes and step-free transactions that pass through
+ * an editor a person is sitting in front of, and without asking the clock.
+ *
+ * Keyed by the view because the view is the object that survives a
+ * reconfigure -- the plugin views around it do not, which is the same reason
+ * the register holds identifiers per host rather than in a closure -- and weak
+ * so that an editor leaving the page takes its entry with it.
+ */
+const lastWrite = new WeakMap<EditorView, PMNode>()
+
+/** One millisecond after the epoch: as old as a timestamp gets without meaning "none". */
+const EPOCH = 1
+
+/**
+ * Join this write to the agent's previous one, or open a new undo event.
+ *
+ * `prosemirror-history` groups by elapsed time and adjacency, and both are the
+ * wrong question about an agent. Tool calls arrive in a burst, so a restructure
+ * that touched six paragraphs would collapse into one step or fragment into six
+ * depending on how quickly the model answered and how far apart the paragraphs
+ * were -- and the author who watched it happen would have no way to know how
+ * many times to press undo. The marker is the right question: one run of
+ * consecutive agent writes is one thing the author asked for, and one press
+ * takes it back. A slow agent gets the same answer as a fast one.
+ *
+ * Three mechanisms, and they are not three spellings of the same trick. Each
+ * closes one edge of the run.
+ *
+ *   - `appendedTransaction` is the metadata `EditorState.applyTransaction`
+ *     leaves on a plugin's appended transaction, and history reads it as "this
+ *     belongs to the event already in progress" no matter how long ago that
+ *     event started. `core/src/autolink.ts` uses it for the same reason. It is
+ *     what holds the run together, and it is why a slow agent groups.
+ *   - `closeHistory` on the FIRST write of a run stops the run reaching
+ *     backwards. Without it the opening write is subject to the ordinary time
+ *     window, so a write landing next to a sentence the author had just typed
+ *     would be merged into the author's event -- and undoing the agent would
+ *     take the person's own work with it. It is also what makes a human edit
+ *     *between* two agent writes break the run: the write after it opens a
+ *     fresh event instead of reopening the one before.
+ *   - `setTime(EPOCH)` stops the run reaching forwards, and it is the half that
+ *     is easy to miss. History remembers the timestamp of the last transaction
+ *     it grouped; the author's next keystroke starts a new event only if that
+ *     timestamp is more than `newGroupDelay` old, or if the keystroke is not
+ *     adjacent to it. An agent write is neither of those things -- it happened
+ *     just now, and the author's caret is very often exactly where it landed --
+ *     so the first thing they typed afterwards would join the agent's event and
+ *     be undone with it. Dating the transaction to the epoch says the true
+ *     thing to the only mechanism that asks: as far as *time-based* grouping
+ *     goes, this write is ancient, and nothing may coalesce with it on the
+ *     strength of having happened soon after. It is not zero, because history
+ *     reads a zero timestamp as "no previous event" and would then refuse to
+ *     append the rest of the run.
+ */
+function groupWithRun(tr: Transaction, view: EditorView): Transaction {
+  const dated = tr.setTime(EPOCH)
+  if (lastWrite.get(view) === view.state.doc) return dated.setMeta('appendedTransaction', dated)
+  return closeHistory(dated)
+}
+
+/**
  * Dispatch an agent transaction: marked, grouped, and checked that it landed.
  *
  * The one `dispatch` in this package. `writeAt` covers every tool that can hand
  * over a finished transaction, but `openleaf_apply_command` cannot -- it runs
- * the editor's own command and dispatches what that produced -- so the marker
- * and the did-it-land check live one level below `writeAt`, where both paths
- * reach them. A tool that dispatched for itself would be unmarked, and the
- * omission does not show up in a diff.
+ * the editor's own command and dispatches what that produced -- so the marker,
+ * the undo grouping and the did-it-land check live one level below `writeAt`,
+ * where both paths reach them. A tool that dispatched for itself would be
+ * ungrouped and unmarked, and neither omission shows up in a diff.
  *
  * Answers whether the change actually landed. The editor gets the last word
  * even after every guard above agreed: a `filterTransaction` -- core's,
@@ -100,8 +169,13 @@ function markAgent(tr: Transaction, tool: string): Transaction {
 export function dispatchAgent(editor: RegisteredEditor, tr: Transaction, tool: string): boolean {
   const { view } = editor
   const before = view.state
-  view.dispatch(markAgent(tr, tool))
-  return view.state !== before
+  view.dispatch(groupWithRun(markAgent(tr, tool), view))
+  if (view.state === before) return false
+  // Recorded only on a write that landed. A dropped transaction added nothing
+  // to the history, so treating the next write as its continuation would append
+  // it to whatever event the author's own last edit opened.
+  lastWrite.set(view, view.state.doc)
+  return true
 }
 
 /** The refusal a dropped dispatch answers with, in one place because two paths use it. */

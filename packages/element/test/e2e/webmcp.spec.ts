@@ -869,3 +869,81 @@ test.describe('applying a command', () => {
     })
   })
 })
+
+/**
+ * Undo, from the author's side of the keyboard.
+ *
+ * The unit tests in `packages/plugins-webmcp/test/undo-grouping.test.ts` count
+ * history events, which is where the grouping rules are legible. These are the
+ * claim the rules exist to support and the only place it can be made: a real
+ * element, with the `history()` it actually installs, and a real Ctrl+Z.
+ */
+test.describe('undoing what an agent wrote', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(HARNESS)
+    await expect(editor(page)).toBeVisible()
+    // Focus, so the keystrokes below reach the editor's keymap. Clicking sets
+    // a selection and changes no content, which is exactly what an author
+    // watching an agent work does.
+    await editor(page).click()
+  })
+
+  test('takes back a whole run of agent writes in one press', async ({ page }) => {
+    const before = await stored(page)
+
+    await write(page, {
+      id: 'post-body',
+      handle: await handleFor(page, 'post-body', 'alpha'),
+      html: 'one',
+    })
+    await write(page, {
+      id: 'post-body',
+      handle: await handleFor(page, 'post-body', 'beta'),
+      html: 'two',
+    })
+    await write(page, {
+      id: 'post-body',
+      handle: await handleFor(page, 'post-body', 'tail'),
+      html: 'three',
+    })
+    await expect.poll(() => stored(page)).toContain('<p>one two</p>')
+
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(() => stored(page)).toBe(before)
+
+    // And back again, whole: an author who undid to look at the original and
+    // then changed their mind gets the agent's work back in one press.
+    await page.keyboard.press('ControlOrMeta+Shift+z')
+    await expect.poll(() => stored(page)).toContain('<p>one two</p>')
+  })
+
+  test('leaves an edit the author made in the middle of the run', async ({ page }) => {
+    await write(page, {
+      id: 'post-body',
+      handle: await handleFor(page, 'post-body', 'alpha'),
+      html: 'one',
+    })
+    await expect.poll(() => stored(page)).toContain('<p>one beta</p>')
+
+    // The author types in the paragraph the agent has not touched. Clicked at
+    // the left edge rather than moved with Home, which lands at the end of the
+    // line in WebKit and Firefox.
+    await editor(page).getByText('tail').click({ position: { x: 2, y: 8 } })
+    await page.keyboard.type('mine ')
+    await expect.poll(() => stored(page)).toContain('<p>mine tail</p>')
+
+    await write(page, {
+      id: 'post-body',
+      handle: await handleFor(page, 'post-body', 'beta'),
+      html: 'two',
+    })
+    await expect.poll(() => stored(page)).toContain('<p>one two</p>')
+
+    // One press takes back the agent's second write and nothing else. The
+    // author's sentence is their own undo step, which is the point: an agent's
+    // run must not swallow work the person did while it was thinking.
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(() => stored(page)).toContain('<p>one beta</p>')
+    expect(await stored(page)).toContain('<p>mine tail</p>')
+  })
+})

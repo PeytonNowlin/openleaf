@@ -250,6 +250,9 @@ importers:
       '@openleaf-editor/ui':
         specifier: workspace:*
         version: link:../ui
+      prosemirror-history:
+        specifier: ^1.4.1
+        version: 1.5.0
       prosemirror-model:
         specifier: ^1.24.1
         version: 1.25.11

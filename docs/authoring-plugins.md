@@ -928,8 +928,8 @@ openleaf-tables.min.js       20.8 /  25
 openleaf-session.min.js       9.9 /  10
 openleaf-insert.min.js        8.4 /  20
 openleaf-highlight.min.js     6.7 /  15
+openleaf-webmcp.min.js        6.6 /   8
 openleaf-colour.min.js        5.3 /  15
-openleaf-webmcp.min.js        6.4 /   8
 openleaf-import.min.js        3.3 /  12
 ```
 
