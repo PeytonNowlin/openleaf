@@ -53,6 +53,19 @@ entries below say so explicitly when they do.
   opaque, so nothing an agent reads out of one can be computed with, and they
   stop resolving when their editor leaves the page. Text that does not occur is
   an empty result rather than an error. `#244`
+- **`openleaf_get_structure`: an agent can read a map of a document instead of
+  the document.** The outline names each block in order — its type, a heading's
+  level, and the start of its text — and nothing else, so an agent asked to
+  retitle one section of fifty no longer has to read the markup of the other
+  forty-nine before it can act. Every entry carries a handle for that whole
+  block, the same handles searching issues: one taken from an outline still
+  names its block after an edit elsewhere in the document, and refuses once the
+  block is deleted. Nested blocks are not listed separately — a list or a table
+  is one entry, and searching is how an agent addresses something inside it —
+  and a document with nothing in it outlines as an empty result rather than as
+  an error. Annotated read-only, and annotated `untrustedContentHint`: an
+  outline is shorter than the document but it is made of the document's own
+  text. `#245`
 
 ### Fixed
 

@@ -2,6 +2,7 @@ import { DEFAULT_LAYOUT } from '@openleaf-editor/ui'
 import { describe, expect, it } from 'vitest'
 import { getCapabilitiesTool, layoutIds } from '../src/get-capabilities.js'
 import { getDocumentTool } from '../src/get-document.js'
+import { getStructureTool } from '../src/get-structure.js'
 
 /**
  * The half of the capabilities answer that needs no editor.
@@ -55,7 +56,7 @@ describe('the commands a layout names', () => {
  * somebody else's document.
  */
 describe('a tool asked about an editor that is not there', () => {
-  const idTaking = [getCapabilitiesTool, getDocumentTool]
+  const idTaking = [getCapabilitiesTool, getDocumentTool, getStructureTool]
 
   it('fails with the code that says to list again', () => {
     for (const tool of idTaking) {

@@ -1,6 +1,6 @@
 # `@openleaf-editor/plugins-webmcp`
 
-An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, what is currently in it, and where a given string occurs in it.
+An opt-in WebMCP tool surface for [OpenLeaf](https://github.com/PeytonNowlin/openleaf): an agent driving the browser can ask which OpenLeaf editors are on the page, what each one is able to do, what is currently in it, how it is structured, and where a given string occurs in it.
 
 This is a **beta** (`0.1.0-beta.4`). Keep every `@openleaf-editor/*` package on the
 same version.
@@ -61,6 +61,7 @@ namespace.
 | `openleaf_list_editors` | yes | no | Lists the OpenLeaf editors on the page, with an identifier for each. |
 | `openleaf_get_capabilities` | yes | no | Reports what one editor's document can store, and which editing commands that editor actually offers. |
 | `openleaf_get_document` | yes | **yes** | Returns one editor's current content as HTML — including edits the author has not saved. |
+| `openleaf_get_structure` | yes | **yes** | Outlines one editor's blocks — type, heading level, and the start of the text — with a handle for each, and without its markup. |
 | `openleaf_find_text` | yes | **yes** | Searches one editor for a literal string, and returns a handle for each match. |
 
 Every result is a **JSON string**, because a string is all the browser's execute
@@ -79,11 +80,12 @@ different instructions. The tokens are `unknown-editor`, `invalid-argument` and
 Read tools carry the `readOnlyHint` annotation, so the client driving the agent
 can decide when a call needs a person's confirmation. Any tool that returns
 document content carries `untrustedContentHint`, because a document is exactly
-where text aimed at the agent reading it can hide. `openleaf_get_document` and
-`openleaf_find_text` are annotated with it — one returns the document, the other
-the text around each match; `openleaf_list_editors` and
-`openleaf_get_capabilities` return identifiers, type names and command labels
-only, and are annotated accordingly.
+where text aimed at the agent reading it can hide. `openleaf_get_document`,
+`openleaf_get_structure` and `openleaf_find_text` are annotated with it — one
+returns the document, one an outline built from its headings, one the text
+around each match; `openleaf_list_editors` and `openleaf_get_capabilities`
+return identifiers, type names and command labels only, and are annotated
+accordingly.
 
 ## What "capabilities" means here
 
@@ -136,12 +138,52 @@ An editor removed from the page stops being listed. An editor mounted after the
 bundle loaded starts being listed. Both follow from where the register is kept:
 the editor plugin's own per-view lifecycle.
 
+## Outlines
+
+`openleaf_get_structure` answers with a map of a document rather than the
+document. Reading a fifty-section article to retitle one of its sections costs
+an agent its context before it starts, so the outline names each block and
+nothing else:
+
+```json
+{
+  "ok": true,
+  "id": "post-body",
+  "outline": [
+    { "handle": "…", "type": "heading", "level": 2, "text": "Introduction" },
+    { "handle": "…", "type": "paragraph", "text": "OpenLeaf is a small editor…" },
+    { "handle": "…", "type": "bullet_list", "text": "one two three" }
+  ],
+  "truncated": false
+}
+```
+
+- **`type`** is the block's node type, and **`level`** is on headings only.
+- **`text`** is the start of the block's text, whitespace collapsed. It is
+  document content, so it carries the same warning the document does.
+- **`handle`** names that whole block, and is the same kind of handle a search
+  returns — so an outline entry is something an agent can act on, not just read.
+
+Nested blocks are not listed separately: a list or a table is one entry, and
+`openleaf_find_text` is how an agent addresses something inside it. An outline
+that descended into every list item would be the document again with different
+punctuation.
+
+An empty paragraph is not listed, so a document with nothing in it outlines as
+`{"ok":true,"outline":[]}` rather than as an error. A block that carries no text
+but is still something the author put there — a rule, a preserved region — is
+listed, because an agent inserting after it has to know it is there. At most 200
+blocks come back, with `"truncated": true` when there were more; the cap is the
+handle table's, since an outline longer than the 256 handles an editor keeps
+would go stale at the top while it was still being read.
+
 ## Handles
 
 Every tool other than the listing acts on a place in a document, and a place
 cannot be named by a selection: a selection does not survive the round trip out
-to an agent and back. So `openleaf_find_text` returns a **handle** per match — an
-opaque token the agent passes to a later call.
+to an agent and back. So `openleaf_find_text` returns a **handle** per match, and
+`openleaf_get_structure` one per outlined block — an opaque token the agent
+passes to a later call.
 
 ```json
 { "ok": true, "matches": [{ "handle": "…", "context": "the first beta here" }], "truncated": false }
@@ -193,7 +235,8 @@ hands that array to the browser:
 import { agentTools } from '@openleaf-editor/plugins-webmcp'
 
 agentTools.map((tool) => tool.name)
-// ['openleaf_list_editors', 'openleaf_get_capabilities', 'openleaf_get_document', 'openleaf_find_text']
+// ['openleaf_list_editors', 'openleaf_get_capabilities', 'openleaf_get_document',
+//  'openleaf_get_structure', 'openleaf_find_text']
 ```
 
 From a script tag it is `OpenLeaf.agentTools` once the bundle has loaded, the
