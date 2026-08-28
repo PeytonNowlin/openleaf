@@ -66,6 +66,20 @@ entries below say so explicitly when they do.
   an error. Annotated read-only, and annotated `untrustedContentHint`: an
   outline is shorter than the document but it is made of the document's own
   text. `#245`
+- **`openleaf_replace_at`: an agent can rewrite the passage a handle names.**
+  The HTML it sends is sanitized before it is parsed, by the same policy a
+  person's paste goes through, and that ordering is the whole of the guarantee:
+  the preservation layer keeps markup the schema does not recognise rather than
+  rejecting it, so parsing agent HTML first would turn hostile or malformed
+  input into an opaque atom the document then carries faithfully forever.
+  Content the policy leaves nothing of is refused rather than written. A range
+  covering preserved markup is refused too, because the editor's promise to
+  hand that markup back byte-identical only holds if nothing edits inside it —
+  and after a write elsewhere in the document, it still does. A refused write
+  changes nothing, a handle whose text has already been replaced refuses rather
+  than landing on whatever moved into its place, and each call is one
+  transaction, so one thing the agent did is one thing the author undoes. It is
+  the first tool in the set that is not annotated read-only. `#246`
 
 ### Fixed
 

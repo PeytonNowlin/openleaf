@@ -54,6 +54,7 @@ describe('the tool set', () => {
       'openleaf_get_document',
       'openleaf_get_structure',
       'openleaf_find_text',
+      'openleaf_replace_at',
     ])
   })
 
@@ -74,6 +75,9 @@ describe('the tool set', () => {
       // safer: it is made of the document's own headings.
       openleaf_get_structure: { readOnlyHint: true, untrustedContentHint: true },
       openleaf_find_text: { readOnlyHint: true, untrustedContentHint: true },
+      // The one tool that writes, and the one that hands nothing of the
+      // document back: an id and a flag are all a write reports.
+      openleaf_replace_at: { readOnlyHint: false, untrustedContentHint: false },
     })
   })
 
@@ -97,6 +101,7 @@ describe('the tool set', () => {
       openleaf_get_document: ['id'],
       openleaf_get_structure: ['id'],
       openleaf_find_text: ['id', 'text'],
+      openleaf_replace_at: ['id', 'handle', 'html'],
     })
   })
 

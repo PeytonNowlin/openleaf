@@ -327,7 +327,7 @@ package owns, so on its own there is no control to reach it through.
 | [`@openleaf-editor/plugins-import-docx`](packages/plugins-import-docx) | Microsoft Word `.docx` import via Mammoth |
 | [`@openleaf-editor/plugins-session`](packages/plugins-session) | Find and replace, word count, autosave, save, print, preview, and new document |
 | [`@openleaf-editor/plugins-insert`](packages/plugins-insert) | Media, details, anchors, character map, emoji, snippets, and image resize |
-| [`@openleaf-editor/plugins-webmcp`](packages/plugins-webmcp) | WebMCP tool surface: an agent driving the page can discover the editors on it, ask what each can do, read its content or an outline of it, and search it for text |
+| [`@openleaf-editor/plugins-webmcp`](packages/plugins-webmcp) | WebMCP tool surface: an agent driving the page can discover the editors on it, ask what each can do, read its content or an outline of it, search it for text, and rewrite a passage it located |
 
 ## Documentation
 
