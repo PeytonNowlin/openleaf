@@ -106,6 +106,19 @@ entries below say so explicitly when they do.
   the HTML source view open are all refused, matching what the editor's own
   toolbar does. Each call is exactly one transaction, marked as
   agent-originated, so one undo reverses one agent action. `#248`
+- **A run of agent edits is one press of undo.** An author who watched an agent
+  restructure a document presses Ctrl+Z once and has the document back as it
+  was before the agent started, however many tools the agent called and however
+  long it took over them; redo brings the whole run back the same way. Undo
+  events are otherwise grouped by elapsed time and adjacency, which are the
+  wrong questions to ask about an agent — tool calls arrive in a burst, so the
+  same rewrite would collapse into one step or fragment into a dozen depending
+  on how fast the model answered, and the author would have no way to know how
+  many times to press. Grouping keys off the mark every agent write already
+  carries instead. An edit the author makes themselves ends the run in both
+  directions, so undoing the agent never takes back a sentence the person
+  typed, and their own consecutive typing still groups exactly as it does in an
+  editor this package was never installed in. `#249`
 - **An integrator can refuse individual agent tool calls.**
   `installAgentTools({ allowTool })` takes a synchronous predicate asked before
   every tool call — the listing included — and answering `false` returns

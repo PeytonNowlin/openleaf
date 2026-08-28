@@ -323,8 +323,8 @@ write path is one module rather than one per tool:
   the editor, so a failure is not a partial write; it is not a write. The
   integrator's own [permission predicate](#permission) is the first of those
   checks, and refuses with the same `refused` token.
-- **One call is one transaction**, so one thing the agent did is one thing the
-  author undoes.
+- **One call is one transaction**, and a run of calls is one undo — see
+  [Undo](#undo).
 
 A replacement spends its handle: the text it named is gone, so the handle
 resolves to `stale-handle` afterwards. Search again before editing the same
@@ -404,8 +404,8 @@ heard of. There is no list of command names anywhere in the package.
   editor, and one whose author has the HTML source view open — the editor
   disables its own toolbar in both cases, and a change made behind the source
   view would be discarded when it closes.
-- **One call is one transaction**, marked as agent-originated, so one undo
-  reverses one agent action.
+- **One call is one transaction**, marked as agent-originated and grouped with
+  the agent's other writes — see [Undo](#undo).
 - **The handle survives.** Formatting does not delete the text, so a second
   command can be applied to the same handle.
 
@@ -413,6 +413,27 @@ The `handle` and the editor `id` must agree. A handle carries its own editor, so
 a pair that disagrees is `invalid-argument` rather than a guess — preferring the
 handle would edit a document the agent did not name, and preferring the id would
 check the wrong editor's toolbar for what is allowed.
+
+## Undo
+
+**A run of agent writes is one press of undo.** However many tools an agent
+called and however long it took over them, an author who watched it restructure
+a document presses Ctrl+Z once and has the document back as it was before the
+agent started. Redo brings the whole run back the same way.
+
+This is not the editor's default, and it could not be. Undo events are grouped
+by elapsed time and by adjacency, which are the wrong questions to ask about an
+agent: tool calls arrive in a burst, so the same six-paragraph rewrite would
+collapse into one step or fragment into six depending on how fast the model
+answered and how far apart the paragraphs were — and the author would have no
+way to know how many times to press. Grouping here keys off the mark every agent
+write carries instead, so a slow agent and a fast one produce the same one step.
+
+**An edit the author makes themselves ends the run.** The write that follows it
+opens a new undo event, and the write before it is already closed, so undoing the
+agent never takes back a sentence the person typed and undoing their sentence
+never takes back the agent's work. Typing that is nobody's but the author's
+groups exactly as it does in an editor this package was never installed in.
 
 ## Browser support
 
