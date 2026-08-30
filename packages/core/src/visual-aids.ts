@@ -17,8 +17,8 @@
 
 import type { Node as PMNode } from 'prosemirror-model'
 import { Plugin, PluginKey } from 'prosemirror-state'
-import type { StepMap } from 'prosemirror-transform'
 import { Decoration, DecorationSet } from 'prosemirror-view'
+import { changedRange, widenToTopLevel } from './decoration-range.js'
 
 const key = new PluginKey<DecorationSet>('openleaf-visual-aids')
 
@@ -80,50 +80,6 @@ function decorationsIn(doc: PMNode, from: number, to: number): Decoration[] {
   return out
 }
 
-/**
- * The span of `tr.doc` the transaction touched, or null when it touched nothing.
- *
- * Each step's map reports positions in the document *that step* produced, which
- * for every step but the last is not `tr.doc`. Rather than slicing the mapping
- * per step -- the O(steps^2) shape this plugin exists to avoid -- the accumulated
- * range is carried forward one step at a time, so the whole scan is O(steps).
- */
-function changedRange(maps: readonly StepMap[]): { from: number; to: number } | null {
-  let from = -1
-  let to = -1
-  for (const map of maps) {
-    if (from > -1) {
-      from = map.map(from, -1)
-      to = map.map(to, 1)
-    }
-    map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
-      from = from < 0 ? newStart : Math.min(from, newStart)
-      to = to < 0 ? newEnd : Math.max(to, newEnd)
-    })
-  }
-  return from < 0 ? null : { from, to }
-}
-
-/**
- * Widen a range to whole top-level blocks.
- *
- * Every aid is contained in one top-level block, so widening to that boundary
- * means a node overlapping the rebuilt range is *entirely* inside it. Without
- * that, a decoration on the half of a paragraph outside the range would survive
- * the removal and be added a second time.
- */
-function widen(doc: PMNode, from: number, to: number): { from: number; to: number } {
-  const size = doc.content.size
-  const start = Math.max(0, Math.min(from, size))
-  const end = Math.max(start, Math.min(to, size))
-  const $start = doc.resolve(start)
-  const $end = doc.resolve(end)
-  return {
-    from: $start.depth > 0 ? $start.before(1) : start,
-    to: $end.depth > 0 ? $end.after(1) : end,
-  }
-}
-
 export function visualAidsPlugin(): Plugin<DecorationSet> {
   return new Plugin<DecorationSet>({
     key,
@@ -133,10 +89,10 @@ export function visualAidsPlugin(): Plugin<DecorationSet> {
       },
       apply(tr, set) {
         if (!tr.docChanged) return set
-        const changed = changedRange(tr.mapping.maps)
+        const changed = changedRange(tr)
         const mapped = set.map(tr.mapping, tr.doc)
         if (!changed) return mapped
-        const { from, to } = widen(tr.doc, changed.from, changed.to)
+        const { from, to } = widenToTopLevel(tr.doc, changed.from, changed.to)
         const stale = mapped.find(from, to)
         const kept = stale.length > 0 ? mapped.remove(stale) : mapped
         return kept.add(tr.doc, decorationsIn(tr.doc, from, to))

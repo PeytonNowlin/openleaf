@@ -78,7 +78,10 @@ nested inside the element; OpenLeaf will discover and bind it automatically.
 `placeholder="Write the article…"` shows a prompt on an empty document without
 writing into `value`. `lang` on the host — or, if the host has none, on the
 bound textarea — is copied onto the canvas for spellcheck; `spellcheck="false"`
-turns checking off. A `readonly` editor does not follow links: listen for
+turns checking off. Code blocks and inline `<code>` are never spellchecked
+whichever way that is set, and the attribute that does it is view-only — it is
+not in the HTML you store. WebKit honours `spellcheck` on the editing host
+rather than per element, so Safari still underlines code. A `readonly` editor does not follow links: listen for
 `openleaf:link` (`{ href }`) if a preview should open in a new tab. Pasting a
 bare `https://…/hero.png` inserts an image; a URL that is not an image keeps
 today's paste.

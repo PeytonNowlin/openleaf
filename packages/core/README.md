@@ -114,6 +114,18 @@ skip the clamp when the model caret is still collapsed and only the DOM range
 crosses the boundary. `<openleaf-editor>` already installs both. Details are in
 [authoring-plugins.md §4.11](../../docs/authoring-plugins.md#411-isolating-nodes-clamp-the-selection-at-their-boundary).
 
+## Code is not spellchecked
+
+If you construct a ProseMirror editor yourself, install `codeSpellcheckPlugin()`
+alongside the others. It decorates code blocks and inline `<code>` with
+`spellcheck="false"`, so the browser stops underlining identifiers in an editor
+whose author asked for their *prose* to be checked. It is a decoration and not
+part of `toDOM` on purpose: `serializeHtml` serializes with the schema, so an
+attribute added there would be written into every stored document.
+`<openleaf-editor>` already installs the plugin. WebKit applies `spellcheck`
+from the editing host rather than per element, so this changes nothing on Safari
+or iOS.
+
 ## Captioned figures
 
 If you construct a ProseMirror editor yourself, install `figureDragPlugin()`

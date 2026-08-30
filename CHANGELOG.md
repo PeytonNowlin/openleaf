@@ -14,6 +14,18 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Code blocks and inline `<code>` are no longer spellchecked.** The canvas
+  offered one answer for the whole document -- `spellcheck="false"` on the
+  host -- so an author who wanted their prose checked got a red squiggle under
+  every identifier, and source view's textarea was the only place in the editor
+  where code was left alone. `codeSpellcheckPlugin()` now marks both as
+  `spellcheck="false"`, unconditionally: the host attribute is an answer about
+  prose, and code is not prose either way it is set. This is a view-only
+  decoration rather than an attribute in the schema's `toDOM`, because `toDOM`
+  is what `serializeHtml` writes with and stored HTML must not gain editor
+  chrome. WebKit reads `spellcheck` from the editing host rather than per
+  element, so Safari and iOS are unchanged.
+
 - **Font-family names with apostrophes, plus signs, or a leading digit now
   round-trip.** `oneFontFamily` only allowed `[a-zA-Z0-9 -]` starting with a
   letter, so `Goudy's Old Style`, `21st Century` and `C++ Sans` were dropped
