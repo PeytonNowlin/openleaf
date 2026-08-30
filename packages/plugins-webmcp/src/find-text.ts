@@ -13,6 +13,7 @@ import type { AgentTool } from './agent.js'
 import { editorArgumentWith, stringArg, withEditor } from './editor-arg.js'
 import { createHandles, type HandleRange } from './handles.js'
 import { fail, ok } from './result.js'
+import { refuseInSourceMode } from './source-mode.js'
 
 /**
  * The most matches one call returns.
@@ -86,6 +87,18 @@ export const findTextTool: AgentTool = {
     }
 
     return withEditor(args, (editor) => {
+      // Before the search, not after it: a match found in the hidden document
+      // would be handed back with a handle pointing into markup the author may
+      // already have deleted by hand.
+      const editingSource = refuseInSourceMode(
+        editor,
+        'a search now would run against the document behind it rather than the ' +
+          'markup on screen, and every handle it returned would name a position ' +
+          'in that stale document. Read openleaf_get_document, or wait for the ' +
+          'author to close source view.',
+      )
+      if (editingSource) return editingSource
+
       const { matches, truncated } = matchesIn(editor.view.state.doc, text)
       // One transaction for the whole batch, after the search rather than
       // during it, so a search that found nothing dispatches nothing at all.

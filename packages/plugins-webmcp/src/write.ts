@@ -37,6 +37,7 @@ import { stringArg, withEditor } from './editor-arg.js'
 import { resolveHandle } from './handles.js'
 import type { RegisteredEditor } from './registry.js'
 import { fail, ok } from './result.js'
+import { refuseInSourceMode } from './source-mode.js'
 
 /**
  * The marker every transaction this package dispatches carries.
@@ -299,17 +300,12 @@ export function refuseWrite(editor: RegisteredEditor, from: number, to: number):
     )
   }
 
-  // Read through the property rather than requiring it on the host type: the
-  // element is a peer dependency over a range, and one that predates source
-  // view simply has no source view to be in.
-  if ((editor.host as { sourceMode?: boolean }).sourceMode === true) {
-    return fail(
-      'refused',
-      'that editor has its HTML source view open: the author is editing its ' +
-        'markup by hand, and a change made now would be discarded when the view ' +
-        'closes. Read the document again before retrying.',
-    )
-  }
+  const editingSource = refuseInSourceMode(
+    editor,
+    'a change made now would be discarded when the view closes. Read the ' +
+      'document again before retrying.',
+  )
+  if (editingSource) return editingSource
 
   if (touchesPreserved(editor.view.state.doc, from, to)) {
     return fail(

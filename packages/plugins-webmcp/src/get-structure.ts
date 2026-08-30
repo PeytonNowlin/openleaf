@@ -15,6 +15,7 @@ import type { AgentTool } from './agent.js'
 import { editorArgument, withEditor } from './editor-arg.js'
 import { createHandles, type HandleRange } from './handles.js'
 import { ok } from './result.js'
+import { refuseInSourceMode } from './source-mode.js'
 
 /**
  * The most blocks one outline names.
@@ -68,6 +69,15 @@ export const getStructureTool: AgentTool = {
   },
   execute(args) {
     return withEditor(args, (editor) => {
+      const editingSource = refuseInSourceMode(
+        editor,
+        'an outline now would describe the document behind it rather than the ' +
+          'markup on screen, and every handle it returned would name a position ' +
+          'in that stale document. Read openleaf_get_document, or wait for the ' +
+          'author to close source view.',
+      )
+      if (editingSource) return editingSource
+
       const { blocks, truncated } = outline(editor.view.state.doc)
       // One transaction for the whole outline, the same batch `find-text` makes:
       // a hundred separate dispatches would each run the host's toolbar update.

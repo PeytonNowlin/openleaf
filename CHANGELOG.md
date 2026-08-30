@@ -26,7 +26,8 @@ entries below say so explicitly when they do.
 - **`@openleaf-editor/plugins-webmcp`: an opt-in agent tool surface.** An agent
   driving the page can ask which OpenLeaf editors are on it and get back a
   stable identifier for each — the host element's `id`, or an ordinal where it
-  has none — and an editor removed from the page stops being offered. The
+  has none, and never a name another live editor already answers to, on either
+  path — and an editor removed from the page stops being offered. The
   registration is page-global and made once, because the browser answers a
   repeated tool name with `InvalidStateError: Duplicate tool name` and a page
   with several editors is the normal case here; each editor adds itself to a
@@ -61,7 +62,9 @@ entries below say so explicitly when they do.
   handle would otherwise become a write into something nobody chose. Handles are
   opaque, so nothing an agent reads out of one can be computed with, and they
   stop resolving when their editor leaves the page. Text that does not occur is
-  an empty result rather than an error. `#244`
+  an empty result rather than an error. While the author has the HTML source
+  view open the search is refused rather than run against the document behind
+  it, which is not the markup they are looking at. `#244`
 - **`openleaf_get_structure`: an agent can read a map of a document instead of
   the document.** The outline names each block in order — its type, a heading's
   level, and the start of its text — and nothing else, so an agent asked to
@@ -74,7 +77,8 @@ entries below say so explicitly when they do.
   and a document with nothing in it outlines as an empty result rather than as
   an error. Annotated read-only, and annotated `untrustedContentHint`: an
   outline is shorter than the document but it is made of the document's own
-  text. `#245`
+  text. Refused, like a search, while the author has the HTML source view open.
+  `#245`
 - **`openleaf_replace_at`: an agent can rewrite the passage a handle names.**
   The HTML it sends is sanitized before it is parsed, by the same policy a
   person's paste goes through, and that ordering is the whole of the guarantee:

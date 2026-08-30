@@ -49,16 +49,44 @@ function editorHost(from: HTMLElement): EditorHost | null {
   return from.closest('openleaf-editor') as EditorHost | null
 }
 
+/** Whether a live editor already answers to this name. */
+function taken(id: string): boolean {
+  for (const editor of editors.values()) if (editor.id === id) return true
+  return false
+}
+
+/**
+ * `editor-<n>`, walked forward until it names nothing on the page yet.
+ *
+ * The generated name shares one namespace with the integrator's own `id`, and
+ * `editor-2` is a name an integrator really writes -- the README documents that
+ * exact spelling as what the fallback produces. So on a page whose first editor
+ * is `id="editor-2"`, the second editor, which has no id and is the second on
+ * the page, was handed `editor-2` as well. Both then answered to it,
+ * `openleaf_list_editors` returned the name twice, and every later call
+ * resolved to whichever the register found first: an agent replacing text in
+ * one editor rewrote the other, and was told `{"ok":true}`.
+ *
+ * Walking rather than suffixing keeps the names in one shape. The count is
+ * shared with the ordinal, so a name skipped here is never handed out later.
+ */
+function unclaimed(ordinal: number): string {
+  let candidate = `editor-${ordinal}`
+  while (taken(candidate)) candidate = `editor-${++registered}`
+  return candidate
+}
+
 /**
  * The identifier for a host: its `id` attribute, or an ordinal.
  *
  * Integrators already give these elements ids to bind them to a textarea, so in
  * practice the identifier is one the integrator recognizes and can act on.
  *
- * An `id` already claimed by another live editor falls back to the ordinal
- * rather than being handed out twice. Duplicate ids are invalid HTML and the
- * browser does not enforce it; two editors answering to one name would send an
- * agent's writes to whichever the register happened to find first.
+ * Neither path hands out a name that is already live. An `id` claimed by
+ * another editor falls back to the ordinal, and the ordinal itself is walked
+ * past anything an `id` has already taken. Duplicate ids are invalid HTML and
+ * the browser does not enforce it; two editors answering to one name would send
+ * an agent's writes to whichever the register happened to find first.
  */
 function identify(host: EditorHost): string {
   const held = identifiers.get(host)
@@ -69,8 +97,7 @@ function identify(host: EditorHost): string {
   // happened to be missing an id.
   const ordinal = ++registered
   const attr = host.id.trim()
-  const claimed = attr !== '' && [...editors.values()].some((editor) => editor.id === attr)
-  const id = attr !== '' && !claimed ? attr : `editor-${ordinal}`
+  const id = attr !== '' && !taken(attr) ? attr : unclaimed(ordinal)
   identifiers.set(host, id)
   return id
 }

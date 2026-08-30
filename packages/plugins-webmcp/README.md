@@ -228,6 +228,13 @@ has to be stable across a whole agent task.
   The number is never reused, so an editor that is removed does not hand its
   name to a later one.
 
+Two live editors never share a name, on either path. An `id` another editor has
+already claimed falls back to the ordinal, and the ordinal walks past a name an
+`id` has already taken — `id="editor-2"` is an ordinary thing to write, and it
+is in the same namespace as the fallback. Without that, a page whose first
+editor was `id="editor-2"` handed the same name to the second editor, both
+answered to it, and a write aimed at one landed in the other.
+
 An editor removed from the page stops being listed. An editor mounted after the
 bundle loaded starts being listed. Both follow from where the register is kept:
 the editor plugin's own per-view lifecycle.
@@ -262,6 +269,10 @@ Nested blocks are not listed separately: a list or a table is one entry, and
 `openleaf_find_text` is how an agent addresses something inside it. An outline
 that descended into every list item would be the document again with different
 punctuation.
+
+While the author has the HTML source view open, an outline is refused with
+`refused` rather than describing the hidden document — see
+[Source view](#source-view).
 
 An empty paragraph is not listed, so a document with nothing in it outlines as
 `{"ok":true,"outline":[]}` rather than as an error. A block that carries no text
@@ -310,6 +321,31 @@ match, and one spanning a paragraph break is none. Text that does not occur is
 an empty `"matches"`, not an error. At most 50 matches come back, with
 `"truncated": true` when there were more, because an agent that believes it has
 seen every occurrence will replace them all.
+
+## Source view
+
+While the author has the HTML source view open there are two documents: the
+textarea they are typing in, and the ProseMirror document as it was when the
+view opened, which is not reparsed until it closes.
+
+`openleaf_get_document` reads through the host's `value`, so it answers with the
+markup on screen. Everything else reads the document behind it, and the two
+disagree. So while source view is open:
+
+- **`openleaf_find_text` and `openleaf_get_structure` are refused**, with
+  `refused`. Answering from the hidden document would let a search miss text
+  `openleaf_get_document` had just returned, or report text the author had
+  already deleted — and each handle it minted would name a position in a
+  document nobody is looking at.
+- **Every write is refused**, with `refused`, for the reason the editor's own
+  toolbar goes unavailable: closing the view reparses the textarea over the top
+  of whatever was written.
+- **`openleaf_get_document` still answers**, and is the tool to call. It is the
+  one read that knows about source view.
+
+Handles are not minted from the textarea. Parsing it into a throwaway document
+would produce handles into a document that is not the live one — tokens no later
+call could write through, which is a worse answer than a refusal.
 
 ## Writing
 
