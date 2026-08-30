@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OpenLeaf agent tools harness</title>
+<style>body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; max-width: 52rem; }</style>
+</head>
+<body>
+<!--
+  Several editors, deliberately not alike.
+
+  The whole point of a page-global tool set is that a page with more than one
+  editor works, so the fixture that proves it has to have more than one. The
+  three differ in the ways the tools care about:
+
+    post-body    an explicit id on the host element, which is what an agent
+                 is handed and passes back.
+    (none)       no id at all, so the register falls back to an ordinal. The
+                 documented integrations bind with `for` and give the host no
+                 id, so this is the common case, not the exotic one.
+    comment-box  a deliberately narrow `toolbar`, so a deployment where most
+                 editing commands were never put on the bar is exercised
+                 alongside one where they were.
+
+  `post-body` carries `blockType` -- the control that applies a heading --
+  precisely because `comment-box` does not. The capabilities tool has to report
+  that the narrow editor cannot apply a heading while its schema still stores
+  one, and a page where no editor could apply a heading would let a tool that
+  reported nothing at all pass that test.
+
+  No editor here loads a table bundle, so every one of them has table nodes in
+  its schema and no command that builds a table -- the other half of the same
+  divergence, and the one an integrator hits without meaning to.
+
+  Two pieces of preserved markup, both load-bearing for the write path. The
+  `<div class="callout">` in `post-body` is what the byte-identical promise is
+  made about: a write elsewhere in that document must not disturb a byte of it.
+  The `<ins>` in the notes editor is the inline half, and it is the only route
+  an agent has to a handle that covers preserved markup -- the search stands an
+  inline atom in for one object-replacement character, so searching for that
+  character hands back a handle onto it, and the write has to refuse.
+
+  Host ids are distinct from the textarea ids they bind to (`post-body` for
+  `body`), because `getElementById` cannot answer for two elements.
+-->
+<form id="post-form" method="post" action="/submitted">
+  <label for="body">Post body</label>
+  <openleaf-editor
+    id="post-body"
+    for="body"
+    aria-label="Post body"
+    toolbar="undo redo | blockType | bold italic | source"></openleaf-editor>
+  <textarea id="body" name="body" hidden><p>alpha beta</p>
+<div class="callout" data-callout-id="7"><p>Load-bearing wrapper.</p></div>
+<p>tail</p></textarea>
+
+  <label for="notes">Notes</label>
+  <openleaf-editor
+    for="notes"
+    aria-label="Notes"
+    toolbar="bold italic | source"></openleaf-editor>
+  <textarea id="notes" name="notes" hidden><p>gamma <ins>tracked</ins> text</p></textarea>
+
+  <label for="comment">Comment</label>
+  <openleaf-editor
+    id="comment-box"
+    for="comment"
+    aria-label="Comment"
+    toolbar="bold italic"></openleaf-editor>
+  <textarea id="comment" name="comment" hidden><p>delta</p></textarea>
+
+  <button type="submit" id="save">Save</button>
+</form>
+
+<script src="/demo/openleaf.min.js"></script>
+<script src="/demo/openleaf-webmcp.min.js"></script>
+</body>
+</html>

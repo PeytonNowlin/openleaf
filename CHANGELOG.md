@@ -12,6 +12,150 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Added
+
+- **`@openleaf-editor/ui`: a toolbar item can declare what its command acts
+  on.** `ToolbarItemSpec` takes an optional `scope`, either `'selection'` (the
+  default, and everything that formats what the author picked) or `'document'`
+  for a command that ignores the selection entirely — the built-in `undo` and
+  `redo`, which act on the last history event wherever in the document it
+  happened. The toolbar does not read it, and no bar changes: for a person
+  clicking a button the distinction is invisible and correct. It is for callers
+  that run a command against a range they staged themselves, where it is
+  neither, and it saves each of them from keeping a list of command names.
+- **`@openleaf-editor/plugins-webmcp`: an opt-in agent tool surface.** An agent
+  driving the page can ask which OpenLeaf editors are on it and get back a
+  stable identifier for each — the host element's `id`, or an ordinal where it
+  has none, and never a name another live editor already answers to, on either
+  path — and an editor removed from the page stops being offered. The
+  registration is page-global and made once, because the browser answers a
+  repeated tool name with `InvalidStateError: Duplicate tool name` and a page
+  with several editors is the normal case here; each editor adds itself to a
+  register through the editor plugin's own per-view lifecycle instead. In a
+  browser without the API, installing is silent: no error, no console output,
+  and no half-wired editor. The package contributes no nodes, no marks, no
+  toolbar items, no icons and no CSS, so a deployment that does not install it
+  is unchanged. `#242`
+- **`@openleaf-editor/plugins-webmcp`: an agent can ask an editor what it can do
+  and read what is in it.** `openleaf_get_capabilities` reports two things
+  separately, because they are two different sets: the node and mark types the
+  editor's document can store, and the editing commands that editor actually
+  offers. The schema is deliberately the wider of the two — table and structural
+  nodes are in it whether or not the chrome for them was installed, so that a
+  stored document round-trips in every deployment — and the commands are
+  narrowed again by the `toolbar` layout the integrator gave that editor, so two
+  editors on one page can answer differently. An agent told only the schema
+  would attempt edits that cannot happen; one told only the commands would treat
+  a stored table as unreadable. `openleaf_get_document` returns the editor's
+  current content as HTML, including edits the author has not saved, and is
+  annotated `untrustedContentHint` because a document is where text aimed at the
+  agent reading it hides. Both are annotated read-only, and naming an editor
+  that is not on the page answers with a failure that says to list again rather
+  than with somebody else's document. `#243`
+- **`openleaf_find_text`: an agent can search an editor and get a handle for
+  every match.** A handle is how a later call names the same text, because a
+  selection does not survive the round trip out to an agent and back. Each
+  editor carries its handles through every transaction's position mapping, so
+  one taken before an edit elsewhere in the document still names the text it was
+  taken for — and one whose text has been deleted fails with `stale-handle`
+  rather than sliding onto the neighbouring position, which is how a stale
+  handle would otherwise become a write into something nobody chose. Handles are
+  opaque, so nothing an agent reads out of one can be computed with, and they
+  stop resolving when their editor leaves the page. Text that does not occur is
+  an empty result rather than an error. While the author has the HTML source
+  view open the search is refused rather than run against the document behind
+  it, which is not the markup they are looking at. `#244`
+- **`openleaf_get_structure`: an agent can read a map of a document instead of
+  the document.** The outline names each block in order — its type, a heading's
+  level, and the start of its text — and nothing else, so an agent asked to
+  retitle one section of fifty no longer has to read the markup of the other
+  forty-nine before it can act. Every entry carries a handle for that whole
+  block, the same handles searching issues: one taken from an outline still
+  names its block after an edit elsewhere in the document, and refuses once the
+  block is deleted. Nested blocks are not listed separately — a list or a table
+  is one entry, and searching is how an agent addresses something inside it —
+  and a document with nothing in it outlines as an empty result rather than as
+  an error. Annotated read-only, and annotated `untrustedContentHint`: an
+  outline is shorter than the document but it is made of the document's own
+  text. Refused, like a search, while the author has the HTML source view open.
+  `#245`
+- **`openleaf_replace_at`: an agent can rewrite the passage a handle names.**
+  The HTML it sends is sanitized before it is parsed, by the same policy a
+  person's paste goes through, and that ordering is the whole of the guarantee:
+  the preservation layer keeps markup the schema does not recognise rather than
+  rejecting it, so parsing agent HTML first would turn hostile or malformed
+  input into an opaque atom the document then carries faithfully forever.
+  Content the policy leaves nothing of is refused rather than written. A range
+  covering preserved markup is refused too, because the editor's promise to
+  hand that markup back byte-identical only holds if nothing edits inside it —
+  and after a write elsewhere in the document, it still does. A refused write
+  changes nothing, a handle whose text has already been replaced refuses rather
+  than landing on whatever moved into its place, and each call is one
+  transaction, so one thing the agent did is one thing the author undoes. It is
+  the first tool in the set that is not annotated read-only. `#246`
+- **`openleaf_insert_html`: an agent can add content beside a passage instead
+  of over it.** The handle names where, `position` says which side, and the text
+  the handle named is left alone — so the handle is not spent and the same one
+  can be inserted at again. The HTML goes through the paste policy first, like
+  every other agent write, and the one thing insertion does that replacement
+  does not is ask the schema whether the content may sit there at all.
+  Replacement can be fitted to the range it lands in; an insertion that is
+  fitted is a heading turned into a paragraph split in two, or emphasis silently
+  dropped on its way into a code block, reported to the agent as a success. So
+  an insertion the position cannot hold is refused with `invalid-position` and a
+  message naming what that position does hold, the document is untouched, and
+  the agent knows to reshape the HTML or ask an outline for a handle that names
+  a whole block. `#247`
+- **`openleaf_apply_command`: an agent can format a passage using the editor's
+  own commands.** Bold, italic or a list, applied to the text a handle names,
+  and applied by running the command the toolbar button runs rather than by
+  writing markup — so an agent inherits every guard a keyboard shortcut already
+  has, including ones a plugin added. Only commands that editor actually offers
+  can be applied, which is the same intersection of the registry and the
+  `toolbar` layout that `openleaf_get_capabilities` reports; a control that only
+  works through a dialog says so rather than pretending; a command that does not
+  act on a selection at all — `undo` and `redo` act on the document's last
+  history event, so a handle would not scope them and running one would revert
+  an author's unrelated work — is refused on the item's own `scope` declaration
+  rather than on a list of names; and a command that does not apply where the
+  handle points reports the refusal rather than reporting success. Preserved markup, a readonly editor and an editor whose author has
+  the HTML source view open are all refused, matching what the editor's own
+  toolbar does. Each call is exactly one transaction, marked as
+  agent-originated, so one undo reverses one agent action. `#248`
+- **A run of agent edits is one press of undo.** An author who watched an agent
+  restructure a document presses Ctrl+Z once and has the document back as it
+  was before the agent started, however many tools the agent called and however
+  long it took over them; redo brings the whole run back the same way. Undo
+  events are otherwise grouped by elapsed time and adjacency, which are the
+  wrong questions to ask about an agent — tool calls arrive in a burst, so the
+  same rewrite would collapse into one step or fragment into a dozen depending
+  on how fast the model answered, and the author would have no way to know how
+  many times to press. Grouping keys off the mark every agent write already
+  carries instead. An edit the author makes themselves ends the run in both
+  directions, so undoing the agent never takes back a sentence the person
+  typed, and their own consecutive typing still groups exactly as it does in an
+  editor this package was never installed in. `#249`
+- **An integrator can refuse individual agent tool calls.**
+  `installAgentTools({ allowTool })` takes a synchronous predicate asked before
+  every tool call — the listing included — and answering `false` returns
+  `refused` to the agent and changes nothing, because the question is asked
+  before any argument is validated and before anything touches an editor. The
+  predicate is handed the tool's name, the editor identifier the call names
+  (`null` for `openleaf_list_editors`, which names none) and the tool's own
+  `readOnlyHint`, so "allow reads, refuse writes" is `({ readOnly }) =>
+  readOnly` rather than a list of tool names that goes stale the moment one is
+  added. Only `true` allows a call: the answer is compared with `===`, so an
+  `async` predicate's Promise, or any other truthy value that is not `true`, is
+  a refusal rather than an accidental yes — a policy that did not compile to an
+  answer is not an answer. A predicate that throws is treated as a refusal
+  rather than reaching the agent as a crashed call, and nothing of the thrown
+  error travels back with it. With no predicate supplied, every tool behaves exactly as it did. From a
+  script tag — which installs on load, so the options argument is already spent
+  — it is `OpenLeaf.registerAgentPermission(fn)`. Either spelling is set-once
+  and cannot be cleared, so nothing that runs after the integrator can replace
+  the policy or take it off; a policy that changes with the host's state goes
+  inside the predicate, which is asked on every call. `#250`
+
 ### Fixed
 
 - **Code blocks and inline `<code>` are no longer spellchecked.** The canvas
