@@ -49,6 +49,7 @@
 
 import {
   autolinkPlugin,
+  codeSpellcheckPlugin,
   disclosurePlugin,
   buildKeymap,
   coreSchema,
@@ -561,6 +562,10 @@ export class OpenLeafEditor extends HTMLElementBase {
       isolatingSelectionPlugin(),
       figureDragPlugin(),
       disclosurePlugin(),
+      // Unconditional, and deliberately not tied to the `spellcheck`
+      // attribute above: that attribute is the author's answer about their
+      // prose, and code is not prose whichever way they answered it.
+      codeSpellcheckPlugin(),
     ]
     if (this.getAttribute('autolink') !== 'false') {
       this.#autolink = autolinkPlugin()

@@ -37,7 +37,7 @@ SSR does not throw.
 | `theme` | `light`, `dark`, `auto` | Anything that is not `light` or `dark` is treated as `auto`, which follows the visitor's system setting. |
 | `lang` | a BCP-47 tag | UI locale, matched against `registerTranslations()`, **and** the canvas / spellcheck language copied onto the editable region. Precedence: host `lang` → bound textarea `lang` → inherit from the page (`<html lang>`). Relabels the **toolbars only** for chrome — not the menubar, floating toolbars or context menu. |
 | `placeholder` | string | Prompt shown on an empty document (the schema's lone empty `<p>` counts as empty). Painted as a CSS `::before`, never stored in `value`. |
-| `spellcheck` | `true` / `false` | Copied onto the editable region. `spellcheck="false"` is the canvas equivalent of source view's off switch. |
+| `spellcheck` | `true` / `false` | Copied onto the editable region. `spellcheck="false"` is the canvas equivalent of source view's off switch. Code blocks and inline `<code>` are never checked whatever this says — the editor marks them `spellcheck="false"` as a view-only decoration, so stored HTML does not carry the attribute. WebKit reads `spellcheck` on the editing host rather than per element, so the squiggles stay there. |
 
 ### Read once, when the editor is built
 

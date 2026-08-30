@@ -14,6 +14,26 @@ entries below say so explicitly when they do.
 
 ### Fixed
 
+- **Code blocks and inline `<code>` are no longer spellchecked.** The canvas
+  offered one answer for the whole document -- `spellcheck="false"` on the
+  host -- so an author who wanted their prose checked got a red squiggle under
+  every identifier, and source view's textarea was the only place in the editor
+  where code was left alone. `codeSpellcheckPlugin()` now marks both as
+  `spellcheck="false"`, unconditionally: the host attribute is an answer about
+  prose, and code is not prose either way it is set. This is a view-only
+  decoration rather than an attribute in the schema's `toDOM`, because `toDOM`
+  is what `serializeHtml` writes with and stored HTML must not gain editor
+  chrome. WebKit reads `spellcheck` from the editing host rather than per
+  element, so Safari and iOS are unchanged.
+
+- **A visual aid no longer disappears off the block next to the one being
+  edited.** `DecorationSet.find` reports a decoration that merely *touches* the
+  queried range, so the empty-paragraph aid on the block after the caret was
+  removed as stale and the rebuild -- which scans only the edited range --
+  never put it back. It returned only when that block was itself edited. The
+  incremental rebuild is now shared by both decoration plugins in core and
+  treats only what is wholly inside the range as stale.
+
 - **Font-family names with apostrophes, plus signs, or a leading digit now
   round-trip.** `oneFontFamily` only allowed `[a-zA-Z0-9 -]` starting with a
   letter, so `Goudy's Old Style`, `21st Century` and `C++ Sans` were dropped
