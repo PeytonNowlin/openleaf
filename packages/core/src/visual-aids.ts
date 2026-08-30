@@ -18,7 +18,7 @@
 import type { Node as PMNode } from 'prosemirror-model'
 import { Plugin, PluginKey } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
-import { changedRange, widenToTopLevel } from './decoration-range.js'
+import { rebuildChanged } from './decoration-range.js'
 
 const key = new PluginKey<DecorationSet>('openleaf-visual-aids')
 
@@ -88,14 +88,7 @@ export function visualAidsPlugin(): Plugin<DecorationSet> {
         return DecorationSet.create(state.doc, decorationsIn(state.doc, 0, state.doc.content.size))
       },
       apply(tr, set) {
-        if (!tr.docChanged) return set
-        const changed = changedRange(tr)
-        const mapped = set.map(tr.mapping, tr.doc)
-        if (!changed) return mapped
-        const { from, to } = widenToTopLevel(tr.doc, changed.from, changed.to)
-        const stale = mapped.find(from, to)
-        const kept = stale.length > 0 ? mapped.remove(stale) : mapped
-        return kept.add(tr.doc, decorationsIn(tr.doc, from, to))
+        return rebuildChanged(set, tr, decorationsIn)
       },
     },
     props: {
