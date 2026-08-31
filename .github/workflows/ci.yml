@@ -18,6 +18,8 @@ name: CI
 #            WebKit is not optional -- it is Safari and every iOS browser, and
 #            it is historically where selection bugs live -- it just does not
 #            need to block the pull request that Chromium already covered.
+#   alarm    the nightly only. Nothing blocks on a cron, so a red one is only
+#            as visible as somebody's inbox -- see `.github/alarm.sh`.
 #
 # `push` is scoped to main rather than every branch: a branch is gated by its
 # pull request, and gating both doubles the runner time for the same commits.
@@ -105,6 +107,32 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 14
+
+  alarm:
+    name: Nightly alarm
+    needs: browser
+    # `always()`, because the interesting case is exactly the one where the job
+    # this depends on failed -- without it, a needs-dependency is skipped when
+    # its parent fails, which is the only time the alarm has anything to say.
+    # The event guard keeps it off pull requests and off manual runs: somebody
+    # watching a run they dispatched themselves does not need an issue filed at
+    # them.
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # the checkout, for the script itself
+      issues: write # the alarm IS an issue
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Raise or clear the alarm
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Nightly CI is red
+          WHAT: The nightly three-engine gate
+          RESULT: ${{ needs.browser.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: .github/alarm.sh
 
   dco:
     name: Sign-off

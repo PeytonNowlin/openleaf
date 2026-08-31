@@ -242,3 +242,28 @@ jobs:
           ' CHANGELOG.md > release-notes.md
           gh release create "v$VERSION" \
             --title "v$VERSION" --notes-file release-notes.md --prerelease
+
+  alarm:
+    name: Release alarm
+    needs: release
+    # The same alarm as ci.yml's nightly, for the same reason: a scheduled run
+    # that fails blocks nothing and requests nobody. The scheduled release of
+    # 2026-08-24 failed and went unread until the next Monday's run joined it,
+    # which is the failure this exists to make impossible. See
+    # `.github/alarm.sh`.
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # the checkout, for the script itself
+      issues: write # the alarm IS an issue
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Raise or clear the alarm
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: The Monday release is red
+          WHAT: The weekly beta release
+          RESULT: ${{ needs.release.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: .github/alarm.sh
