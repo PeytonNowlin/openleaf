@@ -12,6 +12,8 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+## 0.1.0-beta.5 - 2026-08-31
+
 ### Fixed
 
 - **Code blocks and inline `<code>` are no longer spellchecked.** The canvas

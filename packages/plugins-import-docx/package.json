@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/plugins-import-docx",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "description": "Word .docx import for OpenLeaf, using mammoth. A separate bundle because mammoth is larger than the editor.",
   "license": "Apache-2.0",
   "publishConfig": {

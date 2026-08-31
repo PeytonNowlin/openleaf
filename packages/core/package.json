@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/core",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "description": "OpenLeaf editing core: ProseMirror schema, HTML I/O, and the content-preservation layer. No UI, no framework dependencies.",
   "license": "Apache-2.0",
   "publishConfig": {
