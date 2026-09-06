@@ -7,7 +7,7 @@ them first.
 This document describes the code as it is in the tree today, not the code as it
 is planned. Where something is missing, it says so and says what to do instead.
 
-The reference implementations are the seven plugins in this repository:
+The reference implementations are the eight plugins in this repository:
 
 | Package | What it adds |
 |---|---|
@@ -18,6 +18,7 @@ The reference implementations are the seven plugins in this repository:
 | `plugins-highlight` | Syntax highlighting for code blocks, and a formatted source view |
 | `plugins-import` | HTML and plain-text file import, plus the converter seam |
 | `plugins-import-docx` | Word `.docx` import, on top of `plugins-import` |
+| `plugins-webmcp` | A WebMCP tool surface, so an agent driving the page can discover the editors on it, ask what each can do, read its content or an outline of it, search it for text, rewrite or add to a passage it located, and format one through the editor's own commands. No nodes, no marks, no toolbar items, no icons, no CSS |
 
 `plugins-table` is the one most examples below are adapted from, because it is
 the only one that exercises every extension point at once. Where another plugin
@@ -476,6 +477,17 @@ predicate: reporting them as disabled rather than letting them silently no-op
 "is the difference between a control that looks broken and one that looks
 unavailable".
 
+Name `scope: 'document'` if — and only if — the command ignores the selection
+entirely. The two built-ins that do are `undo` and `redo`: they act on the
+document's last history event wherever in the document it happened, and would do
+the same thing from any selection. The toolbar does not read `scope`; for a
+person clicking a button the distinction is invisible and correct. It is there
+for callers that run a command against a range they staged themselves —
+`@openleaf-editor/plugins-webmcp` refuses a `document` command rather than let an
+agent revert an author's unrelated work and report a handle-scoped success.
+Everything else is `selection`, which is the default, so a plugin that formats
+what the author has picked writes nothing.
+
 The `label` is the accessible name, and the toolbar keeps it constant across
 states. Do not write "Callout on" / "Turn callout off" — `aria-pressed` is what
 the platform announces, and baking the state into the name doubles it up.
@@ -926,6 +938,7 @@ openleaf-import-docx.min.js 124.5 / 140
 openleaf-tables.min.js       20.8 /  25
 openleaf-session.min.js       9.9 /  10
 openleaf-insert.min.js        8.4 /  20
+openleaf-webmcp.min.js        7.6 /   8
 openleaf-highlight.min.js     6.7 /  15
 openleaf-colour.min.js        5.3 /  15
 openleaf-import.min.js        3.3 /  12

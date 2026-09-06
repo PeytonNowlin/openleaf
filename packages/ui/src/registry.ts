@@ -105,6 +105,23 @@ export interface ToolbarItemSpec {
   kind?: 'toggle' | 'action'
   /** A plain ProseMirror command. Its no-dispatch call also drives enabled state. */
   command?: Command
+  /**
+   * What the command acts on. `selection` is the default and is nearly
+   * everything: the command reads the selection and changes the text it covers.
+   * `document` says it does not -- undo and redo act on the latest history
+   * event wherever in the document it happened, and would do the same thing
+   * from any selection at all.
+   *
+   * The toolbar does not read this; for a person clicking a button the
+   * distinction is invisible and correct. It is here for callers that RUN a
+   * command against a range they staged themselves, where it is neither: an
+   * agent handing `undo` a handle naming one paragraph would revert an author's
+   * unrelated work somewhere else and be told the handle-scoped call succeeded.
+   * `@openleaf-editor/plugins-webmcp` refuses a `document` command for that
+   * reason. Registering one is how a plugin says so in advance, rather than
+   * leaving every such caller to keep a list of names.
+   */
+  scope?: 'selection' | 'document'
   /** For items needing more than the editor state -- dialogs, mode switches. */
   run?: (ctx: ToolbarContext) => void
   /**

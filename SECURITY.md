@@ -196,6 +196,92 @@ Neither of these is a reason not to use plugins. They are the reason the
 answer to "can I load this third-party plugin?" is the same as the answer
 to "can I add this third-party script tag?"
 
+### Agent tools are a new caller, not a new trust level
+
+`@openleaf-editor/plugins-webmcp` registers a WebMCP tool set with the
+browser, which lets an agent driving the page call into the editor. A few
+things about it are worth stating before you install it.
+
+**It is opt-in and it is off.** The package is not in the core bundle and
+nothing calls `installAgentTools()` for you. A deployment that does not
+install it has no agent surface at all, and the tools are additionally
+inert in every browser that does not implement the API.
+
+**Installing is coarse; the permission predicate is not.**
+`installAgentTools({ allowTool })` is asked before every tool call --
+including `openleaf_list_editors` -- and is handed the tool's name, the
+editor the call names, and whether the tool only reads. Answering `false`
+returns `refused` to the agent and changes nothing, because the question
+is asked before any argument is validated and before anything touches an
+editor; a predicate that throws is treated the same way rather than
+reaching the agent as a crashed call, and so is one that answers with
+anything other than `true` -- the answer is compared with `===`, so an
+`async` predicate's Promise refuses rather than reading as a truthy yes. The setting is set-once and cannot
+be cleared -- the script-tag spelling, `OpenLeaf.registerAgentPermission`,
+is a function on the page's own global, so a later script would otherwise
+be able to replace the policy or take it off. It is where the integrator
+hosting the editor expresses a policy -- "read but do not write", "not this
+editor" -- and it has the standing of every other client-side control in
+this file: it is not a boundary against the page itself, because anything
+running on the page can reach the tool handlers directly, and it is not a
+substitute for authorising the write on your server.
+
+**The caller is the browser's own agent, not another origin.** Cross-origin
+tool exposure is a separate mechanism and this package does not configure
+it, so the tools are reachable from this document and nowhere else.
+
+**Document content read back through a tool is untrusted, in a direction
+the rest of this file does not cover.** Everywhere else here, "untrusted"
+means the HTML your server is about to store. A tool that returns document
+content is untrusted in the other direction as well: an author — or
+whoever pasted into the document before them — can leave text in it that
+is aimed at the agent reading it. Tools that return content are annotated
+`untrustedContentHint`, which is what tells the client driving the agent
+to treat instructions found inside as data. `openleaf_get_document`, which
+returns an editor's HTML, is annotated with it; so is `openleaf_find_text`,
+which hands back the text around each match, and so is
+`openleaf_get_structure`, whose outline is built from the document's own
+headings — shorter than the document is not the same as safer than it.
+`openleaf_list_editors` and `openleaf_get_capabilities` return identifiers,
+accessible names, schema type names and command labels only, and so do the
+three tools that write, which report an identifier and nothing of the
+document; all of them are annotated the other way.
+
+**An agent that writes goes through the paste policy, and the ordering is
+the point.** `openleaf_replace_at` and `openleaf_insert_html` sanitize the
+HTML they were given before they parse it, with the same
+`normalizePastedHtml` the editor runs on a human paste — and with its one
+lax branch taken away. That function picks a normalizer from what the
+markup looks like, and markup that looks like a copy out of an OpenLeaf
+editor keeps its inline styles, because a copy is in the same trust domain
+as where it is going. Agent HTML never is, and the signal is an attribute
+an agent can write into its own argument, so a write is routed to the
+foreign-input normalizer whatever it claims to be. Parsing first
+would be the hole: the preservation layer is a catch-all, so markup the
+schema does not recognise is wrapped and kept rather than rejected, and
+hostile or malformed input fed straight to the parser would become an
+opaque atom the document then carries faithfully forever — preserved
+*because* nothing could parse it. Sanitizing first means an agent can put
+nothing into a document that a person could not have pasted into it, and
+that is a client-side control with exactly the standing every other one in
+this file has: it is a user-experience feature, not a substitute for
+sanitizing on your server. A write whose range covers preserved markup is
+refused outright, because the byte-identical promise only holds if nothing
+edits in there, and a write that is refused for any reason changes nothing
+at all.
+
+**A tool that writes has the reach of the toolbar, and no more.**
+`openleaf_apply_command` is the third tool that changes the document, and
+the one that cannot write markup at all: it runs one of the commands the
+deployment registered and the editor's own `toolbar` layout offers, so an
+agent reaches exactly what a person clicking that bar reaches. The
+refusals are the editor's own, not this package's -- a readonly editor,
+an open HTML source view, and markup the preservation layer holds byte
+for byte are all refused, because the toolbar is unavailable in the first
+two and editing the third is the one thing that breaks the guarantee it
+makes. It carries the `readOnlyHint: false` annotation, which is what
+lets a client single it out as the call worth putting to a person.
+
 ## Defence in depth: a baseline CSP
 
 Everything above is about the sanitizer. A Content-Security-Policy on the
