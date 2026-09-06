@@ -209,3 +209,27 @@ node scripts/dist-tags.mjs   # idempotent; fixes any tags the run did not reach
 
 `dist-tags.mjs` reads the registry before writing, so re-running it after a
 partial failure moves only what is still wrong.
+
+
+### Protected main and the release identity
+
+`.github/main-ruleset.json` specifies required pull requests, DCO sign-off,
+Chromium and full three-engine gates, an up-to-date branch, and no force-push or
+deletion of main. A dedicated write deploy key lets this workflow push its
+generated version commit after its own full gate. Its private half lives only
+in `OPENLEAF_RELEASE_KEY` in the `release` environment, whose deployment branch
+policy permits only main. Missing credentials stop the workflow before npm
+publishing. Checkout installs and cleans up the SSH identity.
+
+GitHub's built-in Actions integration cannot be a repository bypass actor.
+The [rules API](https://docs.github.com/en/rest/repos/rules#create-a-repository-ruleset)
+supports a `DeployKey` bypass with a null actor ID: this covers **all** write
+deploy keys on the repository, so keep the release key as the sole write key.
+Adding another write key or giving another workflow access to the release
+environment changes this trust boundary. Human and CLI merges do not bypass
+the checks. Rotate by adding a replacement deploy key, updating the environment
+secret, and revoking the old key; never put either private key in the repository.
+
+The JSON file records desired configuration; GitHub enforcement must also be
+applied and verified separately, after the release workflow uses the new key.
+See the evidence record in [Production readiness](production-readiness.md).

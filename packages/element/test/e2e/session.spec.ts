@@ -96,6 +96,29 @@ test.describe('with the session bundle loaded', () => {
     await expect.poll(() => page.evaluate(() => (window as unknown as { __saved?: boolean }).__saved)).toBe(true)
   })
 
+  test('a canceled form save preserves a draft that can be restored after reload', async ({ page }) => {
+    await page.evaluate(() => {
+      document.querySelector('form')?.addEventListener('submit', (event) => event.preventDefault())
+    })
+    await editor(page).click()
+    await page.keyboard.type('recover this canceled save ')
+    await toolbar(page).getByRole('button', { name: 'Save', exact: true }).click()
+    const key = 'openleaf:draft:v1:/packages/element/test/e2e/harness-session.html#body'
+    await expect.poll(() => page.evaluate((name) => localStorage.getItem(name), key)).toContain('recover this canceled save')
+    // Accept the genuine unsaved-changes warning: this test intentionally
+    // leaves, then proves that the retained recovery document survives it.
+    page.on('dialog', (dialog) => dialog.accept())
+    await page.reload()
+    const restore = page.getByRole('dialog', { name: 'Restore unsaved draft' })
+    // Firefox may restore the bound textarea itself. In that case the loaded
+    // HTML already equals the draft and no redundant restore prompt is needed.
+    await expect.poll(async () =>
+      await restore.isVisible() || (await value(page)).includes('recover this canceled save'),
+    ).toBe(true)
+    if (await restore.isVisible()) await restore.getByRole('button', { name: 'Restore draft' }).click()
+    await expect.poll(() => value(page)).toContain('recover this canceled save')
+  })
+
   test('preview opens a read-only published view', async ({ page }) => {
     await toolbar(page).getByRole('button', { name: 'Preview' }).click()
     const dialog = page.getByRole('dialog', { name: 'Preview' })

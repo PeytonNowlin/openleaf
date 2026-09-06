@@ -410,6 +410,9 @@ production-readiness areas need broader validation:
 - Mobile, touch-selection, soft-keyboard, and IME coverage
 - Production feedback across varied CMS environments and legacy HTML archives
 
+The [production-readiness checklist](docs/production-readiness.md) records the
+release criteria and outstanding manual evidence.
+
 Accessibility is a release criterion, not a badge inferred from automated checks.
 OpenLeaf currently makes no WCAG conformance claim.
 

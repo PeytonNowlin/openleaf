@@ -163,3 +163,9 @@ rather than XSS. That is the right direction, and it is still worth not doing.
 - [SECURITY.md](https://github.com/PeytonNowlin/openleaf/blob/main/SECURITY.md) —
   the threat model and a baseline CSP.
 - [Project README](https://github.com/PeytonNowlin/openleaf) for the rest.
+
+
+Application validation attributes (`aria-invalid`, `aria-errormessage`,
+`aria-describedby`, `aria-required`) on the host or bound textarea also reach
+the visible rich-text and source controls. Host values win and changes propagate
+after mount. See [Validation semantics](../../docs/api-reference.md#validation-semantics).

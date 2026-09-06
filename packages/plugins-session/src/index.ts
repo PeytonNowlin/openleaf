@@ -138,7 +138,8 @@ export function installSessionTools(next: SessionOptions = {}): void {
   })
 }
 
-export { registerSaveHandler, SAVE_EVENT, type SaveHandler } from './actions.js'
+export { DRAFT_ERROR_EVENT, type DraftErrorDetail } from './draft-errors.js'
+export { registerSaveHandler, SAVE_EVENT, type SaveHandler, type SaveEventDetail } from './actions.js'
 export { documentStats, countWords, formatWordCount, type DocumentStats } from './count.js'
 export {
   clearDraft,

@@ -12,6 +12,23 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Production hardening
+
+- Session recovery survives storage-access failures, canceled form submissions,
+  and edits made while an older save is in flight. `openleaf:draft-error`
+  reports storage failures without exposing document contents or keys.
+- **Save integration migration:** canceling `openleaf:save` no longer claims a
+  successful save. Call `event.detail.waitUntil(promise)` during dispatch or use
+  an awaited save callback, rejecting on failure. Form submission alone retains
+  recovery. Failed toolbar saves emit `openleaf:save-error` and announce failure.
+- Application validation ARIA attributes now follow the author into rich-text
+  and source mode, including changes to a bound textarea after mount.
+- The demo promo video includes WebM for engines without H.264 support. The
+  full three-engine gate runs on pull requests; failures retain reports and traces.
+- The lockfile resolves DOCX import's transitive `@xmldom/xmldom` dependency to
+  0.8.15, addressing GHSA-6gmq-8vp8-gcm6 without changing package versions.
+
+
 ### Added
 
 - **The demo is easier to explore.** The live editor comes before the video,

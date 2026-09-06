@@ -31,6 +31,7 @@ import {
   writeDraft,
   type DraftStorage,
 } from './draft.js'
+import { observeDraftStorage } from './draft-errors.js'
 import {
   clearSearch,
   findNext,
@@ -221,6 +222,7 @@ function attachSession(
   // returns to would sit in storage for good. Attaching an editor is the one
   // moment this library reliably gets, and the sweep is a walk of the keys.
   purgeDrafts(options.storage)
+  const storage = observeDraftStorage(host, options.storage)
 
   /**
    * The HTML the editor is showing right now.
@@ -269,16 +271,16 @@ function attachSession(
   const persist = (): void => {
     if (!options.autosave) return
     if (cleanByDoc()) {
-      clearDraft(options.storage, key)
+      clearDraft(storage, key)
       return
     }
     const html = currentHtml()
     if (html === baseline.html) {
       baseline.sourceEdited = false
-      clearDraft(options.storage, key)
+      clearDraft(storage, key)
       return
     }
-    writeDraft(options.storage, key, html)
+    writeDraft(storage, key, html)
   }
 
   const schedule = (): void => {
@@ -293,10 +295,9 @@ function attachSession(
     baseline.sourceEdited = false
   }
 
-  const onSubmit = (): void => {
-    markSaved()
-    clearDraft(options.storage, key)
-  }
+  // Submission can be canceled, fail on the network, or be rejected by the
+  // server. Flush recovery now; only an acknowledged save may clear it.
+  const onSubmit = (): void => persist()
 
   const form = boundForm(host)
   form?.addEventListener('submit', onSubmit)
@@ -357,7 +358,7 @@ function attachSession(
     closeFind: () => findBar.close(),
     markClean: () => {
       markSaved()
-      clearDraft(options.storage, key)
+      clearDraft(storage, key)
     },
     isDirty,
     update: (prevState) => {
@@ -397,7 +398,7 @@ function attachSession(
   if (options.warn && win) ensureLeaveGuard(win)
 
   if (options.restore && !baseline.offeredRestore) {
-    const draft = readDraft(options.storage, key)
+    const draft = readDraft(storage, key)
     // Not offered when the draft is what is already on screen. A plugin view
     // restart writes a draft of the unsaved document as it goes, and offering to
     // restore the document the author is looking at is noise. Asked at most once
@@ -654,9 +655,14 @@ export function runFind(view: EditorView): boolean {
 export function runSave(view: EditorView): boolean {
   const host = editorHost(view.dom)
   if (!host) return false
-  const handle = sessionFor(host)
+  const submittedHtml = host.value
   void saveDocument(host).then((saved) => {
-    if (saved) handle?.markClean()
+    // The author can keep typing during the request. A successful save of an
+    // older snapshot must not mark those newer edits clean or erase recovery.
+    if (saved && host.value === submittedHtml) sessionFor(host)?.markClean()
+  }).catch(() => {
+    announce(host, withLocale(host.getAttribute('lang'), () => t('Could not save. Your changes are still here.')))
+    host.dispatchEvent(new CustomEvent('openleaf:save-error', { bubbles: true, composed: true }))
   })
   return true
 }

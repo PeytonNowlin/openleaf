@@ -4,13 +4,13 @@
  *
  * CI does not reimplement these steps; `.github/workflows/ci.yml` shells out to
  * `node scripts/verify.mjs --quick` on every push and pull request, and to the
- * plain three-engine form nightly. That is deliberate: the previous arrangement
+ * plain three-engine form on pull requests and nightly. That is deliberate: the previous arrangement
  * listed the steps in both places and they drifted -- CI grew a step named
  * "Typecheck" that ran `pnpm -r build`, which does not typecheck a single test
  * file. Adding a step here adds it to CI, and there is no second list to forget.
  *
- * The only difference between local and CI is `--quick`, which runs chromium
- * alone instead of all three engines. Run plain `pnpm verify` before pushing.
+ * `--quick` runs chromium alone instead of all three engines. Run plain
+ * `pnpm verify` before pushing; CI requires the full gate before merging.
  */
 
 import { spawnSync } from 'node:child_process'

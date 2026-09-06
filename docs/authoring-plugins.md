@@ -936,7 +936,7 @@ and the gate fails on the first one over. Gzipped, measured against budget:
 openleaf.min.js            124.8 / 127
 openleaf-import-docx.min.js 124.5 / 140
 openleaf-tables.min.js       20.8 /  25
-openleaf-session.min.js       9.9 /  10
+openleaf-session.min.js      10.2 /  11
 openleaf-insert.min.js        8.4 /  20
 openleaf-webmcp.min.js        7.6 /   8
 openleaf-highlight.min.js     6.7 /  15

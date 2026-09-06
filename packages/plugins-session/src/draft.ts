@@ -37,6 +37,8 @@ export interface DraftRecord {
 }
 
 export interface DraftStorage {
+  /** False for a session-only fallback that cannot survive a reload. */
+  readonly persistent?: boolean
   getItem(key: string): string | null
   setItem(key: string, value: string): void
   removeItem(key: string): void
@@ -86,6 +88,7 @@ export function draftStorageKey(
 function memoryStorage(): DraftStorage {
   const data = new Map<string, string>()
   return {
+    persistent: false,
     get length() {
       return data.size
     },
@@ -119,9 +122,9 @@ function isExpired(savedAt: number, now: number): boolean {
 }
 
 export function readDraft(storage: DraftStorage, key: string, now = Date.now()): DraftRecord | null {
-  const raw = storage.getItem(key)
-  if (!raw) return null
   try {
+    const raw = storage.getItem(key)
+    if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<DraftRecord>
     if (typeof parsed.html !== 'string' || typeof parsed.savedAt !== 'number') return null
     if (isExpired(parsed.savedAt, now)) {

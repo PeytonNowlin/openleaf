@@ -146,10 +146,10 @@ export const BUDGETS_KB = {
   'openleaf-import.min.js': 12,
   // Larger than the editor, which is exactly why it is a separate file.
   'openleaf-import-docx.min.js': 140,
-  // 9.4/10 after the invisible-format policy and Replace-all focus. The
-  // tightest budget in the tree; raise it deliberately rather than shaving
+  // Recovery-failure reporting and acknowledged saves add about 0.4 KB.
+  // Keep explicit headroom for those content-safety guarantees rather than shaving
   // the feature if it goes.
-  'openleaf-session.min.js': 10,
+  'openleaf-session.min.js': 11,
   'openleaf-insert.min.js': 20,
   // The smallest budget in the tree, and the reason is structural rather than
   // frugal: this bundle registers agent tools, so it carries no icons, no

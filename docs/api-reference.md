@@ -119,27 +119,54 @@ editor.addEventListener('openleaf:change', (event) => {
 })
 ```
 
+### Validation semantics
+
+`aria-invalid`, `aria-errormessage`, `aria-describedby`, and `aria-required` on
+the host or bound textarea are mirrored onto the visible rich-text control and
+HTML source textarea, including changes after mount. Explicit host values win;
+removing them restores the bound field's values. The rich-text control keeps
+its toolbar keyboard hint alongside application descriptions. These attributes
+communicate validation results; they do not implement a server validation rule
+or make `aria-required` equivalent to native form constraint validation.
+
 ### Dispatched by `@openleaf-editor/plugins-session`
 
 | Event | `detail` | Cancelable | When |
 | --- | --- | --- | --- |
-| `openleaf:save` | `{ html }` | **Yes** | The `save` toolbar control was used. |
+| `openleaf:save` | `{ html, waitUntil }` | **Yes** | The `save` toolbar control was used. |
+| `openleaf:save-error` | none | No | A save callback or acknowledged save promise rejected; changes remain unsaved. |
+| `openleaf:draft-error` | `{ operation }` | No | Recovery storage failed (`read`, `write`, `clear`) or fell back to session-only memory (`unavailable`). |
 
-`openleaf:save` is cancelable, and cancelling it is the contract. Call
-`preventDefault()` to say you have taken ownership of persistence — the plugin
-then treats the document as saved, drops the recovery draft and clears the
-unsaved-changes warning:
+A canceled `openleaf:save` claims the request but does **not** mark the document
+saved. During event dispatch, call `detail.waitUntil(promise)` to acknowledge
+persistence. It cancels the fallback automatically. The promise must reject on
+HTTP failure as well as network failure:
 
 ```js
-editor.addEventListener('openleaf:save', async (event) => {
-  event.preventDefault()
-  await fetch('/api/post', { method: 'POST', body: event.detail.html })
+editor.addEventListener('openleaf:save', (event) => {
+  event.detail.waitUntil(
+    fetch('/api/post', { method: 'POST', body: event.detail.html }).then((response) => {
+      if (!response.ok) throw new Error('Save failed')
+    }),
+  )
 })
 ```
 
-Nothing awaits your listener, so if the request fails, telling the user is your
-job. If you do not cancel it, the plugin falls back to a registered save handler
-and then to submitting the bound form.
+Without a claimed event, the plugin awaits the registered save handler or
+submits the bound form. Starting a form submission cannot prove a server write,
+so it retains the draft and unsaved state. Only an acknowledged save of the
+current HTML clears them; edits made during a request stay dirty. Event owners
+must call `waitUntil` synchronously, before their first `await`.
+
+**Migration:** listeners that only called `preventDefault()` previously cleared
+recovery immediately. They now retain it. Supply the actual persistence promise
+with `waitUntil`, or use `registerSaveHandler` and reject on failure.
+
+Draft errors bubble across shadow roots, contain no document content or storage
+keys, and repeat only after that operation succeeds and fails again (per session
+attachment). `unavailable` means the default storage is in memory and will not
+survive reload. Use the event to show recovery availability separately from
+server save status. These notifications never stop editing.
 
 ### Listened for by the element
 

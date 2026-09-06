@@ -66,7 +66,7 @@ Once the plugin is loaded, every editor on the page:
 - Writes a draft to `localStorage` (debounced) keyed by the page path, the query string, and the bound textarea id. The query string is part of the key so `/admin/edit?id=1` and `?id=2` are separate drafts; set a `draft-key` attribute on the editor to choose the key yourself.
 - Offers to restore that draft on load when it differs from the HTML the textarea carried.
 - Deletes drafts older than seven days, sweeping the stored keys when an editor starts.
-- Warns before the tab closes if the document differs from the last save (form submit or a successful Save action).
+- Warns before the tab closes if the document differs from the last save (an acknowledged Save action; merely submitting a form keeps recovery).
 
 ```ts
 installSessionTools({
@@ -89,18 +89,51 @@ The default Save action submits the nearest form (the one that owns the bound te
 import { registerSaveHandler } from '@openleaf-editor/plugins-session'
 
 registerSaveHandler(async (html, host) => {
-  await fetch('/save', { method: 'POST', body: html })
+  const response = await fetch('/save', { method: 'POST', body: html })
+  if (!response.ok) throw new Error('Save failed')
 })
 ```
 
-Or listen and cancel the default:
+Or acknowledge persistence through the event. `waitUntil` must be called during
+dispatch; it claims the save and waits for the supplied promise:
 
-```ts
+```js
 editor.addEventListener('openleaf:save', (event) => {
-  event.preventDefault()
-  const html = event.detail.html
+  event.detail.waitUntil(
+    fetch('/save', { method: 'POST', body: event.detail.html }).then((response) => {
+      if (!response.ok) throw new Error('Save failed')
+    }),
+  )
 })
 ```
+
+Canceling alone no longer marks the document saved. This intentionally changes
+the old contract: initiating persistence cannot erase the recovery copy before
+the server acknowledges it. A form submission also keeps the draft, including
+when an application cancels it for an AJAX request. Integrations intercepting
+form submission should use the callback or acknowledged event instead. New
+edits made during a request remain unsaved even when that older request succeeds.
+Rejected toolbar saves announce failure and emit `openleaf:save-error`.
+
+## Recovery availability
+
+Listen for `openleaf:draft-error` to communicate storage problems to the author:
+
+```js
+editor.addEventListener('openleaf:draft-error', (event) => {
+  recoveryStatus.textContent = event.detail.operation === 'unavailable'
+    ? 'Recovery is only available for this session. Save before leaving.'
+    : 'Browser recovery is unavailable. Your edits are still here; save to the server.'
+})
+```
+
+`detail.operation` is `read`, `write`, `clear`, or `unavailable`. Notifications
+bubble and cross shadow roots, exclude document contents and storage keys, and
+are deduplicated until the failing operation recovers. Install listeners before
+mounting editors to hear startup failures. A custom `DraftStorage` can declare
+`persistent: false` when it cannot survive reload. Failed reads act like missing
+drafts; failed writes and clears leave editing usable. Autosave is a local
+recovery mechanism, never proof that your server saved the document.
 
 From a script tag, `OpenLeaf.registerSaveHandler(fn)` is available after the session bundle loads.
 

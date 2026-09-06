@@ -206,6 +206,7 @@ const ratio = width / height   // division, not a regex
 <video class="promo" controls muted playsinline loop preload="none"
   poster="./assets/openleaf-promo-poster.png"
   aria-label="OpenLeaf demonstration: pasting from Word, the bound textarea, and tables">
+  <source src="./assets/openleaf-promo.webm" type="video/webm">
   <source src="./assets/openleaf-promo.mp4" type="video/mp4">
   <p>
     Your browser cannot play this video.
@@ -690,7 +691,9 @@ over it to watch the clip without leaving the editor.</p>
   every editor once the bundle is present — they are not toolbar items. Save
   submits the bound form by default; <code>OpenLeaf.registerSaveHandler(fn)</code>
   is the callback path, and a cancelable <code>openleaf:save</code> event is
-  the hook for anything else.
+  the hook for anything else. A save listener calls
+  <code>event.detail.waitUntil(promise)</code> to acknowledge persistence;
+  canceling the event alone keeps the recovery draft.
 </p>
 
 <h2 id="chrome">Chrome around the canvas</h2>

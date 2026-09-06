@@ -108,6 +108,21 @@ The change event bubbles, crosses shadow-root boundaries, and contains a lazy
 still be waiting for its short deferred synchronization when the listener runs;
 read the event detail when code needs the value immediately.
 
+## Validation and reliable saving
+
+Mirror application errors with `aria-invalid`, `aria-errormessage`,
+`aria-describedby`, and `aria-required` on the host or bound textarea. They
+follow the author into both rich-text and source mode and update after mount.
+Host attributes take precedence. These semantics do not replace server validation.
+
+For the session plugin, a form submission or canceled `openleaf:save` event does
+not acknowledge persistence. Use an awaited `registerSaveHandler` or call
+`event.detail.waitUntil(promise)` during save-event dispatch. Reject on HTTP and
+network failures; newer edits remain dirty during a request. Handle
+`openleaf:draft-error` to report recovery storage failures separately from server
+save status. See the [event reference](api-reference.md#dispatched-by-openleaf-editorplugins-session)
+and [session guide](../packages/plugins-session/README.md).
+
 ## React
 
 Install the React wrapper. It brings in the element; do not install both unless

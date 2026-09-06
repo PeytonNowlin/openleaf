@@ -115,7 +115,7 @@ import { keymap } from 'prosemirror-keymap'
 import type { Node as PMNode, Schema } from 'prosemirror-model'
 import { EditorState, NodeSelection, Plugin, TextSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
-import { FormBridge } from './form-bridge.js'
+import { FIELD_ARIA_ATTRIBUTES, FormBridge } from './form-bridge.js'
 
 const CHROME_ATTRIBUTES = [
   'toolbar',
@@ -231,6 +231,7 @@ export class OpenLeafEditor extends HTMLElementBase {
       'placeholder',
       'spellcheck',
       'aria-label',
+      ...FIELD_ARIA_ATTRIBUTES,
       'inline',
       'autoresize',
       'visualaids',
@@ -246,6 +247,10 @@ export class OpenLeafEditor extends HTMLElementBase {
    * which would cost them their undo history for a colour change.
    */
   attributeChangedCallback(name: string): void {
+    if (FIELD_ARIA_ATTRIBUTES.includes(name)) {
+      this.#refreshFieldSemantics()
+      return
+    }
     switch (name) {
       case 'skin':
         applySkin(this, this.getAttribute('skin'))
@@ -310,7 +315,10 @@ export class OpenLeafEditor extends HTMLElementBase {
   #menubar: MenuBar | null = null
   #contextMenu: PopupMenu | null = null
   #floating: FloatingToolbars | null = null
-  #formBridge = new FormBridge(this, () => this.value, (html) => { this.value = html })
+  #formBridge = new FormBridge(
+    this, () => this.value, (html) => { this.value = html },
+    () => this.#refreshFieldSemantics(),
+  )
   #contentHost: HTMLDivElement | null = null
   /** The Alt+F10 hint, when there is a toolbar for it to describe. */
   #hint: HTMLSpanElement | null = null
@@ -1233,6 +1241,7 @@ export class OpenLeafEditor extends HTMLElementBase {
       contentHost.after(area)
       this.#sourceArea = area
       this.#sourceMode = true
+      this.#refreshFieldSemantics()
       this.#toolbar?.setItemState('source', { active: true })
       this.#toolbar2?.setItemState('source', { active: true })
       // Every other control goes unavailable: a formatting command here runs
@@ -1503,7 +1512,12 @@ export class OpenLeafEditor extends HTMLElementBase {
       'aria-readonly': this.hasAttribute('readonly') ? 'true' : 'false',
       'aria-label': this.#regionName(),
     }
-    if (this.#hint) attributes['aria-describedby'] = this.#hint.id
+    Object.assign(attributes, this.#fieldSemantics())
+    // Keep application help/error references alongside the editor's keyboard
+    // hint instead of replacing either side's accessible description.
+    if (this.#hint) {
+      attributes['aria-describedby'] = [attributes['aria-describedby'], this.#hint.id].filter(Boolean).join(' ')
+    }
 
     // Canvas language, which is also the spellcheck language. Host `lang` is
     // documented as the UI locale; using the same attribute for the document
@@ -1533,6 +1547,26 @@ export class OpenLeafEditor extends HTMLElementBase {
       attributes['aria-placeholder'] = placeholder
     }
     return attributes
+  }
+
+  #fieldSemantics(): Record<string, string> {
+    const attributes: Record<string, string> = {}
+    for (const name of FIELD_ARIA_ATTRIBUTES) {
+      const value = this.getAttribute(name) ?? this.#formBridge.textarea?.getAttribute(name)
+      if (value !== null && value !== undefined) attributes[name] = value
+    }
+    return attributes
+  }
+
+  #refreshFieldSemantics(): void {
+    this.#view?.setProps({})
+    if (!this.#sourceArea) return
+    const attributes = this.#fieldSemantics()
+    for (const name of FIELD_ARIA_ATTRIBUTES) {
+      const value = attributes[name]
+      if (value === undefined) this.#sourceArea.removeAttribute(name)
+      else this.#sourceArea.setAttribute(name, value)
+    }
   }
 
   /**
