@@ -12,9 +12,8 @@ name: Release
 #   - It publishes to the `beta` tag on an 0.x line. There is no stable channel
 #     to break, and `docs/integrating-openleaf.md` already tells integrators the
 #     channel moves.
-#   - It runs the FULL gate, all three engines, not the `--quick` chromium form
-#     that pull requests get. A weekly release is exactly where WebKit is worth
-#     the minutes, and nothing publishes if it fails.
+#   - It runs the same FULL three-engine gate required on pull requests.
+#     Nothing publishes if it fails.
 #   - It refuses to release a week where nothing landed, and refuses a week
 #     where things landed but nobody wrote a changelog entry (bump.mjs throws).
 #   - The version bump is committed and tagged BEFORE the publish, and pushed
@@ -64,11 +63,24 @@ concurrency:
 jobs:
   release:
     name: Publish beta
+    # The environment is limited to main and holds the repository's sole write
+    # deploy key. GitHub's built-in Actions app cannot bypass a repo ruleset.
+    environment: release
     runs-on: ubuntu-latest
     steps:
+      - name: Require the release push identity before publishing
+        if: '!inputs.dry_run'
+        env:
+          RELEASE_KEY: ${{ secrets.OPENLEAF_RELEASE_KEY }}
+        run: |
+          if [ -z "$RELEASE_KEY" ]; then
+            echo '::error::Configure OPENLEAF_RELEASE_KEY in the main-only release environment before publishing.'
+            exit 1
+          fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
+          ssh-key: ${{ secrets.OPENLEAF_RELEASE_KEY }}
           # Full history: the "did anything land" check reads the last release
           # tag, and a shallow clone has no tags to read.
           fetch-depth: 0
@@ -149,7 +161,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report-release
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 14
 
       - name: Bump versions and roll the changelog

@@ -1,12 +1,8 @@
 name: Demo site
 
-# NOTE: this workflow DOES run on push, unlike ci.yml which is manual-only.
-#
-# That is deliberate rather than an oversight. CI was made manual because
-# installing three browser engines took over fifteen minutes per push. This job
-# installs no browsers and finishes in well under a minute, and a demo site that
-# silently falls behind main is worse than no demo site -- the whole reason it
-# exists is to be the current thing people can try.
+# Main only receives pull requests after the required CI gate. Publish that
+# verified tree automatically so the demo stays aligned with the released code.
+# This job needs no additional browser installation.
 on:
   push:
     branches: [main]
@@ -58,7 +54,7 @@ jobs:
       - name: Fail if the bundle or documentation index is missing
         # An empty or partial deploy would replace a working site with a broken
         # one, and Pages has no automatic rollback.
-        run: test -s demo/openleaf.min.js && test -s demo/assets/openleaf-logo.png && test -s demo/llms.txt
+        run: test -s demo/openleaf.min.js && test -s demo/demo.css && test -s demo/assets/openleaf-logo.png && test -s demo/assets/openleaf-promo.webm && test -s demo/llms.txt
 
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1

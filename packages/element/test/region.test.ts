@@ -242,3 +242,40 @@ describe('code is never spellchecked', () => {
   })
 })
 
+
+
+describe('application validation on the visible controls', () => {
+  it('mirrors textarea errors and help without losing the editor shortcut hint', async () => {
+    const { host, region } = build(`
+      <span id="help">Enter a description</span><span id="error">Description is required</span>
+      <textarea id="body" aria-invalid="true" aria-errormessage="error" aria-describedby="help" aria-required="true"><p>hi</p></textarea>
+      <openleaf-editor for="body"></openleaf-editor>`)
+    expect(region.getAttribute('aria-invalid')).toBe('true')
+    expect(region.getAttribute('aria-errormessage')).toBe('error')
+    expect(region.getAttribute('aria-required')).toBe('true')
+    expect(region.getAttribute('aria-describedby')?.split(' ')).toContain('help')
+    expect(region.getAttribute('aria-describedby')).toContain('ol-hint-')
+    host.sourceMode = true
+    const source = host.querySelector('.ol-source')
+    expect(source?.getAttribute('aria-invalid')).toBe('true')
+    document.getElementById('body')?.removeAttribute('aria-invalid')
+    document.getElementById('body')?.removeAttribute('aria-errormessage')
+    await Promise.resolve()
+    expect(region.hasAttribute('aria-invalid')).toBe(false)
+    expect(source?.hasAttribute('aria-invalid')).toBe(false)
+    expect(source?.hasAttribute('aria-errormessage')).toBe(false)
+  })
+
+  it('lets explicit host semantics override the bound textarea and change live', async () => {
+    const { host, region } = build(`
+      <textarea id="body" aria-invalid="true"><p>hi</p></textarea>
+      <openleaf-editor for="body" aria-invalid="false"></openleaf-editor>`)
+    expect(region.getAttribute('aria-invalid')).toBe('false')
+    host.setAttribute('aria-invalid', 'true')
+    expect(region.getAttribute('aria-invalid')).toBe('true')
+    host.removeAttribute('aria-invalid')
+    document.getElementById('body')?.setAttribute('aria-invalid', 'false')
+    await Promise.resolve()
+    expect(region.getAttribute('aria-invalid')).toBe('false')
+  })
+})

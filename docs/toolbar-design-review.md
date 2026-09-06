@@ -147,7 +147,7 @@ Appearance.
   focus trap, Escape handling and inert background that would otherwise be
   hundreds of lines of ARIA owing real screen reader testing.
 
-## Open, not yet done
+## Follow-up status
 
 - **Screen reader testing.** Priority order: NVDA + Firefox on Windows 11;
   JAWS + Chrome on Windows 11; VoiceOver + Safari on macOS; ChromeVox on
@@ -157,20 +157,17 @@ Appearance.
   to preserve editor focus has a history of interfering with VoiceOver's
   synthesized touch activation. Must be tested directly, not inferred from
   desktop.
-- **Source view is a large context change with no announcement.** Focus should
-  move into the source control on switch and the mode change should not be
-  silent.
-- **CMS validation mirroring.** If the host attaches `aria-invalid` or error
-  text to the bound `<textarea>` — which is the real form field from the CMS's
-  point of view — a screen reader user hears an error on a control they never
-  interact with and cannot locate. Validation state needs mirroring onto the
-  visible `role="textbox"`.
+- **Source view announcements: implemented.** Focus moves into the source
+  control and the mode transition is announced. Real screen-reader verification
+  remains part of the production-readiness checklist.
+- **CMS validation mirroring: implemented.** Validation and description ARIA
+  attributes on the bound field or host reach both the rich-text and source
+  controls, including changes after mount. The keyboard hint is retained.
+  Automated semantic checks do not replace testing with assistive technology.
 - **WCAG 2.2 SC 2.4.11 Focus Not Obscured.** A sticky CMS header can cover the
   focus ring when the toolbar sits near the viewport edge.
-- **Registry change events.** Import-time registration races code-split plugins:
-  a chunk resolving after the toolbar has rendered means its button silently
-  never appears. The registry should emit change events and the toolbar
-  re-render reactively.
+- **Registry change events: implemented.** `onRegistryChange` lets toolbars
+  react to code-split plugins that register after the initial render.
 - **Tooltips.** Currently the native `title` attribute, which is poor for
   keyboard and touch users but has no 1.4.13 exposure. Custom tooltips would
   need to persist on hover, be dismissible with Escape without losing focus, and

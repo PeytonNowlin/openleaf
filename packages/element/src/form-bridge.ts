@@ -10,11 +10,16 @@
  */
 const SYNC_DELAY_MS = 300
 
+export const FIELD_ARIA_ATTRIBUTES: readonly string[] = [
+  'aria-invalid', 'aria-errormessage', 'aria-describedby', 'aria-required',
+]
+
 /** Owns the custom element's textarea and form-submission contract. */
 export class FormBridge {
   #textarea: HTMLTextAreaElement | null = null
   #form: HTMLFormElement | null = null
   #dirty = false
+  #attributeObserver: MutationObserver | null = null
   /** The last string this bridge wrote, so a foreign write is detectable. */
   #written: string | null = null
   #timer: ReturnType<typeof setTimeout> | null = null
@@ -23,6 +28,7 @@ export class FormBridge {
     private readonly host: HTMLElement,
     private readonly readValue: () => string,
     private readonly writeValue: (html: string) => void,
+    private readonly refreshSemantics: () => void = () => {},
   ) {}
 
   get textarea(): HTMLTextAreaElement | null {
@@ -64,6 +70,17 @@ export class FormBridge {
     this.#form?.addEventListener('submit', this.#onSubmit)
     this.#form?.addEventListener('formdata', this.#onFormData)
     this.#form?.addEventListener('reset', this.#onReset)
+    // CMS validation usually targets the hidden form field. Its changing ARIA
+    // attributes must reach the control the author can actually focus.
+    const Observer = this.host.ownerDocument.defaultView?.MutationObserver
+    if (this.#textarea && Observer) {
+      this.#attributeObserver = new Observer(this.refreshSemantics)
+      this.#attributeObserver.observe(this.#textarea, {
+        attributes: true,
+        attributeFilter: [...FIELD_ARIA_ATTRIBUTES],
+      })
+    }
+    this.refreshSemantics()
     this.sync()
   }
 
@@ -72,6 +89,8 @@ export class FormBridge {
     // -- a framework unmounting a component, a wizard swapping a step -- must
     // not get the value as of the last debounce tick.
     this.flush()
+    this.#attributeObserver?.disconnect()
+    this.#attributeObserver = null
     this.#form?.removeEventListener('submit', this.#onSubmit)
     this.#form?.removeEventListener('formdata', this.#onFormData)
     this.#form?.removeEventListener('reset', this.#onReset)

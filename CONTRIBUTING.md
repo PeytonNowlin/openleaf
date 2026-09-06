@@ -47,9 +47,8 @@ with no DOM present, and checks the architecture guards and bundle budgets.
 
 It runs exactly what CI runs, and not by coincidence: CI shells out to the same
 script (`node scripts/verify.mjs`), so there is no second list of steps to drift
-out of sync. The single difference is the engine set -- a pull request runs
-`--quick`, which is Chromium only, and the full three-engine run happens nightly
-and on demand.
+out of sync. Pull requests run both the fast Chromium gate and the full
+three-engine gate. The full gate also runs nightly and on demand.
 
 Narrower loops:
 
@@ -65,12 +64,12 @@ where editor bugs actually live -- jsdom does not model selection, composition
 events, or clipboard behaviour faithfully enough to trust. Run the full
 `pnpm verify` before pushing.
 
-**What CI runs on your pull request:** `node scripts/verify.mjs --quick` (the
-whole gate, Chromium only, a few minutes) and the DCO sign-off check. Firefox
-and WebKit run nightly on `main` and on demand from the Actions tab, so they are
-not between you and a merge -- which is exactly why you should run the full
-`pnpm verify` locally first. A WebKit regression found tomorrow morning is
-harder to place than one found before you push.
+**What CI runs on your pull request:** the fast Chromium gate, the full
+`node scripts/verify.mjs` gate in Chromium, Firefox and WebKit, and DCO sign-off.
+All three checks are required before merge. Failure artifacts include the HTML
+report and browser traces under `test-results/`. See
+[Production readiness](docs/production-readiness.md) for the enforced main rule
+and the remaining human validation required before a stable release.
 
 **When the nightly does go red**, it files an issue titled `Nightly CI is red`
 and closes it again on the next green run, so an open one always means the last

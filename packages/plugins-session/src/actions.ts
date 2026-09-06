@@ -1,8 +1,8 @@
 /**
  * Save, print, preview, and new-document actions.
  *
- * Save prefers an integrator callback, then a form submission, then a cancelable
- * `openleaf:save` event. The plugin never invents a server: it hands HTML to
+ * Save offers a cancelable `openleaf:save` event, then an integrator callback,
+ * then a form submission. The plugin never invents a server: it hands HTML to
  * whoever already owns persistence.
  */
 
@@ -11,6 +11,12 @@ import { confirmAction, printHtml, showPreview, showStats } from './dialogs.js'
 import { documentStats } from './count.js'
 
 export const SAVE_EVENT = 'openleaf:save'
+
+export interface SaveEventDetail {
+  html: string
+  /** Call during event dispatch to own persistence and acknowledge its result. */
+  waitUntil(save: PromiseLike<void>): void
+}
 
 export interface EditorHost extends HTMLElement {
   value: string
@@ -48,20 +54,32 @@ function boundForm(host: EditorHost): HTMLFormElement | null {
  */
 export async function saveDocument(host: EditorHost): Promise<boolean> {
   const html = host.value
-  const event = new CustomEvent(SAVE_EVENT, {
+  const pending: Promise<void>[] = []
+  let dispatching = true
+  const event = new CustomEvent<SaveEventDetail>(SAVE_EVENT, {
     bubbles: true,
     cancelable: true,
     // Without `composed`, a host that puts the editor inside its own shadow
     // root never sees this and every save silently falls back to the default.
     composed: true,
-    detail: { html },
+    detail: {
+      html,
+      waitUntil(save) {
+        if (!dispatching) throw new Error('waitUntil must be called during openleaf:save dispatch')
+        event.preventDefault()
+        pending.push(Promise.resolve(save))
+      },
+    },
   })
   host.dispatchEvent(event)
-  // Canceling is the documented way to own saving, not a failure: a listener
-  // that calls preventDefault has taken the HTML and is persisting it itself.
-  // Reporting that as unsaved would keep the draft and the leave warning alive
-  // after every successful save on the event path.
-  if (event.defaultPrevented) return true
+  dispatching = false
+  // Canceling claims the request, not a successful server write. Keep recovery
+  // unless the owner explicitly supplies a promise and it resolves.
+  if (event.defaultPrevented) {
+    if (pending.length === 0) return false
+    await Promise.all(pending)
+    return true
+  }
 
   if (saveHandler) {
     await saveHandler(html, host)
@@ -69,32 +87,11 @@ export async function saveDocument(host: EditorHost): Promise<boolean> {
   }
 
   const form = boundForm(host)
-  if (form) return submitForm(form)
+  // A navigation is not a server acknowledgment. Preserve the draft until a
+  // returned page loads the saved HTML or an application confirms its own save.
+  if (form) form.requestSubmit()
 
   return false
-}
-
-/**
- * Submit a form, reporting whether the submission actually went out.
- *
- * `requestSubmit()` runs constraint validation first and returns quietly when a
- * required control is invalid, so its return value says nothing. Watching for
- * the `submit` event it fires is the only way to tell a real submission from one
- * the browser refused -- and treating a refusal as success would clear the draft
- * and the leave warning while the edits were still unsaved.
- */
-function submitForm(form: HTMLFormElement): boolean {
-  let submitted = false
-  const onSubmit = (): void => {
-    submitted = true
-  }
-  form.addEventListener('submit', onSubmit, { capture: true })
-  try {
-    form.requestSubmit()
-  } finally {
-    form.removeEventListener('submit', onSubmit, { capture: true })
-  }
-  return submitted
 }
 
 export function previewDocument(host: EditorHost): void {

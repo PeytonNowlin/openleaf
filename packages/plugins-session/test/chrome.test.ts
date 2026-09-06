@@ -13,17 +13,19 @@ import { coreSchema, parseHtml, serializeHtml } from '@openleaf-editor/core'
 import { EditorState } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { sessionChrome, sessionFor } from '../src/chrome.js'
+import { runSave, sessionChrome, sessionFor, type SessionOptions } from '../src/chrome.js'
+import { draftStorageKey, readDraft, type DraftStorage } from '../src/draft.js'
+import { registerSaveHandler } from '../src/actions.js'
 import { findNext, searchPlugin } from '../src/search.js'
 
 const HAY = '<p>the quick brown fox jumps over the lazy dog and the fox runs on</p>'
 
 let view: EditorView | null = null
 
-function editor(html = HAY): { host: HTMLElement; view: EditorView } {
+function editor(html = HAY, options: SessionOptions = {}, parent: HTMLElement = document.body): { host: HTMLElement; view: EditorView } {
   const host = document.createElement('openleaf-editor')
   host.className = 'ol-editor'
-  document.body.appendChild(host)
+  parent.appendChild(host)
 
   const mount = document.createElement('div')
   host.appendChild(mount)
@@ -41,7 +43,7 @@ function editor(html = HAY): { host: HTMLElement; view: EditorView } {
       doc: parseHtml(html, { schema: coreSchema() }),
       plugins: [
         searchPlugin(),
-        sessionChrome({ autosave: false, warnBeforeLeave: false, restore: false }),
+        sessionChrome({ autosave: false, warnBeforeLeave: false, restore: false, ...options }),
       ],
     }),
   })
@@ -68,6 +70,7 @@ afterEach(() => {
   view?.destroy()
   view = null
   vi.useRealTimers()
+  registerSaveHandler(null)
 })
 
 describe('the find bar live region', () => {
@@ -161,4 +164,94 @@ describe('Replace all focus', () => {
     expect(findInput!.value).toBe('alpha')
     expect(spoken(host)).toBe('2 replaced')
   })
+})
+
+
+describe('draft recovery under failure', () => {
+  function storage(): DraftStorage {
+    const data = new Map<string, string>()
+    return {
+      getItem: (key) => data.get(key) ?? null,
+      setItem: (key, value) => { data.set(key, value) },
+      removeItem: (key) => { data.delete(key) },
+    }
+  }
+
+  it('keeps the editor usable when restoring a draft cannot read storage', () => {
+    const broken = storage()
+    broken.getItem = () => { throw new Error('storage denied') }
+    expect(() => editor(HAY, { restore: true, storage: broken })).not.toThrow()
+  })
+
+  it('reports a failed autosave without losing the current document', async () => {
+    vi.useFakeTimers()
+    const broken = storage()
+    broken.setItem = () => { throw new Error('quota exceeded') }
+    const { host, view: v } = editor(HAY, { autosave: true, debounceMs: 10, storage: broken })
+    const failures: unknown[] = []
+    host.addEventListener('openleaf:draft-error', (event) => {
+      failures.push((event as CustomEvent).detail)
+    })
+    v.dispatch(v.state.tr.insertText('still here ', 1))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(failures).toEqual([{ operation: 'write' }])
+    expect(serializeHtml(v.state.doc)).toContain('still here')
+    expect(sessionFor(host)?.isDirty()).toBe(true)
+    // Continuing to type must not flood a host's alert or live region.
+    v.dispatch(v.state.tr.insertText('more ', 1))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(failures).toHaveLength(1)
+  })
+
+  it('does not discard recovery when a form submission is canceled', () => {
+    vi.useFakeTimers()
+    const local = storage()
+    const form = document.createElement('form')
+    document.body.appendChild(form)
+    const { host, view: v } = editor(HAY, { autosave: true, debounceMs: 10, storage: local }, form)
+    v.dispatch(v.state.tr.insertText('unsaved ', 1))
+    vi.advanceTimersByTime(10)
+    form.addEventListener('submit', (event) => event.preventDefault())
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    expect(sessionFor(host)?.isDirty()).toBe(true)
+    expect(readDraft(local, draftStorageKey(host))?.html).toContain('unsaved')
+  })
+})
+
+
+it('keeps edits made while a server save is in flight dirty and recoverable', async () => {
+  const { host, view: v } = editor()
+  v.dispatch(v.state.tr.insertText('first ', 1))
+  let complete: (() => void) | undefined
+  registerSaveHandler(() => new Promise<void>((resolve) => { complete = resolve }))
+  runSave(v)
+  v.dispatch(v.state.tr.insertText('second ', 1))
+  complete?.()
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(sessionFor(host)?.isDirty()).toBe(true)
+})
+
+
+it('announces a rejected server save and retains unsaved work', async () => {
+  const { host, view: v } = editor()
+  v.dispatch(v.state.tr.insertText('keep me ', 1))
+  registerSaveHandler(async () => { throw new Error('network down') })
+  const failure = new Promise<void>((resolve) => {
+    host.addEventListener('openleaf:save-error', () => resolve(), { once: true })
+  })
+  runSave(v)
+  await failure
+  expect(sessionFor(host)?.isDirty()).toBe(true)
+  expect(serializeHtml(v.state.doc)).toContain('keep me')
+})
+
+it('clears the saved snapshot only after an acknowledged server save', async () => {
+  const { host, view: v } = editor()
+  v.dispatch(v.state.tr.insertText('confirmed ', 1))
+  registerSaveHandler(async () => {})
+  runSave(v)
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(sessionFor(host)?.isDirty()).toBe(false)
 })

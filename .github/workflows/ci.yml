@@ -14,10 +14,9 @@ name: CI
 #
 #   fast     every PR and every push to main. Chromium only, ~3-4 minutes.
 #   dco      every PR. No install, no browsers, seconds.
-#   browser  all three engines. Nightly, plus on demand from the Actions tab.
-#            WebKit is not optional -- it is Safari and every iOS browser, and
-#            it is historically where selection bugs live -- it just does not
-#            need to block the pull request that Chromium already covered.
+#   browser  all three engines on every PR, nightly, and on demand. The full
+#            gate is required before merge: a Chromium pass cannot establish
+#            correctness of Safari selection, focus, or clipboard behavior.
 #   alarm    the nightly only. Nothing blocks on a cron, so a red one is only
 #            as visible as somebody's inbox -- see `.github/alarm.sh`.
 #
@@ -76,15 +75,17 @@ jobs:
 
       - name: Upload report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report-chromium
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 14
 
   browser:
     name: Gate (chromium, firefox, webkit)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -105,7 +106,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 14
 
   alarm:

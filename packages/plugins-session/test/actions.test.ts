@@ -30,14 +30,14 @@ afterEach(() => {
 })
 
 describe('saveDocument', () => {
-  it('reports success when the bound form submits', async () => {
+  it('keeps recovery when the bound form submission is intercepted', async () => {
     const host = harness()
     let submitted = false
     document.getElementById('f')?.addEventListener('submit', (event) => {
       event.preventDefault()
       submitted = true
     })
-    expect(await saveDocument(host)).toBe(true)
+    expect(await saveDocument(host)).toBe(false)
     expect(submitted).toBe(true)
   })
 
@@ -54,24 +54,23 @@ describe('saveDocument', () => {
     expect(submitted).toBe(false)
   })
 
-  it('reports success once the invalid control is filled in', async () => {
+  it('keeps recovery after a valid submission is intercepted', async () => {
     const host = harness({ required: true })
     document.getElementById('f')?.addEventListener('submit', (event) => event.preventDefault())
     const title = document.querySelector('input[name="title"]') as HTMLInputElement
     title.value = 'a title'
-    expect(await saveDocument(host)).toBe(true)
+    expect(await saveDocument(host)).toBe(false)
   })
 
-  // Canceling openleaf:save is the documented way to own persistence. Calling it
-  // a failure would keep the draft and the leave warning after every save.
-  it('treats a canceled save event as handled', async () => {
+  // Taking ownership of persistence is not evidence that persistence succeeded.
+  it('keeps recovery when a listener cancels without acknowledging persistence', async () => {
     const host = harness()
     let seen = ''
     host.addEventListener('openleaf:save', (event) => {
       event.preventDefault()
       seen = (event as CustomEvent<{ html: string }>).detail.html
     })
-    expect(await saveDocument(host)).toBe(true)
+    expect(await saveDocument(host)).toBe(false)
     expect(seen).toBe('<p>edited</p>')
   })
 
@@ -94,4 +93,21 @@ describe('saveDocument', () => {
     document.body.append(host)
     expect(await saveDocument(host)).toBe(false)
   })
+})
+
+
+it('waits for the event listener to acknowledge persistence', async () => {
+  const host = harness()
+  let complete: (() => void) | undefined
+  const pending = new Promise<void>((resolve) => { complete = resolve })
+  host.addEventListener('openleaf:save', (event) => {
+    const detail = (event as CustomEvent<{ waitUntil: (save: Promise<void>) => void }>).detail
+    detail.waitUntil(pending)
+  })
+  let finished = false
+  const saved = saveDocument(host).then((result) => { finished = true; return result })
+  await Promise.resolve()
+  expect(finished).toBe(false)
+  complete?.()
+  expect(await saved).toBe(true)
 })
