@@ -12,7 +12,7 @@ Editor output is untrusted input and must be sanitized on the server.
 
 - [Integration guide](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/docs/integrating-openleaf.md): Canonical instructions for coding agents and developers installing OpenLeaf in plain HTML, React, Vue, Angular, SSR, and server-rendered applications.
 - [Project overview](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/README.md): Capabilities, quick start, optional plugins, package index, and beta limitations.
-- [Live demo](https://peytonnowlin.github.io/openleaf/): Interactive examples of the editor and first-party plugins. WebMCP is enabled: a compatible browser agent can list the editors, find the one labelled Post body, and read, search, or edit its content.
+- [Live demo](https://peytonnowlin.github.io/openleaf/): Interactive examples of the editor and first-party plugins. The live editor appears first; expand “Explore the examples” for grouped section links and “See the HTML your server receives” for live output. WebMCP is enabled: a compatible browser agent can list the editors, find the one labelled Post body, and read, search, or edit its content.
 
 ## Safety and API
 

@@ -6,205 +6,95 @@
 <title>OpenLeaf — a rich text editor that is actually free</title>
 <meta name="description" content="OpenLeaf is an Apache-2.0 rich text editor for the web. No paid tier, no license keys, no telemetry, and built so it cannot silently destroy your content. A drop-in TinyMCE replacement built on ProseMirror.">
 <link rel="icon" href="assets/openleaf-mark.png" type="image/png">
-<style>
-  :root {
-    color-scheme: light dark;
-    --page-fg: #1f2328;
-    --page-bg: #ffffff;
-    --page-muted: #59636e;
-    --page-border: #d1d9e0;
-    --page-surface: #f6f8fa;
-    --page-accent: #2f7d32;
-    --page-max: 54rem;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --page-fg: #e6edf3;
-      --page-bg: #0d1117;
-      --page-muted: #9198a1;
-      --page-border: #3d444d;
-      --page-surface: #161b22;
-      --page-accent: #7ee787;
-    }
-  }
-
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    padding: 0 1rem 5rem;
-    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
-    color: var(--page-fg);
-    background: var(--page-bg);
-  }
-  main, header { max-width: var(--page-max); margin: 0 auto; }
-
-  header { text-align: center; padding: 3rem 0 1rem; }
-  header img { width: min(420px, 82vw); height: auto; }
-  .tagline { font-size: 1.15rem; margin: .5rem 0 0; }
-  .subtitle { color: var(--page-muted); margin: .5rem auto 1.5rem; max-width: 38rem; }
-
-  .badges { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin-bottom: 1.5rem; }
-  .badge {
-    font-size: .8rem; padding: .2rem .6rem; border-radius: 999px;
-    border: 1px solid var(--page-border); color: var(--page-muted);
-  }
-
-  .alert {
-    border: 1px solid var(--page-border);
-    border-inline-start: 4px solid #d1a00a;
-    border-radius: 6px;
-    background: var(--page-surface);
-    padding: 1rem 1.25rem;
-    margin: 0 0 2.5rem;
-  }
-  .alert p { margin: .4rem 0 0; }
-  .alert strong { display: block; }
-
-  h2 { margin: 3rem 0 .25rem; font-size: 1.4rem; }
-  h2 + .lede { margin-top: 0; color: var(--page-muted); }
-  h3 { margin: 2rem 0 .5rem; font-size: 1.05rem; }
-
-  /* Full width of the prose column, and 16:9 without a wrapper: the intrinsic
-     aspect ratio of the file is what reserves the space, so nothing reflows
-     when the poster loads. */
-  .promo {
-    display: block;
-    width: 100%;
-    height: auto;
-    border: 1px solid var(--page-border);
-    border-radius: 8px;
-    background: #0b0f14;
-  }
-
-  .panel {
-    border: 1px solid var(--page-border);
-    border-radius: 8px;
-    background: var(--page-surface);
-    padding: 1rem;
-  }
-
-  /* Scoped OUT of the editor. Without Shadow DOM a page's own `pre` rules reach
-     into the content area -- which is the point (the editor should look like the
-     site it publishes to) and also a hazard: this page's dark code background was
-     landing under the editor's light-mode syntax colours. */
-  pre:not(.ol-editor pre), code:not(.ol-editor code), .out {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: .82rem;
-  }
-  pre:not(.ol-editor pre), .out {
-    margin: 0;
-    padding: .75rem;
-    border: 1px solid var(--page-border);
-    border-radius: 6px;
-    background: var(--page-bg);
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 15rem;
-    overflow-y: auto;
-  }
-  .out:empty::before { content: "(empty)"; color: var(--page-muted); }
-
-  .row { display: grid; gap: 1rem; }
-  @media (min-width: 56rem) { .row.two { grid-template-columns: 1fr 1fr; } }
-
-  button.action {
-    font: inherit; font-size: .9rem;
-    padding: .45rem .9rem;
-    border: 1px solid var(--page-border);
-    border-radius: 6px;
-    background: var(--page-bg);
-    color: inherit;
-    cursor: pointer;
-  }
-  button.action:hover { background: var(--page-surface); }
-  button.action:focus-visible { outline: 2px solid var(--page-accent); outline-offset: 2px; }
-  button.action[aria-pressed="true"] { border-color: var(--page-accent); font-weight: 600; }
-  .controls { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
-
-  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
-  th, td { text-align: start; padding: .4rem .6rem; border-bottom: 1px solid var(--page-border); }
-  kbd {
-    font-family: inherit; font-size: .82em; padding: .1rem .35rem;
-    border: 1px solid var(--page-border); border-bottom-width: 2px; border-radius: 4px;
-    background: var(--page-bg);
-  }
-
-  footer {
-    max-width: var(--page-max); margin: 4rem auto 0; padding-top: 1.5rem;
-    border-top: 1px solid var(--page-border); color: var(--page-muted); font-size: .9rem;
-  }
-  a { color: inherit; }
-
-        .visually-hidden {
-    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
-    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
-  }
-</style>
+<link rel="stylesheet" href="./demo.css">
 </head>
 <body>
 
-<header>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/openleaf-logo-dark.png">
-    <img src="assets/openleaf-logo.png" alt="OpenLeaf">
-  </picture>
-  <p class="tagline"><strong>A rich text editor for the web that is actually free.</strong></p>
-  <p class="subtitle">
-    Apache-2.0. No paid tier, no license keys, no telemetry, no cloud dependency —
-    and built so that it cannot quietly destroy your content.
-  </p>
-  <p class="badges">
-    <span class="badge">Apache-2.0</span>
-    <span class="badge" data-openleaf-size="core">125 KB gzipped</span>
-    <span class="badge">No framework</span>
-    <span class="badge">Built on ProseMirror</span>
-    <span class="badge"><a href="https://github.com/PeytonNowlin/openleaf">Source on GitHub</a></span>
-  </p>
+<a class="skip-link" href="#try">Skip to the editor</a>
+<header class="page-header">
+  <div class="masthead">
+    <a href="#" aria-label="OpenLeaf home">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/openleaf-logo-dark.png">
+        <img src="assets/openleaf-logo.png" alt="OpenLeaf">
+      </picture>
+    </a>
+    <nav aria-label="Project">
+      <a href="https://github.com/PeytonNowlin/openleaf/blob/main/docs/integrating-openleaf.md">Documentation</a>
+      <a href="https://github.com/PeytonNowlin/openleaf">GitHub</a>
+    </nav>
+  </div>
+  <div class="hero">
+    <p class="eyebrow">Open source. Ordinary HTML. Yours.</p>
+    <h1>Your content.<br><span>Your editor.</span></h1>
+    <p class="subtitle">
+      A rich text editor for the web that is actually free. Paste from Word,
+      build tables, and keep your content as ordinary HTML.
+      No paid tier, telemetry, or cloud dependency.
+    </p>
+    <div class="hero-actions">
+      <a class="primary" href="#try">Try the editor <span aria-hidden="true">↗</span></a>
+      <a href="#use">Add it to your site</a>
+      <a href="#watch">Watch it work</a>
+    </div>
+    <p class="badges">
+      <span class="badge">Apache-2.0</span>
+      <span class="badge" data-openleaf-size="core">125 KB gzipped</span>
+      <span class="badge">No framework</span>
+      <span class="badge">Built on ProseMirror</span>
+    </p>
+  </div>
 </header>
+
+<nav class="demo-nav" aria-label="Demo examples">
+  <details>
+    <summary>Explore the examples</summary>
+    <div class="nav-groups">
+      <div class="nav-group">
+        <strong>Write and edit</strong>
+        <a href="#try">Live editor &amp; WebMCP</a>
+        <a href="#word">Paste from Word &amp; Google Docs</a>
+        <a href="#tables">Tables</a>
+        <a href="#format">Colour, alignment &amp; images</a>
+        <a href="#typography">Typography</a>
+      </div>
+      <div class="nav-group">
+        <strong>Go further</strong>
+        <a href="#insert">Media &amp; special characters</a>
+        <a href="#highlighting">Code &amp; syntax highlighting</a>
+        <a href="#import">Import a file</a>
+        <a href="#session">Find, save &amp; recover</a>
+        <a href="#watch">Video walkthrough</a>
+      </div>
+      <div class="nav-group">
+        <strong>Make it yours</strong>
+        <a href="#chrome">Toolbars &amp; translations</a>
+        <a href="#restricted">A smaller toolbar</a>
+        <a href="#keyboard">Keyboard &amp; accessibility</a>
+        <a href="#wrappers">React, Vue &amp; Angular</a>
+        <a href="#use">Installation</a>
+      </div>
+    </div>
+  </details>
+</nav>
 
 <main>
 
-<div class="alert">
-  <strong>⚠️ Pre-alpha. Not for production.</strong>
+<details class="alert">
+  <summary>Beta — try it here before trusting it in production.</summary>
   <p>
-    The editor works and is well tested, but nobody has run it in production and
-    its accessibility has <em>never been driven by a real screen reader</em>.
-    If you use one, trying this page and telling us what you heard is the single
-    most valuable thing anyone can do for this project right now.
+    APIs may change. The editor has not been proven in production or tested with
+    real screen readers. <a href="https://github.com/PeytonNowlin/openleaf/issues">Share your feedback</a>
+    — especially if you use assistive technology.
   </p>
-</div>
-
-<h2 id="watch">Watch it work</h2>
-<p class="lede">
-  A minute of the editor: pasting a Word document, the bound
-  <code>&lt;textarea&gt;</code> updating as the document changes, and tables from
-  the opt-in plugin. Every frame is this page's own bundle running in a browser —
-  the shots are screen captures of the editor below, not a mockup.
-</p>
-
-<video class="promo" controls muted playsinline loop preload="none"
-  poster="./assets/openleaf-promo-poster.png"
-  aria-label="OpenLeaf demonstration: pasting from Word, the bound textarea, and tables">
-  <source src="./assets/openleaf-promo.mp4" type="video/mp4">
-  <p>
-    Your browser cannot play this video.
-    <a href="./assets/openleaf-promo.mp4">Download it</a> instead.
-  </p>
-</video>
+</details>
 
 <h2 id="try">Try it</h2>
 <p class="lede">
   A custom element bound to a <code>&lt;textarea&gt;</code>, exactly as it would sit in a CMS form.
   Everything you type comes back out as ordinary HTML.
 </p>
-<p>
-  Using a browser agent with WebMCP support? Ask it to find the “Post body” editor
-  and edit a passage. This demo enables the
-  <a href="https://github.com/PeytonNowlin/openleaf/tree/main/packages/plugins-webmcp">WebMCP plugin</a>
-  for its editors: agents can read, search, and edit their content. Undo reverses
-  a run of agent edits. Browsers without WebMCP work as usual.
-</p>
+
 
 <div id="editor-wrap">
   <label for="body" class="visually-hidden">Post body</label>
@@ -243,6 +133,14 @@ const ratio = width / height   // division, not a regex
   </textarea>
 </div>
 
+<p class="agent-note">
+  Using a browser agent with WebMCP support? Ask it to find the “Post body” editor
+  and edit a passage. This demo enables the
+  <a href="https://github.com/PeytonNowlin/openleaf/tree/main/packages/plugins-webmcp">WebMCP plugin</a>
+  for its editors: agents can read, search, and edit their content. Undo reverses
+  a run of agent edits. Browsers without WebMCP work as usual.
+</p>
+
 <div class="controls" role="group" aria-label="Skin">
   <button type="button" class="action" data-skin="" aria-pressed="true">Default skin</button>
   <button type="button" class="action" data-skin="midnight" aria-pressed="false">Midnight</button>
@@ -256,6 +154,8 @@ const ratio = width / height   // division, not a regex
   <button type="button" class="action" data-scheme="light" aria-pressed="false">Light</button>
   <button type="button" class="action" data-scheme="dark" aria-pressed="false">Dark</button>
 </div>
+<details class="page-notes">
+  <summary>How skins and HTML binding work</summary>
 <p class="subtitle" style="margin:0 0 1.5rem">
   A skin is a block of CSS custom properties and nothing else — it cannot
   reference an internal class, so an internal rename cannot break it. Switching
@@ -282,13 +182,36 @@ const ratio = width / height   // division, not a regex
   itself contains escaped markup.
 </p>
 
-<h3>What the server would receive</h3>
+</details>
+
+<details class="page-notes">
+<summary>See the HTML your server receives</summary>
 <div class="out" id="output" aria-live="off"></div>
 <p class="subtitle" style="margin:.5rem 0 0">
   Updated from <code>openleaf:change</code>. This is the HTML that OpenLeaf
   flushes to the bound <code>&lt;textarea&gt;</code> before submission, so existing
   server code reading <code>$_POST['body']</code> keeps working untouched.
 </p>
+
+</details>
+
+<h2 id="watch">Watch it work</h2>
+<p class="lede">
+  A minute of the editor: pasting a Word document, the bound
+  <code>&lt;textarea&gt;</code> updating as the document changes, and tables from
+  the opt-in plugin. Every frame is this page's own bundle running in a browser —
+  the shots are screen captures of this editor, not a mockup.
+</p>
+
+<video class="promo" controls muted playsinline loop preload="none"
+  poster="./assets/openleaf-promo-poster.png"
+  aria-label="OpenLeaf demonstration: pasting from Word, the bound textarea, and tables">
+  <source src="./assets/openleaf-promo.mp4" type="video/mp4">
+  <p>
+    Your browser cannot play this video.
+    <a href="./assets/openleaf-promo.mp4">Download it</a> instead.
+  </p>
+</video>
 
 <h2 id="word">Paste from Microsoft Word</h2>
 <p class="lede">
