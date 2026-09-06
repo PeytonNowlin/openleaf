@@ -25,7 +25,7 @@ real-device input behavior, or successful operation in a production CMS.
 | IME | Real composition sessions with Japanese or Chinese input; no premature commands or lost text | Requires human testing |
 | Native clipboard | Firefox: paste actual Word/Docs content, nested lists and tables using the system clipboard | Requires manual testing; synthetic clipboard events are unsupported in 10 existing tests |
 | CMS pilot | Named application, supported environment matrix, representative legacy documents, server sanitization and uploads, save/reload/restore, and rollback exercise | Awaiting deployment target |
-| Release operations | Required CI checks enforced; release identity can publish only after its full gate; package versions stay aligned | Main-only release environment configured; deploy-key authorization and ruleset activation pending |
+| Release operations | Required CI checks enforced; release identity can publish only after its full gate; package versions stay aligned | Main-only release identity configured; live enforcement recorded in [PR #260](https://github.com/PeytonNowlin/openleaf/pull/260) |
 
 ## Automated evidence for this hardening change
 
@@ -42,9 +42,9 @@ all 23 JavaScript entry points imported without a DOM. The production dependency
 audit reported zero known vulnerabilities after the XML parser lockfile update.
 These results apply to this change; run the gate again for each release candidate.
 
-The `release` environment allows only the `main` branch. Provisioning its
-`OPENLEAF_RELEASE_KEY` write deploy key requires explicit maintainer authorization.
-After provisioning, merge the updated release workflow, then apply
+The `release` environment allows only the `main` branch. Its
+`OPENLEAF_RELEASE_KEY` write deploy key was provisioned with explicit maintainer
+authorization. For rollout, merge the updated release workflow, then apply
 `.github/main-ruleset.json` and verify GitHub reports active enforcement. Activating
 the rules before the workflow has its push credential would break weekly release
 publishing. See [Releasing](releasing.md#protected-main-and-the-release-identity).
