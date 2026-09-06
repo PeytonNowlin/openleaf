@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/element",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "description": "The <openleaf-editor> custom element: OpenLeaf's drop-in for CMS forms. HTML in, HTML out, syncs to a textarea.",
   "license": "Apache-2.0",
   "publishConfig": {

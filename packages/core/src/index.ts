@@ -171,6 +171,10 @@ export {
 } from './keymap.js'
 export { autolinkPlugin, hrefFromTypedUrl } from './autolink.js'
 export { visualAidsPlugin } from './visual-aids.js'
+// Code is not prose. The browser checks it as prose unless something says
+// otherwise, and the schema cannot be that something -- `toDOM` is what
+// `serializeHtml` writes with, so the attribute would land in stored HTML.
+export { codeSpellcheckPlugin } from './code-spellcheck.js'
 export { disclosurePlugin } from './disclosure.js'
 export { gapCursorPlugin } from './gapcursor.js'
 export {

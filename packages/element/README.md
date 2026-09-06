@@ -42,7 +42,10 @@ import '@openleaf-editor/element'
 `placeholder` is a prompt on an empty document. It is never stored in `value`
 and never submitted. `lang` on the host (or, if the host has none, on the bound
 textarea) is the canvas language used for spellcheck; `spellcheck="false"`
-turns checking off. A read-only editor does not follow links: it fires
+turns checking off. Code blocks and inline `<code>` are never checked either
+way, as a view-only decoration that stored HTML does not carry; WebKit reads
+`spellcheck` on the editing host rather than per element, so Safari is the
+exception. A read-only editor does not follow links: it fires
 `openleaf:link` with `{ href }` instead. Pasting a bare `https://…/hero.png`
 inserts an image; a URL that does not look like an image keeps today's paste.
 

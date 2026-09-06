@@ -1,6 +1,6 @@
 {
   "name": "@openleaf-editor/content-policy",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "description": "Dependency-free URL, CSS, and embed policy primitives shared by OpenLeaf's editor and sanitizers.",
   "license": "Apache-2.0",
   "publishConfig": { "access": "public" },

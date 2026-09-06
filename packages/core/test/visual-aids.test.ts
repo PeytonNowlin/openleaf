@@ -6,7 +6,7 @@
  * on the right one.
  */
 
-import { EditorState } from 'prosemirror-state'
+import { EditorState, TextSelection } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import { coreSchema, parseHtml, visualAidsPlugin } from '../src/index.js'
 
@@ -95,5 +95,47 @@ describe('other visual aids', () => {
   it('marks an empty block', () => {
     const found = decorations('<p></p>').filter((d) => d.className === 'ol-empty-block')
     expect(found).toHaveLength(1)
+  })
+})
+
+/**
+ * An aid on the block *next to* the one being edited has to survive the edit.
+ *
+ * `DecorationSet.find` reports a decoration that merely touches the queried
+ * range, so the empty paragraph starting exactly where the rebuilt range ends
+ * was removed as stale -- and the rebuild scans only that range, which
+ * `nodesBetween` does not revisit it in. The aid vanished off the block beside
+ * the caret and did not come back until that block was itself edited.
+ */
+describe('the block next to the edit', () => {
+  function aidsAfter(html: string, edit: (state: EditorState) => EditorState): number {
+    const schema = coreSchema()
+    const plugin = visualAidsPlugin()
+    const state = EditorState.create({ doc: parseHtml(html, { schema }), plugins: [plugin] })
+    const set = plugin.props.decorations?.call(plugin, edit(state))
+    return (
+      (set as { find(): unknown[] } | undefined)?.find() ?? []
+    ).length
+  }
+
+  it('keeps the empty-block aid when the paragraph after it is typed in', () => {
+    const typed = aidsAfter('<p></p><p>hi</p>', (state) => {
+      const at = state.doc.content.size - 1
+      return state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, at)).insertText('!', at),
+      )
+    })
+    expect(typed).toBe(1)
+  })
+
+  it('keeps the empty-block aid when a mark is toggled in the paragraph before it', () => {
+    // A mark step maps no position, so this transaction reaches the rebuild
+    // through the step's own range rather than through the mapping.
+    const marked = aidsAfter('<p>hi</p><p></p>', (state) => {
+      const code = state.schema.marks['code']
+      if (!code) throw new Error('no code mark in the core schema')
+      return state.apply(state.tr.addMark(1, 3, code.create()))
+    })
+    expect(marked).toBe(1)
   })
 })

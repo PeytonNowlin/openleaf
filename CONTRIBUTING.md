@@ -72,6 +72,14 @@ not between you and a merge -- which is exactly why you should run the full
 `pnpm verify` locally first. A WebKit regression found tomorrow morning is
 harder to place than one found before you push.
 
+**When the nightly does go red**, it files an issue titled `Nightly CI is red`
+and closes it again on the next green run, so an open one always means the last
+nightly failed. Further failures comment on that issue rather than opening a
+second. Nothing blocks on a scheduled run, so without the issue a red nightly is
+only as visible as one person's inbox -- which is how a Firefox failure once sat
+on `main` for six nights. The weekly release does the same under `The Monday
+release is red`. See `.github/alarm.sh`.
+
 ## Commit format
 
 Conventional Commits, scoped by package:

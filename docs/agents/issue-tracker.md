@@ -24,6 +24,22 @@ usual `bug` / `enhancement` / `documentation` / `accessibility` / `security`
 set. An issue created by a skill should carry the `area:` label for the package
 it touches, because that is how issues in this repo are already filtered.
 
+## Issues this repo files at itself
+
+Two issues are opened and closed by a workflow, not a person:
+`Nightly CI is red` and `The Monday release is red`, both from
+`.github/alarm.sh`. Treat them as a status light rather than a ticket. An open
+one means the last scheduled run of that workflow failed; it closes itself on
+the next green run, and every further failure is a comment on it rather than a
+new issue.
+
+Do not rename or retitle either — the script finds its own issue by exact
+title, and a renamed one becomes invisible to it and is duplicated on the next
+failure. Closing one by hand while the run is still red does not fix anything
+either — the next failure just opens a second one, and the comment history that
+showed how many nights it had been failing is gone. If the underlying cause
+deserves a real ticket, file that separately and link it from a comment.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

@@ -28,6 +28,13 @@ because you were about to, the answer is almost certainly
    of that script.
 6. **Cuts a GitHub release** whose notes are the changelog section it just
    closed, verbatim.
+7. **Raises the alarm if any of that failed** — an issue titled `The Monday
+   release is red`, which the next green scheduled run closes by itself. A
+   scheduled run blocks nothing and requests nobody, so a failed release is
+   otherwise as visible as one person's inbox; the release of 2026-08-24 failed
+   and went unread until the following Monday's joined it. Only the cron raises
+   it: a run you dispatched yourself is one you are already watching. See
+   `.github/alarm.sh`.
 
 ## What you owe it
 

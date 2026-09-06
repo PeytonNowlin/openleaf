@@ -207,3 +207,38 @@ describe('canvas lang and spellcheck', () => {
   })
 })
 
+/**
+ * The host attribute above is the author's answer about their prose. Code is
+ * not prose either way they answered, and the browser has no way to know that
+ * unless the editor says so on the elements themselves.
+ */
+describe('code is never spellchecked', () => {
+  it('turns it off on a code block and on inline code', () => {
+    const { region } = build(
+      '<openleaf-editor toolbar="none"><pre><code>getElementById</code></pre>' +
+        '<p>see <code>querySelector</code></p></openleaf-editor>',
+    )
+    expect(region.querySelector('pre')?.getAttribute('spellcheck')).toBe('false')
+    const inline = region.querySelector('p [spellcheck="false"]')
+    expect(inline?.textContent).toBe('querySelector')
+  })
+
+  it('does not put the attribute in the stored HTML', () => {
+    // The reason this is a decoration and not the schema's `toDOM`: `toDOM` is
+    // what `serializeHtml` writes with, so a fix made there would save editor
+    // chrome into every document.
+    const { host } = build(
+      '<openleaf-editor toolbar="none"><pre><code>abc</code></pre></openleaf-editor>',
+    )
+    expect(host.value).toBe('<pre><code>abc</code></pre>')
+  })
+
+  it('leaves the host spellcheck answer alone', () => {
+    const { region } = build(
+      '<openleaf-editor spellcheck="true" toolbar="none"><p>prose</p></openleaf-editor>',
+    )
+    expect(region.getAttribute('spellcheck')).toBe('true')
+    expect(region.querySelector('[spellcheck="false"]')).toBeNull()
+  })
+})
+

@@ -82,6 +82,9 @@ const EXPECTED_EXPORTS = [
   // chrome helpers used by the host and the formats dropdown
   'autolinkPlugin', 'hrefFromTypedUrl',
   'visualAidsPlugin',
+  // View-only `spellcheck="false"` over code blocks and inline <code>, so the
+  // browser stops underlining identifiers in an editor that is checking prose.
+  'codeSpellcheckPlugin',
   'nonEditablePlugin', 'isNonEditableNode',
   // Clicking a <summary> toggles the node's `open`. A contenteditable spends the
   // click on placing a caret, so the browser's own disclosure toggle never fires
