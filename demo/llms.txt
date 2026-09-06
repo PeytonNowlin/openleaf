@@ -12,7 +12,7 @@ Editor output is untrusted input and must be sanitized on the server.
 
 - [Integration guide](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/docs/integrating-openleaf.md): Canonical instructions for coding agents and developers installing OpenLeaf in plain HTML, React, Vue, Angular, SSR, and server-rendered applications.
 - [Project overview](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/README.md): Capabilities, quick start, optional plugins, package index, and beta limitations.
-- [Live demo](https://peytonnowlin.github.io/openleaf/): Interactive examples of the editor and first-party plugins.
+- [Live demo](https://peytonnowlin.github.io/openleaf/): Interactive examples of the editor and first-party plugins. WebMCP is enabled: a compatible browser agent can list the editors, find the one labelled Post body, and read, search, or edit its content.
 
 ## Safety and API
 
@@ -22,6 +22,7 @@ Editor output is untrusted input and must be sanitized on the server.
 
 ## Frameworks and extension
 
+- [WebMCP tools](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/packages/plugins-webmcp/README.md): The demo's eight agent tools, editor discovery, text handles, writes, undo grouping, and integrator permissions. Start with openleaf_list_editors and use the returned identifiers.
 - [React integration](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/packages/react/README.md): React 18+ controlled wrapper and SSR behavior.
 - [Vue integration](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/packages/vue/README.md): Vue 3 wrapper, v-model, and direct custom-element configuration.
 - [Angular integration](https://raw.githubusercontent.com/PeytonNowlin/openleaf/main/packages/angular/README.md): Supported custom-element recipe and two-way binding directive; the old Angular wrapper is withdrawn.
