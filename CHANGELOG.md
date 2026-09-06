@@ -14,6 +14,11 @@ entries below say so explicitly when they do.
 
 ### Added
 
+- **The demo is easier to explore.** The live editor comes before the video,
+  grouped links jump to every example, and integration notes and HTML output
+  expand on demand. A refreshed responsive layout includes keyboard skip
+  navigation and keeps the existing WebMCP editing surface.
+
 - **The live demo enables WebMCP.** Compatible browser agents can discover,
   read, search, and edit the demo's editors through the optional plugin. The
   page and its agent discovery index describe how to try it; browsers without

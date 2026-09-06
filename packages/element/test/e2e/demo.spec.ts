@@ -22,6 +22,35 @@ const EDITORS = ['body', 'typo', 'insert-body', 'chrome-body', 'narrow-body', 'f
 const host = (page: Page, id: string) => page.locator(`openleaf-editor[for="${id}"]`)
 
 test.describe('the demo page', () => {
+  test('navigates examples and reveals live HTML on a narrow screen', async ({ page, browserName }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(DEMO)
+    const skip = page.getByRole('link', { name: 'Skip to the editor' })
+    // WebKit's default tab mode skips links; Option-Tab includes them.
+    await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab')
+    await expect(skip).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(page).toHaveURL(/#try$/)
+
+    const navigation = page.getByRole('navigation', { name: 'Demo examples' })
+    await navigation.locator('summary').focus()
+    await page.keyboard.press('Enter')
+    await expect(navigation.getByRole('link', { name: 'Tables', exact: true })).toBeVisible()
+    await navigation.getByRole('link', { name: 'Tables', exact: true }).click()
+    await expect(page).toHaveURL(/#tables$/)
+    const missingTargets = await navigation.locator('a').evaluateAll((links) =>
+      links.map((link) => link.getAttribute('href') ?? '')
+        .filter((href) => !document.getElementById(href.slice(1))),
+    )
+    expect(missingTargets).toEqual([])
+
+    await expect(page.locator('#output')).toBeHidden()
+    await page.getByText('See the HTML your server receives', { exact: true }).click()
+    await expect(page.locator('#output')).toBeVisible()
+    await expect(page.locator('#output')).toContainText('Try editing this')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
+  })
+
   test('builds every editor without a console error or a failed request', async ({ page }) => {
     const problems: string[] = []
     page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`))
