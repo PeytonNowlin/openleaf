@@ -14,6 +14,10 @@ entries below say so explicitly when they do.
 
 ### Added
 
+- **The live demo enables WebMCP.** Compatible browser agents can discover,
+  read, search, and edit the demo's editors through the optional plugin. The
+  page and its agent discovery index describe how to try it; browsers without
+  WebMCP keep the same editing experience.
 - **`@openleaf-editor/ui`: a toolbar item can declare what its command acts
   on.** `ToolbarItemSpec` takes an optional `scope`, either `'selection'` (the
   default, and everything that formats what the author picked) or `'document'`

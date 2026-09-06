@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { stored } from './stored.js'
 
 /**
  * The one test that launches a flagged browser.
@@ -59,11 +60,11 @@ function registeredTools(page: Page): Promise<string[]> {
 }
 
 /** Run a tool through the browser's own execute path and decode the result. */
-async function executeThroughBrowser(
+async function executeThroughBrowser<T = { ok: boolean; editors: { id: string }[] }>(
   page: Page,
   name: string,
   args: Record<string, unknown>,
-): Promise<{ ok: boolean; editors: { id: string }[] }> {
+): Promise<T> {
   const raw = await page.evaluate(
     async ([toolName, toolArgs]) => {
       const context = document.modelContext ?? navigator.modelContext
@@ -78,7 +79,7 @@ async function executeThroughBrowser(
     },
     [name, args] as [string, Record<string, unknown>],
   )
-  return JSON.parse(raw) as { ok: boolean; editors: { id: string }[] }
+  return JSON.parse(raw) as T
 }
 
 test.beforeEach(async ({ page }) => {
@@ -115,4 +116,37 @@ test('an editor destroyed on the page stops being offered', async ({ page }) => 
   await expect
     .poll(async () => (await executeThroughBrowser(page, 'openleaf_list_editors', {})).editors.map((one) => one.id))
     .toEqual(['post-body', 'editor-2'])
+})
+
+test('the demo offers its editors and accepts an undoable browser-agent edit', async ({ page }) => {
+  // The harness cannot catch a missing script tag or a registration-order bug
+  // in the demo's full combination of plugin bundles.
+  await page.goto('/demo/index.html')
+  const post = page.locator('openleaf-editor[for="body"]')
+  await expect(post.getByRole('textbox')).toBeVisible()
+  await expect.poll(() => registeredTools(page)).toContain('openleaf_replace_at')
+  const listed = await executeThroughBrowser<{
+    ok: boolean
+    editors: { id: string; label: string | null }[]
+  }>(page, 'openleaf_list_editors', {})
+  expect(listed.ok).toBe(true)
+  expect(listed.editors).toHaveLength(await page.locator('openleaf-editor').count())
+  const id = listed.editors.find((one) => one.label === 'Post body')?.id
+  expect(id).toBeDefined()
+  const before = await stored(page)
+  const found = await executeThroughBrowser<{ ok: boolean; matches: { handle: string }[] }>(
+    page, 'openleaf_find_text', { id, text: 'Try editing this' },
+  )
+  expect(found.ok).toBe(true)
+  expect(found.matches).toHaveLength(1)
+  const replaced = await executeThroughBrowser<{ ok: boolean }>(page, 'openleaf_replace_at', {
+    id,
+    handle: found.matches[0]?.handle,
+    html: 'Edited through WebMCP',
+  })
+  expect(replaced.ok).toBe(true)
+  await expect(post.getByRole('heading', { name: 'Edited through WebMCP' })).toBeVisible()
+  expect(await stored(page)).toContain('Edited through WebMCP')
+  await post.getByRole('button', { name: 'Undo', exact: true }).click()
+  expect(await stored(page)).toBe(before)
 })

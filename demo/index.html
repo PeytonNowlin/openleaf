@@ -198,6 +198,13 @@
   A custom element bound to a <code>&lt;textarea&gt;</code>, exactly as it would sit in a CMS form.
   Everything you type comes back out as ordinary HTML.
 </p>
+<p>
+  Using a browser agent with WebMCP support? Ask it to find the “Post body” editor
+  and edit a passage. This demo enables the
+  <a href="https://github.com/PeytonNowlin/openleaf/tree/main/packages/plugins-webmcp">WebMCP plugin</a>
+  for its editors: agents can read, search, and edit their content. Undo reverses
+  a run of agent edits. Browsers without WebMCP work as usual.
+</p>
 
 <div id="editor-wrap">
   <label for="body" class="visually-hidden">Post body</label>
@@ -941,6 +948,7 @@ import '@openleaf-editor/element'
 <script src="./openleaf-import-docx.min.js"></script>
 <script src="./openleaf-session.min.js"></script>
 <script src="./openleaf-insert.min.js"></script>
+<script src="./openleaf-webmcp.min.js"></script>
 <script>
 (function () {
   'use strict'
