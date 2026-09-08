@@ -639,7 +639,12 @@ function coreMarksWithCarriedAttributes(): OrderedMap<MarkSpec> {
   return marks
 }
 
-export function createSchema(list: readonly SchemaExtension[] = []): Schema {
+export interface SchemaOptions {
+  /** Preserve embedded CSS as inert metadata for trusted CMS documents. */
+  preserveStyles?: boolean
+}
+
+export function createSchema(list: readonly SchemaExtension[] = [], options: SchemaOptions = {}): Schema {
   let nodes = coreNodesWithCarriedAttributes()
   let marks = coreMarksWithCarriedAttributes()
   const claimed = new Map<string, string>()
@@ -666,10 +671,18 @@ export function createSchema(list: readonly SchemaExtension[] = []): Schema {
     }
   }
 
+  if (options.preserveStyles) {
+    const doc = nodes.get('doc')!
+    nodes = nodes.update('doc', {
+      ...doc,
+      attrs: { ...doc.attrs, embeddedStyles: { default: [] } },
+    })
+  }
   return new Schema({ nodes, marks })
 }
 
 let cached: Schema | null = null
+let cachedWithStyles: Schema | null = null
 let subscribed = false
 
 /**
@@ -708,12 +721,17 @@ let subscribed = false
  * installed before the value it guards ever exists, and nothing can reach the
  * memo except through here.
  */
-export function coreSchema(): Schema {
+export function coreSchema(options: SchemaOptions = {}): Schema {
   if (!subscribed) {
     subscribed = true
     onSchemaExtensionsChange(() => {
       cached = null
+      cachedWithStyles = null
     })
+  }
+  if (options.preserveStyles) {
+    if (!cachedWithStyles) cachedWithStyles = createSchema(registeredSchemaExtensions(), options)
+    return cachedWithStyles
   }
   if (!cached) cached = createSchema(registeredSchemaExtensions())
   return cached

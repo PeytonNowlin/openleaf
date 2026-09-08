@@ -225,4 +225,7 @@ export {
   registerSchemaExtension,
   registeredSchemaExtensions,
   type SchemaExtension,
+  type SchemaOptions,
 } from './extensions.js'
+
+export type { EmbeddedStyle } from './embedded-styles.js'

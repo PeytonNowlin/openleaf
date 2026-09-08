@@ -201,6 +201,14 @@ sensible defaults for a picker, and `activeFontFamily`, `activeFontSize`,
 `activeLineHeight`, `activeIndent`, `activeDir`, `activeLanguage` and
 `activeListStyle` report the current value for one.
 
+### Embedded CMS styles
+
+Trusted page-builder modules can opt in with `preserve-styles` on the custom
+element before mounting. Embedded CSS is retained for saving and local rules
+render only within that canvas; the default HTML filter is unchanged. Read
+[CMS module styles](docs/integrating-openleaf.md#cms-module-styles) for the server
+policy, stylesheet support, and document metadata contract.
+
 ### Editor chrome
 
 The canvas is not an iframe. Host typography already applies, and extra published

@@ -10,6 +10,7 @@
 import { DOMParser, DOMSerializer, type Node as PMNode, type Schema } from 'prosemirror-model'
 import { isInsidePreserved, withSerializationDocument } from './preserve.js'
 import { coreSchema } from './extensions.js'
+import { extractEmbeddedStyles, serializeEmbeddedStyles } from './embedded-styles.js'
 import { OpenLeafError } from './errors.js'
 import { tableSectionRowCounts } from './tables.js'
 
@@ -51,6 +52,8 @@ export interface HtmlIOOptions {
   document?: Document
   /** Schema to parse against. Defaults to the built-in one. */
   schema?: Schema
+  /** Opt in to embedded CSS for trusted CMS content. Explicit schemas must support it. */
+  preserveStyles?: boolean
 }
 
 function resolveDocument(opts?: HtmlIOOptions): Document {
@@ -146,9 +149,16 @@ export function parseHtml(html: string, opts?: HtmlIOOptions): PMNode {
     )
   }
   assertDepthWithin(tpl.content, MAX_PARSE_DEPTH)
-  return parserFor(opts?.schema ?? coreSchema()).parse(tpl.content, {
-    preserveWhitespace: false,
-  })
+  const schema = opts?.schema ?? coreSchema({ preserveStyles: opts?.preserveStyles === true })
+  const preservesStyles = Boolean(schema.spec.nodes.get('doc')?.attrs?.['embeddedStyles'])
+  if (opts?.preserveStyles && !preservesStyles) {
+    throw new OpenLeafError('invalid-argument', 'The explicit schema must be created with preserveStyles enabled.')
+  }
+  const styles = preservesStyles ? extractEmbeddedStyles(tpl.content) : []
+  const parsed = parserFor(schema).parse(tpl.content, { preserveWhitespace: false })
+  return preservesStyles
+    ? parsed.type.create({ ...parsed.attrs, embeddedStyles: styles }, parsed.content, parsed.marks)
+    : parsed
 }
 
 /**
@@ -286,7 +296,7 @@ export function serializeHtml(node: PMNode, opts?: HtmlIOOptions): string {
     host.appendChild(fragment)
     unwrapSoleParagraph(host)
     restoreTableSections(host, doc)
-    return host.innerHTML
+    return serializeEmbeddedStyles(node.attrs['embeddedStyles'] ?? [], doc) + host.innerHTML
   })
 }
 

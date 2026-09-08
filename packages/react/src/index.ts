@@ -68,6 +68,8 @@ export interface OpenLeafEditorProps
   formats?: string
   /** Comma-separated URLs scoped onto the canvas. */
   'content-css'?: string
+  /** Preserve embedded CSS for trusted CMS HTML; set before mount. */
+  'preserve-styles'?: boolean
   /** UI locale, matched against registerTranslations(). */
   lang?: string
   /** Hide chrome until the editor is focused. */
@@ -103,6 +105,7 @@ const BOOLEAN_PROPS = [
   'inline',
   'autoresize',
   'toolbar-overflow',
+  'preserve-styles',
   'readonly',
 ] as const
 

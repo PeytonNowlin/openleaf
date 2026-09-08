@@ -36,6 +36,12 @@ afterEach(() => {
 })
 
 describe('the Vue wrapper', () => {
+  it.each([true, false])('makes CMS style preservation an explicit boolean: %s', (enabled) => {
+    const el = mount({ preserveStyles: enabled, modelValue: '<style>p{color:red}</style><p>CMS</p>' })
+    expect(el.hasAttribute('preserve-styles')).toBe(enabled)
+    expect(el.value.includes('<style>')).toBe(enabled)
+  })
+
   it('sets the toolbar attribute rather than silently swallowing it', () => {
     const el = mount({ toolbar: 'bold italic' })
     expect(el.getAttribute('toolbar')).toBe('bold italic')

@@ -169,3 +169,10 @@ Application validation attributes (`aria-invalid`, `aria-errormessage`,
 `aria-describedby`, `aria-required`) on the host or bound textarea also reach
 the visible rich-text and source controls. Host values win and changes propagate
 after mount. See [Validation semantics](../../docs/api-reference.md#validation-semantics).
+
+## Trusted CMS style blocks
+
+Set `preserve-styles` before mount to keep embedded module CSS and render local
+rules under a per-editor CSS scope. Default filtering still drops style blocks.
+See [CMS module styles](../../docs/integrating-openleaf.md#cms-module-styles) for
+round-trip behavior, supported rules, and the required server-side policy.

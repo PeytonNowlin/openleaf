@@ -478,3 +478,23 @@ describe('the size ceiling on a single file', () => {
     expect(result?.html).toBe('<p>hello</p>')
   })
 })
+
+
+it('carries embedded body CSS into a CMS document when importing', async () => {
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const view = new EditorView(host, {
+    state: EditorState.create({ doc: parseHtml('<style>.old{color:blue}</style><p>Existing</p>', { preserveStyles: true }) }),
+  })
+  try {
+    const file = textFile('<p>Imported</p><style>.imported{color:red}</style>', 'module.html', 'text/html')
+    const result = await importFileIntoView(view, file)
+    expect(result.ok).toBe(true)
+    const html = serializeHtml(view.state.doc)
+    expect(html).toContain('.old{color:blue}')
+    expect(html).toContain('.imported{color:red}')
+  } finally {
+    view.destroy()
+    host.remove()
+  }
+})

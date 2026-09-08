@@ -274,3 +274,17 @@ export function contentCssUrls(value: string | null): string[] {
     .map((part) => part.trim())
     .filter(Boolean)
 }
+
+/** Map document-root selectors onto the root of an embedded CMS canvas. */
+export function embeddedCanvasSelectors(selectors: string): string {
+  // Match the specificity of the editor's canvas defaults, so a module's h1
+  // rule can override the editor h1 rule without !important or touching chrome.
+  const root = ':scope.ProseMirror[data-ol-style-canvas]'
+  return splitSelectorList(selectors).map((part) => {
+    const selector = part.trim()
+    const documentRoot = /^(?:html\s+)?(?:body|html|:root)(?=[\s.#[:>+~]|$)/
+    return documentRoot.test(selector)
+      ? selector.replace(documentRoot, root)
+      : `${root} ${selector}`
+  }).join(', ')
+}

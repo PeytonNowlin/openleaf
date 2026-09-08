@@ -12,6 +12,14 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Added
+
+- Opt-in `preserve-styles` for trusted CMS HTML modules. Embedded style blocks
+  survive value/source/form round trips and render through a per-canvas CSS scope,
+  including conditional rules. Default HTML filtering is unchanged. CSS stays
+  inert in the editing DOM; document-global rules are retained for saving but
+  are not activated in the editor canvas.
+
 ## 0.1.0-beta.7 - 2026-09-08
 
 ### Fixed

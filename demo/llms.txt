@@ -34,3 +34,5 @@ Editor output is untrusted input and must be sanitized on the server.
 
 - [Source repository](https://github.com/PeytonNowlin/openleaf): Apache-2.0 source, packages, tests, and contribution history.
 - [Issue tracker](https://github.com/PeytonNowlin/openleaf/issues): Public bug reports and feature proposals. Security reports must use the private process in SECURITY.md.
+
+Trusted CMS embedded styles: set preserve-styles before mounting; see docs/integrating-openleaf.md#cms-module-styles. Default filtering is unchanged.

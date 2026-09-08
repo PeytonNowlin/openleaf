@@ -364,3 +364,16 @@ colour to stop applying live, and test it.
 - Vulnerabilities in upstream `prosemirror-*` packages (report upstream;
   tell us too so we can pin or patch)
 - Anything requiring the attacker to already control the page
+
+## Opt-in CMS embedded styles
+
+`preserve-styles` is an explicit opt-in for trusted CMS module authors. It does
+not change the default editor or sanitizer policy. Enabled editors keep CSS in
+inert document metadata, render local rules through a per-editor CSS scope, and
+emit style blocks on serialization. The CMS must choose and enforce its own
+server-side CSS policy. Scoped rendering is not a security sandbox; CSS can
+reference external resources. Script and unsafe-HTML filtering still applies.
+The editing canvas does not activate document-global rules such as `@import`,
+font definitions, keyframes, or property registrations. See
+[CMS module styles](docs/integrating-openleaf.md#cms-module-styles) for the full
+integration and round-trip contract.

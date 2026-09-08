@@ -435,3 +435,50 @@ An integration is complete only after these checks pass:
 
 If this guide conflicts with the public TypeScript surface, the implementation
 and tests are authoritative; please report the documentation mismatch.
+
+## CMS module styles
+
+For a trusted CMS page-builder module whose design lives in embedded `<style>`
+blocks, set `preserve-styles` **before mounting** the custom element:
+
+```html
+<openleaf-editor for="module-description" preserve-styles aria-label="Module content"></openleaf-editor>
+```
+
+React forwards the boolean `preserve-styles` prop; Vue accepts the boolean
+`preserveStyles` prop (or `:preserve-styles` in a template).
+
+This is an application trust decision, not a setting for public comments or
+other untrusted authors. The ordinary editor and default sanitizer still drop
+style blocks. A CMS enabling the option must make its corresponding server-side
+CSS policy explicit; the default sanitizer will remove the preserved blocks.
+Scripts, event handlers and unsafe markup continue through the usual filtering.
+
+Leading and nested style blocks are extracted in document order into inert
+`embeddedStyles` document attributes. Saved HTML emits them as leading style
+blocks, keeping CSS text and media conditions. Style tag placement and unrelated
+style-tag attributes are not retained. Value assignment, Source, form reset,
+undo and imported HTML body content preserve this metadata. The importer's
+existing body extraction still excludes styles found only in an HTML file's head. Rich-text clipboard paste uses the
+ordinary filtering; paste a complete module through Source instead.
+
+The canvas adopts a constructed stylesheet under a native CSS `@scope` rooted
+at this editor alone; original style elements never enter the live editing DOM.
+`html`, `body` and `:root` selectors at the start of a selector map onto the
+canvas. Style rules and media/supports/container/layer grouping rules render.
+Document-global definitions (`@import`, `@font-face`, keyframes, `@property`)
+remain in saved HTML but are not activated in the editing canvas. Supply trusted
+fonts and animation definitions through integrator-owned `content-css` files.
+Preview/Print use their isolated documents and the saved style blocks.
+
+Rendering requires constructable stylesheets and CSS `@scope` in the browser.
+This is styling isolation, not an HTML/CSS security sandbox: only enable it for
+trusted module authors. It does not turn preserved opaque HTML structures into
+editable prose; those structures remain editable through Source.
+
+For the core HTML API, use `parseHtml(html, { preserveStyles: true })` or
+`roundTrip(html, { preserveStyles: true })`. If passing an explicit schema, build
+it with `coreSchema({ preserveStyles: true })` or
+`createSchema(extensions, { preserveStyles: true })`. The ordinary schema remains
+unchanged. Plugins replacing a document must carry its `embeddedStyles` attrs
+with `tr.setDocAttribute`, just as they carry the replacement content.

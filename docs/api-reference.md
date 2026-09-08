@@ -53,6 +53,7 @@ Changing any of these later has no effect without recreating the element.
 | `insert-toolbar` | `none` to disable | Floating bar for an empty block. Same visibility rule as `selection-toolbar`, including on mount of a new empty editor. |
 | `formats` | `p.lead=Lead\|h2=Section` | Entries for the formats dropdown. |
 | `content-css` | comma-separated URLs | Stylesheets scoped onto the canvas. Session Preview and Print load the same URLs unscoped inside their iframe, because that document is not under the canvas scope root. **Trusted configuration** — the URL is fetched and adopted document-wide with no origin check, so it must never be attacker-controlled. |
+| `preserve-styles` | present / absent | Trusted CMS mode, set before mount. Keeps embedded CSS as document metadata and renders local rules under a per-editor CSS scope. See [CMS module styles](integrating-openleaf.md#cms-module-styles). |
 | `inline` | present / absent | Hide chrome until the editor is focused. |
 | `autoresize` | present / absent | Grow the canvas with the document. Sizes with CSS (`height: auto`); does not write a pixel height. |
 | `toolbar-overflow` | present / absent | Collapse overflowing groups into a More menu. |
@@ -216,6 +217,7 @@ with no build step and no second install.
 | --- | --- |
 | `registerToolbarItem(spec)` | Add or replace a toolbar control. |
 | `registerIcons(paths)` | Register icon paths for your controls. |
+| `embeddedStylesPlugin()` | Render a CMS schema's embedded CSS through a per-editor scope; installed by the element when `preserve-styles` is enabled. |
 | `registerStyles(css)` | Adopt a stylesheet for your controls. |
 | `t(source)` | Translate a string. Missing keys, and names that only exist on `Object.prototype` (`constructor`, `toString`, …), fall back to `source`. See [authoring-plugins.md §4.10](authoring-plugins.md#410-every-string-you-ship-is-a-translatable-string). |
 | `fill(template, values)` | Replace `{name}` placeholders from own properties of `values`. |
