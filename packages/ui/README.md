@@ -121,3 +121,10 @@ already has Alt+F10 for the main toolbar.
 ## License
 
 Apache-2.0.
+
+Iframe canvases use `mirrorRegisteredStyles(sourceDocument, canvasDocument)`
+to keep plugin styles available across documents; call the returned disposer
+on teardown. `findEditorHost(element)` finds the owning editor across its frame
+boundary, and `canvasPoint(fromDocument, toDocument, x, y)` translates popup
+coordinates to the chrome document. See the element's opt-in
+[`canvas="iframe"` integration](../../docs/integrating-openleaf.md#isolated-module-viewport).

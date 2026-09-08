@@ -6,6 +6,7 @@
  * whoever already owns persistence.
  */
 
+import { findEditorHost } from '@openleaf-editor/ui'
 import type { EditorView } from 'prosemirror-view'
 import { confirmAction, printHtml, showPreview, showStats } from './dialogs.js'
 import { documentStats } from './count.js'
@@ -32,7 +33,7 @@ export function registerSaveHandler(handler: SaveHandler | null): void {
 }
 
 export function editorHost(from: HTMLElement): EditorHost | null {
-  const el = from.closest('openleaf-editor')
+  const el = findEditorHost(from)
   return el as EditorHost | null
 }
 

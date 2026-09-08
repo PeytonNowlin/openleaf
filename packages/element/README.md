@@ -176,3 +176,12 @@ Set `preserve-styles` before mount to keep embedded module CSS and render local
 rules under a per-editor CSS scope. Default filtering still drops style blocks.
 See [CMS module styles](../../docs/integrating-openleaf.md#cms-module-styles) for
 round-trip behavior, supported rules, and the required server-side policy.
+
+## Isolated HTML module viewport
+
+Set `canvas="iframe"` before mounting a full editor to keep viewport units,
+breakpoints and root font sizes independent of the admin document. Combine it
+with `preserve-styles` and `content-css` for trusted CMS modules. Inline editors
+keep their original shared-document canvas. The frame uses
+`allow-same-origin allow-scripts` for editing events; it is layout isolation,
+not a security boundary. See [isolated module viewport](../../docs/integrating-openleaf.md#isolated-module-viewport).

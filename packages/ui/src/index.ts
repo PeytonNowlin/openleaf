@@ -106,3 +106,6 @@ export {
   type Skin,
 } from './skins.js'
 export { embeddedStylesPlugin } from './embedded-styles.js'
+
+export { findEditorHost, canvasPoint } from './editor-host.js'
+export { mirrorRegisteredStyles } from './styles.js'

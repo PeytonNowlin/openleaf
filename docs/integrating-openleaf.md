@@ -476,6 +476,41 @@ This is styling isolation, not an HTML/CSS security sandbox: only enable it for
 trusted module authors. It does not turn preserved opaque HTML structures into
 editable prose; those structures remain editable through Source.
 
+### Isolated module viewport
+
+Set `canvas="iframe"` **before mount** on a full editor when module CSS uses
+viewport units, media queries, or a different root font size from the admin.
+The toolbar and Source textbox stay in the host document; the editable region
+has its own browsing context. Inline editors keep the shared-document canvas.
+
+```html
+<openleaf-editor for="module-description" canvas="iframe" preserve-styles
+  content-css="/css/published-content.css" aria-label="Module content"></openleaf-editor>
+```
+
+The frame width follows the editor. Its height defaults to 300px and is set by
+`--openleaf-canvas-height` or CSS targeting `.ol-canvas-frame`. It is a fixed
+viewport; `autoresize` does not grow it. Host typography does not inherit into
+the frame: supply the published content styles through `content-css`, including
+the desired `html` root font size. Stylesheet URLs resolve against the host's
+base URL and relative assets resolve against their stylesheet URL. Those links
+are loaded only in the frame and can be changed after mount.
+
+With `preserve-styles`, embedded CSS is retained exactly as before but rendered
+in the frame without rewriting selectors. Root rules, viewport units, media
+queries, fonts, keyframes and property registrations stay inside that document.
+Constructed stylesheets do not load `@import`; use `content-css` links instead.
+CSS loaded while a modal is hidden renders when the frame becomes visible.
+Toolbar formatting, Source, undo, form binding, Preview, Find and file import
+continue to use the owning editor. Moving an editor rebuilds the frame's view
+from its state so document content and undo history survive.
+
+The iframe uses `sandbox="allow-same-origin allow-scripts"` because WebKit
+otherwise suppresses the editor's keyboard and selection callbacks. It is
+**layout isolation, not a security boundary**. Authored HTML still passes through
+the same schema and URL filtering before DOM insertion; it is never assigned
+to `srcdoc` or `document.write`. Server-side sanitization remains required.
+
 For the core HTML API, use `parseHtml(html, { preserveStyles: true })` or
 `roundTrip(html, { preserveStyles: true })`. If passing an explicit schema, build
 it with `coreSchema({ preserveStyles: true })` or

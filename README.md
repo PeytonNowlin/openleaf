@@ -211,8 +211,10 @@ policy, stylesheet support, and document metadata contract.
 
 ### Editor chrome
 
-The canvas is not an iframe. Host typography already applies, and extra published
-styles can be loaded with `content-css`. Chrome around the canvas is optional
+The default canvas shares the host document and inherits its typography. Full
+HTML module editors can opt into `canvas="iframe"` for their own viewport and
+root font size. Supply published typography with `content-css` in iframe mode.
+See [isolated module viewport](docs/integrating-openleaf.md#isolated-module-viewport). Chrome around the canvas is optional
 and attribute-driven:
 
 ```html

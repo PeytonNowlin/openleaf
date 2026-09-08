@@ -29,7 +29,7 @@ let nextCanvas = 0
  * The HTML stays in document metadata, so no style node enters ProseMirror or
  * its clipboard. A constructed sheet also follows the UI's strict-CSP contract.
  */
-export function embeddedStylesPlugin(): Plugin {
+export function embeddedStylesPlugin(options: { isolated?: boolean } = {}): Plugin {
   return new Plugin({
     view(view) {
       const doc = view.dom.ownerDocument
@@ -44,20 +44,28 @@ export function embeddedStylesPlugin(): Plugin {
       const sheet = new Sheet()
       doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
       let previous: unknown
+      const frame = options.isolated ? doc.defaultView?.frameElement : null
       const update = () => {
+        // Firefox cannot reliably parse constructed CSS in a hidden frame.
+        // Shared CMS modals mount before they are shown, so defer rendering
+        // until the frame has a layout box, without changing stored HTML.
+        if (frame && frame.getClientRects().length === 0) return
         const styles = view.state.doc.attrs['embeddedStyles'] as readonly EmbeddedStyle[] | undefined
         if (styles === previous) return
         previous = styles
         const rules = (styles ?? []).map(({ css, media }) => {
           parsed.replaceSync(media ? `@media ${media}{${css}}` : css)
-          return localRules(parsed.cssRules)
+          return options.isolated ? Array.from(parsed.cssRules, rule => rule.cssText).join('\n') : localRules(parsed.cssRules)
         }).join('\n')
-        sheet.replaceSync(`@scope ([data-ol-style-canvas="${id}"]) {${rules}}`)
+        sheet.replaceSync(options.isolated ? rules : `@scope ([data-ol-style-canvas="${id}"]) {${rules}}`)
       }
+      const observer = frame && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+      if (frame) observer?.observe(frame)
       update()
       return {
         update,
         destroy() {
+          observer?.disconnect()
           doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter((item) => item !== sheet)
           view.dom.removeAttribute('data-ol-style-canvas')
         },

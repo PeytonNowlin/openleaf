@@ -70,6 +70,8 @@ export interface OpenLeafEditorProps
   'content-css'?: string
   /** Preserve embedded CSS for trusted CMS HTML; set before mount. */
   'preserve-styles'?: boolean
+  /** Isolated viewport for full editors; set before mount. */
+  canvas?: 'iframe'
   /** UI locale, matched against registerTranslations(). */
   lang?: string
   /** Hide chrome until the editor is focused. */

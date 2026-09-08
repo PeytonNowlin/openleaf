@@ -139,7 +139,9 @@ export const BUDGETS_KB = {
   // ceiling that a local Node build reported as 123.7; 127 is the ~3 KB of
   // headroom the paragraph above argues for, not 124.5, which is the trap
   // of tens of bytes under another name.
-  'openleaf.min.js': 127,
+  // The optional iframe canvas and cross-document chrome add about 1 KB;
+  // retain headroom for zlib differences between Node releases.
+  'openleaf.min.js': 129,
   'openleaf-tables.min.js': 25,
   'openleaf-colour.min.js': 15,
   'openleaf-highlight.min.js': 15,
