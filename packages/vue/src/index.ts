@@ -17,6 +17,7 @@ export const OpenLeafEditor = defineComponent({
     toolbar2: { type: String, default: undefined },
     menubar: { type: [String, Boolean], default: undefined },
     formats: { type: String, default: undefined },
+    preserveStyles: { type: Boolean, default: false },
     lang: { type: String, default: undefined },
     for: { type: String, default: undefined },
   },
@@ -81,6 +82,7 @@ export const OpenLeafEditor = defineComponent({
         '^menubar':
           props.menubar === true ? '' : props.menubar === false ? undefined : props.menubar,
         '^formats': props.formats,
+        '^preserve-styles': props.preserveStyles ? '' : undefined,
         '^lang': props.lang,
         '^for': props.for,
       })

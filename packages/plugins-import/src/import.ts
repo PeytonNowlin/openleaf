@@ -106,6 +106,10 @@ export async function importFileIntoView(view: EditorView, file: File): Promise<
     .setSelection(selection)
     .replaceSelectionWith(parsed, false)
     .scrollIntoView()
+  const importedStyles = parsed.attrs['embeddedStyles']
+  if (importedStyles?.length) {
+    tr.setDocAttribute('embeddedStyles', [...view.state.doc.attrs['embeddedStyles'], ...importedStyles])
+  }
   view.dispatch(tr)
   view.focus()
 

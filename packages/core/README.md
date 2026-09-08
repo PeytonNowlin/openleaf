@@ -149,3 +149,12 @@ Apache-2.0.
 Approved iframe players also survive inside preserved CMS wrappers, subject to
 exactly the same host/path and permissions checks as modelled embeds. Unsafe
 frames, `srcdoc` and event handlers remain removed.
+
+## Embedded CSS for trusted CMS documents
+
+`parseHtml(html, { preserveStyles: true })` and `roundTrip` with the same option
+extract embedded CSS into inert `embeddedStyles` document attributes. An explicit
+schema must be built with `coreSchema({ preserveStyles: true })` or
+`createSchema(extensions, { preserveStyles: true })`. Serialization emits CSS as
+leading style blocks. The default schema and filtering remain unchanged.
+See [CMS module styles](../../docs/integrating-openleaf.md#cms-module-styles).

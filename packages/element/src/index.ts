@@ -31,6 +31,7 @@
  *   insert-toolbar    floating bar for an empty block; `none` disables
  *   formats          `p.lead=Lead|h2=Section` entries for the formats dropdown
  *   content-css      comma-separated URLs scoped onto the canvas
+ *   preserve-styles  opt in to trusted embedded CSS; set before mounting
  *   lang             UI locale AND canvas language (spellcheck). Host, then
  *                    the bound textarea, then the page. See #regionAttributes.
  *   placeholder      prompt on an empty document; never stored in `value`
@@ -90,6 +91,7 @@ import {
   applySkin,
   canUploadImages,
   contentCssUrls,
+  embeddedStylesPlugin,
   ensureSkins,
   ensureStyles,
   imageFilesFrom,
@@ -584,7 +586,8 @@ export class OpenLeafEditor extends HTMLElementBase {
       this.#basePlugins.push(this.#visualAidsPlugin)
     }
 
-    this.#schema = coreSchema()
+    this.#schema = coreSchema({ preserveStyles: this.hasAttribute('preserve-styles') })
+    if (this.hasAttribute('preserve-styles')) this.#basePlugins.push(embeddedStylesPlugin())
     // Cleared before the view exists, so a transaction dispatched during mount
     // is counted as a real change rather than wiped by a later reset.
     this.#docTouched = false
@@ -695,7 +698,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     // undo history; rebuilding the state from scratch would discard both.
     this.#unwatchSchema = onSchemaExtensionsChange(() => {
       if (!this.#view) return
-      if (coreSchema() === this.#schema) return
+      if (coreSchema({ preserveStyles: this.hasAttribute('preserve-styles') }) === this.#schema) return
       console.warn(
         '@openleaf-editor/element: a schema extension registered after this editor was ' +
           'built, so its node types are not available here. A document\'s schema is ' +
@@ -1346,6 +1349,9 @@ export class OpenLeafEditor extends HTMLElementBase {
     if (options?.onlyIfChanged && next.eq(view.state.doc)) return
 
     const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, next.content)
+    if ('embeddedStyles' in next.attrs) {
+      tr.setDocAttribute('embeddedStyles', next.attrs['embeddedStyles'])
+    }
     // Replacing the whole document maps every old position onto the boundary,
     // so the caret would jump to the top on any programmatic assignment. Put it
     // back where the author left it, clamped to the new document.

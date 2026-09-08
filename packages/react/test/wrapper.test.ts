@@ -100,6 +100,7 @@ describe('the React wrapper', () => {
           skin: 'midnight',
           theme: 'dark',
           autoresize: true,
+          'preserve-styles': true,
           'aria-label': 'Post body',
           toolbar: 'bold italic',
         }),
@@ -111,14 +112,16 @@ describe('the React wrapper', () => {
     expect(el.getAttribute('toolbar')).toBe('bold italic')
     // A boolean attribute is presence, not the string "true".
     expect(el.getAttribute('autoresize')).toBe('')
+    expect(el.hasAttribute('preserve-styles')).toBe(true)
     expect(el.querySelector('[role="textbox"]')?.getAttribute('aria-label')).toBe('Post body')
   })
 
   it('renders a false boolean as an absent attribute, not autoresize="false"', () => {
     act(() => {
-      root.render(createElement(OpenLeafEditor, { autoresize: false }))
+      root.render(createElement(OpenLeafEditor, { autoresize: false, 'preserve-styles': false }))
     })
     // `hasAttribute` is what the element tests, so any value at all would be on.
     expect(editor().hasAttribute('autoresize')).toBe(false)
+    expect(editor().hasAttribute('preserve-styles')).toBe(false)
   })
 })

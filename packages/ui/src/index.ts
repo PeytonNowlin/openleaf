@@ -105,3 +105,4 @@ export {
   type ColourScheme,
   type Skin,
 } from './skins.js'
+export { embeddedStylesPlugin } from './embedded-styles.js'
