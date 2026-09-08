@@ -750,3 +750,37 @@ test.describe('gap cursor (#164)', () => {
     expect(after.indexOf('before')).toBeLessThan(after.indexOf('<video'))
   })
 })
+
+
+test('submits raw source edits without leaving source mode', async ({ page }) => {
+  await page.locator('[data-ol-id="source"]').click()
+  await page.locator('.ol-source').fill('<p>Source submitted immediately</p>')
+  await page.route('**/submitted', async (route) => {
+    await route.fulfill({ contentType: 'text/plain', body: 'Saved' })
+  })
+  const posted = page.waitForRequest((request) => request.url().endsWith('/submitted'))
+  await page.locator('#save').click()
+  const body = new URLSearchParams((await posted).postData() ?? '')
+  expect(body.get('body')).toBe('<p>Source submitted immediately</p>')
+})
+
+test('keeps an approved embed inside a preserved CMS wrapper', async ({ page }) => {
+  const html = '<div class="promo" data-campaign="fall"><iframe src="https://player.vimeo.com/video/123" allow="autoplay; camera; fullscreen" srcdoc="bad"></iframe></div>'
+  await page.route('https://player.vimeo.com/**', (route) => route.fulfill({ body: '' }))
+  await page.evaluate((value) => {
+    const host = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+    host.value = value
+  }, html)
+  const saved = await page.evaluate(() => {
+    const host = document.querySelector('openleaf-editor') as HTMLElement & { value: string }
+    const doc = new DOMParser().parseFromString(host.value, 'text/html')
+    const frame = doc.querySelector('iframe')
+    return {
+      campaign: doc.querySelector('.promo')?.getAttribute('data-campaign'),
+      src: frame?.getAttribute('src'),
+      allow: frame?.getAttribute('allow'),
+      srcdoc: frame?.hasAttribute('srcdoc'),
+    }
+  })
+  expect(saved).toEqual({ campaign: 'fall', src: 'https://player.vimeo.com/video/123', allow: 'autoplay; fullscreen', srcdoc: false })
+})

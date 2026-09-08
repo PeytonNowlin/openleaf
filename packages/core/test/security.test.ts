@@ -208,7 +208,7 @@ describe('markup-bearing attributes are never carried', () => {
  * `iframe` in it. `class="c"` on a wrapper defeated both the host allowlist and
  * the permissions filter.
  */
-describe('a frame never rides in inside a preserved atom', () => {
+describe('preserved atoms enforce the iframe policy', () => {
   it('drops a hostile iframe wrapped in a preserved div', () => {
     const out = roundTrip(
       '<div class="c"><iframe src="https://evil.example/" ' +
@@ -220,12 +220,13 @@ describe('a frame never rides in inside a preserved atom', () => {
     expect(out).toContain('class="c"')
   })
 
-  it('drops even an allowlisted player when it is wrapped', () => {
-    // Preservation stores markup as a string and re-emits it verbatim, so a
-    // frame inside an atom is never re-checked on the way out. The modelled
-    // embed node is the only place an iframe is allowed to live.
-    const out = roundTrip('<div class="c"><iframe src="https://www.youtube.com/embed/abc"></iframe></div>')
-    expect(out).not.toMatch(/iframe/i)
+  it('keeps an allowlisted player only after checking its permissions', () => {
+    // A preserved wrapper uses the same embed policy as the modelled node;
+    // carrying a class must neither lose a safe player nor bypass its guards.
+    const out = roundTrip('<div class="c"><iframe src="https://www.youtube.com/embed/abc" allow="fullscreen; camera"></iframe></div>')
+    expect(out).toContain('youtube.com/embed/abc')
+    expect(out).toContain('allow="fullscreen"')
+    expect(out).not.toContain('camera')
   })
 
   it('still keeps the allowlisted player at the top level', () => {

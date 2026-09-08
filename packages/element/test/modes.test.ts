@@ -33,8 +33,10 @@ beforeEach(() => {
   document.body.replaceChildren()
 })
 
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers()
+  document.body.replaceChildren()
+  await Promise.resolve()
 })
 
 describe('the source view', () => {
@@ -92,5 +94,30 @@ describe('visualaids="false"', () => {
     expect(button.getAttribute('aria-pressed')).toBe('true')
     host.dispatchEvent(new CustomEvent(VISUAL_AIDS_TOGGLE_EVENT, { bubbles: true }))
     expect(button.getAttribute('aria-pressed')).toBe('false')
+  })
+})
+
+
+describe('saving source mode in a bound form', () => {
+  it.each(['submit', 'formdata'])('flushes source edits at %s without closing source mode', (kind) => {
+    const host = build('<form><openleaf-editor for="body"></openleaf-editor><textarea id="body" name="body">&lt;p&gt;Original&lt;/p&gt;</textarea></form>')
+    host.sourceMode = true
+    const source = host.querySelector<HTMLTextAreaElement>('.ol-source')
+    const form = document.querySelector('form')
+    const bound = document.querySelector<HTMLTextAreaElement>('#body')
+    if (!source || !form || !bound) throw new Error('missing source form')
+    source.value = '<p>Edited in source</p>'
+    source.dispatchEvent(new Event('input', { bubbles: true }))
+    if (kind === 'submit') {
+      form.dispatchEvent(new Event('submit', { cancelable: true }))
+    } else {
+      const data = new FormData(form)
+      const event = new Event('formdata')
+      Object.defineProperty(event, 'formData', { value: data })
+      form.dispatchEvent(event)
+      expect(data.get('body')).toBe(source.value)
+    }
+    expect(bound.value).toBe(source.value)
+    expect(host.sourceMode).toBe(true)
   })
 })

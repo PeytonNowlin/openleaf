@@ -30,6 +30,7 @@
 import type { NodeSpec } from 'prosemirror-model'
 import { isFullyModelledStyle, safeLang } from './css.js'
 import { DROP_WITH_CONTENT } from './elements.js'
+import { safeAllowList, safeEmbedSrc } from './embed.js'
 import {
   URL_ATTRIBUTES,
   isEventHandlerAttribute,
@@ -69,23 +70,12 @@ import {
 export const NEVER_PRESERVE: readonly string[] = [...DROP_WITH_CONTENT]
 
 /**
- * Tags that must not survive *inside* a preserved subtree either.
- *
- * `iframe` is here and not in `NEVER_PRESERVE` because the two answer different
- * questions. At the top level an iframe is claimed by the modelled embed node
- * when its `src` is an allowlisted player, and ignored otherwise -- a
- * priority-100 drop rule would outrank the embed node and delete legitimate
- * players. Inside preserved markup there is no such question: the subtree is
- * stored as an opaque string and re-emitted verbatim, so nothing re-checks the
- * frame on the way out.
- *
- * That gap was the bypass. `<iframe src="https://evil.example/">` on its own was
- * dropped; wrapped in a `<div class="c">` it round-tripped byte-identical, with
- * `allow="camera; microphone; geolocation"` intact. One attribute on a wrapper
- * defeated both the host allowlist and the permissions filter.
+ * Dangerous descendants are removed even inside opaque preserved markup.
+ * Iframes are checked separately against the same player and permissions
+ * policy as modelled embeds; dropping every nested iframe lost legitimate
+ * players merely because their CMS wrapper carried a class or data attribute.
  */
-const NEVER_INSIDE_PRESERVED: ReadonlySet<string> = new Set([...NEVER_PRESERVE, 'iframe'])
-
+const NEVER_INSIDE_PRESERVED: ReadonlySet<string> = new Set(NEVER_PRESERVE)
 /** Parse rules that drop dangerous elements before any other rule sees them. */
 const dropRules = NEVER_PRESERVE.map((tag) => ({ tag, ignore: true, priority: 100 }))
 
@@ -163,11 +153,17 @@ export function scrub(el: Element): string {
 
   const visit = (node: Element): void => {
     for (const child of Array.from(node.children)) {
-      if (NEVER_INSIDE_PRESERVED.has(child.nodeName.toLowerCase())) {
+      if (NEVER_INSIDE_PRESERVED.has(child.nodeName.toLowerCase())
+        || (child.nodeName.toLowerCase() === 'iframe' && !safeEmbedSrc(child.getAttribute('src')))) {
         child.remove()
         continue
       }
       visit(child)
+    }
+    if (node.nodeName.toLowerCase() === 'iframe') {
+      const allow = safeAllowList(node.getAttribute('allow'))
+      if (allow) node.setAttribute('allow', allow)
+      else node.removeAttribute('allow')
     }
     for (const attr of Array.from(node.attributes)) {
       if (isEventHandlerAttribute(attr.name)) {

@@ -75,6 +75,10 @@ Changing any of these later has no effect without recreating the element.
 
 ### `value`
 
+Typing in source mode marks the bound textarea for synchronization too. Submitting
+the form or constructing its `FormData` flushes those edits without closing source
+mode.
+
 **Getting** returns the raw textarea contents while in source mode; the bound
 textarea's value if the editor has not been built yet; otherwise the serialized
 document.

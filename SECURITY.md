@@ -129,6 +129,10 @@ and host checks before returning a config that permits either feature. The
 `bleach` and HTMLPurifier configs filter by property but not by element or value,
 which is a narrower gap documented where each is emitted.
 
+Approved players inside preserved wrappers use the same embed host/path and
+permissions allowlists as modelled iframe nodes. A wrapper never grants permission
+to embed an arbitrary page; `srcdoc` and event handlers are still stripped.
+
 ### `<iframe>`, and why the DOMPurify config withholds it
 
 The policy permits an iframe only when its `src` is one of a closed list of
