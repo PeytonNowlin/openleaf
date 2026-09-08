@@ -12,6 +12,8 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+## 0.1.0-beta.8 - 2026-09-08
+
 ### Added
 
 - Opt-in `preserve-styles` for trusted CMS HTML modules. Embedded style blocks
