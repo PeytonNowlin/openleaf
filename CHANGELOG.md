@@ -12,6 +12,15 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Fixed
+
+- Saving a bound form from HTML source mode now includes the latest source edits,
+  without requiring a return to rich text first.
+- Approved iframe players inside preserved CMS wrappers now survive round trips;
+  the shared host/path and permissions allowlists still apply, and unsafe frames,
+  `srcdoc`, and event handlers remain removed.
+
+
 ### Production hardening
 
 - Session recovery survives storage-access failures, canceled form submissions,

@@ -145,3 +145,7 @@ strips can be put back with developer tools.
 ## License
 
 Apache-2.0.
+
+Approved iframe players also survive inside preserved CMS wrappers, subject to
+exactly the same host/path and permissions checks as modelled embeds. Unsafe
+frames, `srcdoc` and event handlers remain removed.

@@ -585,7 +585,7 @@ your node is in a race it can lose. The ladder:
 
 | Priority | Rule | Effect |
 |---|---|---|
-| 100 | `NEVER_PRESERVE` drop rules — `script`, `iframe`, `form`, `input`, `button`, `select`, `textarea`, `link`, `meta`, `template`, and more | Element **and its contents** are discarded |
+| 100 | `NEVER_PRESERVE` drop rules — `script`, `form`, `input`, `button`, `select`, `textarea`, `link`, `meta`, `template`, and more | Element **and its contents** are discarded |
 | 50 | The default for a rule with no `priority` — every real node in the schema | Your node parses |
 | 1 | `unknown_inline` catch-all, restricted to paragraph-holding containers | Inline debris becomes an inline atom. Tags the HTML parser will not keep inside a `<p>` (`div`, `section`, `figure`, … — `CLOSES_OPEN_P` in `preserve.ts`) are declined so they do not serialize inside a paragraph and grow two empty paragraphs on every save. |
 | 0 | `unknown_block` catch-all | Anything else becomes a block atom |

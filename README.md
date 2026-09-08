@@ -136,7 +136,7 @@ Then bind the editor to a textarea in an ordinary form:
 </form>
 ```
 
-The textarea is updated shortly after document changes and synchronously before
+Source-mode edits participate in the same form synchronization. The textarea is updated shortly after document changes and synchronously before
 form submission. Set its initial value to load existing HTML. When rendering
 stored HTML inside a textarea from a server template, escape it for the textarea
 context. Listen to `openleaf:change` and read `event.detail.value` when code

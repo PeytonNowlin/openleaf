@@ -61,7 +61,8 @@ import '@openleaf-editor/element'
 ```
 
 For an existing form, bind the editor to a textarea. OpenLeaf writes the
-textarea shortly after document changes and synchronously before submission.
+textarea shortly after document changes and synchronously before submission. This
+includes edits made in source mode without returning to rich text.
 
 ```html
 <form method="post">

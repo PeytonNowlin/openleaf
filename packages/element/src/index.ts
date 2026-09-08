@@ -1237,6 +1237,10 @@ export class OpenLeafEditor extends HTMLElementBase {
       area.spellcheck = false
       area.readOnly = this.hasAttribute('readonly')
       area.value = serializeHtml(view.state.doc)
+      // Source edits do not dispatch ProseMirror transactions. Mark the form
+      // bridge dirty here too, so submit/formdata cannot reuse the last rich
+      // text value when the author saves without closing source mode.
+      area.addEventListener('input', () => this.#formBridge.markDirty())
       contentHost.hidden = true
       contentHost.after(area)
       this.#sourceArea = area

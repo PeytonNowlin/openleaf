@@ -148,3 +148,26 @@ describe('preserved block elements in paragraph-holding containers', () => {
     expectFixedPoint('<table><tr><td><div class="callout">Note</div></td></tr></table>')
   })
 })
+
+
+describe('embeds inside preserved CMS markup', () => {
+  it('keeps an approved player and its wrapper while filtering active attributes', () => {
+    const html = '<div class="promo" data-campaign="fall"><iframe src="https://player.vimeo.com/video/123" title="Video" width="640" allow="autoplay; camera *; fullscreen" srcdoc="bad" onload="bad()"></iframe></div>'
+    const parsed = new DOMParser().parseFromString(roundTrip(html), 'text/html')
+    const frame = parsed.querySelector('iframe')
+    expect(parsed.querySelector('.promo')?.getAttribute('data-campaign')).toBe('fall')
+    expect(frame?.getAttribute('src')).toBe('https://player.vimeo.com/video/123')
+    expect(frame?.getAttribute('title')).toBe('Video')
+    expect(frame?.getAttribute('width')).toBe('640')
+    expect(frame?.getAttribute('allow')).toBe('autoplay; fullscreen')
+    expect(frame?.hasAttribute('srcdoc')).toBe(false)
+    expect(frame?.hasAttribute('onload')).toBe(false)
+  })
+
+  it.each(['https://evil.example/', '/uploaded.html', 'javascript:alert(1)', 'http://player.vimeo.com/video/123', 'https://www.youtube.com/watch?v=123'])('still drops refused nested iframe %s', (src) => {
+    const html = `<div class="promo"><section data-inner="1"><iframe src="${src}"></iframe><p>Keep me</p></section></div>`
+    const parsed = new DOMParser().parseFromString(roundTrip(html), 'text/html')
+    expect(parsed.querySelector('iframe')).toBeNull()
+    expect(parsed.querySelector('p')?.textContent).toBe('Keep me')
+  })
+})
