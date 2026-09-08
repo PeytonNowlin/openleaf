@@ -12,6 +12,8 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+## 0.1.0-beta.7 - 2026-09-08
+
 ### Fixed
 
 - Saving a bound form from HTML source mode now includes the latest source edits,
