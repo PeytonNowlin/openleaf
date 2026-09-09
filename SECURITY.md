@@ -377,3 +377,12 @@ The editing canvas does not activate document-global rules such as `@import`,
 font definitions, keyframes, or property registrations. See
 [CMS module styles](docs/integrating-openleaf.md#cms-module-styles) for the full
 integration and round-trip contract.
+
+### Optional iframe canvas
+
+`canvas="iframe"` provides layout isolation for full CMS editors. Its sandbox
+allows same-origin access and scripts so parent-owned editing callbacks work in
+WebKit. It is not a security boundary. Content enters through the ordinary
+schema/URL filters, never through authored `srcdoc` or `document.write`; server
+sanitization remains necessary. Trusted `content-css` URLs load inside the
+frame and embedded CSS requires the existing `preserve-styles` opt-in.

@@ -31,6 +31,7 @@
  *   insert-toolbar    floating bar for an empty block; `none` disables
  *   formats          `p.lead=Lead|h2=Section` entries for the formats dropdown
  *   content-css      comma-separated URLs scoped onto the canvas
+ *   canvas           `iframe` gives full editors an isolated viewport; set before mount
  *   preserve-styles  opt in to trusted embedded CSS; set before mounting
  *   lang             UI locale AND canvas language (spellcheck). Host, then
  *                    the bound textarea, then the page. See #regionAttributes.
@@ -91,6 +92,7 @@ import {
   applySkin,
   canUploadImages,
   contentCssUrls,
+  canvasPoint,
   embeddedStylesPlugin,
   ensureSkins,
   ensureStyles,
@@ -117,6 +119,7 @@ import { keymap } from 'prosemirror-keymap'
 import type { Node as PMNode, Schema } from 'prosemirror-model'
 import { EditorState, NodeSelection, Plugin, TextSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
+import { IframeCanvas } from './iframe-canvas.js'
 import { FIELD_ARIA_ATTRIBUTES, FormBridge } from './form-bridge.js'
 
 const CHROME_ATTRIBUTES = [
@@ -281,6 +284,7 @@ export class OpenLeafEditor extends HTMLElementBase {
         this.#view?.setProps({})
         return
       case 'aria-label':
+        if (this.#iframeCanvas) this.#iframeCanvas.frame.title = this.#regionName()
         this.#applyHostRole()
         this.#view?.setProps({})
         return
@@ -322,6 +326,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     () => this.#refreshFieldSemantics(),
   )
   #contentHost: HTMLDivElement | null = null
+  #iframeCanvas: IframeCanvas | null = null
   /** The Alt+F10 hint, when there is a toolbar for it to describe. */
   #hint: HTMLSpanElement | null = null
   #sourceArea: HTMLTextAreaElement | null = null
@@ -449,6 +454,24 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#upgradeProperty('value')
     this.#upgradeProperty('imageUploader')
 
+    // Moving an iframe destroys its browsing context even if the custom
+    // element reconnects in the same task. Rebuild that view from its state,
+    // including history; a shared-document canvas still takes the cheap path.
+    if (this.#view && this.#iframeCanvas && this.#iframeCanvas.frame.contentDocument !== this.#iframeCanvas.document) {
+      const state = this.#view.state
+      const source = this.#sourceMode
+      const html = this.value
+      this.#teardown()
+      this.#pendingValue = html
+      this.#build()
+      if (!source) {
+        this.#view?.updateState(state)
+        this.#toolbar?.update(state)
+        this.#toolbar2?.update(state)
+      }
+      else this.sourceMode = true
+      return
+    }
     if (this.#view || this.#deferred) {
       // Reconnection with the session still alive -- a move. Nothing is
       // rebuilt, but the element may have landed in a different <form>, and the
@@ -547,6 +570,10 @@ export class OpenLeafEditor extends HTMLElementBase {
     contentHost.className = 'ol-content'
     this.#contentHost = contentHost
     this.#buildChrome()
+    if (this.getAttribute('canvas') === 'iframe' && !this.hasAttribute('inline')) {
+      this.#iframeCanvas = new IframeCanvas(this, contentHost)
+      registerStyles(PLACEHOLDER_CSS, this.#iframeCanvas.document)
+    }
 
     // Held on the instance rather than built inline, because `reconfigure`
     // has to hand the view back the *same* history() it was created with.
@@ -587,12 +614,12 @@ export class OpenLeafEditor extends HTMLElementBase {
     }
 
     this.#schema = coreSchema({ preserveStyles: this.hasAttribute('preserve-styles') })
-    if (this.hasAttribute('preserve-styles')) this.#basePlugins.push(embeddedStylesPlugin())
+    if (this.hasAttribute('preserve-styles')) this.#basePlugins.push(embeddedStylesPlugin({ isolated: Boolean(this.#iframeCanvas) }))
     // Cleared before the view exists, so a transaction dispatched during mount
     // is counted as a real change rather than wiped by a later reset.
     this.#docTouched = false
 
-    this.#view = new EditorView(contentHost, {
+    this.#view = new EditorView(this.#iframeCanvas?.mount ?? contentHost, {
       state: EditorState.create({
         doc: parseHtml(initialHtml, { schema: this.#schema }),
         // Plugins contributed by opt-in bundles. The cache is per editor, so
@@ -820,7 +847,7 @@ export class OpenLeafEditor extends HTMLElementBase {
 
     // Re-parented, never replaced: the view lives on this element, so the
     // document, selection and undo history survive a chrome rebuild.
-    this.appendChild(contentHost)
+    if (contentHost.parentNode !== this) this.appendChild(contentHost)
 
     // The Alt+F10 hint lives in a hidden element referenced by
     // aria-describedby. Screen reader users cannot guess the shortcut, and
@@ -1021,6 +1048,8 @@ export class OpenLeafEditor extends HTMLElementBase {
     // leftovers become the next document.
     this.#contentHost?.remove()
     this.#contentHost = null
+    this.#iframeCanvas?.destroy()
+    this.#iframeCanvas = null
     this.#hint?.remove()
     this.#hint = null
     // The shared announcement region is the host's, so no individual toolbar
@@ -1289,6 +1318,7 @@ export class OpenLeafEditor extends HTMLElementBase {
      * a transaction.
      */
     try {
+      contentHost.hidden = false
       this.#teardownSource({ apply: !this.hasAttribute('readonly') })
     } finally {
       contentHost.hidden = false
@@ -1529,6 +1559,8 @@ export class OpenLeafEditor extends HTMLElementBase {
       attributes['aria-describedby'] = [attributes['aria-describedby'], this.#hint.id].filter(Boolean).join(' ')
     }
 
+    this.#iframeCanvas?.copyDescriptions(attributes)
+
     // Canvas language, which is also the spellcheck language. Host `lang` is
     // documented as the UI locale; using the same attribute for the document
     // is the usual CMS case (a French article in a French chrome). A bound
@@ -1539,7 +1571,7 @@ export class OpenLeafEditor extends HTMLElementBase {
     const lang =
       this.getAttribute('lang')?.trim() ||
       this.#formBridge.textarea?.getAttribute('lang')?.trim() ||
-      ''
+      (this.#iframeCanvas ? this.ownerDocument.documentElement.lang : '')
     if (lang) attributes['lang'] = lang
 
     // The host already inherits `spellcheck` in HTML, but source view
@@ -1682,6 +1714,10 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.#contextDoc?.removeEventListener('pointerdown', this.#onContextPointer, true)
     this.#contextDoc?.removeEventListener('pointerup', this.#onContextPointer, true)
     this.#contextDoc?.removeEventListener('pointercancel', this.#onContextPointer, true)
+    if (this.#iframeCanvas) {
+      this.#contextDoc?.removeEventListener('contextmenu', this.#onContextMenu)
+      this.#contextDoc?.removeEventListener('keydown', this.#onContextKey, true)
+    }
     this.#contextDoc = null
     this.#contextGestureIds.clear()
     this.#contextPointersDown.clear()
@@ -1695,7 +1731,11 @@ export class OpenLeafEditor extends HTMLElementBase {
     this.addEventListener('contextmenu', this.#onContextMenu)
     this.addEventListener('keydown', this.#onContextKey, true)
     // Recorded, not re-derived at removal time. See #contextDoc.
-    this.#contextDoc = this.ownerDocument
+    this.#contextDoc = this.#view?.dom.ownerDocument ?? this.ownerDocument
+    if (this.#iframeCanvas) {
+      this.#contextDoc.addEventListener('contextmenu', this.#onContextMenu)
+      this.#contextDoc.addEventListener('keydown', this.#onContextKey, true)
+    }
     // `pointerup` / `pointercancel` end the opening sequence so a later
     // down with the same id -- mouse is always id 1 -- still dismisses.
     this.#contextDoc.addEventListener('pointerdown', this.#onContextPointer, true)
@@ -1789,7 +1829,8 @@ export class OpenLeafEditor extends HTMLElementBase {
       x = point.x
       y = point.y
     }
-    menu.show(items, x, y, { label: 'Editor menu', onClose: () => view.focus() })
+    const position = canvasPoint(view.dom.ownerDocument, this.ownerDocument, x, y)
+    menu.show(items, position.x, position.y, { label: 'Editor menu', onClose: () => view.focus() })
     return true
   }
 
@@ -1860,8 +1901,8 @@ export class OpenLeafEditor extends HTMLElementBase {
     // left with. The table plugin's menu makes the same check on the same event;
     // this is the other listener on it.
     if (this.hasAttribute('readonly')) return
-    const clicked = event.target
-    if (!(clicked instanceof Element) || !this.#contentHost?.contains(clicked)) return
+    const clicked = event.target as Element | null
+    if (!clicked || clicked.nodeType !== 1 || !view.dom.contains(clicked)) return
     const items = clicked.closest('a')
       ? LINK_CONTEXT_ITEMS
       : clicked.closest('img')
@@ -1919,6 +1960,10 @@ export class OpenLeafEditor extends HTMLElementBase {
 
   async #mountContentCss(): Promise<void> {
     const urls = contentCssUrls(this.getAttribute('content-css'))
+    if (this.#iframeCanvas) {
+      this.#iframeCanvas.setStylesheets(urls)
+      return
+    }
     if (urls.length === 0) return
     // Captured before the await, for the reason `#boundDoc` exists: `adoptNode`
     // reassigns `ownerDocument`, so an editor moved across documents while the

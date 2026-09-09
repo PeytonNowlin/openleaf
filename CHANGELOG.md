@@ -12,6 +12,14 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Added
+
+- Opt-in `canvas="iframe"` for full HTML editors. Module viewport units,
+  breakpoints, and root font sizes use the canvas rather than the admin window.
+  Content styles load inside the frame; Source, undo, form binding, session
+  controls, and document imports keep their owning editor. Inline editors retain
+  the default canvas. The frame provides layout isolation, not a security boundary.
+
 ## 0.1.0-beta.8 - 2026-09-08
 
 ### Added

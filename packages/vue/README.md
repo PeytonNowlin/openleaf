@@ -75,3 +75,7 @@ The element upgrades on the client.
 ## License
 
 Apache-2.0.
+
+Full CMS editors can set `canvas="iframe"` before mount together with
+`preserve-styles` for independent viewport units and typography. The option is
+forwarded to the custom element. See [isolated module viewport](../../docs/integrating-openleaf.md#isolated-module-viewport).

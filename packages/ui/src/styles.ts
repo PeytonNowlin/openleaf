@@ -128,6 +128,17 @@ let warned = false
  * Deduplicated per document by the CSS text itself, so calling it twice from a
  * bundle loaded twice is harmless.
  */
+const styleMirrors = new WeakMap<Document, Set<Document>>()
+
+/** Keep canvas plugin styles in sync, including bundles registered after mount. */
+export function mirrorRegisteredStyles(source: Document, target: Document): () => void {
+  for (const css of registered.get(source) ?? []) registerStyles(css, target)
+  let targets = styleMirrors.get(source)
+  if (!targets) styleMirrors.set(source, targets = new Set())
+  targets.add(target)
+  return () => { targets.delete(target) }
+}
+
 export function registerStyles(css: string, target?: Document): 'adopted' | 'unavailable' | 'already' {
   const doc = target ?? (typeof document !== 'undefined' ? document : undefined)
   if (!doc) return 'unavailable'
@@ -158,6 +169,7 @@ export function registerStyles(css: string, target?: Document): 'adopted' | 'una
       sheet.replaceSync(css)
       doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
       seen.add(css)
+      for (const target of styleMirrors.get(doc) ?? []) registerStyles(css, target)
       return 'adopted'
     } catch {
       /* fall through to the warning */

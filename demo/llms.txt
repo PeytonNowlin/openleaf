@@ -36,3 +36,5 @@ Editor output is untrusted input and must be sanitized on the server.
 - [Issue tracker](https://github.com/PeytonNowlin/openleaf/issues): Public bug reports and feature proposals. Security reports must use the private process in SECURITY.md.
 
 Trusted CMS embedded styles: set preserve-styles before mounting; see docs/integrating-openleaf.md#cms-module-styles. Default filtering is unchanged.
+
+Full CMS viewport: canvas="iframe" before mount isolates viewport units, media queries and root typography; use content-css for published fonts. It is layout isolation, not a security boundary. See docs/integrating-openleaf.md#isolated-module-viewport.

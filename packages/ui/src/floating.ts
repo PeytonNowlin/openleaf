@@ -1,3 +1,4 @@
+import { canvasPoint } from './editor-host.js'
 /**
  * Floating toolbars: one for a non-empty selection, one for an empty block
  * that is waiting to be filled.
@@ -224,9 +225,10 @@ export class FloatingToolbars {
 
   #place(el: HTMLElement, view: EditorView, pos: number): void {
     const coords = view.coordsAtPos(pos)
+    const point = canvasPoint(view.dom.ownerDocument, this.#host.ownerDocument, coords.left, coords.bottom)
     const hostBox = this.#host.getBoundingClientRect()
-    el.style.left = `${coords.left - hostBox.left}px`
-    el.style.top = `${coords.bottom - hostBox.top + 8}px`
+    el.style.left = `${point.x - hostBox.left}px`
+    el.style.top = `${point.y - hostBox.top + 8}px`
   }
 }
 

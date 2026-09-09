@@ -12,7 +12,8 @@
  */
 
 import { canInsert, registerEditorPlugin } from '@openleaf-editor/core'
-import { registerIcons, registerToolbarItem } from '@openleaf-editor/ui'
+import { Plugin } from 'prosemirror-state'
+import { findEditorHost, registerIcons, registerToolbarItem } from '@openleaf-editor/ui'
 import { importBookmarkPlugin } from './bookmark.js'
 import { BUILT_IN_ACCEPT } from './converters.js'
 import { importFilesIntoView } from './import.js'
@@ -144,6 +145,35 @@ export function installImport(): void {
       void pickAndImport(view, host).catch((error: unknown) => reportFailure(host, error))
     },
   })
+
+  // Events in an isolated canvas do not bubble to the admin document.
+  // Keep the existing host-document integration, and handle frame drops at
+  // the view boundary where file-manager dialogs cannot be mistaken for it.
+  registerEditorPlugin(() => [new Plugin({
+    props: {
+      handleDOMEvents: {
+        dragover(view, event) {
+          if (!view.dom.ownerDocument.defaultView?.frameElement || !Array.from(event.dataTransfer?.types ?? []).includes('Files')) return false
+          event.preventDefault()
+          if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+          return true
+        },
+        drop(view, event) {
+          if (!view.dom.ownerDocument.defaultView?.frameElement) return false
+          const files = Array.from(event.dataTransfer?.files ?? [])
+          // Image files belong to the element's upload handler.
+          if (!files.length || files.every(file => file.type.startsWith('image/'))) return false
+          const host = findEditorHost(view.dom)
+          if (!host) return false
+          event.preventDefault()
+          void importFilesIntoView(view, files)
+            .then(outcome => announce(host, describeOutcome(files.length, outcome.warnings, outcome.error)))
+            .catch((error: unknown) => reportFailure(host, error))
+          return true
+        },
+      },
+    },
+  })])
 
   if (typeof document === 'undefined') return
 

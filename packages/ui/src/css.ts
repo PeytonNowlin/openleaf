@@ -393,6 +393,10 @@ export const CSS = `
   color: var(--ol-text);
 }
 
+.ol-editor.ol-fullscreen > .ol-content > .ol-canvas-frame { height: 100%; }
+
+.ol-editor .ol-canvas-frame { display: block; width: 100%; height: var(--openleaf-canvas-height, 300px); border: 0; }
+
 .ol-editor .ol-content {
   box-sizing: border-box;
   border: 1px solid var(--ol-border-strong);
