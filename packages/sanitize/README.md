@@ -24,6 +24,10 @@ Keep every `@openleaf-editor/*` package on the same version. They pin each other
 exactly, so mixing versions installs two copies of the schema and the toolbar
 registry -- and a node built by one is not a node type the other accepts.
 
+For Node.js server integrations, use a
+[supported, patched Node.js runtime](../../SECURITY.md#nodejs-runtime-updates).
+Installing this package does not update the Node.js executable.
+
 ## Why it exists
 
 A CMS is rarely one language. The editor is JavaScript, the request handler is PHP

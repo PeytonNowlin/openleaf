@@ -34,6 +34,11 @@ the whole branch.
 
 ## Getting set up
 
+Use Node.js 22.23.4+ within 22.x, 24.22.1+ within 24.x, or 26.12.1 or newer,
+and pnpm 11.13.1. Install the latest security patch for your Node.js release line.
+CI uses Node.js 22 with a minimum of 22.23.4 and checks for the latest patch
+before installation, so an older runner cache cannot skip a security update.
+
 ```bash
 pnpm install
 pnpm exec playwright install   # first time only

@@ -12,6 +12,14 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+### Security
+
+- Require patched Node.js runtimes: 22.23.4+ within 22.x, 24.22.1+ within 24.x,
+  or 26.12.1 or newer. CI, release, and Pages builds fetch the latest Node.js 22
+  patch and reject versions below 22.23.4. These minimums include the October
+  2026 security fixes, including CVE-2026-111497 in the native Brotli decoder.
+  Node.js 20, 21, 23, and 25 are no longer supported. Browser behavior is unchanged.
+
 ## 0.1.0-beta.9 - 2026-09-09
 
 ### Added
