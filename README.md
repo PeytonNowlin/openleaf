@@ -20,7 +20,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@openleaf-editor/element"><img alt="npm version" src="https://img.shields.io/npm/v/@openleaf-editor/element?tag=beta&label=npm&color=2f7d32"></a>
   <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
-  <img alt="Node.js 20 or newer" src="https://img.shields.io/badge/node-%3E%3D20-43853d">
+  <img alt="Node.js 22.23.4+, 24.22.1+, or 26.12.1+" src="https://img.shields.io/badge/node-22.23.4%2B%20%7C%2024.22.1%2B%20%7C%2026.12.1%2B-43853d">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6">
 </p>
 
@@ -430,8 +430,13 @@ OpenLeaf currently makes no WCAG conformance claim.
 
 Requirements:
 
-- Node.js 20 or newer
+- Node.js 22.23.4+ within 22.x, 24.22.1+ within 24.x, or 26.12.1 or newer
 - pnpm 11.13.1, as declared by `packageManager`
+
+Use the latest security patch in your chosen Node.js release line. These minimums
+include the [October 2026 security fixes](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases),
+including the native Brotli decoder fix. Node.js 20, 21, 23, and 25 are no longer
+supported. Browser consumers do not need Node.js at runtime.
 
 ```bash
 git clone https://github.com/PeytonNowlin/openleaf.git

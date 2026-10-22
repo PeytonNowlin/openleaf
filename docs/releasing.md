@@ -8,6 +8,10 @@ Nobody should be editing a `version` field by hand. If you are reading this
 because you were about to, the answer is almost certainly
 [a manual dispatch](#releasing-off-cadence).
 
+The release and Pages workflows use the latest Node.js 22 patch, with a minimum
+of 22.23.4 for the October 2026 security fixes. `check-latest: true` prevents
+them from reusing an older Node.js patch from the runner cache.
+
 ## What the weekly run does
 
 1. **Checks whether anything landed.** The last `v*` tag to `HEAD`. Zero commits

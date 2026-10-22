@@ -35,6 +35,18 @@ is `0.x` there is no long-term support branch: fixes land on the current
 line and you upgrade to get them. When a `1.0` line exists, this table
 will say how long the previous major is patched for.
 
+## Node.js runtime updates
+
+For builds and Node.js server integrations, use Node.js 22.23.4+ within 22.x,
+24.22.1+ within 24.x, or 26.12.1 or newer. Keep your chosen release line on its
+latest security patch. These minimums include the
+[October 2026 Node.js security fixes](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases),
+including CVE-2026-111497 in the native Brotli decoder.
+
+OpenLeaf's browser bundles do not include Node.js. Updating an OpenLeaf package
+or `@types/node` does not patch the Node.js executable used by a build or server.
+Update that runtime separately, then restart affected Node.js processes.
+
 ## Scope and threat model
 
 OpenLeaf is a client-side editor. Understanding this boundary matters:

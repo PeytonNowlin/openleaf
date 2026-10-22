@@ -344,8 +344,10 @@ const config = configureDOMPurify(purify, DEFAULT_POLICY)
 const cleanHtml = purify.sanitize(untrustedHtml, config)
 ```
 
-Keep the server's DOM implementation current; older jsdom releases have had
-security defects. Do not move sanitization into the browser to avoid using a
+Use a [supported, patched Node.js runtime](../SECURITY.md#nodejs-runtime-updates)
+for server integrations. Upgrading OpenLeaf does not update the server's Node.js
+executable. Keep the server's DOM implementation current; older jsdom releases
+have had security defects. Do not move sanitization into the browser to avoid using a
 DOM implementation on Node.js. Use
 `configureDOMPurify`, not only `toDOMPurifyConfig`: OpenLeaf's safe handling for
 style values and allowlisted iframe hosts requires the hooks installed by the
