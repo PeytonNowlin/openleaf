@@ -12,6 +12,8 @@ entries below say so explicitly when they do.
 
 ## Unreleased
 
+## 0.1.0-beta.10 - 2026-10-26
+
 ### Security
 
 - Require patched Node.js runtimes: 22.23.4+ within 22.x, 24.22.1+ within 24.x,
