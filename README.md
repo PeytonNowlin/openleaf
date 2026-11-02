@@ -471,6 +471,11 @@ Use the repository's [issue tracker](https://github.com/PeytonNowlin/openleaf/is
 for bugs and feature proposals. Security vulnerabilities should follow the private
 reporting process in [SECURITY.md](SECURITY.md), not a public issue.
 
+## Developer
+
+OpenLeaf is developed by Peyton Nowlin. Visit my personal website at
+[nowlinautomation.com](https://nowlinautomation.com).
+
 ## Governance and license
 
 OpenLeaf is licensed under the [Apache License 2.0](LICENSE). Commercial,
